@@ -1,0 +1,336 @@
+
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User } from '../types';
+import { extractTransactionsFromFiles, extractTransactionsFromText, hasApiKey } from '../services/geminiService';
+import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
+import { mergeTransactions } from '../services/transactionService';
+import { applyRulesToTransactions } from '../services/ruleService';
+import FileUpload from '../components/FileUpload';
+import { ResultsDisplay } from '../components/ResultsDisplay';
+import TransactionTable from '../components/TransactionTable';
+import DuplicateReview from '../components/DuplicateReview';
+import ImportVerification from '../components/ImportVerification';
+import { ExclamationTriangleIcon, CalendarIcon } from '../components/Icons';
+import { formatDate } from '../dateUtils';
+
+type AppState = 'idle' | 'processing' | 'verifying_import' | 'reviewing_duplicates' | 'success' | 'error';
+type ImportMethod = 'upload' | 'paste';
+
+interface DashboardProps {
+  onTransactionsAdded: (newTransactions: Transaction[], newCategories: Category[]) => void;
+  transactions: Transaction[];
+  accounts: Account[];
+  categories: Category[];
+  transactionTypes: TransactionType[];
+  rules: ReconciliationRule[];
+  payees: Payee[];
+  users: User[];
+}
+
+const SummaryWidget: React.FC<{title: string, value: string, helpText: string, icon?: React.ReactNode, className?: string}> = ({title, value, helpText, icon, className}) => (
+    <div className={`bg-white p-4 rounded-xl shadow-sm border border-slate-200 ${className}`}>
+        <div className="flex justify-between items-start">
+            <div>
+                <h3 className="text-sm font-medium text-slate-500">{title}</h3>
+                <p className="text-2xl font-bold text-slate-800 mt-1">{value}</p>
+            </div>
+            {icon && <div className="p-2 bg-slate-50 rounded-lg">{icon}</div>}
+        </div>
+        <p className="text-xs text-slate-400 mt-1">{helpText}</p>
+    </div>
+);
+
+const getNextTaxDeadline = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    // US Estimated Tax Deadlines: Apr 15, Jun 15, Sep 15, Jan 15 (next year)
+    const deadlines = [
+        { date: new Date(year, 3, 15), label: 'Q1 Est. Tax' }, // April 15
+        { date: new Date(year, 5, 15), label: 'Q2 Est. Tax' }, // June 15
+        { date: new Date(year, 8, 15), label: 'Q3 Est. Tax' }, // Sept 15
+        { date: new Date(year + 1, 0, 15), label: 'Q4 Est. Tax' }, // Jan 15
+    ];
+
+    // Find the first deadline that is in the future
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const next = deadlines.find(d => d.date >= today) || deadlines[0]; 
+
+    const diffTime = Math.abs(next.date.getTime() - today.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+
+    return {
+        label: next.label,
+        // Using dateUtils-like manual formatting for consistency with short display requirement
+        dateStr: next.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
+        daysLeft: diffDays
+    };
+};
+
+const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, categories, transactionTypes, rules, payees, users }) => {
+  const [appState, setAppState] = useState<AppState>('idle');
+  const [error, setError] = useState<string | null>(null);
+  const [progressMessage, setProgressMessage] = useState('');
+  
+  const apiKeyAvailable = hasApiKey();
+  const [useAi, setUseAi] = useState(apiKeyAvailable);
+  
+  const [importMethod, setImportMethod] = useState<ImportMethod>('upload');
+  const [textInput, setTextInput] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState<string>('');
+
+  // Set default user on initial load
+  useEffect(() => {
+    const defaultUser = users.find(u => u.isDefault) || users[0];
+    if (defaultUser) {
+        setSelectedUserId(defaultUser.id);
+    }
+  }, [users]);
+
+  // State for the import and review flow
+  const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; })[]>([]);
+  const [stagedForImport, setStagedForImport] = useState<Transaction[]>([]);
+  const [duplicatesToReview, setDuplicatesToReview] = useState<DuplicatePair[]>([]);
+  const [stagedNewCategories, setStagedNewCategories] = useState<Category[]>([]);
+
+  // State for the final results display
+  const [finalizedTransactions, setFinalizedTransactions] = useState<Transaction[]>([]);
+  const [duplicatesIgnored, setDuplicatesIgnored] = useState(0);
+  const [duplicatesImported, setDuplicatesImported] = useState(0);
+
+  const handleProgress = (msg: string) => {
+    setProgressMessage(msg);
+  };
+
+  const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
+    handleProgress('Applying automation rules...');
+    const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
+    const transactionsWithRules = applyRulesToTransactions(rawWithUser, rules);
+
+    const existingCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
+    const newCategories: Category[] = [];
+    transactionsWithRules.forEach(tx => {
+        if (tx.category && !existingCategoryNames.has(tx.category.toLowerCase())) {
+            const newCategory: Category = {
+                id: `new-${tx.category.toLowerCase().replace(/\s+/g, '-')}-${crypto.randomUUID().slice(0,4)}`,
+                name: tx.category
+            };
+            newCategories.push(newCategory);
+            existingCategoryNames.add(tx.category.toLowerCase());
+        }
+    });
+
+    const categoryNameToIdMap = new Map([...categories, ...newCategories].map(c => [c.name.toLowerCase(), c.id]));
+    const defaultCategoryId = categories.find(c => c.name === 'Other')?.id || categories[0]?.id || '';
+
+    const transactionsWithCategoryIds = transactionsWithRules.map(tx => ({
+        ...tx,
+        categoryId: tx.categoryId || categoryNameToIdMap.get(tx.category.toLowerCase()) || defaultCategoryId,
+        tempId: crypto.randomUUID(), 
+    }));
+
+    setStagedNewCategories(newCategories);
+    setRawTransactionsToVerify(transactionsWithCategoryIds);
+    setAppState('verifying_import');
+
+  }, [rules, categories]);
+
+  const handleFileUpload = useCallback(async (files: File[], accountId: string) => {
+    setAppState('processing');
+    setError(null);
+    try {
+      const rawTransactions = useAi 
+        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, handleProgress) 
+        : await parseTransactionsFromFiles(files, accountId, transactionTypes, handleProgress);
+      await prepareForVerification(rawTransactions, selectedUserId);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+      setAppState('error');
+    }
+  }, [useAi, transactionTypes, prepareForVerification, selectedUserId]);
+
+  const handleTextPaste = useCallback(async () => {
+    if (!textInput.trim() || accounts.length === 0) return;
+    setAppState('processing');
+    setError(null);
+    try {
+      const accountId = accounts[0].id; 
+      const rawTransactions = useAi
+        ? await extractTransactionsFromText(textInput, accountId, transactionTypes, handleProgress)
+        : await parseTransactionsFromText(textInput, accountId, transactionTypes, handleProgress);
+      await prepareForVerification(rawTransactions, selectedUserId);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
+      setAppState('error');
+    }
+  }, [textInput, useAi, accounts, transactionTypes, prepareForVerification, selectedUserId]);
+  
+  const handleVerificationComplete = (verifiedTransactions: (RawTransaction & { categoryId: string; })[]) => {
+      handleProgress('Checking for duplicates...');
+      const { added, duplicates } = mergeTransactions(transactions, verifiedTransactions);
+
+      if (duplicates.length > 0) {
+          setStagedForImport(added);
+          setDuplicatesToReview(duplicates);
+          setAppState('reviewing_duplicates');
+      } else {
+          onTransactionsAdded(added, stagedNewCategories);
+          setFinalizedTransactions(added);
+          setDuplicatesIgnored(0);
+          setDuplicatesImported(0);
+          setAppState('success');
+      }
+  };
+
+  const handleReviewComplete = (duplicatesToImport: Transaction[]) => {
+    const finalTransactions = [...stagedForImport, ...duplicatesToImport];
+    onTransactionsAdded(finalTransactions, stagedNewCategories);
+    setFinalizedTransactions(finalTransactions);
+    setDuplicatesImported(duplicatesToImport.length);
+    setDuplicatesIgnored(duplicatesToReview.length - duplicatesToImport.length);
+    setAppState('success');
+    setStagedForImport([]);
+    setDuplicatesToReview([]);
+    setStagedNewCategories([]);
+  };
+
+  const handleClear = () => {
+    setAppState('idle');
+    setError(null);
+    setProgressMessage('');
+    setTextInput('');
+    setRawTransactionsToVerify([]);
+    setStagedForImport([]);
+    setDuplicatesToReview([]);
+    setStagedNewCategories([]);
+    setFinalizedTransactions([]);
+    setDuplicatesIgnored(0);
+    setDuplicatesImported(0);
+  };
+  
+  const recentTransactions = useMemo(() => {
+    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+  }, [transactions]);
+  
+  const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
+  const totalIncome = useMemo(() => transactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'income').reduce((sum, t) => sum + t.amount, 0), [transactions, transactionTypeMap]);
+  const totalExpenses = useMemo(() => transactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'expense').reduce((sum, t) => sum + t.amount, 0), [transactions, transactionTypeMap]);
+
+  const nextDeadline = useMemo(() => getNextTaxDeadline(), []);
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
+        <p className="text-slate-500 mt-1">An overview of your financial activity.</p>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <SummaryWidget title="Total Income" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)} helpText="All time" />
+        <SummaryWidget title="Total Expenses" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)} helpText="All time" />
+        <SummaryWidget title="Net Flow" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome - totalExpenses)} helpText="Income minus expenses" />
+        <SummaryWidget 
+            title={nextDeadline.label} 
+            value={`${nextDeadline.daysLeft} Days`} 
+            helpText={`Due by ${nextDeadline.dateStr}`} 
+            icon={<CalendarIcon className="w-6 h-6 text-indigo-600"/>}
+            className="border-indigo-200 bg-indigo-50"
+        />
+      </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <h2 className="text-xl font-bold text-slate-700 mb-4">Import Transactions</h2>
+        
+        {appState === 'idle' ? (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-4">
+                    <button onClick={() => setImportMethod('upload')} className={`px-4 py-2 rounded-lg font-semibold ${importMethod === 'upload' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}`}>Upload Files</button>
+                    <button onClick={() => setImportMethod('paste')} className={`px-4 py-2 rounded-lg font-semibold ${importMethod === 'paste' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}`}>Paste Text</button>
+                </div>
+                 <div className="flex items-center space-x-2" title={!apiKeyAvailable ? "API Key missing" : "Toggle AI Processing"}>
+                    <span className={`text-sm font-medium ${!useAi ? 'text-indigo-600' : 'text-slate-500'}`}>Fast</span>
+                    <label htmlFor="ai-toggle" className={`relative inline-flex items-center ${!apiKeyAvailable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
+                        <input 
+                            type="checkbox" 
+                            id="ai-toggle" 
+                            className="sr-only peer" 
+                            checked={useAi && apiKeyAvailable} 
+                            onChange={() => apiKeyAvailable && setUseAi(!useAi)} 
+                            disabled={!apiKeyAvailable}
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
+                    <span className={`text-sm font-medium ${useAi && apiKeyAvailable ? 'text-indigo-600' : 'text-slate-500'}`}>AI-Powered</span>
+                    {!apiKeyAvailable && <ExclamationTriangleIcon className="w-4 h-4 text-amber-500" title="Environment variable API_KEY is missing. AI features are disabled." />}
+                </div>
+            </div>
+            <div className="mb-4">
+              <label htmlFor="user-select" className="block text-sm font-medium text-slate-700 mb-1">Assign to User:</label>
+              <select id="user-select" value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} disabled={users.length === 0}>
+                  {users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
+              </select>
+            </div>
+            {importMethod === 'upload' ? (
+                <FileUpload onFileUpload={handleFileUpload} disabled={appState === 'processing'} accounts={accounts} useAi={useAi && apiKeyAvailable} />
+            ) : (
+                <div className="space-y-4">
+                    <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} rows={8} placeholder="Paste your transaction data here (e.g., from a spreadsheet or email)." className="w-full"></textarea>
+                    {accounts.length === 0 && <p className="text-sm text-red-600 bg-red-50 p-2 rounded-md">Please create an Account on the Accounts page first to import pasted text.</p>}
+                    <button onClick={handleTextPaste} disabled={!textInput.trim() || accounts.length === 0} className="px-6 py-3 text-white font-semibold bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-slate-400">Process Text</button>
+                </div>
+            )}
+            
+          </div>
+        ) : appState === 'verifying_import' ? (
+            <ImportVerification
+                initialTransactions={rawTransactionsToVerify}
+                onComplete={handleVerificationComplete}
+                onCancel={handleClear}
+                accounts={accounts}
+                categories={categories}
+                transactionTypes={transactionTypes}
+                payees={payees}
+                users={users}
+            />
+        ) : appState === 'reviewing_duplicates' ? (
+            <DuplicateReview
+                duplicates={duplicatesToReview}
+                onComplete={handleReviewComplete}
+                onCancel={handleClear}
+                accounts={accounts}
+            />
+        ) : (
+          <ResultsDisplay 
+            appState={appState} 
+            error={error} 
+            progressMessage={progressMessage} 
+            transactions={finalizedTransactions}
+            duplicatesIgnored={duplicatesIgnored}
+            duplicatesImported={duplicatesImported}
+            onClear={handleClear} 
+          />
+        )}
+      </div>
+
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+          <h2 className="text-xl font-bold text-slate-700 mb-4">Recent Transactions</h2>
+          <TransactionTable 
+            transactions={recentTransactions} 
+            accounts={accounts} 
+            categories={categories}
+            transactionTypes={transactionTypes}
+            payees={payees}
+            users={users}
+            onUpdateTransaction={() => {}} 
+            onDeleteTransaction={() => {}}
+            deleteConfirmationMessage="Deleting from this view is not supported. Please go to the All Transactions page."
+          />
+      </div>
+
+    </div>
+  );
+};
+
+export default Dashboard;
