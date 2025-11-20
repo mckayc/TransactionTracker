@@ -1,19 +1,17 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category } from '../types';
 
 declare const pdfjsLib: any;
 
 export const hasApiKey = (): boolean => {
-    // Check runtime injection (Docker) first, then build-time env (Vite/Local)
-    const key = (window as any).env?.API_KEY || process.env.API_KEY;
+    const key = process.env.API_KEY;
     return !!key && key.trim() !== '';
 };
 
 // Centralized function to get the AI client. 
-// This ensures we only access process.env.API_KEY in one place.
 const getAiClient = () => {
-    const apiKey = (window as any).env?.API_KEY || process.env.API_KEY;
+    const apiKey = process.env.API_KEY;
+    
     if (!apiKey || apiKey.trim() === '') {
         throw new Error("API Key is missing. Please check your environment variables (API_KEY).");
     }
