@@ -38,11 +38,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ transactions, transactionTy
         if (apiKey.trim()) {
             localStorage.setItem('user_api_key', apiKey.trim());
             setApiKeySaved(true);
-            setTimeout(() => setApiKeySaved(false), 3000);
-            // Reload slightly to refresh the AI service if needed, though not strictly required if using context correctly
-            // window.location.reload(); 
+            setTimeout(() => {
+                setApiKeySaved(false);
+                // Reload to ensure the AI service picks up the new key immediately
+                window.location.reload();
+            }, 1000);
         } else {
             localStorage.removeItem('user_api_key');
+            setApiKeySaved(true);
+             setTimeout(() => {
+                setApiKeySaved(false);
+                window.location.reload();
+            }, 1000);
         }
     };
 
@@ -148,7 +155,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ transactions, transactionTy
                         <div>
                             <h3 className="font-semibold text-indigo-900">Google Gemini API Key</h3>
                             <p className="text-sm text-indigo-700 mt-1">
-                                Required for AI parsing and categorization features. If the API Key wasn't set during the Docker build, you can enter it here. It will be saved in your browser's local storage.
+                                This is the most reliable way to enable AI features if you are self-hosting. Entering the key here saves it to your browser's local storage and overrides any system settings.
                             </p>
                         </div>
                         <div className="flex items-center gap-2">
@@ -164,7 +171,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ transactions, transactionTy
                                 className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 shadow-sm transition-colors flex items-center gap-2"
                             >
                                 {apiKeySaved ? <CheckCircleIcon className="w-5 h-5" /> : null}
-                                {apiKeySaved ? 'Saved' : 'Save Key'}
+                                {apiKeySaved ? 'Saved!' : 'Save Key'}
                             </button>
                         </div>
                         {process.env.API_KEY && (

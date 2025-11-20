@@ -15,9 +15,11 @@ import CategoriesPage from './views/CategoriesPage';
 import UsersPage from './views/UsersPage';
 import BusinessHub from './views/BusinessHub';
 import Chatbot from './components/Chatbot';
+import Loader from './components/Loader';
 import { MenuIcon, CloseIcon } from './components/Icons';
 import { calculateNextDate, formatDate } from './dateUtils';
 import { generateUUID } from './utils';
+import { api } from './services/apiService';
 
 type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'users' | 'hub';
 
@@ -51,6 +53,8 @@ const DEFAULT_TRANSACTION_TYPES: TransactionType[] = [
 
 
 const App: React.FC = () => {
+  const [isLoading, setIsLoading] = useState(true);
+  
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [accountTypes, setAccountTypes] = useState<AccountType[]>([]);
@@ -65,57 +69,52 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile>({ info: {}, tax: {}, completedSteps: [] });
   const [businessDocuments, setBusinessDocuments] = useState<BusinessDocument[]>([]);
+  
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Load data from localStorage on initial render
+  // Load data from API on initial render
   useEffect(() => {
-    const loadData = () => {
+    const loadData = async () => {
+      setIsLoading(true);
+      const data = await api.loadAll();
+
       const safeLoad = <T,>(key: string, fallback: T): T => {
-          try {
-              const stored = localStorage.getItem(key);
-              if (stored) {
-                  return JSON.parse(stored) as T;
-              }
-          } catch (error) {
-              console.error(`Failed to load or parse '${key}' from localStorage. Clearing corrupted data.`, error);
-              localStorage.removeItem(key);
-          }
-          return fallback;
+          return (data[key] as T) || fallback;
       };
 
-      // Handle Users first
-      const parsedUsers = safeLoad<User[] | null>('users', null);
-      let finalUsers: User[] = (Array.isArray(parsedUsers) && parsedUsers.length > 0)
-          ? parsedUsers
+      // Handle Users
+      const loadedUsers = safeLoad<User[]>('users', []);
+      let finalUsers: User[] = (Array.isArray(loadedUsers) && loadedUsers.length > 0)
+          ? loadedUsers
           : [{ id: 'default-user', name: 'Primary User', isDefault: true }];
       setUsers(finalUsers);
       
       const defaultUserId = finalUsers.find(u => u.isDefault)?.id || finalUsers[0]?.id;
 
       // Handle Transactions
-      const parsedTxs = safeLoad<Transaction[] | null>('transactions', null);
-      if (Array.isArray(parsedTxs)) {
-         if (parsedTxs.length > 0 && !parsedTxs[0].hasOwnProperty('userId')) {
-            console.log("Migrating transactions to include user ID...");
-            setTransactions(parsedTxs.map((tx: any) => ({ ...tx, userId: defaultUserId })));
+      const loadedTxs = safeLoad<Transaction[]>('transactions', []);
+      if (Array.isArray(loadedTxs)) {
+         if (loadedTxs.length > 0 && !loadedTxs[0].hasOwnProperty('userId')) {
+            setTransactions(loadedTxs.map((tx: any) => ({ ...tx, userId: defaultUserId })));
          } else {
-            setTransactions(parsedTxs);
+            setTransactions(loadedTxs);
          }
       } else {
           setTransactions([]);
       }
 
       // Handle Categories
-      const parsedCategories = safeLoad<Category[] | string[] | null>('categories', null);
-      if (Array.isArray(parsedCategories) && parsedCategories.length > 0) {
-          if (typeof parsedCategories[0] === 'string') {
-              setCategories((parsedCategories as string[]).map((name: string) => ({
+      const loadedCategories = safeLoad<Category[] | string[]>('categories', []);
+      if (Array.isArray(loadedCategories) && loadedCategories.length > 0) {
+          if (typeof loadedCategories[0] === 'string') {
+              // Migration logic for legacy array of strings
+              setCategories((loadedCategories as string[]).map((name: string) => ({
                   id: `migrated-${name.toLowerCase().replace(/\s+/g, '-')}-${generateUUID().slice(0,4)}`,
                   name: name
               })));
           } else {
-              setCategories(parsedCategories as Category[]);
+              setCategories(loadedCategories as Category[]);
           }
       } else {
           setCategories(DEFAULT_CATEGORIES);
@@ -132,15 +131,15 @@ const App: React.FC = () => {
       setBusinessDocuments(safeLoad<BusinessDocument[]>('businessDocuments', []));
 
       // Handle Account Types and Accounts
-      let finalAccountTypes = safeLoad<AccountType[] | null>('accountTypes', null);
-      if (!Array.isArray(finalAccountTypes)) {
+      let finalAccountTypes = safeLoad<AccountType[]>('accountTypes', []);
+      if (!Array.isArray(finalAccountTypes) || finalAccountTypes.length === 0) {
           finalAccountTypes = [
             { id: 'default-bank', name: 'Bank', isDefault: true },
             { id: 'default-cc', name: 'Credit Card', isDefault: true },
           ];
       }
 
-      let finalAccounts = safeLoad<Account[] | null>('accounts', null);
+      let finalAccounts = safeLoad<Account[]>('accounts', []);
       if (!Array.isArray(finalAccounts) || finalAccounts.length === 0) {
           let generalAccountType = finalAccountTypes.find(t => t.name === 'General');
           if (!generalAccountType) {
@@ -157,31 +156,97 @@ const App: React.FC = () => {
 
       setAccountTypes(finalAccountTypes);
       setAccounts(finalAccounts);
+      
+      setIsLoading(false);
     };
     loadData();
   }, []);
 
-  // Save data to localStorage
+  // Save data to API whenever it changes
+  // We assume api.save handles networking and we debounce to avoid flood
   useEffect(() => {
-    const handler = setTimeout(() => {
-      try { localStorage.setItem('transactions', JSON.stringify(transactions)); } catch (e) { console.error(e); }
-    }, 500);
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('transactions', transactions), 1000);
     return () => clearTimeout(handler);
-  }, [transactions]);
-  // ... (other useEffects for saving state remain identical, omitted for brevity but assumed present)
-  useEffect(() => { try { localStorage.setItem('accounts', JSON.stringify(accounts)); } catch (e) { } }, [accounts]);
-  useEffect(() => { try { localStorage.setItem('accountTypes', JSON.stringify(accountTypes)); } catch (e) { } }, [accountTypes]);
-  useEffect(() => { try { localStorage.setItem('transactionTypes', JSON.stringify(transactionTypes)); } catch (e) { } }, [transactionTypes]);
-  useEffect(() => { try { localStorage.setItem('categories', JSON.stringify(categories)); } catch (e) { } }, [categories]);
-  useEffect(() => { try { localStorage.setItem('templates', JSON.stringify(templates)); } catch (e) { } }, [templates]);
-  useEffect(() => { try { localStorage.setItem('scheduledEvents', JSON.stringify(scheduledEvents)); } catch (e) { } }, [scheduledEvents]);
-  useEffect(() => { try { localStorage.setItem('tasks', JSON.stringify(tasks)); } catch (e) { } }, [tasks]);
-  useEffect(() => { try { localStorage.setItem('taskCompletions', JSON.stringify(taskCompletions)); } catch (e) { } }, [taskCompletions]);
-  useEffect(() => { try { localStorage.setItem('reconciliationRules', JSON.stringify(reconciliationRules)); } catch (e) { } }, [reconciliationRules]);
-  useEffect(() => { try { localStorage.setItem('payees', JSON.stringify(payees)); } catch (e) { } }, [payees]);
-  useEffect(() => { try { localStorage.setItem('users', JSON.stringify(users)); } catch (e) { } }, [users]);
-  useEffect(() => { try { localStorage.setItem('businessProfile', JSON.stringify(businessProfile)); } catch (e) { } }, [businessProfile]);
-  useEffect(() => { try { localStorage.setItem('businessDocuments', JSON.stringify(businessDocuments)); } catch (e) { } }, [businessDocuments]);
+  }, [transactions, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('accounts', accounts), 500);
+    return () => clearTimeout(handler);
+  }, [accounts, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('accountTypes', accountTypes), 500);
+    return () => clearTimeout(handler);
+  }, [accountTypes, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('transactionTypes', transactionTypes), 500);
+    return () => clearTimeout(handler);
+  }, [transactionTypes, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('categories', categories), 500);
+    return () => clearTimeout(handler);
+  }, [categories, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('templates', templates), 500);
+    return () => clearTimeout(handler);
+  }, [templates, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('scheduledEvents', scheduledEvents), 500);
+    return () => clearTimeout(handler);
+  }, [scheduledEvents, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('tasks', tasks), 500);
+    return () => clearTimeout(handler);
+  }, [tasks, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('taskCompletions', taskCompletions), 500);
+    return () => clearTimeout(handler);
+  }, [taskCompletions, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('reconciliationRules', reconciliationRules), 500);
+    return () => clearTimeout(handler);
+  }, [reconciliationRules, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('payees', payees), 500);
+    return () => clearTimeout(handler);
+  }, [payees, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('users', users), 500);
+    return () => clearTimeout(handler);
+  }, [users, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('businessProfile', businessProfile), 500);
+    return () => clearTimeout(handler);
+  }, [businessProfile, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('businessDocuments', businessDocuments), 500);
+    return () => clearTimeout(handler);
+  }, [businessDocuments, isLoading]);
 
 
   // Handlers
@@ -282,10 +347,8 @@ const App: React.FC = () => {
           const updatedTasks = prev.map(t => t.id === taskId ? { ...t, isCompleted: isNowCompleted } : t);
           
           // Recurrence Logic:
-          // If task is recurring and we just marked it completed, spawn the next one.
           if (isNowCompleted && task.recurrence && task.dueDate) {
               const nextDateStr = calculateNextDate(task.dueDate, task.recurrence);
-              // Check end date
               if (!task.recurrence.endDate || nextDateStr <= task.recurrence.endDate) {
                   const nextTask: TaskItem = {
                       ...task,
@@ -293,14 +356,8 @@ const App: React.FC = () => {
                       dueDate: nextDateStr,
                       isCompleted: false,
                       createdAt: new Date().toISOString(),
-                      // Reset subtasks for the new instance? Usually yes.
                       subtasks: task.subtasks?.map(st => ({...st, isCompleted: false})),
-                      // The new task keeps the recurrence rule so it can spawn the next one too.
                   };
-                  
-                  // Optional: We could remove recurrence from the OLD task so it's just a record of the past.
-                  // updatedTasks[updatedTasks.findIndex(t => t.id === taskId)].recurrence = undefined; 
-                  
                   updatedTasks.push(nextTask);
               }
           }
@@ -396,6 +453,14 @@ const App: React.FC = () => {
 
   const handleAddDocument = (doc: BusinessDocument) => setBusinessDocuments(prev => [...prev, doc]);
   const handleRemoveDocument = (docId: string) => setBusinessDocuments(prev => prev.filter(d => d.id !== docId));
+
+  if (isLoading) {
+      return (
+          <div className="min-h-screen flex items-center justify-center bg-slate-100">
+              <Loader message="Loading your data..." />
+          </div>
+      );
+  }
 
   const renderView = () => {
     switch (currentView) {

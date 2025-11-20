@@ -75,6 +75,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const apiKeyAvailable = hasApiKey();
   const [useAi, setUseAi] = useState(apiKeyAvailable);
   
+  useEffect(() => {
+      if (apiKeyAvailable) {
+          setUseAi(true);
+      }
+  }, [apiKeyAvailable]);
+  
   const [importMethod, setImportMethod] = useState<ImportMethod>('upload');
   const [textInput, setTextInput] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');

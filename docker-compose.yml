@@ -1,7 +1,7 @@
 services:
   finparser:
     build: .
-    container_name: finparser
+    container_name: transactiontracker
     ports:
       - "5173:80"
     environment:

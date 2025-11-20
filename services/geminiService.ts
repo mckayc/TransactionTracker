@@ -1,17 +1,30 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category } from '../types';
 
 declare const pdfjsLib: any;
 
 export const hasApiKey = (): boolean => {
-    const envKey = process.env.API_KEY;
+    let envKey = '';
+    try {
+        envKey = process.env.API_KEY || '';
+    } catch (e) {
+        // process might not be defined in some environments if build replacement fails
+    }
     const localKey = localStorage.getItem('user_api_key');
     return (!!envKey && envKey.trim() !== '') || (!!localKey && localKey.trim() !== '');
 };
 
 // Centralized function to get the AI client. 
 const getAiClient = () => {
-    const apiKey = process.env.API_KEY || localStorage.getItem('user_api_key');
+    let apiKey = '';
+    try {
+        apiKey = process.env.API_KEY || '';
+    } catch (e) {}
+    
+    if (!apiKey) {
+        apiKey = localStorage.getItem('user_api_key') || '';
+    }
     
     if (!apiKey || apiKey.trim() === '') {
         throw new Error("API Key is missing. Please check your environment variables or set it in Settings.");
