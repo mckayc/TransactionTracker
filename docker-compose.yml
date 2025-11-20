@@ -3,7 +3,7 @@ services:
     build: .
     container_name: transactiontracker
     ports:
-      - "5173:80"
+      - "5173:3000"
     environment:
       - TZ=America/Denver
       - API_KEY=${API_KEY:-thiswontworkatall}
