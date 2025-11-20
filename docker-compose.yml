@@ -3,7 +3,7 @@ services:
     build: .
     container_name: finparser
     ports:
-      - "5173:5173"
+      - "5173:80"
     environment:
       - TZ=America/Denver
       - API_KEY=${API_KEY:-thiswontworkatall}
