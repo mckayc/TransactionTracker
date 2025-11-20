@@ -1,0 +1,18 @@
+services:
+  finparser:
+    build: .
+    container_name: finparser
+    ports:
+      - "5173:5173"
+    environment:
+      - TZ=America/Denver
+      - API_KEY=${API_KEY:-thiswontworkatall}
+      # Ensure Vite checks this polling interval for file changes on some systems
+      - CHOKIDAR_USEPOLLING=true
+    volumes:
+      - "${APP_DATA_PATH:-./data/config}:/app/data/config"
+      - "${APP_MEDIA_PATH:-./files}:/app/media/files"
+      # Optional: Mount source code for live development if desired
+      # - ./:/app
+      # - /app/node_modules
+    restart: unless-stopped
