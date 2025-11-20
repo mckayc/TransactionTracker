@@ -12,7 +12,7 @@ services:
     volumes:
       - "${APP_DATA_PATH:-./data/config}:/app/data/config"
       - "${APP_MEDIA_PATH:-./files}:/app/media/files"
-      # Optional: Mount source code for live development if desired
+      # Optional: Mount source code for live development if desired.
       # - ./:/app
       # - /app/node_modules
     restart: unless-stopped
