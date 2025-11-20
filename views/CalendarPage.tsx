@@ -182,14 +182,16 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                         const isCurrentMonth = d.getMonth() === currentDate.getMonth();
                         const isSelected = selectedDate?.toDateString() === d.toDateString();
                         const taskCount = (dayData?.events.length || 0) + (dayData?.tasks.length || 0);
+                        const dayIncome = dayData?.income || 0;
+                        const dayExpenses = dayData?.expenses || 0;
 
                         return (
                             <div key={i} onClick={() => setSelectedDate(d)} className={`relative p-2 h-28 flex flex-col border-r border-b cursor-pointer transition-colors ${isCurrentMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 hover:bg-slate-100'} ${isSelected ? 'ring-2 ring-indigo-500 z-10' : ''}`}>
                                 <span className={`font-semibold ${isCurrentMonth ? 'text-slate-800' : 'text-slate-400'}`}>{d.getDate()}</span>
                                 <div className="mt-auto text-xs overflow-hidden">
                                     {taskCount > 0 && <p className="flex items-center gap-1 text-blue-600 truncate font-medium"><span className="w-2 h-2 rounded-full bg-blue-500"></span>{taskCount} Item(s)</p>}
-                                    {dayData?.income > 0 && <p className="text-green-600 truncate font-medium">+{formatCurrency(dayData.income)}</p>}
-                                    {dayData?.expenses > 0 && <p className="text-red-600 truncate font-medium">-{formatCurrency(dayData.expenses)}</p>}
+                                    {dayIncome > 0 && <p className="text-green-600 truncate font-medium">+{formatCurrency(dayIncome)}</p>}
+                                    {dayExpenses > 0 && <p className="text-red-600 truncate font-medium">-{formatCurrency(dayExpenses)}</p>}
                                 </div>
                             </div>
                         );

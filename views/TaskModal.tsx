@@ -26,20 +26,19 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
     const endDateRef = useRef<HTMLInputElement>(null);
 
     const showPickerSafely = (ref: React.RefObject<HTMLInputElement>) => {
-        if (!ref.current) return;
+        const el = ref.current;
+        if (!el) return;
         try {
-            if ('showPicker' in ref.current) {
-                ref.current.showPicker();
+            if (typeof (el as any).showPicker === 'function') {
+                (el as any).showPicker();
             } else {
-                ref.current.focus();
-                // Try clicking as a fallback for older browsers/contexts
-                ref.current.click();
+                el.focus();
+                el.click();
             }
         } catch (error) {
-            // SecurityError or other restrictions (e.g. cross-origin iframe)
             console.warn('showPicker failed, using fallback focus/click:', error);
-            ref.current.focus();
-            try { ref.current.click(); } catch (e) {}
+            el.focus();
+            try { el.click(); } catch (e) {}
         }
     };
 

@@ -263,7 +263,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                     </label>
                     <span className={`text-sm font-medium ${useAi && apiKeyAvailable ? 'text-indigo-600' : 'text-slate-500'}`}>AI-Powered</span>
-                    {!apiKeyAvailable && <ExclamationTriangleIcon className="w-4 h-4 text-amber-500" title="Environment variable API_KEY is missing. AI features are disabled." />}
+                    {!apiKeyAvailable && (
+                        <span title="Environment variable API_KEY is missing. AI features are disabled.">
+                            <ExclamationTriangleIcon className="w-4 h-4 text-amber-500" />
+                        </span>
+                    )}
                 </div>
             </div>
             <div className="mb-4">
@@ -273,7 +277,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
               </select>
             </div>
             {importMethod === 'upload' ? (
-                <FileUpload onFileUpload={handleFileUpload} disabled={appState === 'processing'} accounts={accounts} useAi={useAi && apiKeyAvailable} />
+                <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} useAi={useAi && apiKeyAvailable} />
             ) : (
                 <div className="space-y-4">
                     <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} rows={8} placeholder="Paste your transaction data here (e.g., from a spreadsheet or email)." className="w-full"></textarea>
