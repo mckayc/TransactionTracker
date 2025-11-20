@@ -10,14 +10,19 @@ export interface StoredFile {
 
 export const saveFile = async (id: string, file: File): Promise<void> => {
   try {
-    await fetch(`/api/files/${id}`, {
+    const response = await fetch(`/api/files/${id}`, {
         method: 'POST',
         headers: {
-            'Content-Type': file.type,
+            'Content-Type': file.type || 'application/octet-stream',
             'X-Filename': file.name
         },
         body: file
     });
+
+    if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        throw new Error(`Server Error (${response.status}): ${errorText}`);
+    }
   } catch (e) {
       console.error("Failed to upload file", e);
       throw e;

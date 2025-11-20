@@ -60,8 +60,9 @@ const getFileMeta = db.prepare('SELECT * FROM files_meta WHERE id = ?');
 const deleteFileMeta = db.prepare('DELETE FROM files_meta WHERE id = ?');
 
 // Middleware
-app.use(express.json({ limit: '50mb' }));
-app.use(express.raw({ type: 'application/octet-stream', limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
+// FIX: Accept all content types for raw body to ensure file uploads (PDF, CSV, Images) are captured
+app.use(express.raw({ type: '*/*', limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Utility: Generate unique readable filename
@@ -125,8 +126,10 @@ app.post('/api/files/:id', (req, res) => {
   
   try {
     const buffer = req.body; // Buffer from express.raw
-    if (!Buffer.isBuffer(buffer)) {
-        return res.status(400).json({ error: 'Invalid file data' });
+    
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+        console.error("Upload failed: Body is empty or not a buffer. Content-Type was:", req.headers['content-type']);
+        return res.status(400).json({ error: 'Invalid or empty file data' });
     }
 
     const diskFilename = getSafeFilename(DOCUMENTS_DIR, rawFilename);
@@ -136,11 +139,11 @@ app.post('/api/files/:id', (req, res) => {
 
     insertFileMeta.run(id, rawFilename, diskFilename, mimeType, buffer.length, new Date().toISOString());
     
-    console.log(`Saved file: ${diskFilename} (ID: ${id})`);
+    console.log(`Saved file: ${diskFilename} (ID: ${id}, Size: ${buffer.length} bytes)`);
     res.json({ success: true, filename: diskFilename });
   } catch (e) {
-    console.error('Upload error:', e);
-    res.status(500).json({ error: 'Failed to save file' });
+    console.error(`Upload error for ${rawFilename}:`, e.message);
+    res.status(500).send(`Failed to save file: ${e.message}`);
   }
 });
 

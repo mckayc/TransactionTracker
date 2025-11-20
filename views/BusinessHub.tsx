@@ -240,7 +240,7 @@ const DocumentsTab: React.FC<{
             onAddDocument(newDoc);
         } catch (error) {
             console.error("Upload failed", error);
-            alert("Failed to upload document.");
+            alert(`Failed to upload document: ${error instanceof Error ? error.message : 'Unknown error'}. Check server logs/permissions.`);
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
