@@ -13,9 +13,12 @@ WORKDIR /app
 # Install build tools for native modules (better-sqlite3)
 RUN apk add --no-cache python3 make g++
 COPY package*.json ./
+# Install only production dependencies (express, etc.)
 RUN npm install --omit=dev
 COPY server.js .
+# Copy the built frontend assets to the 'public' folder
 COPY --from=builder /app/dist ./public
-RUN mkdir -p /app/data/config
+# Create the directories for the database and media volumes
+RUN mkdir -p /app/data/config && mkdir -p /app/media/files
 EXPOSE 3000
 CMD ["node", "server.js"]

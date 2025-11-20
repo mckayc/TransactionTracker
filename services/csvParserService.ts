@@ -182,17 +182,21 @@ const extractTextFromPdf = async (file: File): Promise<string> => {
 
     const pdf = await pdfjs.getDocument(arrayBuffer).promise;
     let fullText = '';
+    let hasText = false;
     
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
+        const items = textContent.items as any[];
+
+        if (items.length > 0) hasText = true;
         
         // Advanced Row Reconstruction
         // Group items by Y-coordinate to handle table-like structures common in bank statements
-        const items = textContent.items as any[];
         const lines: Record<number, any[]> = {};
         
         items.forEach(item => {
+            if (!item.transform || item.transform.length < 6) return;
             const y = Math.round(item.transform[5]); // Round Y-coord to group items on the same visual line
             // Find existing line with close Y-coord (tolerance of 5 units)
             const existingY = Object.keys(lines).map(Number).find(key => Math.abs(key - y) < 5);
@@ -211,6 +215,11 @@ const extractTextFromPdf = async (file: File): Promise<string> => {
             fullText += lineItems.map(i => i.str).join(' ') + '\n';
         }
     }
+
+    if (!hasText) {
+        throw new Error("This PDF appears to be an image scan (no selectable text). Please use the 'AI-Powered' mode to parse scanned documents.");
+    }
+
     return fullText;
 };
 
@@ -476,41 +485,70 @@ const parseGenericText = (text: string, accountId: string, transactionTypes: Tra
     const defaultExpenseTypeId = transactionTypes.find(t => t.name === 'Other Expense')?.id || transactionTypes.find(t => t.balanceEffect === 'expense')?.id || '';
     const defaultIncomeTypeId = transactionTypes.find(t => t.name === 'Other Income')?.id || transactionTypes.find(t => t.balanceEffect === 'income')?.id || '';
 
-    // Relaxed regex to capture common PDF copy-paste formats
-    // Matches: Date (various separators) + Space + Description (non-greedy) + Space + Amount (optional decimals)
-    const transactionRegex = /(?:\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2})\s+(.*?)\s+((?:-|\+)?\$?[\d,]+(?:\.\d{0,2})?)/g;
+    const lines = text.split('\n');
     
-    let match;
-    while ((match = transactionRegex.exec(text)) !== null) {
-        try {
-            const dateStr = match[0].match(/(?:\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2})/)?.[0];
-            if (!dateStr) continue;
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        
+        // Check if line starts with a date
+        const dateMatch = trimmed.match(/^(\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2})/);
+        if (!dateMatch) continue;
+        
+        const dateStr = dateMatch[0];
+        const date = parseDate(dateStr);
+        if (!date) continue;
 
-            const fullDescription = match[1];
-            const amountStr = match[2].replace(/[$,]/g, '');
-
-            const description = cleanDescription(fullDescription.trim());
-            const location = extractLocationFromDescription(fullDescription);
-            const amount = parseFloat(amountStr);
-            
-            if (isNaN(amount) || !description) continue;
-            
-            const date = parseDate(dateStr);
-            if (!date) continue;
-            
-            transactions.push({
-                date: date.toISOString().split('T')[0],
-                description,
-                category: 'Other',
-                amount: Math.abs(amount),
-                typeId: amount < 0 ? defaultExpenseTypeId : defaultIncomeTypeId,
-                accountId,
-                location,
-                sourceFilename,
-            });
-        } catch (e) {
-            console.warn("Could not parse match:", match[0], e);
+        // Remove date from line to find numbers
+        const restOfLine = trimmed.substring(dateStr.length).trim();
+        
+        // Find all currency-like numbers in the remaining text
+        // Look for: -1,234.56 or $1,234.56 or 1234.56. 
+        // Optional negative sign, optional dollar sign, digits with commas, optional decimals.
+        // We verify they are surrounded by whitespace or end of line.
+        const numberMatches = Array.from(restOfLine.matchAll(/((?:-|\+)?\$?[\d,]+(?:\.\d{2})?)(?=\s|$)/g));
+        
+        if (numberMatches.length === 0) continue;
+        
+        // Logic to determine which number is the transaction amount:
+        // 1. If there is a negative number, it is very likely the expense amount.
+        // 2. If multiple positive numbers, the last one is often the running balance. The first one is the transaction amount.
+        
+        let amountStr = '';
+        let amountIndex = -1;
+        
+        const negativeMatch = numberMatches.find(m => m[0].includes('-'));
+        
+        if (negativeMatch) {
+            amountStr = negativeMatch[0];
+            amountIndex = negativeMatch.index!;
+        } else {
+            // Take the first number found as the transaction amount
+            // (Assuming Date -> Desc -> Amount -> Balance order)
+            amountStr = numberMatches[0][0];
+            amountIndex = numberMatches[0].index!;
         }
+        
+        if (amountIndex === -1) continue;
+
+        // Description is everything between Date and Amount
+        const rawDescription = restOfLine.substring(0, amountIndex).trim();
+        const description = cleanDescription(rawDescription);
+        const location = extractLocationFromDescription(rawDescription);
+        
+        const amountVal = parseFloat(amountStr.replace(/[$,]/g, ''));
+        if (isNaN(amountVal) || !description) continue;
+        
+        transactions.push({
+            date: date.toISOString().split('T')[0],
+            description,
+            category: 'Other',
+            amount: Math.abs(amountVal),
+            typeId: amountVal < 0 ? defaultExpenseTypeId : defaultIncomeTypeId,
+            accountId,
+            location,
+            sourceFilename,
+        });
     }
     return transactions;
 };
