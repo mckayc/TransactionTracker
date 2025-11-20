@@ -1,6 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Payee, Transaction } from '../types';
 import { DeleteIcon, EditIcon, AddIcon } from '../components/Icons';
+import { generateUUID } from '../utils';
 
 interface PayeesPageProps {
     payees: Payee[];
@@ -28,7 +30,7 @@ const PayeeEditor: React.FC<{
             return;
         }
         onSave({
-            id: selectedPayee?.id || crypto.randomUUID(),
+            id: selectedPayee?.id || generateUUID(),
             name: name.trim(),
             parentId: parentId || undefined,
         });

@@ -4,6 +4,7 @@ import type { BusinessProfile, BusinessInfo, TaxInfo, BusinessDocument } from '.
 import { CheckCircleIcon, SparklesIcon, DocumentIcon, CloudArrowUpIcon, LightBulbIcon, DeleteIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { analyzeBusinessDocument, askAiAdvisor, getIndustryDeductions, hasApiKey } from '../services/geminiService';
 import { saveFile, deleteFile } from '../services/storageService';
+import { generateUUID } from '../utils';
 
 interface BusinessHubProps {
     profile: BusinessProfile;
@@ -175,7 +176,7 @@ const DocumentsTab: React.FC<{
 
         setIsUploading(true);
         try {
-            const docId = crypto.randomUUID();
+            const docId = generateUUID();
             
             // 1. Save file content to IndexedDB
             await saveFile(docId, file);

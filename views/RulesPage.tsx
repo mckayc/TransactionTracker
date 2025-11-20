@@ -1,7 +1,9 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon } from '../components/Icons';
 import RulePreviewModal from '../components/RulePreviewModal';
+import { generateUUID } from '../utils';
 
 interface RulesPageProps {
     rules: ReconciliationRule[];
@@ -83,7 +85,7 @@ const RuleEditor: React.FC<{
         }
         onSave({
             ...formData,
-            id: selectedRule?.id || crypto.randomUUID(),
+            id: selectedRule?.id || generateUUID(),
         });
     };
     

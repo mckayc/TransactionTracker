@@ -8,6 +8,7 @@ import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
 import { AddIcon, DuplicateIcon, CheckBadgeIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
+import { generateUUID } from '../utils';
 
 // A custom hook to debounce a value
 function useDebounce<T>(value: T, delay: number): T {
@@ -116,7 +117,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const handleSave = (formData: Omit<Transaction, 'id'>) => {
     const newTransaction: Transaction = {
         ...formData,
-        id: crypto.randomUUID() // Use a guaranteed unique ID for manual entries
+        id: generateUUID() // Use a guaranteed unique ID for manual entries
     };
     onAddTransaction(newTransaction);
     setIsModalOpen(false);

@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category } from '../types';
 import { CloseIcon } from './Icons';
+import { generateUUID } from '../utils';
 
 interface RuleModalProps {
     isOpen: boolean;
@@ -77,7 +79,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
         }
         onSaveRule({
             ...formData,
-            id: crypto.randomUUID(),
+            id: generateUUID(),
         });
         onClose();
     };

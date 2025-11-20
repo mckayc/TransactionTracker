@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Template, ScheduledEvent } from '../types';
 import { CloseIcon } from './Icons';
+import { generateUUID } from '../utils';
 
 interface ScheduleEventModalProps {
     isOpen: boolean;
@@ -41,7 +42,7 @@ const ScheduleEventModal: React.FC<ScheduleEventModalProps> = ({ isOpen, onClose
             return;
         }
         const newEvent: ScheduledEvent = {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             templateId,
             startDate,
             recurrence,

@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import type { Template, Task, ScheduledEvent } from '../types';
 import { AddIcon, DeleteIcon, EditIcon } from '../components/Icons';
+import { generateUUID } from '../utils';
 
 interface TemplatesPageProps {
     templates: Template[];
@@ -22,7 +23,7 @@ const TemplateEditor: React.FC<{
 
     const handleAddTask = () => {
         if (newTaskText.trim()) {
-            setTasks([...tasks, { id: crypto.randomUUID(), text: newTaskText.trim() }]);
+            setTasks([...tasks, { id: generateUUID(), text: newTaskText.trim() }]);
             setNewTaskText('');
         }
     };
@@ -37,7 +38,7 @@ const TemplateEditor: React.FC<{
             return;
         }
         onSave({
-            id: selectedTemplate?.id || crypto.randomUUID(),
+            id: selectedTemplate?.id || generateUUID(),
             name: name.trim(),
             instructions: instructions.trim(),
             tasks

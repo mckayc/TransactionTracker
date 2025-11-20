@@ -1,6 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Category, Transaction } from '../types';
 import { DeleteIcon, EditIcon, AddIcon } from '../components/Icons';
+import { generateUUID } from '../utils';
 
 interface CategoriesPageProps {
     categories: Category[];
@@ -28,7 +30,7 @@ const CategoryEditor: React.FC<{
             return;
         }
         onSave({
-            id: selectedCategory?.id || crypto.randomUUID(),
+            id: selectedCategory?.id || generateUUID(),
             name: name.trim(),
             parentId: parentId || undefined,
         });

@@ -17,6 +17,7 @@ import BusinessHub from './views/BusinessHub';
 import Chatbot from './components/Chatbot';
 import { MenuIcon, CloseIcon } from './components/Icons';
 import { calculateNextDate, formatDate } from './dateUtils';
+import { generateUUID } from './utils';
 
 type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'users' | 'hub';
 
@@ -110,7 +111,7 @@ const App: React.FC = () => {
       if (Array.isArray(parsedCategories) && parsedCategories.length > 0) {
           if (typeof parsedCategories[0] === 'string') {
               setCategories((parsedCategories as string[]).map((name: string) => ({
-                  id: `migrated-${name.toLowerCase().replace(/\s+/g, '-')}-${crypto.randomUUID().slice(0,4)}`,
+                  id: `migrated-${name.toLowerCase().replace(/\s+/g, '-')}-${generateUUID().slice(0,4)}`,
                   name: name
               })));
           } else {
@@ -288,7 +289,7 @@ const App: React.FC = () => {
               if (!task.recurrence.endDate || nextDateStr <= task.recurrence.endDate) {
                   const nextTask: TaskItem = {
                       ...task,
-                      id: crypto.randomUUID(),
+                      id: generateUUID(),
                       dueDate: nextDateStr,
                       isCompleted: false,
                       createdAt: new Date().toISOString(),

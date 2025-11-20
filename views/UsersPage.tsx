@@ -1,6 +1,8 @@
+
 import React, { useState } from 'react';
 import type { User } from '../types';
 import { DeleteIcon, AddIcon, EditIcon } from '../components/Icons';
+import { generateUUID } from '../utils';
 
 interface UsersPageProps {
     users: User[];
@@ -17,7 +19,7 @@ const UsersPage: React.FC<UsersPageProps> = ({ users, onSaveUser, onDeleteUser }
         e.preventDefault();
         if (newUserName.trim()) {
             const newUser: User = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 name: newUserName.trim(),
             };
             onSaveUser(newUser);

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { TaskItem, SubTask, RecurrenceRule, TaskPriority } from '../types';
 import { CloseIcon, ChecklistIcon, CalendarIcon, RepeatIcon, DeleteIcon, AddIcon } from '../components/Icons';
 import { formatDate, getTodayDate } from '../dateUtils';
+import { generateUUID } from '../utils';
 
 interface TaskModalProps {
     isOpen: boolean;
@@ -78,7 +79,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
         }
 
         const newTask: TaskItem = {
-            id: task?.id || crypto.randomUUID(),
+            id: task?.id || generateUUID(),
             title: title.trim(),
             description: description.trim(),
             priority,
@@ -95,7 +96,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
 
     const addSubtask = () => {
         if (newSubtaskText.trim()) {
-            setSubtasks([...subtasks, { id: crypto.randomUUID(), text: newSubtaskText.trim(), isCompleted: false }]);
+            setSubtasks([...subtasks, { id: generateUUID(), text: newSubtaskText.trim(), isCompleted: false }]);
             setNewSubtaskText('');
         }
     };

@@ -1,6 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Account, AccountType } from '../types';
 import { DeleteIcon } from '../components/Icons';
+import { generateUUID } from '../utils';
 
 interface AccountsPageProps {
     accounts: Account[];
@@ -33,7 +35,7 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ accounts, onAddAccount, onR
         e.preventDefault();
         if (accountName.trim() && identifier.trim() && accountTypeId) {
             const newAccount: Account = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 name: accountName.trim(),
                 identifier: identifier.trim(),
                 accountTypeId: accountTypeId,
@@ -49,7 +51,7 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ accounts, onAddAccount, onR
         e.preventDefault();
         if (newTypeName.trim()) {
             const newType: AccountType = {
-                id: crypto.randomUUID(),
+                id: generateUUID(),
                 name: newTypeName.trim(),
                 isDefault: false,
             };

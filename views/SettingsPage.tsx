@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import type { Transaction, TransactionType } from '../types';
 import { CloudArrowUpIcon, UploadIcon } from '../components/Icons';
+import { generateUUID } from '../utils';
 
 interface SettingsPageProps {
     transactions: Transaction[];
@@ -35,7 +36,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ transactions, transactionTy
                 balanceEffect: newTypeEffect,
                 isDefault: false
             };
-            onAddTransactionType({ ...newType, id: crypto.randomUUID() });
+            onAddTransactionType({ ...newType, id: generateUUID() });
             setNewTypeName('');
             setNewTypeEffect('expense');
         }

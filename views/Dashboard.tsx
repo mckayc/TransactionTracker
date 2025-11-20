@@ -12,6 +12,7 @@ import DuplicateReview from '../components/DuplicateReview';
 import ImportVerification from '../components/ImportVerification';
 import { ExclamationTriangleIcon, CalendarIcon } from '../components/Icons';
 import { formatDate } from '../dateUtils';
+import { generateUUID } from '../utils';
 
 type AppState = 'idle' | 'processing' | 'verifying_import' | 'reviewing_duplicates' | 'success' | 'error';
 type ImportMethod = 'upload' | 'paste';
@@ -111,7 +112,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     transactionsWithRules.forEach(tx => {
         if (tx.category && !existingCategoryNames.has(tx.category.toLowerCase())) {
             const newCategory: Category = {
-                id: `new-${tx.category.toLowerCase().replace(/\s+/g, '-')}-${crypto.randomUUID().slice(0,4)}`,
+                id: `new-${tx.category.toLowerCase().replace(/\s+/g, '-')}-${generateUUID().slice(0,4)}`,
                 name: tx.category
             };
             newCategories.push(newCategory);
@@ -125,7 +126,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     const transactionsWithCategoryIds = transactionsWithRules.map(tx => ({
         ...tx,
         categoryId: tx.categoryId || categoryNameToIdMap.get(tx.category.toLowerCase()) || defaultCategoryId,
-        tempId: crypto.randomUUID(), 
+        tempId: generateUUID(), 
     }));
 
     setStagedNewCategories(newCategories);

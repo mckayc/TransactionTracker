@@ -9,6 +9,9 @@ RUN npm install
 
 COPY . .
 
+ARG API_KEY
+ENV API_KEY=$API_KEY
+
 RUN npm run build
 # Stage 2: Create the final production image
 FROM nginx:alpine
