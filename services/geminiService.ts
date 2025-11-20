@@ -4,16 +4,17 @@ import type { RawTransaction, TransactionType, BusinessDocument, Transaction, Au
 declare const pdfjsLib: any;
 
 export const hasApiKey = (): boolean => {
-    const key = process.env.API_KEY;
-    return !!key && key.trim() !== '';
+    const envKey = process.env.API_KEY;
+    const localKey = localStorage.getItem('user_api_key');
+    return (!!envKey && envKey.trim() !== '') || (!!localKey && localKey.trim() !== '');
 };
 
 // Centralized function to get the AI client. 
 const getAiClient = () => {
-    const apiKey = process.env.API_KEY;
+    const apiKey = process.env.API_KEY || localStorage.getItem('user_api_key');
     
     if (!apiKey || apiKey.trim() === '') {
-        throw new Error("API Key is missing. Please check your environment variables (API_KEY).");
+        throw new Error("API Key is missing. Please check your environment variables or set it in Settings.");
     }
     return new GoogleGenAI({ apiKey });
 };

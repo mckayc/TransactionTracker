@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType } from '../types';
-import { CloudArrowUpIcon, UploadIcon } from '../components/Icons';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface SettingsPageProps {
@@ -23,10 +23,29 @@ const Section: React.FC<{title: string, children: React.ReactNode}> = ({title, c
 const SettingsPage: React.FC<SettingsPageProps> = ({ transactions, transactionTypes, onAddTransactionType, onRemoveTransactionType }) => {
     const [newTypeName, setNewTypeName] = useState('');
     const [newTypeEffect, setNewTypeEffect] = useState<'income' | 'expense' | 'transfer'>('expense');
+    const [apiKey, setApiKey] = useState('');
+    const [apiKeySaved, setApiKeySaved] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
 
     const usedTransactionTypes = useMemo(() => new Set(transactions.map(tx => tx.typeId)), [transactions]);
     
+    useEffect(() => {
+        const storedKey = localStorage.getItem('user_api_key');
+        if (storedKey) setApiKey(storedKey);
+    }, []);
+
+    const handleSaveApiKey = () => {
+        if (apiKey.trim()) {
+            localStorage.setItem('user_api_key', apiKey.trim());
+            setApiKeySaved(true);
+            setTimeout(() => setApiKeySaved(false), 3000);
+            // Reload slightly to refresh the AI service if needed, though not strictly required if using context correctly
+            // window.location.reload(); 
+        } else {
+            localStorage.removeItem('user_api_key');
+        }
+    };
+
     const handleAddTransactionType = (e: React.FormEvent) => {
         e.preventDefault();
         const trimmedName = newTypeName.trim();
@@ -124,18 +143,51 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ transactions, transactionTy
             </div>
             
             <div className="space-y-6">
-                <Section title="Data Management">
+                <Section title="API Key Configuration">
                     <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-4">
                         <div>
-                            <h3 className="font-semibold text-indigo-900">Backup & Migration</h3>
+                            <h3 className="font-semibold text-indigo-900">Google Gemini API Key</h3>
                             <p className="text-sm text-indigo-700 mt-1">
+                                Required for AI parsing and categorization features. If the API Key wasn't set during the Docker build, you can enter it here. It will be saved in your browser's local storage.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <input 
+                                type="password" 
+                                value={apiKey} 
+                                onChange={(e) => setApiKey(e.target.value)}
+                                placeholder="Enter your API Key (starts with AIza...)"
+                                className="flex-grow p-2 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            />
+                            <button 
+                                onClick={handleSaveApiKey}
+                                className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 shadow-sm transition-colors flex items-center gap-2"
+                            >
+                                {apiKeySaved ? <CheckCircleIcon className="w-5 h-5" /> : null}
+                                {apiKeySaved ? 'Saved' : 'Save Key'}
+                            </button>
+                        </div>
+                        {process.env.API_KEY && (
+                            <p className="text-xs text-green-700 font-medium flex items-center gap-1">
+                                <CheckCircleIcon className="w-3 h-3" />
+                                System API Key detected (from Docker ENV).
+                            </p>
+                        )}
+                    </div>
+                </Section>
+
+                <Section title="Data Management">
+                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
+                        <div>
+                            <h3 className="font-semibold text-slate-900">Backup & Migration</h3>
+                            <p className="text-sm text-slate-700 mt-1">
                                 Use these tools to move your data. Export your current data before switching to a self-hosted version, then use Import to restore it.
                             </p>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-4">
                             <button 
                                 onClick={handleExportData}
-                                className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 font-medium rounded-lg hover:bg-indigo-50 shadow-sm transition-colors"
+                                className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 shadow-sm transition-colors"
                             >
                                 <CloudArrowUpIcon className="w-5 h-5" />
                                 Export All Data
