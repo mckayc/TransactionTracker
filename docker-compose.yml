@@ -7,7 +7,7 @@ services:
     environment:
       - TZ=America/Denver
       - API_KEY=${API_KEY:-thiswontworkatall}
-      # Ensure Vite checks this polling interval for file changes on some systems
+      # Ensure Vite checks this polling interval for file changes on some systems.
       - CHOKIDAR_USEPOLLING=true
     volumes:
       - "${APP_DATA_PATH:-./data/config}:/app/data/config"
