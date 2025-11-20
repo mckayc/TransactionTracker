@@ -74,12 +74,20 @@ export interface TaxInfo {
   notes?: string;
 }
 
+export interface DocumentFolder {
+    id: string;
+    name: string;
+    parentId?: string;
+    createdAt: string;
+}
+
 export interface BusinessDocument {
   id: string;
   name: string;
   uploadDate: string;
   size: number;
   mimeType: string;
+  parentId?: string; // For folder nesting
   aiAnalysis?: {
     documentType: string;
     summary: string;
@@ -92,6 +100,10 @@ export interface BusinessProfile {
   info: BusinessInfo;
   tax: TaxInfo;
   completedSteps: string[]; // IDs of completed wizard steps
+}
+
+export interface SystemSettings {
+    apiKey?: string;
 }
 
 

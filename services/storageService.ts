@@ -1,28 +1,5 @@
 
-const DB_NAME = 'FinParserDB';
-const STORE_NAME = 'documents';
-const DB_VERSION = 1;
-
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-      }
-    };
-
-    request.onsuccess = (event) => {
-      resolve((event.target as IDBOpenDBRequest).result);
-    };
-
-    request.onerror = (event) => {
-      reject((event.target as IDBOpenDBRequest).error);
-    };
-  });
-};
+// Replaces client-side IndexedDB with server-side SQLite file storage via API
 
 export interface StoredFile {
     id: string;
@@ -32,42 +9,46 @@ export interface StoredFile {
 }
 
 export const saveFile = async (id: string, file: File): Promise<void> => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.put({
-        id,
-        fileData: file,
-        name: file.name,
-        mimeType: file.type
+  try {
+    await fetch(`/api/files/${id}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': file.type,
+            'X-Filename': file.name
+        },
+        body: file
     });
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  } catch (e) {
+      console.error("Failed to upload file", e);
+      throw e;
+  }
 };
 
 export const getFile = async (id: string): Promise<StoredFile | undefined> => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(id);
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+  try {
+      const response = await fetch(`/api/files/${id}`);
+      if (!response.ok) return undefined;
+      
+      const blob = await response.blob();
+      const name = response.headers.get('Content-Disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'unknown';
+      
+      return {
+          id,
+          fileData: blob,
+          name: name,
+          mimeType: blob.type
+      };
+  } catch (e) {
+      console.error("Failed to get file", e);
+      return undefined;
+  }
 };
 
 export const deleteFile = async (id: string): Promise<void> => {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(STORE_NAME, 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.delete(id);
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  try {
+      await fetch(`/api/files/${id}`, { method: 'DELETE' });
+  } catch (e) {
+      console.error("Failed to delete file", e);
+      throw e;
+  }
 };

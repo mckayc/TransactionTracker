@@ -174,12 +174,42 @@ const readFileAsText = (file: File): Promise<string> => {
 
 const extractTextFromPdf = async (file: File): Promise<string> => {
     const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+    const pdfjs = (window as any).pdfjsLib;
+    
+    if (!pdfjs) {
+        throw new Error("PDF.js library not found. Please ensure the PDF script is loaded.");
+    }
+
+    const pdf = await pdfjs.getDocument(arrayBuffer).promise;
     let fullText = '';
+    
     for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
-        fullText += textContent.items.map((item: any) => item.str).join(' ') + '\n';
+        
+        // Advanced Row Reconstruction
+        // Group items by Y-coordinate to handle table-like structures common in bank statements
+        const items = textContent.items as any[];
+        const lines: Record<number, any[]> = {};
+        
+        items.forEach(item => {
+            const y = Math.round(item.transform[5]); // Round Y-coord to group items on the same visual line
+            // Find existing line with close Y-coord (tolerance of 5 units)
+            const existingY = Object.keys(lines).map(Number).find(key => Math.abs(key - y) < 5);
+            const key = existingY !== undefined ? existingY : y;
+            
+            if (!lines[key]) lines[key] = [];
+            lines[key].push(item);
+        });
+
+        // Sort lines top-to-bottom (descending Y)
+        const sortedY = Object.keys(lines).map(Number).sort((a, b) => b - a);
+        
+        for(const y of sortedY) {
+            // Sort items in line left-to-right (ascending X)
+            const lineItems = lines[y].sort((a, b) => a.transform[4] - b.transform[4]);
+            fullText += lineItems.map(i => i.str).join(' ') + '\n';
+        }
     }
     return fullText;
 };
@@ -446,15 +476,20 @@ const parseGenericText = (text: string, accountId: string, transactionTypes: Tra
     const defaultExpenseTypeId = transactionTypes.find(t => t.name === 'Other Expense')?.id || transactionTypes.find(t => t.balanceEffect === 'expense')?.id || '';
     const defaultIncomeTypeId = transactionTypes.find(t => t.name === 'Other Income')?.id || transactionTypes.find(t => t.balanceEffect === 'income')?.id || '';
 
-    const transactionRegex = /(?:\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})\s+(.+?)\s+((?:-|\+)?\$?[\d,]+\.\d{2})/g;
+    // Relaxed regex to capture common PDF copy-paste formats
+    // Matches: Date (various separators) + Space + Description (non-greedy) + Space + Amount (optional decimals)
+    const transactionRegex = /(?:\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2})\s+(.*?)\s+((?:-|\+)?\$?[\d,]+(?:\.\d{0,2})?)/g;
+    
     let match;
     while ((match = transactionRegex.exec(text)) !== null) {
         try {
-            const dateStr = match[1];
-            const fullDescription = match[2];
-            const amountStr = match[3].replace(/[$,]/g, '');
+            const dateStr = match[0].match(/(?:\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}|\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2})/)?.[0];
+            if (!dateStr) continue;
 
-            const description = cleanDescription(fullDescription.replace(/\d{1,2}[\/-]\d{1,2}(?:[\/-]\d{2,4})?/, '').trim());
+            const fullDescription = match[1];
+            const amountStr = match[2].replace(/[$,]/g, '');
+
+            const description = cleanDescription(fullDescription.trim());
             const location = extractLocationFromDescription(fullDescription);
             const amount = parseFloat(amountStr);
             
@@ -492,7 +527,10 @@ export const parseTransactionsFromFiles = async (files: File[], accountId: strin
                 transactions = parseCsvText(text, accountId, transactionTypes, file.name);
             } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
                 text = await extractTextFromPdf(file);
+                // Try to parse as CSV first (if extraction aligned things perfectly with commas)
                 transactions = parseCsvText(text, accountId, transactionTypes, file.name);
+                
+                // If structure is loose, use regex parser
                 if (transactions.length === 0) {
                     transactions = parseGenericText(text, accountId, transactionTypes, file.name);
                 }

@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -69,6 +69,8 @@ const App: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [businessProfile, setBusinessProfile] = useState<BusinessProfile>({ info: {}, tax: {}, completedSteps: [] });
   const [businessDocuments, setBusinessDocuments] = useState<BusinessDocument[]>([]);
+  const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>([]);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -82,6 +84,27 @@ const App: React.FC = () => {
       const safeLoad = <T,>(key: string, fallback: T): T => {
           return (data[key] as T) || fallback;
       };
+
+      // Handle System Settings & API Key Sync
+      let loadedSettings = safeLoad<SystemSettings>('systemSettings', {});
+      
+      // Migration: If LocalStorage has a key but DB doesn't, prefer LocalStorage first time and sync to DB
+      if (!loadedSettings.apiKey) {
+          const localKey = localStorage.getItem('user_api_key');
+          if (localKey) {
+              loadedSettings = { ...loadedSettings, apiKey: localKey };
+              // The update effect below will trigger the save to DB
+          }
+      }
+      
+      // Sync DB setting to LocalStorage so geminiService can find it
+      if (loadedSettings.apiKey) {
+          localStorage.setItem('user_api_key', loadedSettings.apiKey);
+      } else {
+          localStorage.removeItem('user_api_key');
+      }
+      
+      setSystemSettings(loadedSettings);
 
       // Handle Users
       const loadedUsers = safeLoad<User[]>('users', []);
@@ -129,6 +152,7 @@ const App: React.FC = () => {
       setPayees(safeLoad<Payee[]>('payees', []));
       setBusinessProfile(safeLoad<BusinessProfile>('businessProfile', { info: {}, tax: {}, completedSteps: [] }));
       setBusinessDocuments(safeLoad<BusinessDocument[]>('businessDocuments', []));
+      setDocumentFolders(safeLoad<DocumentFolder[]>('documentFolders', []));
 
       // Handle Account Types and Accounts
       let finalAccountTypes = safeLoad<AccountType[]>('accountTypes', []);
@@ -163,7 +187,17 @@ const App: React.FC = () => {
   }, []);
 
   // Save data to API whenever it changes
-  // We assume api.save handles networking and we debounce to avoid flood
+  
+  useEffect(() => {
+      if (isLoading) return;
+      if (systemSettings.apiKey) {
+          localStorage.setItem('user_api_key', systemSettings.apiKey);
+      } else {
+          localStorage.removeItem('user_api_key');
+      }
+      api.save('systemSettings', systemSettings);
+  }, [systemSettings, isLoading]);
+
   useEffect(() => {
     if (isLoading) return;
     const handler = setTimeout(() => api.save('transactions', transactions), 1000);
@@ -248,6 +282,12 @@ const App: React.FC = () => {
     return () => clearTimeout(handler);
   }, [businessDocuments, isLoading]);
 
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('documentFolders', documentFolders), 500);
+    return () => clearTimeout(handler);
+  }, [documentFolders, isLoading]);
+
 
   // Handlers
   const handleTransactionsAdded = (newlyAdded: Transaction[], newlyCreatedCategories: Category[]) => {
@@ -321,7 +361,6 @@ const App: React.FC = () => {
     });
   };
 
-  // --- Updated Task Logic for Recurrence ---
   const handleSaveTask = (task: TaskItem) => {
     setTasks(prev => {
         const index = prev.findIndex(t => t.id === task.id);
@@ -346,7 +385,6 @@ const App: React.FC = () => {
           const isNowCompleted = !task.isCompleted;
           const updatedTasks = prev.map(t => t.id === taskId ? { ...t, isCompleted: isNowCompleted } : t);
           
-          // Recurrence Logic:
           if (isNowCompleted && task.recurrence && task.dueDate) {
               const nextDateStr = calculateNextDate(task.dueDate, task.recurrence);
               if (!task.recurrence.endDate || nextDateStr <= task.recurrence.endDate) {
@@ -453,6 +491,12 @@ const App: React.FC = () => {
 
   const handleAddDocument = (doc: BusinessDocument) => setBusinessDocuments(prev => [...prev, doc]);
   const handleRemoveDocument = (docId: string) => setBusinessDocuments(prev => prev.filter(d => d.id !== docId));
+  const handleCreateFolder = (folder: DocumentFolder) => setDocumentFolders(prev => [...prev, folder]);
+  const handleDeleteFolder = (folderId: string) => {
+      // When deleting a folder, move its contents to root (undefined parent)
+      setBusinessDocuments(prev => prev.map(d => d.parentId === folderId ? { ...d, parentId: undefined } : d));
+      setDocumentFolders(prev => prev.filter(f => f.id !== folderId));
+  };
 
   if (isLoading) {
       return (
@@ -483,11 +527,11 @@ const App: React.FC = () => {
       case 'rules':
         return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} />;
       case 'settings':
-        return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} />;
+        return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} users={users} businessProfile={businessProfile} documentFolders={documentFolders} />;
       case 'tasks':
         return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
       case 'hub':
-        return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} documents={businessDocuments} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} />;
+        return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
       default:
         return null;
     }
@@ -499,7 +543,7 @@ const App: React.FC = () => {
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
            <div className="flex items-center space-x-3">
                 <svg className="h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.75A.75.75 0 013 4.5h.75m0 0A.75.75 0 014.5 6v.75m0 0v-.75A.75.75 0 014.5 4.5h.75m0 0A.75.75 0 016 6v.75m0 0v-.75A.75.75 0 016 4.5h.75m0 0A.75.75 0 017.5 6v.75m0 0v-.75A.75.75 0 017.5 4.5h.75m0 0A.75.75 0 019 6v.75m0 0v-.75A.75.75 0 019 4.5h.75m0 0a.75.75 0 01.75.75v.75m0 0v-.75a.75.75 0 01.75-.75h.75m0 0a.75.75 0 01.75.75v.75m0 0v-.75a.75.75 0 01.75-.75H15M21.75 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.75A.75.75 0 013 4.5h.75m0 0A.75.75 0 014.5 6v.75m0 0v-.75A.75.75 0 014.5 4.5h.75m0 0A.75.75 0 016 6v.75m0 0v-.75A.75.75 0 016 4.5h.75m0 0A.75.75 0 017.5 6v.75m0 0v-.75A.75.75 0 017.5 4.5h.75m0 0A.75.75 0 019 6v.75m0 0v-.75A.75.75 0 019 4.5h.75m0 0a.75.75 0 01.75.75v.75m0 0v-.75a.75.75 0 01.75-.75H15M21.75 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <h1 className="text-xl font-bold text-slate-800">FinParser</h1>
             </div>
