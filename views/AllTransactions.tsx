@@ -436,8 +436,8 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
   return (
     <>
-      <div className="space-y-6">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+      <div className="h-full flex flex-col gap-4">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex-shrink-0">
            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4">
                 <h2 className="text-2xl font-bold text-slate-700">All Transactions</h2>
                 <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-wrap">
@@ -527,7 +527,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex-1 min-h-0 flex flex-col">
           <TransactionTable 
             transactions={filteredTransactions} 
             accounts={accounts} 

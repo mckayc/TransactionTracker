@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category } from '../types';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleLogic, RuleCondition } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon } from '../components/Icons';
 import RulePreviewModal from '../components/RulePreviewModal';
 import { generateUUID } from '../utils';
@@ -33,22 +33,41 @@ const RuleEditor: React.FC<{
     onAddTransactionType: (type: TransactionType) => void;
 }> = ({ selectedRule, onSave, onCancel, accounts, transactionTypes, categories, payees, onSaveCategory, onSavePayee, onAddTransactionType }) => {
     
-    const getInitialState = () => ({
-        id: '',
-        name: '',
-        descriptionContains: '',
-        accountId: '',
-        amountEquals: undefined,
-        setCategoryId: '',
-        setPayeeId: '',
-        setTransactionTypeId: '',
-        setDescription: '',
-    });
-
-    const [formData, setFormData] = useState(selectedRule || getInitialState());
+    const [name, setName] = useState('');
+    const [matchLogic, setMatchLogic] = useState<RuleLogic>('AND');
+    const [conditions, setConditions] = useState<RuleCondition[]>([]);
+    const [setCategoryId, setSetCategoryId] = useState('');
+    const [setPayeeId, setSetPayeeId] = useState('');
+    const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
+    const [setDescription, setSetDescription] = useState('');
 
     useEffect(() => {
-        setFormData(selectedRule || getInitialState());
+        if (selectedRule) {
+            setName(selectedRule.name);
+            setMatchLogic(selectedRule.matchLogic || 'AND');
+            if (selectedRule.conditions && selectedRule.conditions.length > 0) {
+                setConditions(selectedRule.conditions);
+            } else {
+                // Convert legacy to new format for editing
+                const newConditions: RuleCondition[] = [];
+                if (selectedRule.descriptionContains) newConditions.push({ id: generateUUID(), field: 'description', operator: 'contains', value: selectedRule.descriptionContains });
+                if (selectedRule.accountId) newConditions.push({ id: generateUUID(), field: 'accountId', operator: 'equals', value: selectedRule.accountId });
+                if (selectedRule.amountEquals) newConditions.push({ id: generateUUID(), field: 'amount', operator: 'equals', value: selectedRule.amountEquals });
+                setConditions(newConditions.length > 0 ? newConditions : [{ id: generateUUID(), field: 'description', operator: 'contains', value: '' }]);
+            }
+            setSetCategoryId(selectedRule.setCategoryId || '');
+            setSetPayeeId(selectedRule.setPayeeId || '');
+            setSetTransactionTypeId(selectedRule.setTransactionTypeId || '');
+            setSetDescription(selectedRule.setDescription || '');
+        } else {
+            setName('');
+            setMatchLogic('AND');
+            setConditions([{ id: generateUUID(), field: 'description', operator: 'contains', value: '' }]);
+            setSetCategoryId('');
+            setSetPayeeId('');
+            setSetTransactionTypeId('');
+            setSetDescription('');
+        }
     }, [selectedRule]);
     
      const sortedPayeeOptions = useMemo(() => {
@@ -77,12 +96,18 @@ const RuleEditor: React.FC<{
         return sorted;
     }, [categories]);
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: name === 'amountEquals' ? (value ? parseFloat(value) : undefined) : value,
-        }));
+    const handleAddCondition = () => {
+        setConditions([...conditions, { id: generateUUID(), field: 'description', operator: 'contains', value: '' }]);
+    };
+
+    const handleRemoveCondition = (id: string) => {
+        if (conditions.length > 1) {
+            setConditions(conditions.filter(c => c.id !== id));
+        }
+    };
+
+    const updateCondition = (id: string, field: keyof RuleCondition, value: any) => {
+        setConditions(conditions.map(c => c.id === id ? { ...c, [field]: value } : c));
     };
 
     const handleCreateCategory = () => {
@@ -90,7 +115,7 @@ const RuleEditor: React.FC<{
         if (name && name.trim()) {
             const newCat = { id: generateUUID(), name: name.trim() };
             onSaveCategory(newCat);
-            setFormData(prev => ({ ...prev, setCategoryId: newCat.id }));
+            setSetCategoryId(newCat.id);
         }
     };
 
@@ -99,7 +124,7 @@ const RuleEditor: React.FC<{
         if (name && name.trim()) {
             const newPayee = { id: generateUUID(), name: name.trim() };
             onSavePayee(newPayee);
-            setFormData(prev => ({ ...prev, setPayeeId: newPayee.id }));
+            setSetPayeeId(newPayee.id);
         }
     };
 
@@ -108,89 +133,154 @@ const RuleEditor: React.FC<{
         if (name && name.trim()) {
             const newType = { id: generateUUID(), name: name.trim(), balanceEffect: 'expense' as const, isDefault: false };
             onAddTransactionType(newType);
-            setFormData(prev => ({ ...prev, setTransactionTypeId: newType.id }));
+            setSetTransactionTypeId(newType.id);
         }
     };
 
     const handleSave = () => {
-        if (!formData.name.trim() || !formData.descriptionContains.trim()) {
-            alert('Rule Name and Description Contains fields are required.');
+        if (!name.trim()) {
+            alert('Rule Name is required.');
             return;
         }
+        
         onSave({
-            ...formData,
             id: selectedRule?.id || generateUUID(),
+            name: name.trim(),
+            matchLogic,
+            conditions,
+            setCategoryId: setCategoryId || undefined,
+            setPayeeId: setPayeeId || undefined,
+            setTransactionTypeId: setTransactionTypeId || undefined,
+            setDescription: setDescription || undefined,
+            // Legacy compatibility
+            descriptionContains: conditions.find(c => c.field === 'description')?.value as string || '',
+            accountId: conditions.find(c => c.field === 'accountId')?.value as string || undefined,
         });
     };
     
     return (
-         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
+         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-6">
             <h2 className="text-xl font-bold text-slate-700">{selectedRule ? 'Edit Rule' : 'Create New Rule'}</h2>
             <div>
-                <label className="block text-sm font-medium text-slate-700">Rule Name</label>
-                <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="e.g., Monthly Netflix Subscription" required />
+                <label className="block text-sm font-medium text-slate-700 mb-1">Rule Name</label>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Monthly Netflix Subscription" className="w-full p-2 border rounded-md" required />
             </div>
             
-            <div className="p-4 border rounded-lg bg-slate-50/50">
-                <h3 className="font-semibold text-slate-800 mb-2">Conditions (IF...)</h3>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">Description Contains</label>
-                        <input type="text" name="descriptionContains" value={formData.descriptionContains} onChange={handleChange} required />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700">Account is (Optional)</label>
-                            <select name="accountId" value={formData.accountId} onChange={handleChange}>
-                                <option value="">Any Account</option>
-                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700">Amount Equals (Optional)</label>
-                            <input type="number" step="0.01" name="amountEquals" value={formData.amountEquals || ''} onChange={handleChange} />
-                        </div>
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-slate-800">Conditions</h3>
+                    <div className="flex items-center gap-2 bg-white rounded-md border p-1">
+                        <button type="button" onClick={() => setMatchLogic('AND')} className={`px-3 py-1 text-xs font-bold rounded ${matchLogic === 'AND' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>Match ALL (AND)</button>
+                        <button type="button" onClick={() => setMatchLogic('OR')} className={`px-3 py-1 text-xs font-bold rounded ${matchLogic === 'OR' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>Match ANY (OR)</button>
                     </div>
                 </div>
+                
+                <div className="space-y-2">
+                    {conditions.map((cond) => (
+                        <div key={cond.id} className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
+                            <select 
+                                value={cond.field} 
+                                onChange={(e) => updateCondition(cond.id, 'field', e.target.value)}
+                                className="w-full sm:w-1/4 p-2 text-sm border rounded-md"
+                            >
+                                <option value="description">Description</option>
+                                <option value="amount">Amount</option>
+                                <option value="accountId">Account</option>
+                            </select>
+                            
+                            <select 
+                                value={cond.operator} 
+                                onChange={(e) => updateCondition(cond.id, 'operator', e.target.value)}
+                                className="w-full sm:w-1/4 p-2 text-sm border rounded-md"
+                            >
+                                {cond.field === 'description' && (
+                                    <>
+                                        <option value="contains">Contains</option>
+                                        <option value="does_not_contain">Does Not Contain</option>
+                                        <option value="starts_with">Starts With</option>
+                                        <option value="ends_with">Ends With</option>
+                                        <option value="equals">Equals</option>
+                                    </>
+                                )}
+                                {cond.field === 'amount' && (
+                                    <>
+                                        <option value="equals">Equals</option>
+                                        <option value="greater_than">Greater Than</option>
+                                        <option value="less_than">Less Than</option>
+                                    </>
+                                )}
+                                {cond.field === 'accountId' && (
+                                    <option value="equals">Is</option>
+                                )}
+                            </select>
+
+                            {cond.field === 'accountId' ? (
+                                <select 
+                                    value={cond.value} 
+                                    onChange={(e) => updateCondition(cond.id, 'value', e.target.value)}
+                                    className="w-full sm:flex-grow p-2 text-sm border rounded-md"
+                                >
+                                    <option value="">Select Account...</option>
+                                    {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                </select>
+                            ) : (
+                                <input 
+                                    type={cond.field === 'amount' ? 'number' : 'text'} 
+                                    step={cond.field === 'amount' ? '0.01' : undefined}
+                                    value={cond.value} 
+                                    onChange={(e) => updateCondition(cond.id, 'value', cond.field === 'amount' ? e.target.value : e.target.value)}
+                                    placeholder="Value"
+                                    className="w-full sm:flex-grow p-2 text-sm border rounded-md"
+                                />
+                            )}
+
+                            <button type="button" onClick={() => handleRemoveCondition(cond.id)} className="p-2 text-slate-400 hover:text-red-500" disabled={conditions.length === 1}>
+                                <DeleteIcon className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+                <button type="button" onClick={handleAddCondition} className="mt-3 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
+                    <AddIcon className="w-4 h-4" /> Add Condition
+                </button>
             </div>
             
-            <div className="p-4 border rounded-lg bg-slate-50/50">
-                <h3 className="font-semibold text-slate-800 mb-2">Actions (THEN SET...)</h3>
+            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                <h3 className="font-semibold text-slate-800 mb-3">Actions (Set Values)</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Category</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Set Category</label>
                         <div className="flex gap-1">
-                            <select name="setCategoryId" value={formData.setCategoryId} onChange={handleChange} className="flex-grow">
+                            <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-2 border rounded-md">
                                 <option value="">-- Don't Change --</option>
                                 {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                             </select>
-                            <button type="button" onClick={handleCreateCategory} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold" title="Add Category">+</button>
+                            <button type="button" onClick={handleCreateCategory} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold">+</button>
                         </div>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Payee</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Set Payee</label>
                         <div className="flex gap-1">
-                            <select name="setPayeeId" value={formData.setPayeeId} onChange={handleChange} className="flex-grow">
+                            <select value={setPayeeId} onChange={(e) => setSetPayeeId(e.target.value)} className="w-full p-2 border rounded-md">
                                 <option value="">-- Don't Change --</option>
                                 {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
-                            <button type="button" onClick={handleCreatePayee} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold" title="Add Payee">+</button>
+                            <button type="button" onClick={handleCreatePayee} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold">+</button>
                         </div>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Transaction Type</label>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Set Transaction Type</label>
                         <div className="flex gap-1">
-                            <select name="setTransactionTypeId" value={formData.setTransactionTypeId} onChange={handleChange} className="flex-grow">
+                            <select value={setTransactionTypeId} onChange={(e) => setSetTransactionTypeId(e.target.value)} className="w-full p-2 border rounded-md">
                                 <option value="">-- Don't Change --</option>
                                 {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
                             </select>
-                            <button type="button" onClick={handleCreateType} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold" title="Add Type">+</button>
+                            <button type="button" onClick={handleCreateType} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold">+</button>
                         </div>
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Description</label>
-                        <input type="text" name="setDescription" value={formData.setDescription || ''} onChange={handleChange} placeholder="e.g., Clean Name" />
-                        <p className="text-xs text-slate-500 mt-1">Leave empty to keep original.</p>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Set Description</label>
+                        <input type="text" value={setDescription} onChange={(e) => setSetDescription(e.target.value)} placeholder="e.g., Clean Name" className="w-full p-2 border rounded-md" />
                     </div>
                 </div>
             </div>
@@ -207,11 +297,6 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
     const [selectedRule, setSelectedRule] = useState<ReconciliationRule | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [ruleToRun, setRuleToRun] = useState<ReconciliationRule | null>(null);
-
-    const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc.name])), [accounts]);
-    const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
-    const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
-    const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t.name])), [transactionTypes]);
 
     const handleSelectRule = (rule: ReconciliationRule) => {
         setSelectedRule(rule);
@@ -262,11 +347,9 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                                         <div className="flex justify-between items-start">
                                             <div className="flex-grow min-w-0">
                                                 <p className="font-semibold truncate">{rule.name}</p>
-                                                <p className="text-xs text-slate-500 truncate">If description contains "{rule.descriptionContains}"</p>
-                                                <div className="text-xs text-slate-500 mt-1 truncate">
-                                                    {rule.setCategoryId && <span className="inline-block bg-slate-200 rounded px-1.5 py-0.5 mr-1">Cat: {categoryMap.get(rule.setCategoryId)}</span>}
-                                                    {rule.setDescription && <span className="inline-block bg-slate-200 rounded px-1.5 py-0.5 mr-1">Desc: {rule.setDescription}</span>}
-                                                </div>
+                                                <p className="text-xs text-slate-500 truncate">
+                                                    {rule.conditions?.length ? `${rule.conditions.length} conditions` : `If contains "${rule.descriptionContains}"`}
+                                                </p>
                                             </div>
                                             <div className="flex items-center gap-2 flex-shrink-0 ml-2">
                                                 <button onClick={(e) => { e.stopPropagation(); setRuleToRun(rule); }} className="text-slate-500 hover:text-green-600" title="Run rule on existing transactions">

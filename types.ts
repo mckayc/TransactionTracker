@@ -165,15 +165,30 @@ export interface TaskItem {
 
 export type TaskCompletions = Record<string, Record<string, string[]>>;
 
-// This is being replaced by a more powerful rule system.
-// The name is kept for now to avoid breaking localStorage, but the functionality is different.
+// Rules Engine Types
+export type RuleLogic = 'AND' | 'OR';
+export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than';
+
+export interface RuleCondition {
+  id: string;
+  field: 'description' | 'amount' | 'accountId';
+  operator: RuleOperator;
+  value: string | number;
+}
+
 export interface ReconciliationRule {
   id: string;
   name: string;
-  // Conditions
-  descriptionContains: string;
+  
+  // Legacy simple conditions (kept for backward compatibility)
+  descriptionContains?: string;
   accountId?: string;
   amountEquals?: number;
+
+  // New flexible conditions
+  matchLogic?: RuleLogic;
+  conditions?: RuleCondition[];
+
   // Actions
   setCategoryId?: string;
   setPayeeId?: string;

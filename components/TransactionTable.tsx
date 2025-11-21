@@ -206,7 +206,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const cellClass = (isEditable = false) => `px-3 py-2 whitespace-nowrap text-sm text-slate-600 ${isEditable ? 'cursor-pointer hover:text-indigo-600 hover:bg-slate-50' : ''}`;
 
   return (
-    <div className="overflow-auto shadow-inner border rounded-lg relative bg-white" style={{ maxHeight: 'calc(100vh - 220px)' }}>
+    <div className="overflow-auto shadow-inner border rounded-lg relative bg-white h-full">
       <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
         <thead className="bg-slate-50">
           <tr>

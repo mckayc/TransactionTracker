@@ -509,7 +509,7 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} />;
+        return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} />;
       case 'transactions':
         return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
       case 'calendar':
@@ -564,7 +564,7 @@ const App: React.FC = () => {
         {isSidebarOpen && <div className="md:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)}></div>}
 
         <main className="flex-1 md:pl-64">
-          <div className="container mx-auto p-4 md:p-8">
+          <div className="container mx-auto p-4 md:p-8 h-screen flex flex-col">
             {renderView()}
           </div>
         </main>

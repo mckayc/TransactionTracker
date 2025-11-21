@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText, hasApiKey } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
@@ -13,6 +13,7 @@ import ImportVerification from '../components/ImportVerification';
 import { ExclamationTriangleIcon, CalendarIcon } from '../components/Icons';
 import { formatDate } from '../dateUtils';
 import { generateUUID } from '../utils';
+import { saveFile } from '../services/storageService';
 
 type AppState = 'idle' | 'processing' | 'verifying_import' | 'reviewing_duplicates' | 'success' | 'error';
 type ImportMethod = 'upload' | 'paste';
@@ -26,6 +27,7 @@ interface DashboardProps {
   rules: ReconciliationRule[];
   payees: Payee[];
   users: User[];
+  onAddDocument: (doc: BusinessDocument) => void;
 }
 
 const SummaryWidget: React.FC<{title: string, value: string, helpText: string, icon?: React.ReactNode, className?: string}> = ({title, value, helpText, icon, className}) => (
@@ -67,7 +69,7 @@ const getNextTaxDeadline = () => {
     };
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, categories, transactionTypes, rules, payees, users }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, categories, transactionTypes, rules, payees, users, onAddDocument }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState('');
@@ -145,6 +147,28 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setAppState('processing');
     setError(null);
     try {
+      // Save files to Document Vault first
+      for (const file of files) {
+          const now = new Date();
+          const timestampPrefix = now.toISOString().replace(/[:.]/g, '-');
+          const newFileName = `${timestampPrefix}_${file.name}`;
+          const docId = generateUUID();
+          
+          // Clone file with new name for storage
+          const fileToSave = new File([file], newFileName, { type: file.type });
+          
+          await saveFile(docId, fileToSave);
+          
+          const newDoc: BusinessDocument = {
+              id: docId,
+              name: fileToSave.name,
+              uploadDate: now.toISOString().split('T')[0],
+              size: fileToSave.size,
+              mimeType: fileToSave.type,
+          };
+          onAddDocument(newDoc);
+      }
+
       const rawTransactions = useAi 
         ? await extractTransactionsFromFiles(files, accountId, transactionTypes, handleProgress) 
         : await parseTransactionsFromFiles(files, accountId, transactionTypes, handleProgress);
@@ -154,7 +178,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
       setAppState('error');
     }
-  }, [useAi, transactionTypes, prepareForVerification, selectedUserId]);
+  }, [useAi, transactionTypes, prepareForVerification, selectedUserId, onAddDocument]);
 
   const handleTextPaste = useCallback(async () => {
     if (!textInput.trim() || accounts.length === 0) return;
@@ -258,88 +282,122 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                 </div>
                  <div className="flex items-center space-x-2" title={!apiKeyAvailable ? "API Key missing" : "Toggle AI Processing"}>
                     <span className={`text-sm font-medium ${!useAi ? 'text-indigo-600' : 'text-slate-500'}`}>Fast</span>
-                    <label htmlFor="ai-toggle" className={`relative inline-flex items-center ${!apiKeyAvailable ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}>
-                        <input 
-                            type="checkbox" 
-                            id="ai-toggle" 
-                            className="sr-only peer" 
-                            checked={useAi && apiKeyAvailable} 
-                            onChange={() => apiKeyAvailable && setUseAi(!useAi)} 
-                            disabled={!apiKeyAvailable}
-                        />
+                    <label htmlFor="ai-toggle" className="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="ai-toggle" className="sr-only peer" checked={useAi} onChange={() => setUseAi(!useAi)} disabled={!apiKeyAvailable} />
                         <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
                     </label>
-                    <span className={`text-sm font-medium ${useAi && apiKeyAvailable ? 'text-indigo-600' : 'text-slate-500'}`}>AI-Powered</span>
-                    {!apiKeyAvailable && (
-                        <span title="Environment variable API_KEY is missing. AI features are disabled.">
-                            <ExclamationTriangleIcon className="w-4 h-4 text-amber-500" />
-                        </span>
-                    )}
+                    <span className={`text-sm font-medium ${useAi ? 'text-indigo-600' : 'text-slate-500'}`}>AI-Powered</span>
                 </div>
             </div>
-            <div className="mb-4">
-              <label htmlFor="user-select" className="block text-sm font-medium text-slate-700 mb-1">Assign to User:</label>
-              <select id="user-select" value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)} disabled={users.length === 0}>
-                  {users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
-              </select>
-            </div>
+
             {importMethod === 'upload' ? (
-                <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} useAi={useAi && apiKeyAvailable} />
+                <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} useAi={useAi} />
             ) : (
                 <div className="space-y-4">
-                    <textarea value={textInput} onChange={(e) => setTextInput(e.target.value)} rows={8} placeholder="Paste your transaction data here (e.g., from a spreadsheet or email)." className="w-full"></textarea>
-                    {accounts.length === 0 && <p className="text-sm text-red-600 bg-red-50 p-2 rounded-md">Please create an Account on the Accounts page first to import pasted text.</p>}
-                    <button onClick={handleTextPaste} disabled={!textInput.trim() || accounts.length === 0} className="px-6 py-3 text-white font-semibold bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 disabled:bg-slate-400">Process Text</button>
+                     {accounts.length > 0 && (
+                        <select
+                            value={accounts[0].id}
+                            disabled
+                            className="w-full p-2 border rounded-md bg-slate-100"
+                        >
+                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                        </select>
+                     )}
+                    <textarea
+                        value={textInput}
+                        onChange={e => setTextInput(e.target.value)}
+                        placeholder="Paste transaction text here..."
+                        className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono text-sm"
+                    />
+                    <button
+                        onClick={handleTextPaste}
+                        disabled={!textInput.trim() || accounts.length === 0}
+                        className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-400"
+                    >
+                        Process Text
+                    </button>
                 </div>
             )}
             
+            <div className="mt-4 pt-4 border-t border-slate-100">
+                 <label className="block text-sm font-medium text-slate-700 mb-2">Assign to User (Optional)</label>
+                 <div className="flex gap-4">
+                    {users.map(u => (
+                        <label key={u.id} className="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="radio" 
+                                name="importUser" 
+                                value={u.id} 
+                                checked={selectedUserId === u.id} 
+                                onChange={() => setSelectedUserId(u.id)}
+                                className="text-indigo-600 focus:ring-indigo-500"
+                            />
+                            <span className="text-sm text-slate-700">{u.name}</span>
+                        </label>
+                    ))}
+                 </div>
+            </div>
+
           </div>
+        ) : appState === 'processing' ? (
+            <div className="py-12">
+                <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                  <svg className="animate-spin h-10 w-10 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  <div className="text-slate-600">
+                    <p className="font-semibold text-lg">Processing...</p>
+                    <p className="text-sm">{progressMessage}</p>
+                  </div>
+                </div>
+            </div>
         ) : appState === 'verifying_import' ? (
-            <ImportVerification
-                initialTransactions={rawTransactionsToVerify}
-                onComplete={handleVerificationComplete}
+            <ImportVerification 
+                initialTransactions={rawTransactionsToVerify} 
+                onComplete={handleVerificationComplete} 
                 onCancel={handleClear}
                 accounts={accounts}
-                categories={categories}
+                categories={categories.concat(stagedNewCategories)}
                 transactionTypes={transactionTypes}
                 payees={payees}
                 users={users}
             />
         ) : appState === 'reviewing_duplicates' ? (
-            <DuplicateReview
-                duplicates={duplicatesToReview}
-                onComplete={handleReviewComplete}
+            <DuplicateReview 
+                duplicates={duplicatesToReview} 
+                onComplete={handleReviewComplete} 
                 onCancel={handleClear}
                 accounts={accounts}
             />
         ) : (
-          <ResultsDisplay 
-            appState={appState} 
-            error={error} 
-            progressMessage={progressMessage} 
-            transactions={finalizedTransactions}
-            duplicatesIgnored={duplicatesIgnored}
-            duplicatesImported={duplicatesImported}
-            onClear={handleClear} 
-          />
+            <ResultsDisplay 
+                appState={appState} 
+                error={error} 
+                progressMessage={progressMessage} 
+                transactions={finalizedTransactions} 
+                duplicatesIgnored={duplicatesIgnored} 
+                duplicatesImported={duplicatesImported} 
+                onClear={handleClear} 
+            />
         )}
       </div>
 
+      {/* Recent Transactions */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-          <h2 className="text-xl font-bold text-slate-700 mb-4">Recent Transactions</h2>
-          <TransactionTable 
+        <h2 className="text-xl font-bold text-slate-700 mb-4">Recent Transactions</h2>
+        <TransactionTable 
             transactions={recentTransactions} 
             accounts={accounts} 
-            categories={categories}
-            transactionTypes={transactionTypes}
+            categories={categories} 
+            transactionTypes={transactionTypes} 
             payees={payees}
             users={users}
             onUpdateTransaction={() => {}} 
             onDeleteTransaction={() => {}}
-            deleteConfirmationMessage="Deleting from this view is not supported. Please go to the All Transactions page."
-          />
+            visibleColumns={new Set(['date', 'description', 'amount', 'category', 'type'])}
+        />
       </div>
-
     </div>
   );
 };
