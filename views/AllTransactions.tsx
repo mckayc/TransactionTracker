@@ -68,7 +68,11 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isLinkedGroupModalOpen, setIsLinkedGroupModalOpen] = useState(false);
   const [selectedLinkGroupId, setSelectedLinkGroupId] = useState<string | null>(null);
+  
+  // Auditor State
   const [isAuditorOpen, setIsAuditorOpen] = useState(false);
+  const [auditorExampleGroup, setAuditorExampleGroup] = useState<Transaction[] | undefined>(undefined);
+
   const [transactionForRule, setTransactionForRule] = useState<Transaction | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<Transaction[][][] | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -311,6 +315,16 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       });
       setIsLinkedGroupModalOpen(false);
       setSelectedLinkGroupId(null);
+  };
+
+  const handleFindSimilarFromGroup = (group: Transaction[]) => {
+      setAuditorExampleGroup(group);
+      setIsAuditorOpen(true);
+  };
+
+  const handleAuditorClose = () => {
+      setIsAuditorOpen(false);
+      setAuditorExampleGroup(undefined);
   };
 
   const toggleColumn = (column: string) => {
@@ -643,6 +657,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             transactionTypes={transactionTypes}
             accounts={accounts}
             onUnlink={handleUnlinkGroup}
+            onFindSimilar={handleFindSimilarFromGroup}
           />
       )}
       {isRuleModalOpen && (
@@ -663,11 +678,12 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       {isAuditorOpen && (
           <TransactionAuditor
             isOpen={isAuditorOpen}
-            onClose={() => setIsAuditorOpen(false)}
+            onClose={handleAuditorClose}
             transactions={filteredTransactions}
             transactionTypes={transactionTypes}
             categories={categories}
             onApplyChanges={handleApplyAuditChanges}
+            exampleGroup={auditorExampleGroup}
           />
       )}
     </>

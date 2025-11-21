@@ -11,6 +11,7 @@ interface TransactionAuditorProps {
     transactionTypes: TransactionType[];
     categories: Category[];
     onApplyChanges: (updates: Transaction[]) => void;
+    exampleGroup?: Transaction[];
 }
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -109,7 +110,7 @@ const SmartMatchCard: React.FC<{
     );
 };
 
-const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose, transactions, transactionTypes, categories, onApplyChanges }) => {
+const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose, transactions, transactionTypes, categories, onApplyChanges, exampleGroup }) => {
     const [mode, setMode] = useState<'select' | 'scanning' | 'review'>('select');
     const [findings, setFindings] = useState<AuditFinding[]>([]);
     const [customQuery, setCustomQuery] = useState('');
@@ -123,9 +124,33 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
     });
     const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
+    useEffect(() => {
+        if (isOpen && exampleGroup && mode === 'select') {
+            handleScan('smart_match', [exampleGroup]);
+        }
+    }, [isOpen, exampleGroup]);
+
     if (!isOpen) return null;
 
-    const handleScan = async (auditType: string) => {
+    const getTrainingExamples = (txs: Transaction[]): Transaction[][] => {
+        // Group by linkGroupId
+        const groups = new Map<string, Transaction[]>();
+        txs.forEach(tx => {
+            if (tx.linkGroupId) {
+                if (!groups.has(tx.linkGroupId)) groups.set(tx.linkGroupId, []);
+                groups.get(tx.linkGroupId)?.push(tx);
+            }
+        });
+        
+        // Convert to array and take first 3 valid groups (must have > 1 tx)
+        const examples = Array.from(groups.values())
+            .filter(g => g.length > 1)
+            .slice(0, 3);
+            
+        return examples;
+    };
+
+    const handleScan = async (auditType: string, explicitExamples?: Transaction[][]) => {
         setMode('scanning');
         try {
             // Filter by date range
@@ -139,7 +164,10 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                 return txDate >= start && txDate <= end;
             });
 
-            const results = await auditTransactions(filteredTransactions, transactionTypes, categories, auditType);
+            // Use explicit examples if provided (manual training), otherwise gather history
+            const examples = explicitExamples || getTrainingExamples(transactions);
+
+            const results = await auditTransactions(filteredTransactions, transactionTypes, categories, auditType, examples);
             setFindings(results);
             setMode('review');
         } catch (error) {
@@ -255,7 +283,7 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                                         <SparklesIcon className="w-6 h-6" />
                                     </div>
                                     <span className="font-semibold text-slate-700">Smart Match & Link</span>
-                                    <span className="text-xs text-slate-400 mt-1 text-center">Find payments that match a group of purchases (e.g. Credit Card Payment covering 5 items) and link them.</span>
+                                    <span className="text-xs text-slate-400 mt-1 text-center">I'll look for patterns in your history to find payments covering multiple expenses.</span>
                                 </button>
 
                                 <button onClick={() => handleScan('transfers')} className="flex flex-col items-center p-6 bg-white border-2 border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group">
@@ -301,6 +329,7 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                         <div className="flex flex-col items-center justify-center h-64 space-y-4">
                             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
                             <p className="text-lg font-medium text-slate-600">Analyzing Transactions...</p>
+                            {exampleGroup && <p className="text-sm text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">Using your example for training</p>}
                             <p className="text-sm text-slate-400">This relies on AI and may take a few seconds.</p>
                         </div>
                     )}
@@ -316,7 +345,7 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                                 <div className="text-center py-12 bg-white rounded-xl border border-dashed border-slate-300">
                                     <CheckCircleIcon className="w-12 h-12 text-green-500 mx-auto mb-3" />
                                     <p className="text-slate-600 font-medium">Clean Sheet!</p>
-                                    <p className="text-sm text-slate-400">The auditor didn't find any issues based on your criteria.</p>
+                                    <p className="text-sm text-slate-400">The auditor didn't find any matches or issues.</p>
                                 </div>
                             ) : (
                                 <div className="space-y-4">

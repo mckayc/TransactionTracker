@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category } from '../types';
 
@@ -324,29 +323,50 @@ export const auditTransactions = async (
     transactions: Transaction[], 
     transactionTypes: TransactionType[], 
     categories: Category[],
-    auditType: 'transfers' | 'subscriptions' | 'mortgage_splits' | 'smart_match' | 'general' | string
+    auditType: 'transfers' | 'subscriptions' | 'mortgage_splits' | 'smart_match' | 'general' | string,
+    trainingExamples?: Transaction[][]
 ): Promise<AuditFinding[]> => {
     const ai = getAiClient();
     
     // Minimize data sent to AI to save tokens and improve speed
-    const simplifiedTransactions = transactions.map(tx => ({
+    const simplify = (tx: Transaction) => ({
         id: tx.id,
         date: tx.date,
         desc: tx.description,
         amt: tx.amount,
         type: transactionTypes.find(t => t.id === tx.typeId)?.name,
         cat: categories.find(c => c.id === tx.categoryId)?.name
-    }));
+    });
+
+    const simplifiedTransactions = transactions.map(simplify);
 
     let promptInstruction = "";
     if (auditType === 'transfers') {
         promptInstruction = "Identify transactions that appear to be transfers between accounts (e.g., Credit Card Payments, Venmo transfers, Zelle, 'Transfer to') but are currently categorized as Income or Expense. Ignore small amounts under $10.";
     } else if (auditType === 'subscriptions') {
         promptInstruction = "Identify recurring subscription payments (e.g., Netflix, Spotify, Adobe, Gym) that might be miscategorized or hidden in 'General'.";
-    } else if (auditType === 'mortgage_splits') {
-        promptInstruction = "Identify 'Split Transaction' issues. Specifically, look for a group of transactions on the same day (e.g., 'Principal', 'Interest', 'Escrow') whose amounts sum up to equal another single transaction on/near that date (e.g. 'Mortgage Payment'). This implies the detailed split was imported alongside the bank withdrawal. Flag the total withdrawal transaction and suggest changing its Type to 'Transfer' (or a similar non-expense type) so the detailed breakdown is preserved without double-counting expenses.";
     } else if (auditType === 'smart_match') {
-        promptInstruction = "Scan for 'Smart Match' opportunities. You are looking for a specific pattern: A single large payment transaction (often a credit card payment, reimbursement, or transfer) that roughly equals the sum of several smaller expense transactions. \n\n1. Identify the 'Payment' transaction (typically a large amount). \n2. Identify the group of 'Expense' transactions whose combined total roughly equals the Payment amount. \n3. Create a finding that includes ALL their IDs (Payment + Expenses) in 'affectedTransactionIds'. \n4. Title the finding 'Smart Match: Payment for [X] items'.";
+        promptInstruction = `
+            Scan for 'Smart Match' opportunities. 
+            You are looking for a specific pattern: A single large payment transaction (often a credit card payment, reimbursement, or transfer) that roughly equals the sum of several smaller expense transactions (within $0.05). 
+            
+            IMPORTANT: 'Payment' refers to the transfer transaction (often positive if it's a payment to a card, or negative if it's a withdrawal from checking, depends on context). 'Expenses' are the individual purchases.
+            
+            1. Identify the 'Payment' transaction (typically a large amount). 
+            2. Identify the group of 'Expense' transactions whose combined total roughly equals the Payment amount. 
+            3. Create a finding that includes ALL their IDs (Payment + Expenses) in 'affectedTransactionIds'. 
+            4. Title the finding 'Smart Match: Payment for [X] items'.
+        `;
+        
+        if (trainingExamples && trainingExamples.length > 0) {
+            const examplesJson = trainingExamples.map(group => group.map(simplify));
+            promptInstruction += `
+            
+            **TRAINING EXAMPLES:**
+            The user has provided the following examples of correctly linked groups. Use these to understand the patterns they are looking for (e.g. Date proximity, Payee naming conventions, Ratio of payment to expenses).
+            ${JSON.stringify(examplesJson)}
+            `;
+        }
     } else {
         promptInstruction = `Perform a general audit or answer this specific query: "${auditType}". Look for anomalies, misclassifications, or transfers marked as expenses.`;
     }

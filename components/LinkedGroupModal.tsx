@@ -1,7 +1,7 @@
 
 import React, { useMemo } from 'react';
 import type { Transaction, TransactionType, Account } from '../types';
-import { CloseIcon, LinkIcon } from './Icons';
+import { CloseIcon, LinkIcon, SparklesIcon } from './Icons';
 
 interface LinkedGroupModalProps {
     isOpen: boolean;
@@ -10,11 +10,12 @@ interface LinkedGroupModalProps {
     transactionTypes: TransactionType[];
     accounts: Account[];
     onUnlink: (transactions: Transaction[]) => void;
+    onFindSimilar: (exampleGroup: Transaction[]) => void;
 }
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
 
-const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, transactions, transactionTypes, accounts, onUnlink }) => {
+const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, transactions, transactionTypes, accounts, onUnlink, onFindSimilar }) => {
     const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a.name])), [accounts]);
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t.name])), [transactionTypes]);
 
@@ -25,6 +26,11 @@ const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, tr
             onUnlink(transactions);
         }
     };
+
+    const handleFindSimilar = () => {
+        onFindSimilar(transactions);
+        onClose();
+    }
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
@@ -60,6 +66,14 @@ const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, tr
                 </div>
 
                 <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                    <button 
+                        onClick={handleFindSimilar}
+                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-lg hover:bg-indigo-100 mr-auto"
+                        title="Use this group as a training example for AI to find other similar matches"
+                    >
+                        <SparklesIcon className="w-4 h-4" />
+                        Find Similar
+                    </button>
                     <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">
                         Close
                     </button>
