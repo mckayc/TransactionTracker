@@ -1,7 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import type { BusinessDocument, DocumentFolder } from '../types';
-import { DocumentIcon, CloudArrowUpIcon, DeleteIcon, DownloadIcon, AddIcon, ExclamationTriangleIcon } from '../components/Icons';
+import { DocumentIcon, CloudArrowUpIcon, DeleteIcon, DownloadIcon, AddIcon, ExclamationTriangleIcon, FolderIcon } from '../components/Icons';
 import { analyzeBusinessDocument, hasApiKey } from '../services/geminiService';
 import { saveFile, deleteFile, getFile } from '../services/storageService';
 import { generateUUID } from '../utils';
@@ -14,12 +14,6 @@ interface DocumentsPageProps {
     onCreateFolder: (folder: DocumentFolder) => void;
     onDeleteFolder: (id: string) => void;
 }
-
-const FolderIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 20.25V9" />
-    </svg>
-);
 
 const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAddDocument, onRemoveDocument, onCreateFolder, onDeleteFolder }) => {
     const [currentFolderId, setCurrentFolderId] = useState<string | undefined>(undefined);

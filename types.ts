@@ -177,6 +177,15 @@ export interface RuleCondition {
   value: string | number;
 }
 
+export interface RuleGroup {
+  id: string;
+  type: 'group';
+  logic: RuleLogic;
+  conditions: (RuleCondition | RuleGroup)[];
+}
+
+export type RuleItem = RuleCondition | RuleGroup;
+
 export interface ReconciliationRule {
   id: string;
   name: string;
@@ -188,7 +197,7 @@ export interface ReconciliationRule {
 
   // New flexible conditions
   matchLogic?: RuleLogic;
-  conditions?: RuleCondition[];
+  conditions?: RuleItem[];
 
   // Actions
   setCategoryId?: string;

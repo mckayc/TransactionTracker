@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleCondition, RuleLogic } from '../types';
-import { CloseIcon, DeleteIcon, AddIcon } from './Icons';
+import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleItem, RuleLogic } from '../types';
+import { CloseIcon } from './Icons';
 import { generateUUID } from '../utils';
+import RuleBuilder from './RuleBuilder';
 
 interface RuleModalProps {
     isOpen: boolean;
@@ -22,7 +23,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
     
     const [name, setName] = useState('');
     const [matchLogic, setMatchLogic] = useState<RuleLogic>('AND');
-    const [conditions, setConditions] = useState<RuleCondition[]>([]);
+    const [conditions, setConditions] = useState<RuleItem[]>([]);
     
     // Actions
     const [setCategoryId, setSetCategoryId] = useState('');
@@ -80,20 +81,6 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
 
     if (!isOpen) return null;
 
-    const handleAddCondition = () => {
-        setConditions([...conditions, { id: generateUUID(), field: 'description', operator: 'contains', value: '' }]);
-    };
-
-    const handleRemoveCondition = (id: string) => {
-        if (conditions.length > 1) {
-            setConditions(conditions.filter(c => c.id !== id));
-        }
-    };
-
-    const updateCondition = (id: string, field: keyof RuleCondition, value: any) => {
-        setConditions(conditions.map(c => c.id === id ? { ...c, [field]: value } : c));
-    };
-
     const handleCreateCategory = () => {
         const name = prompt("Enter new Category name:");
         if (name && name.trim() && onSaveCategory) {
@@ -127,15 +114,10 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
             alert('Rule Name is required.');
             return;
         }
-        // Validate values
-        for (const cond of conditions) {
-            if (cond.operator !== 'equals' && (!cond.value || cond.value.toString().trim() === '')) {
-                // accountId equals '' might be valid if 'Any Account' but checking empty value usually means user error
-                if (cond.field !== 'accountId') { 
-                    alert('Please provide a value for all conditions.');
-                    return; 
-                }
-            }
+        
+        if (conditions.length === 0) {
+            alert('Please add at least one condition.');
+            return;
         }
 
         onSaveRule({
@@ -147,9 +129,6 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
             setPayeeId: setPayeeId || undefined,
             setTransactionTypeId: setTransactionTypeId || undefined,
             setDescription: setDescription || undefined,
-            // Backwards compat filling
-            descriptionContains: conditions.find(c => c.field === 'description')?.value as string || '',
-            accountId: conditions.find(c => c.field === 'accountId')?.value as string || undefined,
         });
         onClose();
     };
@@ -176,74 +155,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                             </div>
                         </div>
                         
-                        <div className="space-y-2">
-                            {conditions.map((cond, index) => (
-                                <div key={cond.id} className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-                                    <select 
-                                        value={cond.field} 
-                                        onChange={(e) => updateCondition(cond.id, 'field', e.target.value)}
-                                        className="w-full sm:w-1/4 p-2 text-sm border rounded-md"
-                                    >
-                                        <option value="description">Description</option>
-                                        <option value="amount">Amount</option>
-                                        <option value="accountId">Account</option>
-                                    </select>
-                                    
-                                    <select 
-                                        value={cond.operator} 
-                                        onChange={(e) => updateCondition(cond.id, 'operator', e.target.value)}
-                                        className="w-full sm:w-1/4 p-2 text-sm border rounded-md"
-                                    >
-                                        {cond.field === 'description' && (
-                                            <>
-                                                <option value="contains">Contains</option>
-                                                <option value="does_not_contain">Does Not Contain</option>
-                                                <option value="starts_with">Starts With</option>
-                                                <option value="ends_with">Ends With</option>
-                                                <option value="equals">Equals</option>
-                                            </>
-                                        )}
-                                        {cond.field === 'amount' && (
-                                            <>
-                                                <option value="equals">Equals</option>
-                                                <option value="greater_than">Greater Than</option>
-                                                <option value="less_than">Less Than</option>
-                                            </>
-                                        )}
-                                        {cond.field === 'accountId' && (
-                                            <option value="equals">Is</option>
-                                        )}
-                                    </select>
-
-                                    {cond.field === 'accountId' ? (
-                                        <select 
-                                            value={cond.value} 
-                                            onChange={(e) => updateCondition(cond.id, 'value', e.target.value)}
-                                            className="w-full sm:flex-grow p-2 text-sm border rounded-md"
-                                        >
-                                            <option value="">Select Account...</option>
-                                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                                        </select>
-                                    ) : (
-                                        <input 
-                                            type={cond.field === 'amount' ? 'number' : 'text'} 
-                                            step={cond.field === 'amount' ? '0.01' : undefined}
-                                            value={cond.value} 
-                                            onChange={(e) => updateCondition(cond.id, 'value', cond.field === 'amount' ? e.target.value : e.target.value)}
-                                            placeholder="Value"
-                                            className="w-full sm:flex-grow p-2 text-sm border rounded-md"
-                                        />
-                                    )}
-
-                                    <button type="button" onClick={() => handleRemoveCondition(cond.id)} className="p-2 text-slate-400 hover:text-red-500" disabled={conditions.length === 1}>
-                                        <DeleteIcon className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                        <button type="button" onClick={handleAddCondition} className="mt-3 text-sm text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
-                            <AddIcon className="w-4 h-4" /> Add Condition
-                        </button>
+                        <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
                     </div>
                     
                     <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">

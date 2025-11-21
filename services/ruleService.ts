@@ -1,5 +1,5 @@
 
-import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition } from '../types';
+import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, RuleItem, RuleGroup } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition): boolean => {
     let txValue: any;
@@ -36,14 +36,28 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
     return false;
 };
 
+const evaluateRuleItem = (tx: RawTransaction | Transaction, item: RuleItem): boolean => {
+    if ('type' in item && item.type === 'group') {
+        const group = item as RuleGroup;
+        if (group.conditions.length === 0) return true;
+        if (group.logic === 'AND') {
+            return group.conditions.every(child => evaluateRuleItem(tx, child));
+        } else {
+            return group.conditions.some(child => evaluateRuleItem(tx, child));
+        }
+    } else {
+        return evaluateCondition(tx, item as RuleCondition);
+    }
+};
+
 const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule): boolean => {
-    // 1. Check for new condition structure
+    // 1. Check for new condition structure (supporting groups)
     if (rule.conditions && rule.conditions.length > 0) {
         const logic = rule.matchLogic || 'AND';
         if (logic === 'AND') {
-            return rule.conditions.every(c => evaluateCondition(tx, c));
+            return rule.conditions.every(c => evaluateRuleItem(tx, c));
         } else { // OR
-            return rule.conditions.some(c => evaluateCondition(tx, c));
+            return rule.conditions.some(c => evaluateRuleItem(tx, c));
         }
     }
 
