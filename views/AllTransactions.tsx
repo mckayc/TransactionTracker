@@ -4,9 +4,10 @@ import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, 
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import RuleModal from '../components/RuleModal';
+import LinkTransactionModal from '../components/LinkTransactionModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
-import { AddIcon, DuplicateIcon, CheckBadgeIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon } from '../components/Icons';
+import { AddIcon, DuplicateIcon, CheckBadgeIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -63,6 +64,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isAuditorOpen, setIsAuditorOpen] = useState(false);
   const [transactionForRule, setTransactionForRule] = useState<Transaction | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<Transaction[][][] | null>(null);
@@ -163,7 +165,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
     const processedIds = new Set<string>();
     const typeMap: Map<string, TransactionType> = new Map(transactionTypes.map(t => [t.id, t]));
 
-    const unlinkedTransactions = transactions.filter(tx => !tx.linkedTransactionId);
+    const unlinkedTransactions = transactions.filter(tx => !tx.linkedTransactionId && !tx.linkGroupId);
 
     const expenses = unlinkedTransactions.filter(tx => {
         const type = typeMap.get(tx.typeId);
@@ -233,15 +235,15 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       }
 
       const allTxs = group.flat();
-      for (let i = 0; i < allTxs.length; i++) {
-        const currentTx = allTxs[i];
-        const nextTx = allTxs[(i + 1) % allTxs.length]; // Circular link
-        onUpdateTransaction({
-            ...currentTx,
-            typeId: transferType.id,
-            linkedTransactionId: nextTx.id,
-        });
-      }
+      const linkGroupId = generateUUID();
+      
+      allTxs.forEach(tx => {
+          onUpdateTransaction({
+              ...tx,
+              typeId: transferType.id, // Simple linker sets all to transfer for now (legacy behavior)
+              linkGroupId: linkGroupId // Use new group ID
+          });
+      });
       
       setDuplicateGroups(prev => prev ? prev.filter(g => g[0][0].id !== group[0][0].id) : null);
   };
@@ -274,6 +276,20 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
           setIsSelectionMode(false);
           setSelectedTxIds(new Set());
       }
+  };
+
+  const handleBulkLink = () => {
+      if (selectedTxIds.size < 2) {
+          alert("Please select at least 2 transactions to link.");
+          return;
+      }
+      setIsLinkModalOpen(true);
+  }
+
+  const handleSaveLinkedTransactions = (updates: Transaction[]) => {
+      updates.forEach(tx => onUpdateTransaction(tx));
+      setIsSelectionMode(false);
+      setSelectedTxIds(new Set());
   };
 
   const toggleColumn = (column: string) => {
@@ -434,6 +450,10 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       { id: 'actions', label: 'Actions' }
   ];
 
+  const selectedTransactionsList = useMemo(() => 
+    transactions.filter(tx => selectedTxIds.has(tx.id)), 
+  [transactions, selectedTxIds]);
+
   return (
     <>
       <div className="flex flex-col h-full overflow-hidden gap-4">
@@ -543,6 +563,16 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             onToggleSelection={handleToggleSelection}
             onToggleSelectAll={handleToggleSelectAll}
             visibleColumns={visibleColumns}
+            // Pass handlers to table if we wanted inline linking, but we use floating bar
+            onFilterByLinkGroup={(groupId) => { 
+                setSearchTerm(''); 
+                setCategoryFilter(''); 
+                setTypeFilter(''); 
+                // Basic implementation: just filter local view? 
+                // Or update searchTerm? Let's keep it simple for now:
+                // Just alerting or maybe setting a temporary internal filter in future.
+                // For now, let's just let the Link Icon be an indicator.
+            }}
           />
         </div>
       </div>
@@ -550,13 +580,22 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
         <div className="fixed bottom-0 left-0 right-0 md:left-64 bg-white shadow-lg border-t z-20">
             <div className="container mx-auto p-4 flex justify-between items-center">
                 <p className="font-semibold text-slate-700">{selectedTxIds.size} transaction(s) selected</p>
-                <button
-                    onClick={handleBulkDelete}
-                    className="flex items-center gap-2 px-4 py-2 text-white font-semibold bg-red-600 rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200"
-                >
-                    <DeleteIcon className="w-5 h-5"/>
-                    <span>Delete Selected</span>
-                </button>
+                <div className="flex gap-3">
+                    <button
+                        onClick={handleBulkLink}
+                        className="flex items-center gap-2 px-4 py-2 text-white font-semibold bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
+                    >
+                        <LinkIcon className="w-5 h-5"/>
+                        <span>Link Selected</span>
+                    </button>
+                    <button
+                        onClick={handleBulkDelete}
+                        className="flex items-center gap-2 px-4 py-2 text-white font-semibold bg-red-600 rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200"
+                    >
+                        <DeleteIcon className="w-5 h-5"/>
+                        <span>Delete Selected</span>
+                    </button>
+                </div>
             </div>
         </div>
       )}
@@ -572,6 +611,17 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             payees={payees}
             users={users}
         />
+      )}
+      {isLinkModalOpen && (
+          <LinkTransactionModal 
+            isOpen={isLinkModalOpen}
+            onClose={() => setIsLinkModalOpen(false)}
+            transactions={selectedTransactionsList}
+            transactionTypes={transactionTypes}
+            accounts={accounts}
+            categories={categories}
+            onSave={handleSaveLinkedTransactions}
+          />
       )}
       {isRuleModalOpen && (
         <RuleModal

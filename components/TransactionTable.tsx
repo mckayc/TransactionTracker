@@ -19,6 +19,7 @@ interface TransactionTableProps {
   onToggleSelectAll?: () => void;
   deleteConfirmationMessage?: string;
   visibleColumns?: Set<string>;
+  onFilterByLinkGroup?: (groupId: string) => void;
 }
 
 type SortKey = keyof Transaction | 'payeeId' | 'categoryId' | 'accountId' | 'userId' | 'typeId' | '';
@@ -39,7 +40,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onToggleSelection = (_id) => {},
   onToggleSelectAll = () => {},
   deleteConfirmationMessage = 'Are you sure you want to delete this transaction? This action cannot be undone.',
-  visibleColumns = new Set(['date', 'description', 'payee', 'category', 'account', 'type', 'amount', 'actions'])
+  visibleColumns = new Set(['date', 'description', 'payee', 'category', 'account', 'type', 'amount', 'actions']),
+  onFilterByLinkGroup
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -221,7 +223,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   />
               </th>
             )}
-            {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left w-32')}
+            {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32')}
             {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px] max-w-xs')}
             {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-48')}
             {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}
@@ -253,17 +255,17 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             const amountColor = isNegative ? 'text-red-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600');
             const amountPrefix = isNegative ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
             const isSelected = isSelectionMode && selectedTxIds.has(transaction.id);
-            const linkedTx = transaction.linkedTransactionId ? transactionMap.get(transaction.linkedTransactionId) : null;
+            // Check for new group link or legacy link
+            const isLinked = transaction.linkGroupId || transaction.linkedTransactionId;
             
-            // Determine opaque background color for sticky columns to prevent transparency
             const stickyBgClass = isSelected 
                 ? 'bg-indigo-50' 
-                : linkedTx 
+                : isLinked
                     ? 'bg-sky-50' 
                     : 'bg-white group-hover:bg-slate-50';
 
             return (
-            <tr key={transaction.id} className={`transition-colors group ${isSelected ? 'bg-indigo-50' : linkedTx ? 'bg-sky-50' : 'hover:bg-slate-50'}`}>
+            <tr key={transaction.id} className={`transition-colors group ${isSelected ? 'bg-indigo-50' : isLinked ? 'bg-sky-50' : 'hover:bg-slate-50'}`}>
               {isSelectionMode && (
                   <td className={`px-3 py-2 whitespace-nowrap sticky left-0 z-10 border-r border-transparent ${stickyBgClass}`}>
                       <input
@@ -291,9 +293,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {visibleColumns.has('description') && (
                   <td className="px-3 py-2 text-sm font-medium text-slate-900 w-64 min-w-[200px] max-w-xs">
                     <div className="flex items-center gap-2 w-full">
-                    {linkedTx && (
-                        <span title={`Transfer linked`}>
-                            <LinkIcon className="w-3 h-3 text-sky-600 flex-shrink-0" />
+                    {isLinked && (
+                        <span title={`Linked Transaction Group`} onClick={() => transaction.linkGroupId && onFilterByLinkGroup && onFilterByLinkGroup(transaction.linkGroupId)} className={onFilterByLinkGroup ? "cursor-pointer hover:scale-110 transition-transform" : ""}>
+                            <LinkIcon className="w-3 h-3 text-indigo-600 flex-shrink-0" />
                         </span>
                     )}
                     {transaction.notes && !isSelectionMode && <span title={transaction.notes}><NotesIcon className="w-3 h-3 text-indigo-500 flex-shrink-0" /></span>}

@@ -101,7 +101,7 @@ const getBasePrompt = (transactionTypes: TransactionType[]) => {
     1.  **Identify Document Type:** Read the document title and content to determine its type. Look for keywords like "Credit Card Statement", "Mastercard", "Visa" vs. "Checking Account", "Savings Account", "Bank Statement". This is the most important step.
     2.  **Extract Transactions:** For each individual transaction, extract the following details:
         - **date**: The date of the transaction (e.g., YYYY-MM-DD).
-        - **description**: A clean description of the merchant or transaction.
+        - **description**: A clean description of the merchant or transaction. **CRITICAL**: If the description contains a city/state (e.g. "STARBUCKS AUSTIN TX"), REMOVE the location from this field so it is just "STARBUCKS".
         - **amount**: The transaction amount, as a positive number.
         - **category**: A relevant category from this list: "Groceries", "Dining", "Shopping", "Travel", "Entertainment", "Utilities", "Health", "Services", "Transportation", "Income", "Other".
         - **transactionType**: **This is critical.** Apply the correct logic based on the document type, and then assign the best matching type name from the lists below.
@@ -113,7 +113,7 @@ const getBasePrompt = (transactionTypes: TransactionType[]) => {
                 - Withdrawals, debits, checks, or debit card purchases are **expenses**. These decrease the account balance. Use one of these types: ${getNames('expense')}.
                 - Deposits or credits into the account (e.g., "Direct Deposit", "Interest Paid") are **income**. These increase the account balance. Use one of these types: ${getNames('income')}.
                 - Money moved between the user's accounts (e.g., a payment to a credit card like "ONLINE PAYMENT TO VISA") is a **transfer**. Use one of these types: ${getNames('transfer')}.
-        - **location**: The city or location of the transaction, if available.
+        - **location**: Extract the City and State (e.g., "Austin, TX", "San Francisco, CA") if present in the raw description text.
         - **sourceFilename**: The name of the file this transaction was extracted from. Use the '--- Document Start: [filename] ---' or '--- CSV Data from [filename] ---' markers to identify it.
     
     **Important Rules:**
@@ -133,11 +133,11 @@ const getResponseSchema = () => ({
                 type: Type.OBJECT,
                 properties: {
                     date: { type: Type.STRING, description: 'Transaction date in YYYY-MM-DD format.' },
-                    description: { type: Type.STRING, description: 'Clean merchant or transaction description.' },
+                    description: { type: Type.STRING, description: 'Clean merchant or transaction description (without location).' },
                     category: { type: Type.STRING, description: 'The most relevant expense category.' },
                     amount: { type: Type.NUMBER, description: 'Transaction amount as a positive number.' },
                     transactionType: { type: Type.STRING, description: 'The name of the transaction type that best fits.' },
-                    location: { type: Type.STRING, description: 'City or location of the transaction, if available.' },
+                    location: { type: Type.STRING, description: 'City and State (e.g. Austin, TX) extracted from text.' },
                     sourceFilename: { type: Type.STRING, description: 'The name of the source file, if available.' },
                 },
                 required: ['date', 'description', 'category', 'amount', 'transactionType']

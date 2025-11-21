@@ -79,23 +79,43 @@ const CITIES_BY_STATE = {
 };
 
 const extractLocationFromDescription = (description: string): string | undefined => {
-    const words = description.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+    const words = description.trim().split(/\s+/);
     const stateKeys = Object.keys(CITIES_BY_STATE) as (keyof typeof CITIES_BY_STATE)[];
 
-    for (let i = words.length - 1; i >= 0; i--) {
-        const state = words[i].toUpperCase();
-        if (stateKeys.includes(state as (keyof typeof CITIES_BY_STATE))) {
-            // Look at up to 3 words before the state for a city name
-            for (let j = 3; j >= 1; j--) {
-                if (i - j >= 0) {
-                    const potentialCity = words.slice(i - j, i).join(' ');
-                    if (CITIES_BY_STATE[state as keyof typeof CITIES_BY_STATE].includes(potentialCity)) {
-                        return `${toTitleCase(potentialCity)}, ${state}`;
-                    }
-                }
+    // Iterate through words to find a state code
+    for (let i = 0; i < words.length; i++) {
+        const word = words[i].toUpperCase();
+        
+        // Clean word of common trailing punctuation for matching (e.g. "TX,")
+        const cleanWord = word.replace(/[^A-Z]/g, '');
+
+        if (stateKeys.includes(cleanWord as any)) {
+            const state = cleanWord;
+            const cities = CITIES_BY_STATE[state as keyof typeof CITIES_BY_STATE];
+            
+            // Check 1-3 words preceding the state code for a city match
+            // e.g. "SAN ANTONIO TX" -> words[i-2]="SAN", words[i-1]="ANTONIO"
+            let cityFound = '';
+            
+            // Try 3 words back
+            if (i >= 3) {
+                const threeWordCity = words.slice(i-3, i).join(' ').toLowerCase().replace(/[^a-z ]/g, '');
+                if (cities.includes(threeWordCity)) cityFound = toTitleCase(threeWordCity);
             }
-            // If no city found, just return the state
-            return state;
+            // Try 2 words back
+            if (!cityFound && i >= 2) {
+                const twoWordCity = words.slice(i-2, i).join(' ').toLowerCase().replace(/[^a-z ]/g, '');
+                if (cities.includes(twoWordCity)) cityFound = toTitleCase(twoWordCity);
+            }
+            // Try 1 word back
+            if (!cityFound && i >= 1) {
+                const oneWordCity = words[i-1].toLowerCase().replace(/[^a-z ]/g, '');
+                if (cities.includes(oneWordCity)) cityFound = toTitleCase(oneWordCity);
+            }
+
+            if (cityFound) {
+                return `${cityFound}, ${state}`;
+            }
         }
     }
     return undefined;

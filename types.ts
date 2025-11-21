@@ -38,7 +38,8 @@ export interface Transaction {
   accountId?: string;
   notes?: string;
   payeeId?: string;
-  linkedTransactionId?: string;
+  linkedTransactionId?: string; // Legacy 1-to-1 link
+  linkGroupId?: string; // New 1-to-many group link
   sourceFilename?: string;
   userId?: string;
 }
