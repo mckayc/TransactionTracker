@@ -1,7 +1,7 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { RuleCondition, Account } from '../types';
-import { DeleteIcon, AddIcon } from './Icons';
+import { DeleteIcon, AddIcon, DragHandleIcon } from './Icons';
 import { generateUUID } from '../utils';
 
 interface RuleBuilderProps {
@@ -14,6 +14,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
     
     // Type guard to filter out any legacy nested groups if they exist in state
     const conditions = items.filter(item => 'field' in item) as RuleCondition[];
+    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
 
     const handleUpdateCondition = (index: number, field: keyof RuleCondition, value: any) => {
         const newConditions = [...conditions];
@@ -49,13 +50,46 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
         handleUpdateCondition(index, 'nextLogic', currentLogic === 'AND' ? 'OR' : 'AND');
     };
 
+    const handleDragStart = (e: React.DragEvent, index: number) => {
+        setDraggedIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+        // Optional: set a transparent drag image or similar if needed
+    };
+
+    const handleDragOver = (e: React.DragEvent, index: number) => {
+        e.preventDefault(); // Necessary to allow dropping
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleDrop = (e: React.DragEvent, targetIndex: number) => {
+        e.preventDefault();
+        if (draggedIndex === null || draggedIndex === targetIndex) return;
+
+        const newConditions = [...conditions];
+        const [draggedItem] = newConditions.splice(draggedIndex, 1);
+        newConditions.splice(targetIndex, 0, draggedItem);
+
+        onChange(newConditions);
+        setDraggedIndex(null);
+    };
+
     return (
         <div className="space-y-0 w-full">
             {conditions.map((condition, index) => (
-                <div key={condition.id} className="relative">
+                <div 
+                    key={condition.id} 
+                    className="relative"
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDrop={(e) => handleDrop(e, index)}
+                >
                     {/* Condition Row */}
-                    <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center bg-white p-3 rounded border border-slate-200 shadow-sm z-10 relative">
-                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-bold text-slate-500 mr-1">
+                    <div className={`flex flex-col sm:flex-row gap-2 items-start sm:items-center bg-white p-3 rounded border border-slate-200 shadow-sm z-10 relative transition-all ${draggedIndex === index ? 'opacity-50 bg-indigo-50 border-indigo-300' : ''}`}>
+                        <div className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 p-1">
+                            <DragHandleIcon className="w-5 h-5" />
+                        </div>
+                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-bold text-slate-500 mr-1 flex-shrink-0">
                             {index + 1}
                         </div>
                         
