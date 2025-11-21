@@ -176,7 +176,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   const renderHeader = (label: string, key: SortKey) => (
-    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
+    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10 shadow-sm">
       <button onClick={() => requestSort(key)} className="group flex items-center gap-1">
         {label}
         <span className="text-indigo-600">{getSortIndicator(key)}</span>
@@ -187,12 +187,12 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const commonInputClass = "w-full p-1 text-sm rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none";
 
   return (
-    <div className="overflow-x-auto scrollbar-gutter-stable">
+    <div className="overflow-auto max-h-[70vh] shadow-inner border rounded-lg relative">
       <table className="min-w-full divide-y divide-slate-200">
-        <thead className="bg-slate-50">
+        <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
           <tr>
             {isSelectionMode && (
-              <th scope="col" className="px-6 py-3">
+              <th scope="col" className="px-6 py-3 bg-slate-50 sticky top-0 z-10">
                   <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -204,13 +204,13 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             )}
             {visibleColumns.has('date') && renderHeader('Date', 'date')}
             {visibleColumns.has('description') && renderHeader('Description', 'description')}
-            {visibleColumns.has('payee') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Payee</th>}
-            {visibleColumns.has('category') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Category</th>}
-            {visibleColumns.has('account') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Account</th>}
-            {visibleColumns.has('user') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">User</th>}
-            {visibleColumns.has('type') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Type</th>}
+            {visibleColumns.has('payee') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">Payee</th>}
+            {visibleColumns.has('category') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">Category</th>}
+            {visibleColumns.has('account') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">Account</th>}
+            {visibleColumns.has('user') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">User</th>}
+            {visibleColumns.has('type') && <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">Type</th>}
             {visibleColumns.has('amount') && (
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
                 <button onClick={() => requestSort('amount')} className="group flex items-center gap-1 float-right">
                     Amount
                     <span className="text-indigo-600">{getSortIndicator('amount')}</span>
@@ -218,7 +218,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 </th>
             )}
             {visibleColumns.has('actions') && (
-                <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">
+                <th scope="col" className="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10">
                     Actions
                 </th>
             )}

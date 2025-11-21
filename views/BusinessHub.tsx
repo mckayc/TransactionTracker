@@ -207,11 +207,26 @@ const DocumentsTab: React.FC<{
     const visibleFolders = folders.filter(f => f.parentId === currentFolderId);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+        const originalFile = e.target.files?.[0];
+        if (!originalFile) return;
 
         setIsUploading(true);
         try {
+            // Prepend Date/Time to filename for better organization and collision avoidance
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            const timestampPrefix = `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
+            const newFileName = `${timestampPrefix}_${originalFile.name}`;
+
+            // Create a new File object with the updated name
+            const file = new File([originalFile], newFileName, { type: originalFile.type });
+
             const docId = generateUUID();
             
             // 1. Save file content to Server

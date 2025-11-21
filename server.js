@@ -135,14 +135,17 @@ app.post('/api/files/:id', (req, res) => {
     const diskFilename = getSafeFilename(DOCUMENTS_DIR, rawFilename);
     const filePath = path.join(DOCUMENTS_DIR, diskFilename);
 
+    // LOGGING for debugging mount issues
+    console.log(`Attempting to save file to absolute path: ${path.resolve(filePath)}`);
+    
     fs.writeFileSync(filePath, buffer);
 
     insertFileMeta.run(id, rawFilename, diskFilename, mimeType, buffer.length, new Date().toISOString());
     
-    console.log(`Saved file: ${diskFilename} (ID: ${id}, Size: ${buffer.length} bytes)`);
+    console.log(`Saved file successfully: ${diskFilename} (ID: ${id}, Size: ${buffer.length} bytes)`);
     res.json({ success: true, filename: diskFilename });
   } catch (e) {
-    console.error(`Upload error for ${rawFilename}:`, e.message);
+    console.error(`Upload error for ${rawFilename}:`, e);
     res.status(500).send(`Failed to save file: ${e.message}`);
   }
 });
@@ -196,4 +199,5 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Document Storage Path: ${DOCUMENTS_DIR}`);
 });
