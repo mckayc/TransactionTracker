@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, User, BusinessProfile, DocumentFolder, BusinessDocument } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon } from '../components/Icons';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { saveFile } from '../services/storageService';
@@ -25,6 +25,7 @@ interface SettingsPageProps {
     businessProfile: BusinessProfile;
     documentFolders: DocumentFolder[];
     onAddDocument: (doc: BusinessDocument) => void;
+    onCreateFolder: (folder: DocumentFolder) => void;
 }
 
 const Section: React.FC<{title: string, children: React.ReactNode}> = ({title, children}) => (
@@ -38,7 +39,7 @@ const Section: React.FC<{title: string, children: React.ReactNode}> = ({title, c
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ 
     transactions, transactionTypes, onAddTransactionType, onRemoveTransactionType, systemSettings, onUpdateSystemSettings,
-    accounts, categories, payees, rules, templates, scheduledEvents, users, businessProfile, documentFolders, onAddDocument
+    accounts, categories, payees, rules, templates, scheduledEvents, users, businessProfile, documentFolders, onAddDocument, onCreateFolder
 }) => {
     const [newTypeName, setNewTypeName] = useState('');
     const [newTypeEffect, setNewTypeEffect] = useState<'income' | 'expense' | 'transfer'>('expense');
@@ -48,9 +49,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const usedTransactionTypes = useMemo(() => new Set(transactions.map(tx => tx.typeId)), [transactions]);
     
+    // Backup Settings State
+    const [backupFreq, setBackupFreq] = useState<'daily' | 'weekly' | 'monthly' | 'never'>('never');
+    const [retentionCount, setRetentionCount] = useState(5);
+
     useEffect(() => {
         if (systemSettings.apiKey) {
             setApiKey(systemSettings.apiKey);
+        }
+        if (systemSettings.backupConfig) {
+            setBackupFreq(systemSettings.backupConfig.frequency);
+            setRetentionCount(systemSettings.backupConfig.retentionCount);
+        } else {
+            // Default initialization
+            setBackupFreq('never');
+            setRetentionCount(5);
         }
     }, [systemSettings]);
 
@@ -59,6 +72,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         onUpdateSystemSettings({ ...systemSettings, apiKey: newKey });
         setApiKeySaved(true);
         setTimeout(() => setApiKeySaved(false), 2000);
+    };
+
+    const handleSaveBackupSettings = () => {
+        const newConfig = {
+            frequency: backupFreq,
+            retentionCount: retentionCount > 0 ? retentionCount : 1,
+            lastBackupDate: systemSettings.backupConfig?.lastBackupDate
+        };
+        onUpdateSystemSettings({ ...systemSettings, backupConfig: newConfig });
+        alert("Backup settings saved!");
     };
 
     const handleAddTransactionType = (e: React.FormEvent) => {
@@ -92,7 +115,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             transactionTypes,
             businessProfile,
             documentFolders,
-            // Documents metadata export not included to avoid huge JSON, typically handled separately or via full db dump
         };
     };
 
@@ -110,28 +132,44 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleExportToVault = async () => {
         try {
+            // 1. Ensure "Manual Backups" folder exists
+            let manualFolderId = documentFolders.find(f => f.name === "Manual Backups" && !f.parentId)?.id;
+            if (!manualFolderId) {
+                manualFolderId = generateUUID();
+                const newFolder: DocumentFolder = {
+                    id: manualFolderId,
+                    name: "Manual Backups",
+                    parentId: undefined,
+                    createdAt: new Date().toISOString()
+                };
+                onCreateFolder(newFolder);
+            }
+
+            // 2. Create Backup File
             const data = getExportData();
             const jsonString = JSON.stringify(data, null, 2);
-            const fileName = `Backup-${new Date().toISOString().split('T')[0]}.json`;
+            const fileName = `Manual_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
             const file = new File([jsonString], fileName, { type: 'application/json' });
             const docId = generateUUID();
 
-            // Use the storage service to upload to server
+            // 3. Upload to server
             await saveFile(docId, file);
 
+            // 4. Create Document Metadata
             const newDoc: BusinessDocument = {
                 id: docId,
                 name: fileName,
                 uploadDate: new Date().toISOString().split('T')[0],
                 size: file.size,
                 mimeType: 'application/json',
+                parentId: manualFolderId,
             };
             
             onAddDocument(newDoc);
-            alert("Backup saved successfully to Document Vault!");
+            alert("Backup saved successfully to 'Manual Backups' folder in Document Vault!");
         } catch (e) {
             console.error(e);
-            alert("Failed to save backup to vault.");
+            alert("Failed to save backup to vault. Check server logs.");
         }
     };
 
@@ -189,11 +227,107 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
             
             <div className="space-y-6">
+                <Section title="Data & Backups">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Backup Configuration */}
+                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
+                            <div>
+                                <h3 className="font-semibold text-slate-900">Automated Backups</h3>
+                                <p className="text-sm text-slate-600 mt-1">
+                                    Automatically save snapshots of your data to the "Automated Backups" folder in your Vault.
+                                </p>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Frequency</label>
+                                    <select 
+                                        value={backupFreq} 
+                                        onChange={(e) => setBackupFreq(e.target.value as any)}
+                                        className="w-full p-2 border rounded-md text-sm"
+                                    >
+                                        <option value="never">Off</option>
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Retention (Keep Last)</label>
+                                    <input 
+                                        type="number" 
+                                        min="1"
+                                        max="50"
+                                        value={retentionCount} 
+                                        onChange={(e) => setRetentionCount(parseInt(e.target.value) || 1)}
+                                        className="w-full p-2 border rounded-md text-sm"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <p className="text-xs text-slate-500 italic">
+                                    Last Run: {systemSettings.backupConfig?.lastBackupDate 
+                                        ? new Date(systemSettings.backupConfig.lastBackupDate).toLocaleString() 
+                                        : 'Never'}
+                                </p>
+                                <button 
+                                    onClick={handleSaveBackupSettings}
+                                    className="px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm rounded-md transition-colors"
+                                >
+                                    Save Settings
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Manual Actions */}
+                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-4">
+                            <div>
+                                <h3 className="font-semibold text-indigo-900">Manual Actions</h3>
+                                <p className="text-sm text-indigo-700 mt-1">
+                                    Create immediate backups or restore from a file. Manual backups are saved to the "Manual Backups" folder.
+                                </p>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <button 
+                                    onClick={handleExportToVault}
+                                    className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 font-medium rounded-lg hover:bg-indigo-50 shadow-sm transition-colors"
+                                >
+                                    <DocumentIcon className="w-5 h-5 text-indigo-600" />
+                                    Save Backup to Vault
+                                </button>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={handleExportData}
+                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-white border border-indigo-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+                                    >
+                                        <CloudArrowUpIcon className="w-4 h-4" /> Download
+                                    </button>
+                                    <div className="relative flex-1">
+                                        <input 
+                                            type="file" 
+                                            accept=".json"
+                                            ref={importFileRef}
+                                            onChange={handleImportData}
+                                            className="hidden"
+                                        />
+                                        <button 
+                                            onClick={() => importFileRef.current?.click()}
+                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                                        >
+                                            <UploadIcon className="w-4 h-4" /> Restore
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Section>
+
                 <Section title="API Key Configuration">
-                    <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-4">
+                    <div className="space-y-4">
                         <div>
-                            <h3 className="font-semibold text-indigo-900">Google Gemini API Key</h3>
-                            <p className="text-sm text-indigo-700 mt-1">
+                            <h3 className="font-semibold text-slate-900">Google Gemini API Key</h3>
+                            <p className="text-sm text-slate-600 mt-1">
                                 This key enables AI features like document analysis and automatic categorization. It is stored securely in your database.
                             </p>
                         </div>
@@ -203,7 +337,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 value={apiKey} 
                                 onChange={(e) => setApiKey(e.target.value)}
                                 placeholder="Enter your API Key (starts with AIza...)"
-                                className="flex-grow p-2 border border-indigo-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                className="flex-grow p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                             />
                             <button 
                                 onClick={handleSaveApiKey}
@@ -219,51 +353,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 System API Key detected (from Docker ENV). The key above will take precedence if set.
                             </p>
                         )}
-                    </div>
-                </Section>
-
-                <Section title="Data Management">
-                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
-                        <div>
-                            <h3 className="font-semibold text-slate-900">Backup & Migration</h3>
-                            <p className="text-sm text-slate-700 mt-1">
-                                Use these tools to move your data. You can download a JSON file or save it directly to your Document Vault for safe keeping.
-                            </p>
-                        </div>
-                        <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
-                            <button 
-                                onClick={handleExportData}
-                                className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 shadow-sm transition-colors"
-                            >
-                                <CloudArrowUpIcon className="w-5 h-5" />
-                                Export JSON (Download)
-                            </button>
-
-                            <button 
-                                onClick={handleExportToVault}
-                                className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-100 shadow-sm transition-colors"
-                            >
-                                <DocumentIcon className="w-5 h-5 text-indigo-600" />
-                                Save Backup to Vault
-                            </button>
-                            
-                            <div className="relative">
-                                <input 
-                                    type="file" 
-                                    accept=".json"
-                                    ref={importFileRef}
-                                    onChange={handleImportData}
-                                    className="hidden"
-                                />
-                                <button 
-                                    onClick={() => importFileRef.current?.click()}
-                                    className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 shadow-sm transition-colors w-full sm:w-auto"
-                                >
-                                    <UploadIcon className="w-5 h-5" />
-                                    Import / Restore
-                                </button>
-                            </div>
-                        </div>
                     </div>
                 </Section>
 

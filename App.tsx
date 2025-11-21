@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -21,6 +21,7 @@ import { MenuIcon, CloseIcon } from './components/Icons';
 import { calculateNextDate, formatDate } from './dateUtils';
 import { generateUUID } from './utils';
 import { api } from './services/apiService';
+import { saveFile, deleteFile } from './services/storageService';
 
 type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'users' | 'hub' | 'documents';
 
@@ -186,6 +187,104 @@ const App: React.FC = () => {
     };
     loadData();
   }, []);
+
+  // AUTOMATED BACKUP LOGIC
+  useEffect(() => {
+      if (isLoading) return;
+      
+      const checkAndRunBackup = async () => {
+          const config = systemSettings.backupConfig;
+          if (!config || config.frequency === 'never') return;
+
+          const now = new Date();
+          const lastRun = config.lastBackupDate ? new Date(config.lastBackupDate) : new Date(0);
+          
+          let shouldRun = false;
+          const msPerDay = 24 * 60 * 60 * 1000;
+          const daysSinceLast = (now.getTime() - lastRun.getTime()) / msPerDay;
+
+          if (config.frequency === 'daily' && daysSinceLast >= 1) shouldRun = true;
+          if (config.frequency === 'weekly' && daysSinceLast >= 7) shouldRun = true;
+          if (config.frequency === 'monthly' && daysSinceLast >= 30) shouldRun = true;
+
+          if (shouldRun) {
+              console.log("Starting automated backup...");
+              try {
+                  // 1. Prepare Data
+                  const exportData = {
+                      exportDate: new Date().toISOString(),
+                      version: '0.0.9-auto',
+                      transactions, accounts, accountTypes, categories, payees, 
+                      reconciliationRules, templates, scheduledEvents, users, 
+                      transactionTypes, businessProfile, documentFolders
+                  };
+                  const jsonString = JSON.stringify(exportData, null, 2);
+                  const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+                  const file = new File([jsonString], fileName, { type: 'application/json' });
+                  
+                  // 2. Ensure Folder Exists
+                  let autoFolder = documentFolders.find(f => f.name === "Automated Backups" && !f.parentId);
+                  let autoFolderId = autoFolder?.id;
+                  
+                  if (!autoFolderId) {
+                      autoFolderId = generateUUID();
+                      const newFolder: DocumentFolder = {
+                          id: autoFolderId,
+                          name: "Automated Backups",
+                          parentId: undefined,
+                          createdAt: new Date().toISOString()
+                      };
+                      setDocumentFolders(prev => [...prev, newFolder]);
+                      // Note: We update local state, but also need to persist it if the API save isn't triggered immediately by the effect below
+                      await api.save('documentFolders', [...documentFolders, newFolder]); 
+                  }
+
+                  // 3. Save File
+                  const docId = generateUUID();
+                  await saveFile(docId, file);
+                  
+                  const newDoc: BusinessDocument = {
+                      id: docId,
+                      name: fileName,
+                      uploadDate: new Date().toISOString().split('T')[0],
+                      size: file.size,
+                      mimeType: 'application/json',
+                      parentId: autoFolderId,
+                  };
+                  
+                  setBusinessDocuments(prev => [...prev, newDoc]);
+                  
+                  // 4. Update Last Run Date
+                  const newConfig: BackupConfig = { ...config, lastBackupDate: new Date().toISOString() };
+                  setSystemSettings(prev => ({ ...prev, backupConfig: newConfig }));
+
+                  // 5. Prune Old Backups
+                  const backups = [...businessDocuments, newDoc].filter(d => d.parentId === autoFolderId);
+                  // Sort newest first
+                  backups.sort((a, b) => b.name.localeCompare(a.name)); // Using name (timestamped) for sorting is robust enough here
+                  
+                  if (backups.length > config.retentionCount) {
+                      const toDelete = backups.slice(config.retentionCount);
+                      for (const doc of toDelete) {
+                          await deleteFile(doc.id);
+                      }
+                      const idsToDelete = new Set(toDelete.map(d => d.id));
+                      setBusinessDocuments(prev => prev.filter(d => !idsToDelete.has(d.id)));
+                  }
+                  console.log("Automated backup completed successfully.");
+
+              } catch (e) {
+                  console.error("Automated backup failed:", e);
+              }
+          }
+      };
+
+      // Run check immediately on load/change, but debounce slightly to ensure state is settled
+      const timeout = setTimeout(checkAndRunBackup, 5000);
+      return () => clearTimeout(timeout);
+
+  }, [isLoading, systemSettings.backupConfig, transactions, accounts, categories]); // Dependencies trigger re-check if data changes, but frequency logic prevents spam
+
 
   // Save data to API whenever it changes
   
@@ -528,7 +627,7 @@ const App: React.FC = () => {
       case 'rules':
         return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
       case 'settings':
-        return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} users={users} businessProfile={businessProfile} documentFolders={documentFolders} />;
+        return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} users={users} businessProfile={businessProfile} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
       case 'tasks':
         return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
       case 'hub':

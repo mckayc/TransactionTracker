@@ -125,11 +125,21 @@ app.post('/api/files/:id', (req, res) => {
   const mimeType = req.headers['content-type'] || 'application/octet-stream';
   
   try {
-    const buffer = req.body; // Buffer from express.raw
+    let buffer = req.body; 
     
-    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
-        console.error("Upload failed: Body is empty or not a buffer. Content-Type was:", req.headers['content-type']);
-        return res.status(400).json({ error: 'Invalid or empty file data' });
+    // FIX: If express.json() middleware parsed the body (because Content-Type was application/json),
+    // req.body will be an object, not a buffer. We need to convert it back to a buffer/string to save it as a file.
+    if (!Buffer.isBuffer(buffer)) {
+        if (typeof buffer === 'object' && buffer !== null) {
+            buffer = Buffer.from(JSON.stringify(buffer));
+        } else {
+            console.error("Upload failed: Body is not a buffer and not a valid object. Type:", typeof buffer);
+            return res.status(400).json({ error: 'Invalid or empty file data' });
+        }
+    }
+
+    if (buffer.length === 0) {
+         return res.status(400).json({ error: 'Empty file data' });
     }
 
     const diskFilename = getSafeFilename(DOCUMENTS_DIR, rawFilename);

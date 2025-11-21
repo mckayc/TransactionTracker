@@ -104,8 +104,15 @@ export interface BusinessProfile {
   completedSteps: string[]; // IDs of completed wizard steps
 }
 
+export interface BackupConfig {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'never';
+    retentionCount: number;
+    lastBackupDate?: string;
+}
+
 export interface SystemSettings {
     apiKey?: string;
+    backupConfig?: BackupConfig;
 }
 
 
