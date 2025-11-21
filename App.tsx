@@ -14,6 +14,7 @@ import PayeesPage from './views/PayeesPage';
 import CategoriesPage from './views/CategoriesPage';
 import UsersPage from './views/UsersPage';
 import BusinessHub from './views/BusinessHub';
+import DocumentsPage from './views/DocumentsPage';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
 import { MenuIcon, CloseIcon } from './components/Icons';
@@ -21,7 +22,7 @@ import { calculateNextDate, formatDate } from './dateUtils';
 import { generateUUID } from './utils';
 import { api } from './services/apiService';
 
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'users' | 'hub';
+type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'users' | 'hub' | 'documents';
 
 const DEFAULT_CATEGORIES: Category[] = [
     "Groceries", "Dining", "Shopping", "Travel", "Entertainment", "Utilities", "Health", "Services", "Transportation", "Income", "Other"
@@ -509,7 +510,7 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} />;
+        return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
       case 'transactions':
         return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
       case 'calendar':
@@ -531,7 +532,9 @@ const App: React.FC = () => {
       case 'tasks':
         return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
       case 'hub':
-        return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
+        return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} />;
+      case 'documents':
+        return <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
       default:
         return null;
     }

@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument, DocumentFolder } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText, hasApiKey } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
@@ -28,6 +28,8 @@ interface DashboardProps {
   payees: Payee[];
   users: User[];
   onAddDocument: (doc: BusinessDocument) => void;
+  documentFolders: DocumentFolder[];
+  onCreateFolder: (folder: DocumentFolder) => void;
 }
 
 const SummaryWidget: React.FC<{title: string, value: string, helpText: string, icon?: React.ReactNode, className?: string}> = ({title, value, helpText, icon, className}) => (
@@ -69,7 +71,7 @@ const getNextTaxDeadline = () => {
     };
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, categories, transactionTypes, rules, payees, users, onAddDocument }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, categories, transactionTypes, rules, payees, users, onAddDocument, documentFolders, onCreateFolder }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState('');
@@ -147,6 +149,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setAppState('processing');
     setError(null);
     try {
+      // Ensure "Imported Documents" folder exists
+      let importFolderId = documentFolders.find(f => f.name === "Imported Documents" && !f.parentId)?.id;
+      
+      if (!importFolderId) {
+          importFolderId = generateUUID();
+          const newFolder: DocumentFolder = {
+              id: importFolderId,
+              name: "Imported Documents",
+              parentId: undefined,
+              createdAt: new Date().toISOString()
+          };
+          onCreateFolder(newFolder);
+          // Note: onCreateFolder updates parent state, but we use the local ID for this batch
+      }
+
       // Save files to Document Vault first
       for (const file of files) {
           const now = new Date();
@@ -173,6 +190,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
               uploadDate: now.toISOString().split('T')[0],
               size: fileToSave.size,
               mimeType: fileToSave.type,
+              parentId: importFolderId // Assign to the Imported Documents folder
           };
           onAddDocument(newDoc);
       }
@@ -186,7 +204,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
       setAppState('error');
     }
-  }, [useAi, transactionTypes, prepareForVerification, selectedUserId, onAddDocument]);
+  }, [useAi, transactionTypes, prepareForVerification, selectedUserId, onAddDocument, documentFolders, onCreateFolder]);
 
   const handleTextPaste = useCallback(async () => {
     if (!textInput.trim() || accounts.length === 0) return;
