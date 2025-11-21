@@ -69,8 +69,12 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
   
-  // Column Visibility State
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['date', 'description', 'payee', 'category', 'account', 'user', 'type', 'amount', 'actions']));
+  // Column Visibility State - Persisted
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+      const saved = localStorage.getItem('transaction_columns');
+      return saved ? new Set(JSON.parse(saved)) : new Set(['date', 'description', 'payee', 'category', 'account', 'type', 'amount', 'actions']);
+  });
+  
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
   const columnMenuRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +87,10 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+      localStorage.setItem('transaction_columns', JSON.stringify(Array.from(visibleColumns)));
+  }, [visibleColumns]);
 
   const sortedCategoryOptions = useMemo(() => {
     const sorted: { id: string, name: string }[] = [];
@@ -419,6 +427,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       { id: 'payee', label: 'Payee' },
       { id: 'category', label: 'Category' },
       { id: 'account', label: 'Account' },
+      { id: 'location', label: 'Location' },
       { id: 'user', label: 'User' },
       { id: 'type', label: 'Type' },
       { id: 'amount', label: 'Amount' },

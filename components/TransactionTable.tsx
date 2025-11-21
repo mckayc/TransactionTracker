@@ -39,7 +39,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onToggleSelection = (_id) => {},
   onToggleSelectAll = () => {},
   deleteConfirmationMessage = 'Are you sure you want to delete this transaction? This action cannot be undone.',
-  visibleColumns = new Set(['date', 'description', 'payee', 'category', 'account', 'user', 'type', 'amount', 'actions'])
+  visibleColumns = new Set(['date', 'description', 'payee', 'category', 'account', 'type', 'amount', 'actions'])
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -103,8 +103,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
           bValue = transactionTypeMap.get(b.typeId)?.name || '';
       }
 
-      if (aValue === undefined || aValue === null) return 1;
-      if (bValue === undefined || bValue === null) return -1;
+      if (aValue === undefined || aValue === null) aValue = '';
+      if (bValue === undefined || bValue === null) bValue = '';
       
       if (sortKey === 'date') {
         const dateA = new Date(a.date).getTime();
@@ -194,23 +194,24 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   const renderHeader = (label: string, key: SortKey, className: string = "") => (
-    <th scope="col" className={`px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 z-10 shadow-sm border-b border-slate-200 ${className}`}>
-      <button onClick={() => requestSort(key)} className="group flex items-center gap-1 w-full focus:outline-none">
+    <th scope="col" className={`px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200 ${className}`}>
+      <button onClick={() => requestSort(key)} className="group flex items-center gap-1 w-full focus:outline-none hover:text-slate-700">
         {label}
         <span className="text-indigo-600">{getSortIndicator(key)}</span>
       </button>
     </th>
   );
   
-  const commonInputClass = "w-full p-1 text-sm rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none";
+  const commonInputClass = "w-full p-1 text-xs rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none shadow-sm";
+  const cellClass = (isEditable = false) => `px-3 py-2 whitespace-nowrap text-sm text-slate-600 ${isEditable ? 'cursor-pointer hover:text-indigo-600 hover:bg-slate-50' : ''}`;
 
   return (
     <div className="overflow-auto max-h-[70vh] shadow-inner border rounded-lg relative bg-white">
-      <table className="min-w-full divide-y divide-slate-200 table-fixed">
-        <thead className="bg-slate-50 sticky top-0 z-30">
+      <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
+        <thead className="bg-slate-50">
           <tr>
             {isSelectionMode && (
-              <th scope="col" className="w-12 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-30 border-b border-slate-200">
+              <th scope="col" className="w-10 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-30 border-b border-slate-200">
                   <input
                       type="checkbox"
                       className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -222,22 +223,23 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             )}
             {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left w-32')}
             {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px]')}
-            {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-40')}
+            {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-48')}
             {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}
             {visibleColumns.has('account') && renderHeader('Account', 'accountId', 'w-40')}
+            {visibleColumns.has('location') && renderHeader('Location', 'location', 'w-32')}
             {visibleColumns.has('user') && renderHeader('User', 'userId', 'w-32')}
             {visibleColumns.has('type') && renderHeader('Type', 'typeId', 'w-32')}
             {visibleColumns.has('amount') && (
                 <th scope="col" className="w-32 px-3 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
-                <button onClick={() => requestSort('amount')} className="group flex items-center gap-1 float-right focus:outline-none">
+                <button onClick={() => requestSort('amount')} className="group flex items-center gap-1 float-right focus:outline-none hover:text-slate-700">
                     Amount
                     <span className="text-indigo-600">{getSortIndicator('amount')}</span>
                 </button>
                 </th>
             )}
             {visibleColumns.has('actions') && (
-                <th scope="col" className="w-24 px-3 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky-col-right top-0 border-b border-slate-200">
-                    Actions
+                <th scope="col" className="w-20 px-3 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky-col-right top-0 border-b border-slate-200">
+                    Action
                 </th>
             )}
           </tr>
@@ -254,7 +256,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             const linkedTx = transaction.linkedTransactionId ? transactionMap.get(transaction.linkedTransactionId) : null;
             
             return (
-            <tr key={transaction.id} className={`transition-colors ${isSelected ? 'bg-indigo-50' : linkedTx ? 'bg-sky-50' : 'hover:bg-slate-50'}`}>
+            <tr key={transaction.id} className={`transition-colors group ${isSelected ? 'bg-indigo-50' : linkedTx ? 'bg-sky-50' : 'hover:bg-slate-50'}`}>
               {isSelectionMode && (
                   <td className="px-3 py-2 whitespace-nowrap sticky left-0 bg-inherit z-10 border-r border-transparent">
                       <input
@@ -266,17 +268,21 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       />
                   </td>
               )}
+              
+              {/* Date */}
               {visibleColumns.has('date') && (
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-500 sticky-col-left">
+                  <td className={`sticky-col-left ${cellClass(true)}`}>
                     {editingCell?.id === transaction.id && editingCell.field === 'date' && !isSelectionMode ? (
                         <input type="date" defaultValue={transaction.date} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'date')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'date')} className={commonInputClass} />
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'date' })} className={`${!isSelectionMode ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-slate-100' : ''}`}>{transaction.date}</div>
+                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'date' })}>{transaction.date}</div>
                     )}
                   </td>
               )}
+
+              {/* Description */}
               {visibleColumns.has('description') && (
-                  <td className="px-3 py-2 text-sm font-medium text-slate-900">
+                  <td className="px-3 py-2 text-sm font-medium text-slate-900 min-w-[200px]">
                     <div className="flex items-center gap-2">
                     {linkedTx && (
                         <span title={`Transfer linked`}>
@@ -288,11 +294,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             <input type="text" defaultValue={transaction.description} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'description')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'description')} className={commonInputClass} />
                         ) : (
                             <div className="flex items-center gap-1.5 w-full">
-                                <span onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'description' })} className={`truncate block w-full ${!isSelectionMode ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-slate-100' : ''}`} title={transaction.description}>{transaction.description}</span>
+                                <span onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'description' })} className="truncate block w-full cursor-pointer hover:text-indigo-600" title={transaction.description}>{transaction.description}</span>
                                 {transaction.originalDescription && transaction.originalDescription !== transaction.description && (
-                                    <div className="group relative flex items-center">
+                                    <div className="group/tooltip relative flex items-center">
                                         <InfoIcon className="w-3 h-3 text-slate-400 cursor-help flex-shrink-0" />
-                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden w-max max-w-[200px] p-2 bg-slate-800 text-white text-xs rounded shadow-lg group-hover:block z-20">
+                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden w-max max-w-[200px] p-2 bg-slate-800 text-white text-xs rounded shadow-lg group-hover/tooltip:block z-50">
                                             Original: {transaction.originalDescription}
                                         </div>
                                     </div>
@@ -302,26 +308,30 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     </div>
                   </td>
               )}
+
+              {/* Payee */}
               {visibleColumns.has('payee') && (
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-500">
+                  <td className={cellClass(true)}>
                     {editingCell?.id === transaction.id && editingCell.field === 'payeeId' && !isSelectionMode ? (
                         <select defaultValue={transaction.payeeId || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'payeeId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'payeeId')} className={commonInputClass}>
                             <option value="">-- No Payee --</option>
                             {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'payeeId' })} className={`truncate ${!isSelectionMode ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-slate-100' : ''}`} title={payeeMap.get(transaction.payeeId || '')?.name}>{payeeMap.get(transaction.payeeId || '')?.name || 'N/A'}</div>
+                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'payeeId' })} className="truncate max-w-[180px]" title={payeeMap.get(transaction.payeeId || '')?.name}>{payeeMap.get(transaction.payeeId || '')?.name || <span className="text-slate-400 italic">None</span>}</div>
                     )}
                   </td>
               )}
+
+              {/* Category */}
               {visibleColumns.has('category') && (
-                   <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-500">
+                   <td className={cellClass(true)}>
                      {editingCell?.id === transaction.id && editingCell.field === 'categoryId' && !isSelectionMode ? (
                         <select defaultValue={transaction.categoryId} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'categoryId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'categoryId')} className={commonInputClass}>
                             {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'categoryId' })} className={`${!isSelectionMode ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-slate-100' : ''} inline-block`}>
+                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'categoryId' })}>
                             <span className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full truncate max-w-[140px] ${getCategoryColor(categoryName)}`}>
                                 {categoryName}
                             </span>
@@ -329,46 +339,75 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     )}
                   </td>
               )}
+
+              {/* Account */}
               {visibleColumns.has('account') && (
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-500 truncate" title={accountMap.get(transaction.accountId || '')?.name}>{accountMap.get(transaction.accountId || '')?.name || 'N/A'}</td>
+                  <td className={cellClass(true)}>
+                      {editingCell?.id === transaction.id && editingCell.field === 'accountId' && !isSelectionMode ? (
+                        <select defaultValue={transaction.accountId || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'accountId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'accountId')} className={commonInputClass}>
+                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                        </select>
+                    ) : (
+                      <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'accountId' })} className="truncate max-w-[150px]" title={accountMap.get(transaction.accountId || '')?.name}>{accountMap.get(transaction.accountId || '')?.name || 'N/A'}</div>
+                    )}
+                  </td>
               )}
+
+              {/* Location */}
+              {visibleColumns.has('location') && (
+                  <td className={cellClass(true)}>
+                    {editingCell?.id === transaction.id && editingCell.field === 'location' && !isSelectionMode ? (
+                        <input type="text" defaultValue={transaction.location || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'location')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'location')} className={commonInputClass} />
+                    ) : (
+                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'location' })} className="truncate max-w-[150px]">{transaction.location || ''}</div>
+                    )}
+                  </td>
+              )}
+
+              {/* User */}
               {visibleColumns.has('user') && (
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-500">
+                  <td className={cellClass(true)}>
                      {editingCell?.id === transaction.id && editingCell.field === 'userId' && !isSelectionMode ? (
                         <select defaultValue={transaction.userId || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'userId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'userId')} className={commonInputClass}>
                             <option value="">-- No User --</option>
                             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'userId' })} className={`truncate ${!isSelectionMode ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-slate-100' : ''}`}>{userMap.get(transaction.userId || '') || 'N/A'}</div>
+                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'userId' })} className="truncate max-w-[120px]">{userMap.get(transaction.userId || '') || 'N/A'}</div>
                     )}
                   </td>
               )}
+
+              {/* Type */}
               {visibleColumns.has('type') && (
-                  <td className="px-3 py-2 whitespace-nowrap text-sm text-slate-500 capitalize">
+                  <td className={cellClass(true)}>
                     {editingCell?.id === transaction.id && editingCell.field === 'typeId' && !isSelectionMode ? (
                         <select defaultValue={transaction.typeId} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'typeId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'typeId')} className={commonInputClass}>
                             {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'typeId' })} className={`truncate ${!isSelectionMode ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-slate-100' : ''}`}>{type?.name || 'N/A'}</div>
+                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'typeId' })} className="truncate max-w-[120px] capitalize">{type?.name || 'N/A'}</div>
                     )}
                   </td>
               )}
+
+              {/* Amount */}
               {visibleColumns.has('amount') && (
                   <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-medium`}>
                      {editingCell?.id === transaction.id && editingCell.field === 'amount' && !isSelectionMode ? (
                         <input type="number" step="0.01" defaultValue={transaction.amount} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'amount')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'amount')} className={`${commonInputClass} text-right`} />
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'amount' })} className={`${!isSelectionMode ? 'cursor-pointer rounded-md p-1 -m-1 hover:bg-slate-100' : ''} ${amountColor}`}>
+                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'amount' })} className={`${!isSelectionMode ? 'cursor-pointer hover:opacity-75' : ''} ${amountColor}`}>
                             {amountPrefix}{formatCurrency(Math.abs(transaction.amount))}
                         </div>
                     )}
                   </td>
               )}
+
+              {/* Actions */}
               {visibleColumns.has('actions') && (
                   <td className="px-3 py-2 whitespace-nowrap text-center text-sm font-medium sticky-col-right">
-                      <div className={`flex items-center justify-center gap-2 ${isSelectionMode ? 'invisible' : ''}`}>
+                      <div className={`flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ${isSelectionMode ? 'invisible' : ''}`}>
                          {onCreateRule && (
                             <button onClick={(e) => { e.stopPropagation(); onCreateRule(transaction); }} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Rule">
                                 <SparklesIcon className="w-4 h-4" />

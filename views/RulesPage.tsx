@@ -164,7 +164,7 @@ const RuleEditor: React.FC<{
                                 <option value="">-- Don't Change --</option>
                                 {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                             </select>
-                            <button type="button" onClick={handleCreateCategory} className="px-2 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200" title="Add Category">+</button>
+                            <button type="button" onClick={handleCreateCategory} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold" title="Add Category">+</button>
                         </div>
                     </div>
                     <div>
@@ -174,7 +174,7 @@ const RuleEditor: React.FC<{
                                 <option value="">-- Don't Change --</option>
                                 {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
-                            <button type="button" onClick={handleCreatePayee} className="px-2 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200" title="Add Payee">+</button>
+                            <button type="button" onClick={handleCreatePayee} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold" title="Add Payee">+</button>
                         </div>
                     </div>
                     <div>
@@ -184,7 +184,7 @@ const RuleEditor: React.FC<{
                                 <option value="">-- Don't Change --</option>
                                 {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
                             </select>
-                            <button type="button" onClick={handleCreateType} className="px-2 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200" title="Add Type">+</button>
+                            <button type="button" onClick={handleCreateType} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold" title="Add Type">+</button>
                         </div>
                     </div>
                     <div>
@@ -256,16 +256,16 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                             </button>
                         </div>
                         {rules.length > 0 ? (
-                             <ul className="space-y-2">
+                             <ul className="space-y-2 max-h-[70vh] overflow-y-auto">
                                 {rules.map(rule => (
                                     <li key={rule.id} className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedRule?.id === rule.id ? 'bg-indigo-50 border-indigo-500' : 'hover:bg-slate-50'}`} onClick={() => handleSelectRule(rule)}>
                                         <div className="flex justify-between items-start">
-                                            <div className="flex-grow">
-                                                <p className="font-semibold">{rule.name}</p>
+                                            <div className="flex-grow min-w-0">
+                                                <p className="font-semibold truncate">{rule.name}</p>
                                                 <p className="text-xs text-slate-500 truncate">If description contains "{rule.descriptionContains}"</p>
-                                                <div className="text-xs text-slate-500 mt-1">
-                                                    {rule.setCategoryId && <span className="inline-block bg-slate-200 rounded px-1.5 py-0.5 mr-1">Set Cat: {categoryMap.get(rule.setCategoryId)}</span>}
-                                                    {rule.setDescription && <span className="inline-block bg-slate-200 rounded px-1.5 py-0.5 mr-1">Set Desc: {rule.setDescription}</span>}
+                                                <div className="text-xs text-slate-500 mt-1 truncate">
+                                                    {rule.setCategoryId && <span className="inline-block bg-slate-200 rounded px-1.5 py-0.5 mr-1">Cat: {categoryMap.get(rule.setCategoryId)}</span>}
+                                                    {rule.setDescription && <span className="inline-block bg-slate-200 rounded px-1.5 py-0.5 mr-1">Desc: {rule.setDescription}</span>}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2 flex-shrink-0 ml-2">

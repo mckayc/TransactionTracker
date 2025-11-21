@@ -161,7 +161,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                                         <option value="">-- Don't Change --</option>
                                         {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                                     </select>
-                                    {onSaveCategory && <button type="button" onClick={handleCreateCategory} className="px-2 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200" title="Add Category">+</button>}
+                                    {onSaveCategory && <button type="button" onClick={handleCreateCategory} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold" title="Add Category">+</button>}
                                 </div>
                             </div>
                             <div>
@@ -171,7 +171,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                                         <option value="">-- Don't Change --</option>
                                         {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
-                                    {onSavePayee && <button type="button" onClick={handleCreatePayee} className="px-2 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200" title="Add Payee">+</button>}
+                                    {onSavePayee && <button type="button" onClick={handleCreatePayee} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold" title="Add Payee">+</button>}
                                 </div>
                             </div>
                             <div>
@@ -181,7 +181,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                                         <option value="">-- Don't Change --</option>
                                         {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
                                     </select>
-                                    {onAddTransactionType && <button type="button" onClick={handleCreateType} className="px-2 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200" title="Add Type">+</button>}
+                                    {onAddTransactionType && <button type="button" onClick={handleCreateType} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold" title="Add Type">+</button>}
                                 </div>
                             </div>
                             <div>
