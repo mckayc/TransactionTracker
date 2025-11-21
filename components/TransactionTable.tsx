@@ -206,7 +206,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const cellClass = (isEditable = false) => `px-3 py-2 whitespace-nowrap text-sm text-slate-600 ${isEditable ? 'cursor-pointer hover:text-indigo-600 hover:bg-slate-50' : ''}`;
 
   return (
-    <div className="overflow-auto max-h-[70vh] shadow-inner border rounded-lg relative bg-white">
+    <div className="overflow-auto shadow-inner border rounded-lg relative bg-white" style={{ maxHeight: 'calc(100vh - 220px)' }}>
       <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
         <thead className="bg-slate-50">
           <tr>
@@ -255,10 +255,17 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             const isSelected = isSelectionMode && selectedTxIds.has(transaction.id);
             const linkedTx = transaction.linkedTransactionId ? transactionMap.get(transaction.linkedTransactionId) : null;
             
+            // Determine opaque background color for sticky columns to prevent transparency
+            const stickyBgClass = isSelected 
+                ? 'bg-indigo-50' 
+                : linkedTx 
+                    ? 'bg-sky-50' 
+                    : 'bg-white group-hover:bg-slate-50';
+
             return (
             <tr key={transaction.id} className={`transition-colors group ${isSelected ? 'bg-indigo-50' : linkedTx ? 'bg-sky-50' : 'hover:bg-slate-50'}`}>
               {isSelectionMode && (
-                  <td className="px-3 py-2 whitespace-nowrap sticky left-0 bg-inherit z-10 border-r border-transparent">
+                  <td className={`px-3 py-2 whitespace-nowrap sticky left-0 z-10 border-r border-transparent ${stickyBgClass}`}>
                       <input
                           type="checkbox"
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -271,7 +278,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               
               {/* Date */}
               {visibleColumns.has('date') && (
-                  <td className={`sticky-col-left ${cellClass(true)}`}>
+                  <td className={`sticky-col-left ${cellClass(true)} ${stickyBgClass}`}>
                     {editingCell?.id === transaction.id && editingCell.field === 'date' && !isSelectionMode ? (
                         <input type="date" defaultValue={transaction.date} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'date')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'date')} className={commonInputClass} />
                     ) : (
@@ -406,7 +413,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
               {/* Actions */}
               {visibleColumns.has('actions') && (
-                  <td className="px-3 py-2 whitespace-nowrap text-center text-sm font-medium sticky-col-right">
+                  <td className={`px-3 py-2 whitespace-nowrap text-center text-sm font-medium sticky-col-right ${stickyBgClass}`}>
                       <div className={`flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ${isSelectionMode ? 'invisible' : ''}`}>
                          {onCreateRule && (
                             <button onClick={(e) => { e.stopPropagation(); onCreateRule(transaction); }} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Rule">

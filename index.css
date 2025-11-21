@@ -50,14 +50,14 @@ th.sticky-col-left, td.sticky-col-left {
   position: sticky;
   left: 0;
   z-index: 20;
-  background-color: inherit; /* Inherit from tr/thead */
+  /* Removed inherit so we can enforce opacity via component classes */
 }
 
 th.sticky-col-right, td.sticky-col-right {
   position: sticky;
   right: 0;
   z-index: 20;
-  background-color: inherit;
+  /* Removed inherit so we can enforce opacity via component classes */
 }
 
 /* Shadows for sticky columns to indicate scrolling depth */
