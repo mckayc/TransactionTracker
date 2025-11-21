@@ -318,6 +318,12 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       setSelectedTxIds(new Set());
   };
 
+  const handleSaveLinkedTransactionsAndFindSimilar = (updates: Transaction[]) => {
+      handleSaveLinkedTransactions(updates);
+      setAuditorExampleGroup(updates);
+      setIsAuditorOpen(true);
+  };
+
   const handleUnlinkGroup = (txsToUnlink: Transaction[]) => {
       txsToUnlink.forEach(tx => {
           onUpdateTransaction({ ...tx, linkGroupId: undefined, linkedTransactionId: undefined });
@@ -657,6 +663,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             accounts={accounts}
             categories={categories}
             onSave={handleSaveLinkedTransactions}
+            onFindSimilar={handleSaveLinkedTransactionsAndFindSimilar}
           />
       )}
       {isLinkedGroupModalOpen && selectedLinkGroupId && (
