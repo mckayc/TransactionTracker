@@ -13,7 +13,7 @@ interface TransactionTableProps {
   onUpdateTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
   onCreateRule?: (transaction: Transaction) => void;
-  isSelectionMode?: boolean;
+  showCheckboxes?: boolean;
   selectedTxIds?: Set<string>;
   onToggleSelection?: (id: string) => void;
   onToggleSelectAll?: () => void;
@@ -68,7 +68,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onUpdateTransaction, 
   onDeleteTransaction,
   onCreateRule,
-  isSelectionMode = false,
+  showCheckboxes = false,
   selectedTxIds = new Set(),
   onToggleSelection = (_id) => {},
   onToggleSelectAll = () => {},
@@ -180,10 +180,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               // If all are equal, pick the first one in the sorted list.
               const primaryTx = children.reduce((prev, current) => (Math.abs(current.amount) > Math.abs(prev.amount) ? current : prev), children[0]);
               
-              // Calculate total (though usually handled by primary in UI, maybe sum of expenses?)
-              // Per user request: "Show transfer... then show another transaction that make up all the others"
-              // We will use the primary as the "Header" visual.
-              
               items.push({
                   type: 'group',
                   id: groupId,
@@ -242,14 +238,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       
       const willSelect = !selectedTxIds.has(id);
 
-      // Logic: if this is a group header row, we might want to select all children?
-      // Current logic assumes flat selection ID passing. 
-      // Let's stick to single ID selection for simplicity in this handler, 
-      // but the UI might render checkbox for Group Header that selects all.
-
       if (e.shiftKey && lastClickedId && onBulkSelection) {
-          // Bulk selection logic is tricky with groups. 
-          // We will fallback to the flat sortedTransactions list for range calculation to keep it predictable.
           const start = sortedTransactions.findIndex(t => t.id === lastClickedId);
           const end = sortedTransactions.findIndex(t => t.id === id);
 
@@ -318,8 +307,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   // Note: sticky z-indices are set in index.css to ensure proper layering
-  const renderHeader = (label: string, key: SortKey, className: string = "") => (
-    <th scope="col" className={`px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200 ${className}`}>
+  // If check boxes are shown, we offset the Date column by 2.5rem (w-10)
+  const dateColumnStyle = showCheckboxes ? { left: '2.5rem' } : {};
+
+  const renderHeader = (label: string, key: SortKey, className: string = "", style: React.CSSProperties = {}) => (
+    <th scope="col" style={style} className={`px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200 ${className}`}>
       <button onClick={() => requestSort(key)} className="group flex items-center gap-1 w-full focus:outline-none hover:text-slate-700">
         {label}
         <span className="text-indigo-600">{getSortIndicator(key)}</span>
@@ -338,17 +330,17 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         const isNegative = type?.balanceEffect === 'expense';
         const amountColor = isNegative ? 'text-red-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600');
         const amountPrefix = isNegative ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
-        const isSelected = isSelectionMode && selectedTxIds.has(transaction.id);
+        const isSelected = selectedTxIds.has(transaction.id);
         
         // For single items (not part of group logic)
         const linkGroupId = transaction.linkGroupId || transaction.linkedTransactionId;
-        const isLinkedLegacy = !!linkGroupId && !groupData; // Should only happen if group logic failed or mixed data
+        const isLinkedLegacy = !!linkGroupId && !groupData; 
 
         let stickyBgClass = 'bg-white group-hover:bg-slate-50';
         if (isSelected) {
             stickyBgClass = 'bg-indigo-50';
         } else if (isChild) {
-            stickyBgClass = 'bg-slate-50/50'; // Slightly different for children
+            stickyBgClass = 'bg-slate-50/50'; 
         } else if (isLinkedLegacy) {
             stickyBgClass = 'bg-sky-50';
         }
@@ -358,8 +350,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 key={transaction.id} 
                 className={`transition-colors group ${stickyBgClass}`}
             >
-              {isSelectionMode && (
-                  <td className={`px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent ${stickyBgClass}`}>
+              {showCheckboxes && (
+                  <td className={`w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent ${stickyBgClass}`}>
                       <div className={isChild ? "pl-4 border-l-2 border-slate-300" : ""}>
                         <input
                             type="checkbox"
@@ -375,11 +367,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               
               {/* Date */}
               {visibleColumns.has('date') && (
-                  <td className={`sticky-col-left ${cellClass(true)} ${stickyBgClass} z-20`}>
-                    {editingCell?.id === transaction.id && editingCell.field === 'date' && !isSelectionMode ? (
+                  <td style={dateColumnStyle} className={`sticky-col-left ${cellClass(true)} ${stickyBgClass} z-20`}>
+                    {editingCell?.id === transaction.id && editingCell.field === 'date' ? (
                         <input type="date" defaultValue={transaction.date} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'date')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'date')} className={commonInputClass} />
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'date' })} className={isChild ? "pl-4" : ""}>{transaction.date}</div>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'date' })} className={isChild ? "pl-4" : ""}>{transaction.date}</div>
                     )}
                   </td>
               )}
@@ -398,14 +390,14 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                 <LinkIcon className={`w-3 h-3 ${generateGroupColor(linkGroupId!)}`} />
                             </button>
                         )}
-                        {transaction.notes && !isSelectionMode && <span title={transaction.notes} className="flex-shrink-0"><NotesIcon className="w-3 h-3 text-indigo-500" /></span>}
+                        {transaction.notes && <span title={transaction.notes} className="flex-shrink-0"><NotesIcon className="w-3 h-3 text-indigo-500" /></span>}
                         
                         {/* Input or Text */}
-                        {editingCell?.id === transaction.id && editingCell.field === 'description' && !isSelectionMode ? (
+                        {editingCell?.id === transaction.id && editingCell.field === 'description' ? (
                             <input type="text" defaultValue={transaction.description} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'description')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'description')} className={commonInputClass} />
                         ) : (
                             <div className="flex items-center gap-1.5 w-full min-w-0">
-                                <span onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'description' })} className="truncate block cursor-pointer hover:text-indigo-600" title={transaction.description}>{transaction.description}</span>
+                                <span onClick={() => setEditingCell({ id: transaction.id, field: 'description' })} className="truncate block cursor-pointer hover:text-indigo-600" title={transaction.description}>{transaction.description}</span>
                                 
                                 {transaction.originalDescription && transaction.originalDescription !== transaction.description && (
                                     <div className="group/tooltip relative flex items-center flex-shrink-0">
@@ -432,13 +424,13 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {/* Payee */}
               {visibleColumns.has('payee') && (
                   <td className={cellClass(true)}>
-                    {editingCell?.id === transaction.id && editingCell.field === 'payeeId' && !isSelectionMode ? (
+                    {editingCell?.id === transaction.id && editingCell.field === 'payeeId' ? (
                         <select defaultValue={transaction.payeeId || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'payeeId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'payeeId')} className={commonInputClass}>
                             <option value="">-- No Payee --</option>
                             {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'payeeId' })} className="truncate max-w-[180px]" title={payeeMap.get(transaction.payeeId || '')?.name}>{payeeMap.get(transaction.payeeId || '')?.name || <span className="text-slate-400 italic">None</span>}</div>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'payeeId' })} className="truncate max-w-[180px]" title={payeeMap.get(transaction.payeeId || '')?.name}>{payeeMap.get(transaction.payeeId || '')?.name || <span className="text-slate-400 italic">None</span>}</div>
                     )}
                   </td>
               )}
@@ -446,12 +438,12 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {/* Category */}
               {visibleColumns.has('category') && (
                    <td className={cellClass(true)}>
-                     {editingCell?.id === transaction.id && editingCell.field === 'categoryId' && !isSelectionMode ? (
+                     {editingCell?.id === transaction.id && editingCell.field === 'categoryId' ? (
                         <select defaultValue={transaction.categoryId} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'categoryId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'categoryId')} className={commonInputClass}>
                             {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'categoryId' })}>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'categoryId' })}>
                             <span className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full truncate max-w-[140px] ${getCategoryColor(categoryName)}`}>
                                 {categoryName}
                             </span>
@@ -463,12 +455,12 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {/* Account */}
               {visibleColumns.has('account') && (
                   <td className={cellClass(true)}>
-                      {editingCell?.id === transaction.id && editingCell.field === 'accountId' && !isSelectionMode ? (
+                      {editingCell?.id === transaction.id && editingCell.field === 'accountId' ? (
                         <select defaultValue={transaction.accountId || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'accountId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'accountId')} className={commonInputClass}>
                             {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                         </select>
                     ) : (
-                      <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'accountId' })} className="truncate max-w-[150px]" title={accountMap.get(transaction.accountId || '')?.name}>{accountMap.get(transaction.accountId || '')?.name || 'N/A'}</div>
+                      <div onClick={() => setEditingCell({ id: transaction.id, field: 'accountId' })} className="truncate max-w-[150px]" title={accountMap.get(transaction.accountId || '')?.name}>{accountMap.get(transaction.accountId || '')?.name || 'N/A'}</div>
                     )}
                   </td>
               )}
@@ -476,10 +468,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {/* Location */}
               {visibleColumns.has('location') && (
                   <td className={cellClass(true)}>
-                    {editingCell?.id === transaction.id && editingCell.field === 'location' && !isSelectionMode ? (
+                    {editingCell?.id === transaction.id && editingCell.field === 'location' ? (
                         <input type="text" defaultValue={transaction.location || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'location')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'location')} className={commonInputClass} />
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'location' })} className="truncate max-w-[150px]">{transaction.location || ''}</div>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'location' })} className="truncate max-w-[150px]">{transaction.location || ''}</div>
                     )}
                   </td>
               )}
@@ -487,13 +479,13 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {/* User */}
               {visibleColumns.has('user') && (
                   <td className={cellClass(true)}>
-                     {editingCell?.id === transaction.id && editingCell.field === 'userId' && !isSelectionMode ? (
+                     {editingCell?.id === transaction.id && editingCell.field === 'userId' ? (
                         <select defaultValue={transaction.userId || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'userId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'userId')} className={commonInputClass}>
                             <option value="">-- No User --</option>
                             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'userId' })} className="truncate max-w-[120px]">{userMap.get(transaction.userId || '') || 'N/A'}</div>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'userId' })} className="truncate max-w-[120px]">{userMap.get(transaction.userId || '') || 'N/A'}</div>
                     )}
                   </td>
               )}
@@ -501,12 +493,12 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {/* Type */}
               {visibleColumns.has('type') && (
                   <td className={cellClass(true)}>
-                    {editingCell?.id === transaction.id && editingCell.field === 'typeId' && !isSelectionMode ? (
+                    {editingCell?.id === transaction.id && editingCell.field === 'typeId' ? (
                         <select defaultValue={transaction.typeId} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'typeId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'typeId')} className={commonInputClass}>
                             {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'typeId' })} className="truncate max-w-[120px] capitalize">{type?.name || 'N/A'}</div>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'typeId' })} className="truncate max-w-[120px] capitalize">{type?.name || 'N/A'}</div>
                     )}
                   </td>
               )}
@@ -514,10 +506,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {/* Amount */}
               {visibleColumns.has('amount') && (
                   <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-medium`}>
-                     {editingCell?.id === transaction.id && editingCell.field === 'amount' && !isSelectionMode ? (
+                     {editingCell?.id === transaction.id && editingCell.field === 'amount' ? (
                         <input type="number" step="0.01" defaultValue={transaction.amount} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'amount')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'amount')} className={`${commonInputClass} text-right`} />
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'amount' })} className={`${!isSelectionMode ? 'cursor-pointer hover:opacity-75' : ''} ${amountColor}`}>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'amount' })} className={`cursor-pointer hover:opacity-75 ${amountColor}`}>
                             {amountPrefix}{formatCurrency(Math.abs(transaction.amount))}
                         </div>
                     )}
@@ -527,7 +519,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {/* Actions */}
               {visibleColumns.has('actions') && (
                   <td className={`px-3 py-2 whitespace-nowrap text-center text-sm font-medium sticky-col-right ${stickyBgClass} z-20`}>
-                      <div className={`flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity ${isSelectionMode ? 'invisible' : ''}`}>
+                      <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                          {onCreateRule && (
                             <button onClick={(e) => { e.stopPropagation(); onCreateRule(transaction); }} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Rule">
                                 <SparklesIcon className="w-4 h-4" />
@@ -547,7 +539,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const renderGroupHeader = (group: GroupItem) => {
       const isExpanded = expandedGroups.has(group.id);
       const allChildIds = [group.primaryTx.id, ...group.children.map(c => c.id)];
-      const isFullySelected = isSelectionMode && allChildIds.every(id => selectedTxIds.has(id));
+      const isFullySelected = allChildIds.every(id => selectedTxIds.has(id));
       
       const primaryTx = group.primaryTx;
       const type = transactionTypeMap.get(primaryTx.typeId);
@@ -561,8 +553,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             className={`bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer border-b border-slate-200 group`}
             onClick={() => toggleGroup(group.id)}
           >
-              {isSelectionMode && (
-                  <td className="px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent bg-slate-100">
+              {showCheckboxes && (
+                  <td className="w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent bg-slate-100">
                       <input
                           type="checkbox"
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
@@ -574,7 +566,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               )}
               
               {visibleColumns.has('date') && (
-                  <td className="sticky-col-left px-3 py-2 whitespace-nowrap text-sm text-slate-600 bg-slate-100 z-20">
+                  <td style={dateColumnStyle} className="sticky-col-left px-3 py-2 whitespace-nowrap text-sm text-slate-600 bg-slate-100 z-20">
                       <div className="flex items-center gap-1">
                         {isExpanded ? <ChevronDownIcon className="w-4 h-4 text-indigo-500" /> : <ChevronRightIcon className="w-4 h-4 text-slate-400" />}
                         {primaryTx.date}
@@ -627,7 +619,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
         <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
           <tr>
-            {isSelectionMode && (
+            {showCheckboxes && (
               <th scope="col" className="w-10 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-40 border-b border-slate-200">
                   <input
                       type="checkbox"
@@ -638,7 +630,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   />
               </th>
             )}
-            {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32 z-40')}
+            {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32 z-40', dateColumnStyle)}
             {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px] max-w-xs')}
             {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-48')}
             {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}

@@ -8,7 +8,7 @@ import LinkTransactionModal from '../components/LinkTransactionModal';
 import LinkedGroupModal from '../components/LinkedGroupModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
-import { AddIcon, DuplicateIcon, CheckBadgeIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon } from '../components/Icons';
+import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -75,7 +75,6 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
   const [transactionForRule, setTransactionForRule] = useState<Transaction | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<Transaction[][][] | null>(null);
-  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
   
   // Column Visibility State - Persisted
@@ -294,7 +293,6 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const handleBulkDelete = () => {
       if (window.confirm(`Are you sure you want to delete ${selectedTxIds.size} transaction(s)? This action cannot be undone.`)) {
           onDeleteTransactions(Array.from(selectedTxIds));
-          setIsSelectionMode(false);
           setSelectedTxIds(new Set());
       }
   };
@@ -314,7 +312,6 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
   const handleSaveLinkedTransactions = (updates: Transaction[]) => {
       updates.forEach(tx => onUpdateTransaction(tx));
-      setIsSelectionMode(false);
       setSelectedTxIds(new Set());
   };
 
@@ -534,10 +531,6 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                         <RobotIcon className="w-5 h-5"/>
                         <span>AI Audit</span>
                     </button>
-                    <button onClick={() => { setIsSelectionMode(!isSelectionMode); setSelectedTxIds(new Set()); }} className="flex items-center gap-2 px-4 py-2 text-indigo-600 font-semibold bg-indigo-100 rounded-lg shadow-sm hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200">
-                        {isSelectionMode ? <CloseIcon className="w-5 h-5"/> : <CheckBadgeIcon className="w-5 h-5"/>}
-                        <span>{isSelectionMode ? 'Cancel' : 'Bulk Select'}</span>
-                    </button>
                     <button onClick={handleFindDuplicates} className="flex items-center gap-2 px-4 py-2 text-indigo-600 font-semibold bg-indigo-100 rounded-lg shadow-sm hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200">
                         <DuplicateIcon className="w-5 h-5"/>
                         <span>Find Duplicates</span>
@@ -597,7 +590,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 min-h-0 flex flex-col overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 min-h-0 flex flex-col overflow-hidden relative">
           <TransactionTable 
             transactions={filteredTransactions} 
             accounts={accounts} 
@@ -607,8 +600,8 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             users={users}
             onUpdateTransaction={onUpdateTransaction} 
             onDeleteTransaction={onDeleteTransaction} 
-            onCreateRule={isSelectionMode ? undefined : handleCreateRule}
-            isSelectionMode={isSelectionMode}
+            onCreateRule={handleCreateRule}
+            showCheckboxes={true}
             selectedTxIds={selectedTxIds}
             onToggleSelection={handleToggleSelection}
             onToggleSelectAll={handleToggleSelectAll}
@@ -618,29 +611,34 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
           />
         </div>
       </div>
-      {isSelectionMode && selectedTxIds.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 md:left-64 bg-white shadow-lg border-t z-20">
-            <div className="container mx-auto p-4 flex justify-between items-center">
-                <p className="font-semibold text-slate-700">{selectedTxIds.size} transaction(s) selected</p>
-                <div className="flex gap-3">
-                    <button
-                        onClick={handleBulkLink}
-                        className="flex items-center gap-2 px-4 py-2 text-white font-semibold bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
-                    >
-                        <LinkIcon className="w-5 h-5"/>
-                        <span>Link Selected</span>
-                    </button>
-                    <button
-                        onClick={handleBulkDelete}
-                        className="flex items-center gap-2 px-4 py-2 text-white font-semibold bg-red-600 rounded-lg shadow-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-200"
-                    >
-                        <DeleteIcon className="w-5 h-5"/>
-                        <span>Delete Selected</span>
-                    </button>
-                </div>
+      
+      {selectedTxIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 animate-slide-up">
+            <div className="flex items-center gap-3 border-r border-slate-700 pr-4">
+                <span className="font-medium text-sm">{selectedTxIds.size} selected</span>
+                <button onClick={() => setSelectedTxIds(new Set())} className="text-slate-400 hover:text-white transition-colors p-1 rounded-full hover:bg-slate-800">
+                    <CloseIcon className="w-4 h-4" />
+                </button>
+            </div>
+            <div className="flex items-center gap-2">
+                 <button
+                    onClick={handleBulkLink}
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 rounded-full transition-colors shadow-sm"
+                >
+                    <LinkIcon className="w-4 h-4"/>
+                    Link
+                </button>
+                <button
+                    onClick={handleBulkDelete}
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-500 rounded-full transition-colors shadow-sm"
+                >
+                    <DeleteIcon className="w-4 h-4"/>
+                    Delete
+                </button>
             </div>
         </div>
       )}
+
       {isModalOpen && (
         <TransactionModal
             isOpen={isModalOpen}
