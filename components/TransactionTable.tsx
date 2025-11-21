@@ -17,6 +17,7 @@ interface TransactionTableProps {
   selectedTxIds?: Set<string>;
   onToggleSelection?: (id: string) => void;
   onToggleSelectAll?: () => void;
+  onBulkSelection?: (ids: string[], selected: boolean) => void;
   deleteConfirmationMessage?: string;
   visibleColumns?: Set<string>;
   onManageLink?: (groupId: string) => void;
@@ -39,6 +40,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   selectedTxIds = new Set(),
   onToggleSelection = (_id) => {},
   onToggleSelectAll = () => {},
+  onBulkSelection,
   deleteConfirmationMessage = 'Are you sure you want to delete this transaction? This action cannot be undone.',
   visibleColumns = new Set(['date', 'description', 'payee', 'category', 'account', 'type', 'amount', 'actions']),
   onManageLink
@@ -46,6 +48,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [editingCell, setEditingCell] = useState<{ id: string; field: keyof Transaction } | null>(null);
+  const [lastClickedId, setLastClickedId] = useState<string | null>(null);
 
   const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc])), [accounts]);
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
@@ -164,6 +167,31 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       }
   };
 
+  const handleSelectionClick = (e: React.MouseEvent<HTMLInputElement>, id: string) => {
+      e.stopPropagation();
+      
+      // Determine intended state: if currently checked, we are unchecking.
+      // Logic: The user clicked the checkbox to toggle it.
+      const willSelect = !selectedTxIds.has(id);
+
+      if (e.shiftKey && lastClickedId && onBulkSelection) {
+          const start = sortedTransactions.findIndex(t => t.id === lastClickedId);
+          const end = sortedTransactions.findIndex(t => t.id === id);
+
+          if (start !== -1 && end !== -1) {
+              const low = Math.min(start, end);
+              const high = Math.max(start, end);
+              const rangeIds = sortedTransactions.slice(low, high + 1).map(t => t.id);
+              onBulkSelection(rangeIds, willSelect);
+              setLastClickedId(id);
+              return;
+          }
+      }
+
+      onToggleSelection(id);
+      setLastClickedId(id);
+  };
+
   const getSortIndicator = (key: SortKey) => {
     if (sortKey !== key) return <SortIcon className="w-4 h-4 text-slate-300 invisible group-hover:visible" />;
     return sortDirection === 'desc' ? ' ▼' : ' ▲';
@@ -269,9 +297,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   <td className={`px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent ${stickyBgClass}`}>
                       <input
                           type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                           checked={isSelected}
-                          onChange={() => onToggleSelection(transaction.id)}
+                          onClick={(e) => handleSelectionClick(e, transaction.id)}
+                          onChange={() => {}} // Logic handled in onClick to support modifiers better
                           aria-label={`Select transaction ${transaction.description}`}
                       />
                   </td>

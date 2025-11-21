@@ -274,6 +274,15 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
     setSelectedTxIds(newSelection);
   };
 
+  const handleBulkSelection = (ids: string[], selected: boolean) => {
+      const newSelection = new Set(selectedTxIds);
+      ids.forEach(id => {
+          if (selected) newSelection.add(id);
+          else newSelection.delete(id);
+      });
+      setSelectedTxIds(newSelection);
+  };
+
   const handleToggleSelectAll = () => {
       if (selectedTxIds.size === filteredTransactions.length) {
           setSelectedTxIds(new Set());
@@ -597,6 +606,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             selectedTxIds={selectedTxIds}
             onToggleSelection={handleToggleSelection}
             onToggleSelectAll={handleToggleSelectAll}
+            onBulkSelection={handleBulkSelection}
             visibleColumns={visibleColumns}
             onManageLink={handleManageLink}
           />
