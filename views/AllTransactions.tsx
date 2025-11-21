@@ -5,6 +5,7 @@ import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import RuleModal from '../components/RuleModal';
 import LinkTransactionModal from '../components/LinkTransactionModal';
+import LinkedGroupModal from '../components/LinkedGroupModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
 import { AddIcon, DuplicateIcon, CheckBadgeIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon } from '../components/Icons';
@@ -65,6 +66,8 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isLinkedGroupModalOpen, setIsLinkedGroupModalOpen] = useState(false);
+  const [selectedLinkGroupId, setSelectedLinkGroupId] = useState<string | null>(null);
   const [isAuditorOpen, setIsAuditorOpen] = useState(false);
   const [transactionForRule, setTransactionForRule] = useState<Transaction | null>(null);
   const [duplicateGroups, setDuplicateGroups] = useState<Transaction[][][] | null>(null);
@@ -220,7 +223,12 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             foundMatch.forEach(match => processedIds.add(match.id));
         }
     }
-    setDuplicateGroups(groups);
+    
+    if (groups.length > 0) {
+        setDuplicateGroups(groups);
+    } else {
+        alert("No potential duplicates found. Good job!");
+    }
   };
   
   const handleExitDuplicateFinder = () => {
@@ -286,10 +294,23 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       setIsLinkModalOpen(true);
   }
 
+  const handleManageLink = (groupId: string) => {
+      setSelectedLinkGroupId(groupId);
+      setIsLinkedGroupModalOpen(true);
+  };
+
   const handleSaveLinkedTransactions = (updates: Transaction[]) => {
       updates.forEach(tx => onUpdateTransaction(tx));
       setIsSelectionMode(false);
       setSelectedTxIds(new Set());
+  };
+
+  const handleUnlinkGroup = (txsToUnlink: Transaction[]) => {
+      txsToUnlink.forEach(tx => {
+          onUpdateTransaction({ ...tx, linkGroupId: undefined, linkedTransactionId: undefined });
+      });
+      setIsLinkedGroupModalOpen(false);
+      setSelectedLinkGroupId(null);
   };
 
   const toggleColumn = (column: string) => {
@@ -563,16 +584,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             onToggleSelection={handleToggleSelection}
             onToggleSelectAll={handleToggleSelectAll}
             visibleColumns={visibleColumns}
-            // Pass handlers to table if we wanted inline linking, but we use floating bar
-            onFilterByLinkGroup={(groupId) => { 
-                setSearchTerm(''); 
-                setCategoryFilter(''); 
-                setTypeFilter(''); 
-                // Basic implementation: just filter local view? 
-                // Or update searchTerm? Let's keep it simple for now:
-                // Just alerting or maybe setting a temporary internal filter in future.
-                // For now, let's just let the Link Icon be an indicator.
-            }}
+            onManageLink={handleManageLink}
           />
         </div>
       </div>
@@ -621,6 +633,16 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             accounts={accounts}
             categories={categories}
             onSave={handleSaveLinkedTransactions}
+          />
+      )}
+      {isLinkedGroupModalOpen && selectedLinkGroupId && (
+          <LinkedGroupModal
+            isOpen={isLinkedGroupModalOpen}
+            onClose={() => setIsLinkedGroupModalOpen(false)}
+            transactions={transactions.filter(tx => tx.linkGroupId === selectedLinkGroupId || tx.linkedTransactionId === selectedLinkGroupId)}
+            transactionTypes={transactionTypes}
+            accounts={accounts}
+            onUnlink={handleUnlinkGroup}
           />
       )}
       {isRuleModalOpen && (

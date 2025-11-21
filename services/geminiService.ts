@@ -324,7 +324,7 @@ export const auditTransactions = async (
     transactions: Transaction[], 
     transactionTypes: TransactionType[], 
     categories: Category[],
-    auditType: 'transfers' | 'subscriptions' | 'mortgage_splits' | 'general' | string
+    auditType: 'transfers' | 'subscriptions' | 'mortgage_splits' | 'smart_match' | 'general' | string
 ): Promise<AuditFinding[]> => {
     const ai = getAiClient();
     
@@ -345,6 +345,8 @@ export const auditTransactions = async (
         promptInstruction = "Identify recurring subscription payments (e.g., Netflix, Spotify, Adobe, Gym) that might be miscategorized or hidden in 'General'.";
     } else if (auditType === 'mortgage_splits') {
         promptInstruction = "Identify 'Split Transaction' issues. Specifically, look for a group of transactions on the same day (e.g., 'Principal', 'Interest', 'Escrow') whose amounts sum up to equal another single transaction on/near that date (e.g. 'Mortgage Payment'). This implies the detailed split was imported alongside the bank withdrawal. Flag the total withdrawal transaction and suggest changing its Type to 'Transfer' (or a similar non-expense type) so the detailed breakdown is preserved without double-counting expenses.";
+    } else if (auditType === 'smart_match') {
+        promptInstruction = "Look for groups of transactions where one transaction (likely a payment/transfer like 'Credit Card Autopay' or 'Transfer to Checking') equals the sum of several other transactions (likely expenses) around the same date. This helps the user link payments to their expenses. Return the grouping as a finding, listing ALL involved transaction IDs (both the payment and the expenses) in 'affectedTransactionIds'. Suggest 'Link Group' in the title.";
     } else {
         promptInstruction = `Perform a general audit or answer this specific query: "${auditType}". Look for anomalies, misclassifications, or transfers marked as expenses.`;
     }

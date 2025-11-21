@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import type { Transaction, AuditFinding, TransactionType, Category } from '../types';
 import { auditTransactions } from '../services/geminiService';
-import { CloseIcon, RobotIcon, CheckCircleIcon, ExclamationTriangleIcon, SearchCircleIcon, WrenchIcon, DuplicateIcon } from './Icons';
+import { CloseIcon, RobotIcon, CheckCircleIcon, ExclamationTriangleIcon, SearchCircleIcon, WrenchIcon, DuplicateIcon, SparklesIcon } from './Icons';
 
 interface TransactionAuditorProps {
     isOpen: boolean;
@@ -42,12 +42,18 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
     const handleApplyFix = (finding: AuditFinding) => {
         const updates: Transaction[] = [];
         
+        // Handle Linking if suggested by "smart_match" type finding (implied by having >1 transaction)
+        // In a real implementation, the backend would return a specific action type, but we can infer here.
+        const isLinking = finding.title.includes("Smart Match") || finding.title.includes("Link");
+        const linkGroupId = isLinking ? crypto.randomUUID() : undefined;
+
         finding.affectedTransactionIds.forEach(txId => {
             const originalTx = transactions.find(t => t.id === txId);
             if (originalTx) {
                 const updatedTx = { ...originalTx };
                 if (finding.suggestedChanges.categoryId) updatedTx.categoryId = finding.suggestedChanges.categoryId;
                 if (finding.suggestedChanges.typeId) updatedTx.typeId = finding.suggestedChanges.typeId;
+                if (linkGroupId) updatedTx.linkGroupId = linkGroupId;
                 // Note: payeeName update requires finding/creating Payee ID which is complex, skipping for this simplified version
                 updates.push(updatedTx);
             }
@@ -96,7 +102,15 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                                 <p className="text-slate-500 max-w-md mx-auto">I can scan your recent transactions to find issues, hidden transfers, or answer specific questions.</p>
                             </div>
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <button onClick={() => handleScan('smart_match')} className="flex flex-col items-center p-6 bg-white border-2 border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group col-span-1 sm:col-span-2">
+                                    <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full mb-3 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                        <SparklesIcon className="w-6 h-6" />
+                                    </div>
+                                    <span className="font-semibold text-slate-700">Smart Match & Link</span>
+                                    <span className="text-xs text-slate-400 mt-1 text-center">Find payments that match a group of purchases (e.g. Credit Card Payment covering 5 items) and link them.</span>
+                                </button>
+
                                 <button onClick={() => handleScan('transfers')} className="flex flex-col items-center p-6 bg-white border-2 border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group">
                                     <div className="p-3 bg-blue-100 text-blue-600 rounded-full mb-3 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                                         <WrenchIcon className="w-6 h-6" />
@@ -111,14 +125,6 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                                     </div>
                                     <span className="font-semibold text-slate-700">Subscription Hunter</span>
                                     <span className="text-xs text-slate-400 mt-1 text-center">Find recurring charges hidden in 'General'.</span>
-                                </button>
-
-                                <button onClick={() => handleScan('mortgage_splits')} className="flex flex-col items-center p-6 bg-white border-2 border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-md transition-all group">
-                                    <div className="p-3 bg-purple-100 text-purple-600 rounded-full mb-3 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                                        <DuplicateIcon className="w-6 h-6" />
-                                    </div>
-                                    <span className="font-semibold text-slate-700">Mortgage & Split Matcher</span>
-                                    <span className="text-xs text-slate-400 mt-1 text-center">Find split payments (Principal + Interest) that duplicate a total withdrawal.</span>
                                 </button>
                             </div>
 
@@ -205,7 +211,7 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                                                                 className="px-4 py-1.5 text-sm bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 shadow-sm flex items-center gap-2"
                                                             >
                                                                 <WrenchIcon className="w-4 h-4" />
-                                                                <span>Apply Fix</span>
+                                                                <span>Apply Fix / Link</span>
                                                             </button>
                                                         </div>
                                                     </div>
