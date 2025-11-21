@@ -26,6 +26,22 @@ interface TransactionTableProps {
 type SortKey = keyof Transaction | 'payeeId' | 'categoryId' | 'accountId' | 'userId' | 'typeId' | '';
 type SortDirection = 'asc' | 'desc';
 
+const generateGroupColor = (str: string): string => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    // Specific tailored palette for link icons (avoiding too light colors)
+    const colors = [
+        'text-red-500', 'text-orange-500', 'text-amber-600', 'text-yellow-600', 
+        'text-lime-600', 'text-green-600', 'text-emerald-600', 'text-teal-600', 
+        'text-cyan-600', 'text-sky-600', 'text-blue-600', 'text-indigo-600', 
+        'text-violet-600', 'text-purple-600', 'text-fuchsia-600', 'text-pink-600', 
+        'text-rose-600'
+    ];
+    return colors[Math.abs(hash) % colors.length];
+};
+
 const TransactionTable: React.FC<TransactionTableProps> = ({ 
   transactions, 
   accounts, 
@@ -49,6 +65,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [editingCell, setEditingCell] = useState<{ id: string; field: keyof Transaction } | null>(null);
   const [lastClickedId, setLastClickedId] = useState<string | null>(null);
+  const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
 
   const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc])), [accounts]);
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
@@ -283,16 +300,29 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             const amountColor = isNegative ? 'text-red-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600');
             const amountPrefix = isNegative ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
             const isSelected = isSelectionMode && selectedTxIds.has(transaction.id);
-            const isLinked = transaction.linkGroupId || transaction.linkedTransactionId;
             
-            const stickyBgClass = isSelected 
-                ? 'bg-indigo-50' 
-                : isLinked
-                    ? 'bg-sky-50' 
-                    : 'bg-white group-hover:bg-slate-50';
+            const linkGroupId = transaction.linkGroupId || transaction.linkedTransactionId;
+            const isLinked = !!linkGroupId;
+            const isGroupHovered = hoveredGroupId && linkGroupId === hoveredGroupId;
+            
+            let stickyBgClass = 'bg-white group-hover:bg-slate-50';
+            if (isSelected) {
+                stickyBgClass = 'bg-indigo-50';
+            } else if (isGroupHovered) {
+                // Darker blue when specific group is hovered
+                stickyBgClass = 'bg-sky-100';
+            } else if (isLinked) {
+                // Light blue for linked items normally
+                stickyBgClass = 'bg-sky-50';
+            }
 
             return (
-            <tr key={transaction.id} className={`transition-colors group ${isSelected ? 'bg-indigo-50' : isLinked ? 'bg-sky-50' : 'hover:bg-slate-50'}`}>
+            <tr 
+                key={transaction.id} 
+                className={`transition-colors group ${stickyBgClass}`}
+                onMouseEnter={() => linkGroupId && setHoveredGroupId(linkGroupId)}
+                onMouseLeave={() => setHoveredGroupId(null)}
+            >
               {isSelectionMode && (
                   <td className={`px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent ${stickyBgClass}`}>
                       <input
@@ -325,10 +355,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         {isLinked && (
                             <button 
                                 title={`Linked Transaction Group`} 
-                                onClick={(e) => { e.stopPropagation(); transaction.linkGroupId && onManageLink && onManageLink(transaction.linkGroupId); }} 
+                                onClick={(e) => { e.stopPropagation(); linkGroupId && onManageLink && onManageLink(linkGroupId); }} 
                                 className="cursor-pointer hover:scale-110 transition-transform p-1 hover:bg-sky-100 rounded flex-shrink-0"
                             >
-                                <LinkIcon className="w-3 h-3 text-indigo-600" />
+                                {/* Color-coded link icon */}
+                                <LinkIcon className={`w-3 h-3 ${generateGroupColor(linkGroupId!)}`} />
                             </button>
                         )}
                         {transaction.notes && !isSelectionMode && <span title={transaction.notes} className="flex-shrink-0"><NotesIcon className="w-3 h-3 text-indigo-500" /></span>}
