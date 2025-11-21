@@ -25,6 +25,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
         setCategoryId: transaction?.categoryId || '',
         setPayeeId: transaction?.payeeId || '',
         setTransactionTypeId: transaction?.typeId || '',
+        setDescription: '',
     });
 
     const [formData, setFormData] = useState(getInitialState());
@@ -142,6 +143,10 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                                     <option value="">-- Don't Change --</option>
                                     {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
                                 </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">Set Description</label>
+                                <input type="text" name="setDescription" value={formData.setDescription || ''} onChange={handleChange} placeholder="e.g., Clean Name" />
                             </div>
                         </div>
                     </div>

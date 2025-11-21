@@ -36,6 +36,7 @@ const RuleEditor: React.FC<{
         setCategoryId: '',
         setPayeeId: '',
         setTransactionTypeId: '',
+        setDescription: '',
     });
 
     const [formData, setFormData] = useState(selectedRule || getInitialState());
@@ -144,6 +145,11 @@ const RuleEditor: React.FC<{
                             {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
                         </select>
                     </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700">Description</label>
+                        <input type="text" name="setDescription" value={formData.setDescription || ''} onChange={handleChange} placeholder="e.g., Clean Name" />
+                        <p className="text-xs text-slate-500 mt-1">Leave empty to keep original.</p>
+                    </div>
                 </div>
             </div>
             
@@ -217,7 +223,7 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                                                 <p className="text-xs text-slate-500 truncate">If description contains "{rule.descriptionContains}"</p>
                                                 <div className="text-xs text-slate-500 mt-1">
                                                     {rule.setCategoryId && <span className="inline-block bg-slate-200 rounded px-1.5 py-0.5 mr-1">Set Cat: {categoryMap.get(rule.setCategoryId)}</span>}
-                                                    {rule.setPayeeId && <span className="inline-block bg-slate-200 rounded px-1.5 py-0.5 mr-1">Set Payee: {payeeMap.get(rule.setPayeeId)}</span>}
+                                                    {rule.setDescription && <span className="inline-block bg-slate-200 rounded px-1.5 py-0.5 mr-1">Set Desc: {rule.setDescription}</span>}
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-2 flex-shrink-0 ml-2">

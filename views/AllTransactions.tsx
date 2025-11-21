@@ -1,12 +1,12 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User } from '../types';
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import RuleModal from '../components/RuleModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
-import { AddIcon, DuplicateIcon, CheckBadgeIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon } from '../components/Icons';
+import { AddIcon, DuplicateIcon, CheckBadgeIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -66,6 +66,21 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
   
+  // Column Visibility State
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['date', 'description', 'payee', 'category', 'account', 'user', 'type', 'amount', 'actions']));
+  const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
+  const columnMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+          if (columnMenuRef.current && !columnMenuRef.current.contains(event.target as Node)) {
+              setIsColumnMenuOpen(false);
+          }
+      };
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const sortedCategoryOptions = useMemo(() => {
     const sorted: { id: string, name: string }[] = [];
     const parents = categories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
@@ -250,6 +265,15 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       }
   };
 
+  const toggleColumn = (column: string) => {
+      setVisibleColumns(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(column)) newSet.delete(column);
+          else newSet.add(column);
+          return newSet;
+      });
+  };
+
   const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc.name])), [accounts]);
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
   const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
@@ -386,6 +410,18 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
     )
   }
 
+  const columnOptions = [
+      { id: 'date', label: 'Date' },
+      { id: 'description', label: 'Description' },
+      { id: 'payee', label: 'Payee' },
+      { id: 'category', label: 'Category' },
+      { id: 'account', label: 'Account' },
+      { id: 'user', label: 'User' },
+      { id: 'type', label: 'Type' },
+      { id: 'amount', label: 'Amount' },
+      { id: 'actions', label: 'Actions' }
+  ];
+
   return (
     <>
       <div className="space-y-6">
@@ -393,6 +429,25 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4">
                 <h2 className="text-2xl font-bold text-slate-700">All Transactions</h2>
                 <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-wrap">
+                    <div className="relative" ref={columnMenuRef}>
+                        <button onClick={() => setIsColumnMenuOpen(!isColumnMenuOpen)} className="flex items-center gap-2 px-4 py-2 text-slate-600 font-semibold bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200">
+                            <EyeIcon className="w-5 h-5"/>
+                            <span>Columns</span>
+                        </button>
+                        {isColumnMenuOpen && (
+                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-20">
+                                <div className="p-2">
+                                    <h4 className="font-semibold text-xs text-slate-500 uppercase mb-2 px-2">Toggle Columns</h4>
+                                    {columnOptions.map(col => (
+                                        <label key={col.id} className="flex items-center px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer">
+                                            <input type="checkbox" className="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4 mr-2" checked={visibleColumns.has(col.id)} onChange={() => toggleColumn(col.id)} />
+                                            <span className="text-sm text-slate-700">{col.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     <button onClick={() => setIsAuditorOpen(true)} disabled={!hasApiKey()} className="flex items-center gap-2 px-4 py-2 text-indigo-700 font-semibold bg-indigo-50 border border-indigo-200 rounded-lg shadow-sm hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed" title={!hasApiKey() ? "API Key missing" : "AI Audit"}>
                         <RobotIcon className="w-5 h-5"/>
                         <span>AI Audit</span>
@@ -475,6 +530,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             selectedTxIds={selectedTxIds}
             onToggleSelection={handleToggleSelection}
             onToggleSelectAll={handleToggleSelectAll}
+            visibleColumns={visibleColumns}
           />
         </div>
       </div>

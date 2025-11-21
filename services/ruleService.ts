@@ -1,3 +1,4 @@
+
 import type { RawTransaction, ReconciliationRule, Transaction } from '../types';
 
 export const applyRulesToTransactions = (
@@ -46,6 +47,13 @@ export const applyRulesToTransactions = (
         }
         if (rule.setTransactionTypeId) {
           modifiedTx.typeId = rule.setTransactionTypeId;
+        }
+        if (rule.setDescription) {
+            // Save original description if not already saved
+            if (!modifiedTx.originalDescription) {
+                modifiedTx.originalDescription = modifiedTx.description;
+            }
+            modifiedTx.description = rule.setDescription;
         }
         // First matching rule wins, so we break
         return modifiedTx;
@@ -99,6 +107,13 @@ export const findMatchingTransactions = (
       if (rule.setTransactionTypeId && updatedTx.typeId !== rule.setTransactionTypeId) {
         updatedTx.typeId = rule.setTransactionTypeId;
         changed = true;
+      }
+      if (rule.setDescription && updatedTx.description !== rule.setDescription) {
+          if (!updatedTx.originalDescription) {
+              updatedTx.originalDescription = updatedTx.description;
+          }
+          updatedTx.description = rule.setDescription;
+          changed = true;
       }
       
       if (changed) {

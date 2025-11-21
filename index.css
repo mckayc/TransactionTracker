@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -26,4 +27,24 @@ background-position: right 0.5rem center;
 background-repeat: no-repeat;
 background-size: 1.5em 1.5em;
 padding-right: 2.5rem;
+}
+
+/* Ensure scrollbars are always visible for horizontally scrolling elements on compatible browsers */
+.scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+
+/* Webkit Scrollbar Styling for consistent look and visibility */
+.overflow-x-auto::-webkit-scrollbar {
+  height: 8px;
+  background-color: #f1f5f9;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
 }

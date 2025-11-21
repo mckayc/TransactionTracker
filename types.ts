@@ -30,6 +30,7 @@ export interface Transaction {
   id: string;
   date: string;
   description: string;
+  originalDescription?: string;
   categoryId: string;
   amount: number;
   typeId: string;
@@ -177,6 +178,7 @@ export interface ReconciliationRule {
   setCategoryId?: string;
   setPayeeId?: string;
   setTransactionTypeId?: string;
+  setDescription?: string;
 }
 
 // Types for AI Audit
