@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleLogic, RuleItem, RuleCondition } from '../types';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon } from '../components/Icons';
 import RulePreviewModal from '../components/RulePreviewModal';
 import { generateUUID } from '../utils';
@@ -35,8 +35,7 @@ const RuleEditor: React.FC<{
 }> = ({ selectedRule, onSave, onCancel, accounts, transactionTypes, categories, payees, onSaveCategory, onSavePayee, onAddTransactionType }) => {
     
     const [name, setName] = useState('');
-    const [matchLogic, setMatchLogic] = useState<RuleLogic>('AND');
-    const [conditions, setConditions] = useState<RuleItem[]>([]);
+    const [conditions, setConditions] = useState<RuleCondition[]>([]);
     const [setCategoryId, setSetCategoryId] = useState('');
     const [setPayeeId, setSetPayeeId] = useState('');
     const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
@@ -45,16 +44,17 @@ const RuleEditor: React.FC<{
     useEffect(() => {
         if (selectedRule) {
             setName(selectedRule.name);
-            setMatchLogic(selectedRule.matchLogic || 'AND');
             if (selectedRule.conditions && selectedRule.conditions.length > 0) {
-                setConditions(selectedRule.conditions);
+                // Ensure we only use RuleCondition objects (filtering out any legacy nested groups)
+                const validConditions = selectedRule.conditions.filter(c => 'field' in c) as RuleCondition[];
+                setConditions(validConditions);
             } else {
                 // Convert legacy to new format for editing
                 const newConditions: RuleCondition[] = [];
-                if (selectedRule.descriptionContains) newConditions.push({ id: generateUUID(), field: 'description', operator: 'contains', value: selectedRule.descriptionContains });
-                if (selectedRule.accountId) newConditions.push({ id: generateUUID(), field: 'accountId', operator: 'equals', value: selectedRule.accountId });
-                if (selectedRule.amountEquals) newConditions.push({ id: generateUUID(), field: 'amount', operator: 'equals', value: selectedRule.amountEquals });
-                setConditions(newConditions.length > 0 ? newConditions : [{ id: generateUUID(), field: 'description', operator: 'contains', value: '' }]);
+                if (selectedRule.descriptionContains) newConditions.push({ id: generateUUID(), field: 'description', operator: 'contains', value: selectedRule.descriptionContains, nextLogic: 'AND' });
+                if (selectedRule.accountId) newConditions.push({ id: generateUUID(), field: 'accountId', operator: 'equals', value: selectedRule.accountId, nextLogic: 'AND' });
+                if (selectedRule.amountEquals) newConditions.push({ id: generateUUID(), field: 'amount', operator: 'equals', value: selectedRule.amountEquals, nextLogic: 'AND' });
+                setConditions(newConditions.length > 0 ? newConditions : [{ id: generateUUID(), field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
             }
             setSetCategoryId(selectedRule.setCategoryId || '');
             setSetPayeeId(selectedRule.setPayeeId || '');
@@ -62,8 +62,7 @@ const RuleEditor: React.FC<{
             setSetDescription(selectedRule.setDescription || '');
         } else {
             setName('');
-            setMatchLogic('AND');
-            setConditions([{ id: generateUUID(), field: 'description', operator: 'contains', value: '' }]);
+            setConditions([{ id: generateUUID(), field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
             setSetCategoryId('');
             setSetPayeeId('');
             setSetTransactionTypeId('');
@@ -133,7 +132,6 @@ const RuleEditor: React.FC<{
         onSave({
             id: selectedRule?.id || generateUUID(),
             name: name.trim(),
-            matchLogic,
             conditions,
             setCategoryId: setCategoryId || undefined,
             setPayeeId: setPayeeId || undefined,
@@ -151,19 +149,12 @@ const RuleEditor: React.FC<{
             </div>
             
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-slate-800">Conditions</h3>
-                    <div className="flex items-center gap-2 bg-white rounded-md border p-1">
-                        <button type="button" onClick={() => setMatchLogic('AND')} className={`px-3 py-1 text-xs font-bold rounded ${matchLogic === 'AND' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>Match ALL (AND)</button>
-                        <button type="button" onClick={() => setMatchLogic('OR')} className={`px-3 py-1 text-xs font-bold rounded ${matchLogic === 'OR' ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>Match ANY (OR)</button>
-                    </div>
-                </div>
-                
+                <h3 className="font-semibold text-slate-800 mb-3">If transactions match...</h3>
                 <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
             </div>
             
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <h3 className="font-semibold text-slate-800 mb-3">Actions (Set Values)</h3>
+                <h3 className="font-semibold text-slate-800 mb-3">Then apply these changes:</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Set Category</label>

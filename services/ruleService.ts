@@ -1,12 +1,15 @@
 
-import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, RuleItem, RuleGroup } from '../types';
+import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition): boolean => {
     let txValue: any;
     
+    // Defensive check for partial/legacy objects
+    if (!condition || !condition.field) return true;
+
     if (condition.field === 'description') {
-        txValue = tx.description.toLowerCase();
-        const condValue = String(condition.value).toLowerCase();
+        txValue = (tx.description || '').toLowerCase();
+        const condValue = String(condition.value || '').toLowerCase();
         switch (condition.operator) {
             case 'contains': return txValue.includes(condValue);
             case 'does_not_contain': return !txValue.includes(condValue);
@@ -36,29 +39,39 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
     return false;
 };
 
-const evaluateRuleItem = (tx: RawTransaction | Transaction, item: RuleItem): boolean => {
-    if ('type' in item && item.type === 'group') {
-        const group = item as RuleGroup;
-        if (group.conditions.length === 0) return true;
-        if (group.logic === 'AND') {
-            return group.conditions.every(child => evaluateRuleItem(tx, child));
-        } else {
-            return group.conditions.some(child => evaluateRuleItem(tx, child));
-        }
-    } else {
-        return evaluateCondition(tx, item as RuleCondition);
-    }
-};
-
 const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule): boolean => {
-    // 1. Check for new condition structure (supporting groups)
+    // 1. Check for modern condition structure (Linear Evaluation)
     if (rule.conditions && rule.conditions.length > 0) {
-        const logic = rule.matchLogic || 'AND';
-        if (logic === 'AND') {
-            return rule.conditions.every(c => evaluateRuleItem(tx, c));
-        } else { // OR
-            return rule.conditions.some(c => evaluateRuleItem(tx, c));
+        
+        // Start with the first condition
+        // Note: We filter out any recursive RuleGroups if they slipped in from old data
+        const validConditions = rule.conditions.filter(c => 'field' in c) as RuleCondition[];
+        
+        if (validConditions.length === 0) return true;
+
+        let result = evaluateCondition(tx, validConditions[0]);
+
+        // Iterate through the rest, applying the logic defined in the PREVIOUS condition
+        // Example: [Cond A, logic: OR], [Cond B, logic: AND], [Cond C]
+        // Loop 1: result = Eval(A). Next logic is OR.
+        // Loop 2: result = result OR Eval(B). Next logic is AND.
+        // Loop 3: result = result AND Eval(C).
+        
+        for (let i = 0; i < validConditions.length - 1; i++) {
+            const currentCond = validConditions[i];
+            const nextCond = validConditions[i + 1];
+            const logic = currentCond.nextLogic || 'AND'; // Default to AND if missing
+
+            const nextResult = evaluateCondition(tx, nextCond);
+
+            if (logic === 'AND') {
+                result = result && nextResult;
+            } else {
+                result = result || nextResult;
+            }
         }
+        
+        return result;
     }
 
     // 2. Fallback to legacy simple conditions

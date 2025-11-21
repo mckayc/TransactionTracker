@@ -175,16 +175,8 @@ export interface RuleCondition {
   field: 'description' | 'amount' | 'accountId';
   operator: RuleOperator;
   value: string | number;
+  nextLogic?: RuleLogic; // Connects this condition to the next one (e.g. Condition 1 [AND] Condition 2)
 }
-
-export interface RuleGroup {
-  id: string;
-  type: 'group';
-  logic: RuleLogic;
-  conditions: (RuleCondition | RuleGroup)[];
-}
-
-export type RuleItem = RuleCondition | RuleGroup;
 
 export interface ReconciliationRule {
   id: string;
@@ -196,8 +188,8 @@ export interface ReconciliationRule {
   amountEquals?: number;
 
   // New flexible conditions
-  matchLogic?: RuleLogic;
-  conditions?: RuleItem[];
+  matchLogic?: RuleLogic; // Deprecated in favor of linear logic in conditions
+  conditions?: RuleCondition[];
 
   // Actions
   setCategoryId?: string;
