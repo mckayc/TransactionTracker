@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Transaction, AuditFinding, TransactionType, Category } from '../types';
 import { auditTransactions } from '../services/geminiService';
-import { CloseIcon, RobotIcon, CheckCircleIcon, ExclamationTriangleIcon, SearchCircleIcon, WrenchIcon, DuplicateIcon, SparklesIcon } from './Icons';
+import { CloseIcon, RobotIcon, CheckCircleIcon, ExclamationTriangleIcon, SearchCircleIcon, WrenchIcon, DuplicateIcon, SparklesIcon, CalendarIcon } from './Icons';
 
 interface TransactionAuditorProps {
     isOpen: boolean;
@@ -13,23 +13,133 @@ interface TransactionAuditorProps {
     onApplyChanges: (updates: Transaction[]) => void;
 }
 
+const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+
+const SmartMatchCard: React.FC<{ 
+    finding: AuditFinding; 
+    transactions: Transaction[]; 
+    onApply: () => void; 
+    onIgnore: () => void; 
+    isDone: boolean 
+}> = ({ finding, transactions, onApply, onIgnore, isDone }) => {
+    
+    const relatedTxs = finding.affectedTransactionIds.map(id => transactions.find(t => t.id === id)).filter(Boolean) as Transaction[];
+    
+    // Logic: The "Payment" is usually the single largest transaction in the group.
+    const sortedTxs = [...relatedTxs].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+    
+    const paymentTx = sortedTxs[0];
+    const expenseTxs = sortedTxs.slice(1);
+    
+    if (!paymentTx) return null;
+
+    const paymentAmount = Math.abs(paymentTx.amount);
+    const expensesTotal = expenseTxs.reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+    const difference = Math.abs(paymentAmount - expensesTotal);
+    const isBalanced = difference < 0.05;
+
+    return (
+        <div className={`bg-white border rounded-xl overflow-hidden transition-opacity ${isDone ? 'opacity-50' : 'opacity-100'}`}>
+            <div className="p-4 border-b bg-gradient-to-r from-indigo-50 to-white flex justify-between items-start">
+                <div className="flex gap-3">
+                    <SparklesIcon className="w-5 h-5 text-indigo-600 flex-shrink-0 mt-1" />
+                    <div>
+                        <h4 className="font-bold text-slate-800">{finding.title}</h4>
+                        <p className="text-sm text-slate-600">{finding.reason}</p>
+                    </div>
+                </div>
+                {isDone && <span className="px-2 py-1 bg-green-100 text-green-800 text-xs font-bold rounded-full">Resolved</span>}
+            </div>
+            
+            {!isDone && (
+                <div className="p-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                            <p className="text-xs font-bold text-slate-500 uppercase mb-1">Proposed Payment (Transfer)</p>
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm text-slate-700 truncate pr-2">{paymentTx.description}</span>
+                                <span className="font-mono font-bold text-slate-800">{formatCurrency(paymentAmount)}</span>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-1">{paymentTx.date}</p>
+                        </div>
+                        
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
+                            <p className="text-xs font-bold text-slate-500 uppercase mb-1">Linked Expenses</p>
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm text-slate-700">{expenseTxs.length} transactions</span>
+                                <span className="font-mono font-bold text-slate-800">{formatCurrency(expensesTotal)}</span>
+                            </div>
+                            <div className="mt-2 space-y-1 max-h-20 overflow-y-auto">
+                                {expenseTxs.map(tx => (
+                                    <div key={tx.id} className="flex justify-between text-xs text-slate-500">
+                                        <span className="truncate pr-2">{tx.description}</span>
+                                        <span>{formatCurrency(tx.amount)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex justify-between items-center pt-2 border-t">
+                        <div className="flex items-center gap-2">
+                            {isBalanced ? (
+                                <span className="flex items-center gap-1 text-green-700 text-xs font-bold bg-green-50 px-2 py-1 rounded-full border border-green-100">
+                                    <CheckCircleIcon className="w-3 h-3" /> Balanced
+                                </span>
+                            ) : (
+                                <span className="flex items-center gap-1 text-amber-700 text-xs font-bold bg-amber-50 px-2 py-1 rounded-full border border-amber-100">
+                                    <ExclamationTriangleIcon className="w-3 h-3" /> Difference: {formatCurrency(difference)}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex gap-3">
+                            <button onClick={onIgnore} className="px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Ignore</button>
+                            <button 
+                                onClick={onApply}
+                                className="px-4 py-1.5 text-sm bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 shadow-sm flex items-center gap-2"
+                            >
+                                <WrenchIcon className="w-4 h-4" />
+                                <span>Link as Group</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose, transactions, transactionTypes, categories, onApplyChanges }) => {
     const [mode, setMode] = useState<'select' | 'scanning' | 'review'>('select');
     const [findings, setFindings] = useState<AuditFinding[]>([]);
     const [customQuery, setCustomQuery] = useState('');
     const [completedFindings, setCompletedFindings] = useState<Set<string>>(new Set());
+    
+    // Date Range State (Default to last 30 days)
+    const [startDate, setStartDate] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() - 30);
+        return d.toISOString().split('T')[0];
+    });
+    const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
 
     if (!isOpen) return null;
 
     const handleScan = async (auditType: string) => {
         setMode('scanning');
         try {
-            // To avoid token limits, we'll send the last 150 transactions.
-            // Ideally this would be user configurable or use a sliding window.
-            const sortedTransactions = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            const subset = sortedTransactions.slice(0, 150); 
+            // Filter by date range
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            // Adjust end date to include the full day
+            end.setHours(23, 59, 59, 999);
 
-            const results = await auditTransactions(subset, transactionTypes, categories, auditType);
+            const filteredTransactions = transactions.filter(tx => {
+                const txDate = new Date(tx.date);
+                return txDate >= start && txDate <= end;
+            });
+
+            const results = await auditTransactions(filteredTransactions, transactionTypes, categories, auditType);
             setFindings(results);
             setMode('review');
         } catch (error) {
@@ -42,22 +152,47 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
     const handleApplyFix = (finding: AuditFinding) => {
         const updates: Transaction[] = [];
         
-        // Handle Linking if suggested by "smart_match" type finding (implied by having >1 transaction)
-        // In a real implementation, the backend would return a specific action type, but we can infer here.
-        const isLinking = finding.title.includes("Smart Match") || finding.title.includes("Link");
-        const linkGroupId = isLinking ? crypto.randomUUID() : undefined;
+        const isSmartMatch = finding.title.toLowerCase().includes("smart match") || finding.title.toLowerCase().includes("link");
+        
+        if (isSmartMatch) {
+            const relatedTxs = finding.affectedTransactionIds.map(id => transactions.find(t => t.id === id)).filter(Boolean) as Transaction[];
+            // Identify payment vs expenses
+            const sortedTxs = [...relatedTxs].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
+            const paymentTx = sortedTxs[0];
+            const expenseTxs = sortedTxs.slice(1);
+            const linkGroupId = crypto.randomUUID();
 
-        finding.affectedTransactionIds.forEach(txId => {
-            const originalTx = transactions.find(t => t.id === txId);
-            if (originalTx) {
-                const updatedTx = { ...originalTx };
-                if (finding.suggestedChanges.categoryId) updatedTx.categoryId = finding.suggestedChanges.categoryId;
-                if (finding.suggestedChanges.typeId) updatedTx.typeId = finding.suggestedChanges.typeId;
-                if (linkGroupId) updatedTx.linkGroupId = linkGroupId;
-                // Note: payeeName update requires finding/creating Payee ID which is complex, skipping for this simplified version
-                updates.push(updatedTx);
+            // Find specific types
+            const transferType = transactionTypes.find(t => t.balanceEffect === 'transfer');
+            const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense');
+
+            if (paymentTx) {
+                updates.push({
+                    ...paymentTx,
+                    typeId: transferType ? transferType.id : paymentTx.typeId,
+                    linkGroupId
+                });
             }
-        });
+            expenseTxs.forEach(tx => {
+                updates.push({
+                    ...tx,
+                    typeId: expenseType ? expenseType.id : tx.typeId,
+                    linkGroupId
+                });
+            });
+
+        } else {
+            // Standard fix logic
+            finding.affectedTransactionIds.forEach(txId => {
+                const originalTx = transactions.find(t => t.id === txId);
+                if (originalTx) {
+                    const updatedTx = { ...originalTx };
+                    if (finding.suggestedChanges.categoryId) updatedTx.categoryId = finding.suggestedChanges.categoryId;
+                    if (finding.suggestedChanges.typeId) updatedTx.typeId = finding.suggestedChanges.typeId;
+                    updates.push(updatedTx);
+                }
+            });
+        }
 
         onApplyChanges(updates);
         setCompletedFindings(prev => new Set(prev).add(finding.id));
@@ -99,7 +234,19 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                         <div className="space-y-8">
                             <div className="text-center space-y-2">
                                 <h3 className="text-lg font-semibold text-slate-800">What should I look for?</h3>
-                                <p className="text-slate-500 max-w-md mx-auto">I can scan your recent transactions to find issues, hidden transfers, or answer specific questions.</p>
+                                <p className="text-slate-500 max-w-md mx-auto">I can scan your recent transactions to find issues, hidden transfers, or link related payments.</p>
+                            </div>
+
+                            <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center gap-4 justify-center">
+                                <div className="flex items-center gap-2 text-slate-600 font-medium">
+                                    <CalendarIcon className="w-5 h-5 text-indigo-600" />
+                                    <span>Scan Range:</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2 border rounded-lg text-sm" />
+                                    <span className="text-slate-400">to</span>
+                                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2 border rounded-lg text-sm" />
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -175,6 +322,21 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                                 <div className="space-y-4">
                                     {findings.map(finding => {
                                         const isDone = completedFindings.has(finding.id);
+                                        const isSmartMatch = finding.title.toLowerCase().includes("smart match") || finding.title.toLowerCase().includes("link");
+
+                                        if (isSmartMatch) {
+                                            return (
+                                                <SmartMatchCard 
+                                                    key={finding.id} 
+                                                    finding={finding} 
+                                                    transactions={transactions} 
+                                                    onApply={() => handleApplyFix(finding)} 
+                                                    onIgnore={() => handleIgnore(finding.id)}
+                                                    isDone={isDone}
+                                                />
+                                            );
+                                        }
+
                                         return (
                                             <div key={finding.id} className={`bg-white border rounded-xl overflow-hidden transition-opacity ${isDone ? 'opacity-50' : 'opacity-100'}`}>
                                                 <div className="p-4 border-b bg-slate-50 flex justify-between items-start">
@@ -211,7 +373,7 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                                                                 className="px-4 py-1.5 text-sm bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 shadow-sm flex items-center gap-2"
                                                             >
                                                                 <WrenchIcon className="w-4 h-4" />
-                                                                <span>Apply Fix / Link</span>
+                                                                <span>Apply Fix</span>
                                                             </button>
                                                         </div>
                                                     </div>

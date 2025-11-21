@@ -255,7 +255,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             const amountColor = isNegative ? 'text-red-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600');
             const amountPrefix = isNegative ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
             const isSelected = isSelectionMode && selectedTxIds.has(transaction.id);
-            // Check for new group link or legacy link
             const isLinked = transaction.linkGroupId || transaction.linkedTransactionId;
             
             const stickyBgClass = isSelected 
@@ -293,25 +292,36 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {visibleColumns.has('description') && (
                   <td className="px-3 py-2 text-sm font-medium text-slate-900 w-64 min-w-[200px] max-w-xs relative">
                     <div className="flex items-center gap-2 w-full">
-                    {isLinked && (
-                        <button 
-                            title={`Linked Transaction Group`} 
-                            onClick={(e) => { e.stopPropagation(); transaction.linkGroupId && onManageLink && onManageLink(transaction.linkGroupId); }} 
-                            className="cursor-pointer hover:scale-110 transition-transform p-1 hover:bg-sky-100 rounded"
-                        >
-                            <LinkIcon className="w-3 h-3 text-indigo-600 flex-shrink-0" />
-                        </button>
-                    )}
-                    {transaction.notes && !isSelectionMode && <span title={transaction.notes}><NotesIcon className="w-3 h-3 text-indigo-500 flex-shrink-0" /></span>}
+                        {/* Icons */}
+                        {isLinked && (
+                            <button 
+                                title={`Linked Transaction Group`} 
+                                onClick={(e) => { e.stopPropagation(); transaction.linkGroupId && onManageLink && onManageLink(transaction.linkGroupId); }} 
+                                className="cursor-pointer hover:scale-110 transition-transform p-1 hover:bg-sky-100 rounded flex-shrink-0"
+                            >
+                                <LinkIcon className="w-3 h-3 text-indigo-600" />
+                            </button>
+                        )}
+                        {transaction.notes && !isSelectionMode && <span title={transaction.notes} className="flex-shrink-0"><NotesIcon className="w-3 h-3 text-indigo-500" /></span>}
+                        
+                        {/* Input or Text */}
                         {editingCell?.id === transaction.id && editingCell.field === 'description' && !isSelectionMode ? (
                             <input type="text" defaultValue={transaction.description} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'description')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'description')} className={commonInputClass} />
                         ) : (
-                            <div className="flex items-center gap-1.5 w-full overflow-hidden relative">
-                                <span onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'description' })} className="truncate block w-full cursor-pointer hover:text-indigo-600" title={transaction.description}>{transaction.description}</span>
+                            <div className="flex items-center gap-1.5 w-full min-w-0">
+                                <span onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'description' })} className="truncate block cursor-pointer hover:text-indigo-600" title={transaction.description}>{transaction.description}</span>
+                                
                                 {transaction.originalDescription && transaction.originalDescription !== transaction.description && (
                                     <div className="group/tooltip relative flex items-center flex-shrink-0">
-                                        <InfoIcon className="w-3 h-3 text-slate-400 cursor-help" />
-                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden w-max max-w-[250px] p-2 bg-slate-800 text-white text-xs rounded shadow-lg group-hover/tooltip:block z-[60] whitespace-normal text-center">
+                                        <button 
+                                            className="focus:outline-none" 
+                                            title={`Original: ${transaction.originalDescription}`}
+                                            onClick={(e) => { e.stopPropagation(); alert(`Original Description: ${transaction.originalDescription}`); }}
+                                        >
+                                            <InfoIcon className="w-3 h-3 text-slate-400 cursor-help hover:text-indigo-500" />
+                                        </button>
+                                        {/* Custom Tooltip */}
+                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden w-max max-w-[250px] p-2 bg-slate-800 text-white text-xs rounded shadow-lg group-hover/tooltip:block z-50 whitespace-normal text-center pointer-events-none">
                                             Original: {transaction.originalDescription}
                                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
                                         </div>
