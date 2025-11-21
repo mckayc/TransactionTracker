@@ -37,9 +37,12 @@ interface AllTransactionsProps {
   onDeleteTransaction: (transactionId: string) => void;
   onDeleteTransactions: (transactionIds: string[]) => void;
   onSaveRule: (rule: ReconciliationRule) => void;
+  onSaveCategory: (category: Category) => void;
+  onSavePayee: (payee: Payee) => void;
+  onAddTransactionType: (type: TransactionType) => void;
 }
 
-const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule }) => {
+const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onAddTransactionType }) => {
   // State for immediate input values
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -571,6 +574,9 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             categories={categories}
             payees={payees}
             transaction={transactionForRule}
+            onSaveCategory={onSaveCategory}
+            onSavePayee={onSavePayee}
+            onAddTransactionType={onAddTransactionType}
         />
       )}
       {isAuditorOpen && (

@@ -63,3 +63,47 @@ padding-right: 2.5rem;
 .overflow-auto::-webkit-scrollbar-thumb:hover {
   background-color: #94a3b8;
 }
+
+/* Sticky Table Column Utilities */
+.sticky-col-left {
+  position: sticky;
+  left: 0;
+  z-index: 20;
+  background-color: inherit;
+}
+.sticky-col-left-2 {
+  position: sticky;
+  left: 120px; /* Approximate width of Date column */
+  z-index: 20;
+  background-color: inherit;
+}
+.sticky-col-right {
+  position: sticky;
+  right: 0;
+  z-index: 20;
+  background-color: inherit;
+}
+
+/* Add a shadow to indicate scrolling */
+.sticky-col-left::after, .sticky-col-left-2::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 4px;
+  transform: translateX(100%);
+  background: linear-gradient(to right, rgba(0,0,0,0.05), transparent);
+  pointer-events: none;
+}
+.sticky-col-right::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
+  transform: translateX(-100%);
+  background: linear-gradient(to left, rgba(0,0,0,0.05), transparent);
+  pointer-events: none;
+}

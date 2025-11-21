@@ -15,6 +15,9 @@ interface RulesPageProps {
     payees: Payee[];
     transactions: Transaction[];
     onUpdateTransactions: (transactions: Transaction[]) => void;
+    onSaveCategory: (category: Category) => void;
+    onSavePayee: (payee: Payee) => void;
+    onAddTransactionType: (type: TransactionType) => void;
 }
 
 const RuleEditor: React.FC<{
@@ -25,7 +28,10 @@ const RuleEditor: React.FC<{
     transactionTypes: TransactionType[];
     categories: Category[];
     payees: Payee[];
-}> = ({ selectedRule, onSave, onCancel, accounts, transactionTypes, categories, payees }) => {
+    onSaveCategory: (category: Category) => void;
+    onSavePayee: (payee: Payee) => void;
+    onAddTransactionType: (type: TransactionType) => void;
+}> = ({ selectedRule, onSave, onCancel, accounts, transactionTypes, categories, payees, onSaveCategory, onSavePayee, onAddTransactionType }) => {
     
     const getInitialState = () => ({
         id: '',
@@ -79,6 +85,33 @@ const RuleEditor: React.FC<{
         }));
     };
 
+    const handleCreateCategory = () => {
+        const name = prompt("Enter new Category name:");
+        if (name && name.trim()) {
+            const newCat = { id: generateUUID(), name: name.trim() };
+            onSaveCategory(newCat);
+            setFormData(prev => ({ ...prev, setCategoryId: newCat.id }));
+        }
+    };
+
+    const handleCreatePayee = () => {
+        const name = prompt("Enter new Payee name:");
+        if (name && name.trim()) {
+            const newPayee = { id: generateUUID(), name: name.trim() };
+            onSavePayee(newPayee);
+            setFormData(prev => ({ ...prev, setPayeeId: newPayee.id }));
+        }
+    };
+
+    const handleCreateType = () => {
+        const name = prompt("Enter new Transaction Type name:");
+        if (name && name.trim()) {
+            const newType = { id: generateUUID(), name: name.trim(), balanceEffect: 'expense' as const, isDefault: false };
+            onAddTransactionType(newType);
+            setFormData(prev => ({ ...prev, setTransactionTypeId: newType.id }));
+        }
+    };
+
     const handleSave = () => {
         if (!formData.name.trim() || !formData.descriptionContains.trim()) {
             alert('Rule Name and Description Contains fields are required.');
@@ -126,24 +159,33 @@ const RuleEditor: React.FC<{
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-700">Category</label>
-                        <select name="setCategoryId" value={formData.setCategoryId} onChange={handleChange}>
-                            <option value="">-- Don't Change --</option>
-                            {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                        </select>
+                        <div className="flex gap-1">
+                            <select name="setCategoryId" value={formData.setCategoryId} onChange={handleChange} className="flex-grow">
+                                <option value="">-- Don't Change --</option>
+                                {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                            </select>
+                            <button type="button" onClick={handleCreateCategory} className="px-2 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200" title="Add Category">+</button>
+                        </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700">Payee</label>
-                        <select name="setPayeeId" value={formData.setPayeeId} onChange={handleChange}>
-                            <option value="">-- Don't Change --</option>
-                            {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
+                        <div className="flex gap-1">
+                            <select name="setPayeeId" value={formData.setPayeeId} onChange={handleChange} className="flex-grow">
+                                <option value="">-- Don't Change --</option>
+                                {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                            <button type="button" onClick={handleCreatePayee} className="px-2 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200" title="Add Payee">+</button>
+                        </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700">Transaction Type</label>
-                        <select name="setTransactionTypeId" value={formData.setTransactionTypeId} onChange={handleChange}>
-                            <option value="">-- Don't Change --</option>
-                            {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
-                        </select>
+                        <div className="flex gap-1">
+                            <select name="setTransactionTypeId" value={formData.setTransactionTypeId} onChange={handleChange} className="flex-grow">
+                                <option value="">-- Don't Change --</option>
+                                {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+                            </select>
+                            <button type="button" onClick={handleCreateType} className="px-2 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200" title="Add Type">+</button>
+                        </div>
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700">Description</label>
@@ -161,7 +203,7 @@ const RuleEditor: React.FC<{
     );
 };
 
-const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, payees, transactions, onUpdateTransactions }) => {
+const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, payees, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onAddTransactionType }) => {
     const [selectedRule, setSelectedRule] = useState<ReconciliationRule | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [ruleToRun, setRuleToRun] = useState<ReconciliationRule | null>(null);
@@ -244,7 +286,18 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
 
                     <div className="lg:col-span-2">
                         {(selectedRule || isCreating) ? (
-                            <RuleEditor selectedRule={selectedRule} onSave={handleSave} onCancel={handleCancel} accounts={accounts} transactionTypes={transactionTypes} categories={categories} payees={payees} />
+                            <RuleEditor 
+                                selectedRule={selectedRule} 
+                                onSave={handleSave} 
+                                onCancel={handleCancel} 
+                                accounts={accounts} 
+                                transactionTypes={transactionTypes} 
+                                categories={categories} 
+                                payees={payees} 
+                                onSaveCategory={onSaveCategory}
+                                onSavePayee={onSavePayee}
+                                onAddTransactionType={onAddTransactionType}
+                            />
                         ) : (
                             <div className="text-center bg-white p-12 rounded-xl shadow-sm border border-slate-200">
                                 <h3 className="text-lg font-semibold text-slate-600">Select a rule to view or edit, or create a new one.</h3>
