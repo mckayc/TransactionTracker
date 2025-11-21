@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, Payee, Category, User } from '../types';
-import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon } from './Icons';
+import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronDownIcon } from './Icons';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -25,6 +25,22 @@ interface TransactionTableProps {
 
 type SortKey = keyof Transaction | 'payeeId' | 'categoryId' | 'accountId' | 'userId' | 'typeId' | '';
 type SortDirection = 'asc' | 'desc';
+
+// Group Item interface for rendering logic
+interface GroupItem {
+    type: 'group';
+    id: string; // The linkGroupId
+    primaryTx: Transaction;
+    children: Transaction[];
+    totalAmount: number;
+}
+
+interface SingleItem {
+    type: 'single';
+    tx: Transaction;
+}
+
+type DisplayItem = GroupItem | SingleItem;
 
 const generateGroupColor = (str: string): string => {
     let hash = 0;
@@ -65,7 +81,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [editingCell, setEditingCell] = useState<{ id: string; field: keyof Transaction } | null>(null);
   const [lastClickedId, setLastClickedId] = useState<string | null>(null);
-  const [hoveredGroupId, setHoveredGroupId] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc])), [accounts]);
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
@@ -99,6 +115,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     return sorted;
   }, [categories]);
 
+  // 1. First, sort the flat list of transactions
   const sortedTransactions = useMemo(() => {
     if (!sortKey) return transactions;
     
@@ -106,7 +123,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       let aValue: any = a[sortKey as keyof Transaction];
       let bValue: any = b[sortKey as keyof Transaction];
 
-      // Handle resolved values for IDs
       if (sortKey === 'payeeId') {
           aValue = payeeMap.get(a.payeeId || '')?.name || '';
           bValue = payeeMap.get(b.payeeId || '')?.name || '';
@@ -145,6 +161,43 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
     return sortDirection === 'asc' ? sorted.reverse() : sorted;
   }, [transactions, sortKey, sortDirection, payeeMap, categoryMap, accountMap, userMap, transactionTypeMap]);
+
+  // 2. Then group them for display
+  const displayItems = useMemo(() => {
+      const items: DisplayItem[] = [];
+      const processedGroupIds = new Set<string>();
+
+      for (const tx of sortedTransactions) {
+          const groupId = tx.linkGroupId; // Ignoring legacy linkedTransactionId for grouping to simplify logic, only using new system
+          
+          if (groupId) {
+              if (processedGroupIds.has(groupId)) continue; // Already processed this group
+
+              // Find all siblings
+              const children = transactions.filter(t => t.linkGroupId === groupId);
+              
+              // Heuristic: Find the "Primary" transaction (usually the Transfer source/largest amount)
+              // If all are equal, pick the first one in the sorted list.
+              const primaryTx = children.reduce((prev, current) => (Math.abs(current.amount) > Math.abs(prev.amount) ? current : prev), children[0]);
+              
+              // Calculate total (though usually handled by primary in UI, maybe sum of expenses?)
+              // Per user request: "Show transfer... then show another transaction that make up all the others"
+              // We will use the primary as the "Header" visual.
+              
+              items.push({
+                  type: 'group',
+                  id: groupId,
+                  primaryTx,
+                  children: children.filter(c => c.id !== primaryTx.id), // Children to show when expanded (excluding primary which is header)
+                  totalAmount: primaryTx.amount 
+              });
+              processedGroupIds.add(groupId);
+          } else {
+              items.push({ type: 'single', tx });
+          }
+      }
+      return items;
+  }, [sortedTransactions, transactions]);
   
   const handleUpdate = (transaction: Transaction, field: keyof Transaction, value: any) => {
     let updatedValue = value;
@@ -187,11 +240,16 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const handleSelectionClick = (e: React.MouseEvent<HTMLInputElement>, id: string) => {
       e.stopPropagation();
       
-      // Determine intended state: if currently checked, we are unchecking.
-      // Logic: The user clicked the checkbox to toggle it.
       const willSelect = !selectedTxIds.has(id);
 
+      // Logic: if this is a group header row, we might want to select all children?
+      // Current logic assumes flat selection ID passing. 
+      // Let's stick to single ID selection for simplicity in this handler, 
+      // but the UI might render checkbox for Group Header that selects all.
+
       if (e.shiftKey && lastClickedId && onBulkSelection) {
+          // Bulk selection logic is tricky with groups. 
+          // We will fallback to the flat sortedTransactions list for range calculation to keep it predictable.
           const start = sortedTransactions.findIndex(t => t.id === lastClickedId);
           const end = sortedTransactions.findIndex(t => t.id === id);
 
@@ -207,6 +265,26 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
       onToggleSelection(id);
       setLastClickedId(id);
+  };
+
+  const handleGroupSelection = (e: React.MouseEvent<HTMLInputElement>, group: GroupItem) => {
+      e.stopPropagation();
+      if (!onBulkSelection) return;
+      
+      const allIds = [group.primaryTx.id, ...group.children.map(c => c.id)];
+      // Check if all are currently selected
+      const allSelected = allIds.every(id => selectedTxIds.has(id));
+      
+      onBulkSelection(allIds, !allSelected); // Toggle all
+  };
+
+  const toggleGroup = (groupId: string) => {
+      setExpandedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupId)) newSet.delete(groupId);
+          else newSet.add(groupId);
+          return newSet;
+      });
   };
 
   const getSortIndicator = (key: SortKey) => {
@@ -252,87 +330,46 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const commonInputClass = "w-full p-1 text-xs rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none shadow-sm";
   const cellClass = (isEditable = false) => `px-3 py-2 whitespace-nowrap text-sm text-slate-600 ${isEditable ? 'cursor-pointer hover:text-indigo-600 hover:bg-slate-50' : ''}`;
 
-  return (
-    <div className="overflow-auto h-full w-full">
-      <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
-        <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
-          <tr>
-            {isSelectionMode && (
-              <th scope="col" className="w-10 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-40 border-b border-slate-200">
-                  <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                      checked={transactions.length > 0 && selectedTxIds.size === transactions.length}
-                      onChange={onToggleSelectAll}
-                      aria-label="Select all transactions"
-                  />
-              </th>
-            )}
-            {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32 z-40')}
-            {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px] max-w-xs')}
-            {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-48')}
-            {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}
-            {visibleColumns.has('account') && renderHeader('Account', 'accountId', 'w-40')}
-            {visibleColumns.has('location') && renderHeader('Location', 'location', 'w-32')}
-            {visibleColumns.has('user') && renderHeader('User', 'userId', 'w-32')}
-            {visibleColumns.has('type') && renderHeader('Type', 'typeId', 'w-32')}
-            {visibleColumns.has('amount') && (
-                <th scope="col" className="w-32 px-3 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-30 border-b border-slate-200">
-                <button onClick={() => requestSort('amount')} className="group flex items-center gap-1 float-right focus:outline-none hover:text-slate-700">
-                    Amount
-                    <span className="text-indigo-600">{getSortIndicator('amount')}</span>
-                </button>
-                </th>
-            )}
-            {visibleColumns.has('actions') && (
-                <th scope="col" className="w-20 px-3 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky-col-right top-0 z-40 border-b border-slate-200">
-                    Action
-                </th>
-            )}
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-slate-200">
-          {sortedTransactions.map((transaction) => {
-            const type = transactionTypeMap.get(transaction.typeId);
-            const category = categoryMap.get(transaction.categoryId);
-            const categoryName = category?.name || 'Uncategorized';
-            const isNegative = type?.balanceEffect === 'expense';
-            const amountColor = isNegative ? 'text-red-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600');
-            const amountPrefix = isNegative ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
-            const isSelected = isSelectionMode && selectedTxIds.has(transaction.id);
-            
-            const linkGroupId = transaction.linkGroupId || transaction.linkedTransactionId;
-            const isLinked = !!linkGroupId;
-            const isGroupHovered = hoveredGroupId && linkGroupId === hoveredGroupId;
-            
-            let stickyBgClass = 'bg-white group-hover:bg-slate-50';
-            if (isSelected) {
-                stickyBgClass = 'bg-indigo-50';
-            } else if (isGroupHovered) {
-                // Darker blue when specific group is hovered
-                stickyBgClass = 'bg-sky-100';
-            } else if (isLinked) {
-                // Light blue for linked items normally
-                stickyBgClass = 'bg-sky-50';
-            }
+  // Helper to render a single transaction row
+  const renderRow = (transaction: Transaction, isChild: boolean = false, groupData?: GroupItem) => {
+        const type = transactionTypeMap.get(transaction.typeId);
+        const category = categoryMap.get(transaction.categoryId);
+        const categoryName = category?.name || 'Uncategorized';
+        const isNegative = type?.balanceEffect === 'expense';
+        const amountColor = isNegative ? 'text-red-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600');
+        const amountPrefix = isNegative ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
+        const isSelected = isSelectionMode && selectedTxIds.has(transaction.id);
+        
+        // For single items (not part of group logic)
+        const linkGroupId = transaction.linkGroupId || transaction.linkedTransactionId;
+        const isLinkedLegacy = !!linkGroupId && !groupData; // Should only happen if group logic failed or mixed data
 
-            return (
+        let stickyBgClass = 'bg-white group-hover:bg-slate-50';
+        if (isSelected) {
+            stickyBgClass = 'bg-indigo-50';
+        } else if (isChild) {
+            stickyBgClass = 'bg-slate-50/50'; // Slightly different for children
+        } else if (isLinkedLegacy) {
+            stickyBgClass = 'bg-sky-50';
+        }
+
+        return (
             <tr 
                 key={transaction.id} 
                 className={`transition-colors group ${stickyBgClass}`}
-                onMouseEnter={() => linkGroupId && setHoveredGroupId(linkGroupId)}
-                onMouseLeave={() => setHoveredGroupId(null)}
             >
               {isSelectionMode && (
                   <td className={`px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent ${stickyBgClass}`}>
-                      <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                          checked={isSelected}
-                          onClick={(e) => handleSelectionClick(e, transaction.id)}
-                          onChange={() => {}} // Logic handled in onClick to support modifiers better
-                          aria-label={`Select transaction ${transaction.description}`}
-                      />
+                      <div className={isChild ? "pl-4 border-l-2 border-slate-300" : ""}>
+                        <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            checked={isSelected}
+                            onClick={(e) => handleSelectionClick(e, transaction.id)}
+                            onChange={() => {}}
+                            aria-label={`Select transaction ${transaction.description}`}
+                        />
+                      </div>
                   </td>
               )}
               
@@ -342,7 +379,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     {editingCell?.id === transaction.id && editingCell.field === 'date' && !isSelectionMode ? (
                         <input type="date" defaultValue={transaction.date} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'date')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'date')} className={commonInputClass} />
                     ) : (
-                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'date' })}>{transaction.date}</div>
+                        <div onClick={() => !isSelectionMode && setEditingCell({ id: transaction.id, field: 'date' })} className={isChild ? "pl-4" : ""}>{transaction.date}</div>
                     )}
                   </td>
               )}
@@ -350,15 +387,14 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {/* Description */}
               {visibleColumns.has('description') && (
                   <td className="px-3 py-2 text-sm font-medium text-slate-900 w-64 min-w-[200px] max-w-xs relative">
-                    <div className="flex items-center gap-2 w-full">
+                    <div className={`flex items-center gap-2 w-full ${isChild ? 'pl-4' : ''}`}>
                         {/* Icons */}
-                        {isLinked && (
+                        {isLinkedLegacy && (
                             <button 
                                 title={`Linked Transaction Group`} 
                                 onClick={(e) => { e.stopPropagation(); linkGroupId && onManageLink && onManageLink(linkGroupId); }} 
                                 className="cursor-pointer hover:scale-110 transition-transform p-1 hover:bg-sky-100 rounded flex-shrink-0"
                             >
-                                {/* Color-coded link icon */}
                                 <LinkIcon className={`w-3 h-3 ${generateGroupColor(linkGroupId!)}`} />
                             </button>
                         )}
@@ -504,7 +540,145 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   </td>
               )}
             </tr>
-          )})}
+        );
+  };
+
+  // Helper to render a Group Header row
+  const renderGroupHeader = (group: GroupItem) => {
+      const isExpanded = expandedGroups.has(group.id);
+      const allChildIds = [group.primaryTx.id, ...group.children.map(c => c.id)];
+      const isFullySelected = isSelectionMode && allChildIds.every(id => selectedTxIds.has(id));
+      
+      const primaryTx = group.primaryTx;
+      const type = transactionTypeMap.get(primaryTx.typeId);
+      const isNegative = type?.balanceEffect === 'expense';
+      const amountColor = isNegative ? 'text-red-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600');
+      const amountPrefix = isNegative ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
+
+      return (
+          <tr 
+            key={group.id} 
+            className={`bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer border-b border-slate-200 group`}
+            onClick={() => toggleGroup(group.id)}
+          >
+              {isSelectionMode && (
+                  <td className="px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent bg-slate-100">
+                      <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          checked={isFullySelected}
+                          onClick={(e) => handleGroupSelection(e, group)}
+                          onChange={() => {}}
+                      />
+                  </td>
+              )}
+              
+              {visibleColumns.has('date') && (
+                  <td className="sticky-col-left px-3 py-2 whitespace-nowrap text-sm text-slate-600 bg-slate-100 z-20">
+                      <div className="flex items-center gap-1">
+                        {isExpanded ? <ChevronDownIcon className="w-4 h-4 text-indigo-500" /> : <ChevronRightIcon className="w-4 h-4 text-slate-400" />}
+                        {primaryTx.date}
+                      </div>
+                  </td>
+              )}
+
+              {visibleColumns.has('description') && (
+                  <td className="px-3 py-2 text-sm font-semibold text-slate-800">
+                      <div className="flex items-center gap-2">
+                          <LinkIcon className={`w-3 h-3 ${generateGroupColor(group.id)}`} />
+                          <span className="truncate">{primaryTx.description} (and {group.children.length} others)</span>
+                      </div>
+                  </td>
+              )}
+
+              {visibleColumns.has('payee') && <td className="px-3 py-2 text-sm text-slate-500 italic">Multiple</td>}
+              {visibleColumns.has('category') && <td className="px-3 py-2 text-sm text-slate-500 italic">Split / Multiple</td>}
+              {visibleColumns.has('account') && <td className="px-3 py-2 text-sm text-slate-500">{accountMap.get(primaryTx.accountId || '')?.name}</td>}
+              {visibleColumns.has('location') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
+              {visibleColumns.has('user') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
+              
+              {visibleColumns.has('type') && (
+                  <td className="px-3 py-2 text-sm text-slate-600">{type?.name || 'Mix'}</td>
+              )}
+
+              {visibleColumns.has('amount') && (
+                  <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-bold ${amountColor}`}>
+                      {amountPrefix}{formatCurrency(Math.abs(primaryTx.amount))}
+                  </td>
+              )}
+
+              {visibleColumns.has('actions') && (
+                  <td className="px-3 py-2 whitespace-nowrap text-center text-sm font-medium sticky-col-right bg-slate-100 z-20">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onManageLink && onManageLink(group.id); }} 
+                        className="text-indigo-600 hover:text-indigo-800 p-1"
+                        title="Manage Linked Group"
+                      >
+                          <LinkIcon className="w-4 h-4" />
+                      </button>
+                  </td>
+              )}
+          </tr>
+      );
+  };
+
+  return (
+    <div className="overflow-auto h-full w-full">
+      <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
+        <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
+          <tr>
+            {isSelectionMode && (
+              <th scope="col" className="w-10 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-40 border-b border-slate-200">
+                  <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      checked={transactions.length > 0 && selectedTxIds.size === transactions.length}
+                      onChange={onToggleSelectAll}
+                      aria-label="Select all transactions"
+                  />
+              </th>
+            )}
+            {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32 z-40')}
+            {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px] max-w-xs')}
+            {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-48')}
+            {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}
+            {visibleColumns.has('account') && renderHeader('Account', 'accountId', 'w-40')}
+            {visibleColumns.has('location') && renderHeader('Location', 'location', 'w-32')}
+            {visibleColumns.has('user') && renderHeader('User', 'userId', 'w-32')}
+            {visibleColumns.has('type') && renderHeader('Type', 'typeId', 'w-32')}
+            {visibleColumns.has('amount') && (
+                <th scope="col" className="w-32 px-3 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-30 border-b border-slate-200">
+                <button onClick={() => requestSort('amount')} className="group flex items-center gap-1 float-right focus:outline-none hover:text-slate-700">
+                    Amount
+                    <span className="text-indigo-600">{getSortIndicator('amount')}</span>
+                </button>
+                </th>
+            )}
+            {visibleColumns.has('actions') && (
+                <th scope="col" className="w-20 px-3 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky-col-right top-0 z-40 border-b border-slate-200">
+                    Action
+                </th>
+            )}
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-slate-200">
+          {displayItems.map((item) => {
+              if (item.type === 'group') {
+                  return (
+                      <React.Fragment key={item.id}>
+                          {renderGroupHeader(item)}
+                          {expandedGroups.has(item.id) && (
+                              <>
+                                {renderRow(item.primaryTx, true, item)}
+                                {item.children.map(child => renderRow(child, true, item))}
+                              </>
+                          )}
+                      </React.Fragment>
+                  );
+              } else {
+                  return renderRow(item.tx);
+              }
+          })}
         </tbody>
       </table>
     </div>
