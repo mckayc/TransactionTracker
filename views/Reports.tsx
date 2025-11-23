@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import type { Transaction, TransactionType, Category, Payee, BalanceEffect, User, Tag } from '../types';
-import DateRangePicker from '../components/DateRangePicker';
-import MultiSelect from '../components/MultiSelect';
+import TransactionTable from '../components/TransactionTable';
 import { formatDate } from '../dateUtils';
+import { SortIcon, TagIcon, ChevronDownIcon, CloseIcon } from '../components/Icons';
 
 interface ReportsProps {
   transactions: Transaction[];
@@ -13,6 +13,8 @@ interface ReportsProps {
   users: User[];
   tags: Tag[];
 }
+
+// --- Helper Functions ---
 
 const generateColor = (str: string, index: number): string => {
     const defaultColors = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
@@ -33,46 +35,142 @@ const generateColor = (str: string, index: number): string => {
 
 const formatCurrency = (value: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 
-const KPICard: React.FC<{ title: string; value: string; }> = ({ title, value }) => (
-    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <h3 className="text-sm font-medium text-slate-500">{title}</h3>
-        <p className="text-2xl font-bold text-slate-800 mt-1">{value}</p>
-    </div>
-);
+// --- Components ---
 
-const TrendChart: React.FC<{ data: any[] }> = ({ data }) => {
-    const width = 500;
-    const height = 250;
-    const padding = 40;
-    const maxY = Math.max(...data.flatMap(d => [d.income, d.expense]), 100);
-
-    const pointsToPath = (points: [number, number][]) => points.map((p, i) => (i === 0 ? 'M' : 'L') + `${p[0]},${p[1]}`).join(' ');
+const KPICard: React.FC<{ title: string; value: number; prevValue: number; isInverse?: boolean }> = ({ title, value, prevValue, isInverse }) => {
+    const diff = value - prevValue;
+    const percent = prevValue !== 0 ? (diff / prevValue) * 100 : 0;
     
-    const incomePoints: [number, number][] = data.map((d, i) => [padding + i * (width - 2 * padding) / (data.length - 1 || 1), height - padding - (d.income / maxY) * (height - 2 * padding)]);
-    const expensePoints: [number, number][] = data.map((d, i) => [padding + i * (width - 2 * padding) / (data.length - 1 || 1), height - padding - (d.expense / maxY) * (height - 2 * padding)]);
+    // For Income: Positive diff is good (Green), Negative is bad (Red)
+    // For Expense (Inverse): Positive diff is bad (Red), Negative is good (Green)
+    const isGood = isInverse ? diff <= 0 : diff >= 0;
+    const colorClass = isGood ? 'text-emerald-600' : 'text-red-600';
+    const bgClass = isGood ? 'bg-emerald-50' : 'bg-red-50';
+    const arrow = diff > 0 ? '↑' : diff < 0 ? '↓' : '-';
 
     return (
-        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
-            {/* Y-Axis */}
-            <line x1={padding} y1={padding} x2={padding} y2={height - padding} stroke="#d1d5db" />
-            {[...Array(5)].map((_, i) => (
-                <text key={i} x={padding - 8} y={padding + i * (height - 2 * padding) / 4} textAnchor="end" alignmentBaseline="middle" className="text-xs fill-slate-500">
-                    {formatCurrency(maxY - i * (maxY / 4))}
-                </text>
-            ))}
-            {/* X-Axis */}
-            <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} stroke="#d1d5db" />
-             {data.map((d, i) => (data.length <= 15 || i % Math.floor(data.length / 10) === 0) && (
-                <text key={i} x={padding + i * (width - 2 * padding) / (data.length - 1 || 1)} y={height - padding + 15} textAnchor="middle" className="text-xs fill-slate-500">{d.label}</text>
-            ))}
-            {/* Data Lines */}
-            <path d={pointsToPath(incomePoints)} stroke="#10b981" fill="none" strokeWidth="2" />
-            <path d={pointsToPath(expensePoints)} stroke="#ef4444" fill="none" strokeWidth="2" />
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+            <h3 className="text-sm font-medium text-slate-500">{title}</h3>
+            <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(value)}</p>
+            <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium mt-2 ${bgClass} ${colorClass}`}>
+                <span>{arrow} {Math.abs(percent).toFixed(1)}%</span>
+                <span className="text-slate-400 font-normal ml-1">vs prior period</span>
+            </div>
+        </div>
+    );
+};
+
+// Improved Cash Flow Chart (Bar Chart for comparison)
+const CashFlowChart: React.FC<{ data: { label: string, income: number, expense: number }[] }> = ({ data }) => {
+    const width = 600;
+    const height = 300;
+    const padding = 40;
+    const barWidth = 12;
+    const maxY = Math.max(...data.flatMap(d => [d.income, d.expense]), 100);
+
+    return (
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full max-h-[300px]">
+            {/* Grid Lines */}
+            {[0, 0.25, 0.5, 0.75, 1].map((tick, i) => {
+                const y = height - padding - (tick * (height - 2 * padding));
+                return (
+                    <g key={i}>
+                        <line x1={padding} y1={y} x2={width - padding} y2={y} stroke="#e2e8f0" strokeDasharray="4 4" />
+                        <text x={padding - 8} y={y} textAnchor="end" alignmentBaseline="middle" className="text-[10px] fill-slate-400">
+                            {formatCurrency(tick * maxY)}
+                        </text>
+                    </g>
+                );
+            })}
+
+            {/* Bars */}
+            {data.map((d, i) => {
+                const x = padding + i * ((width - 2 * padding) / Math.max(data.length, 1));
+                const barSpace = (width - 2 * padding) / Math.max(data.length, 1);
+                const incomeH = (d.income / maxY) * (height - 2 * padding);
+                const expenseH = (d.expense / maxY) * (height - 2 * padding);
+                
+                return (
+                    <g key={i} className="group">
+                        {/* Income Bar */}
+                        <rect 
+                            x={x + barSpace/2 - barWidth} 
+                            y={height - padding - incomeH} 
+                            width={barWidth} 
+                            height={incomeH} 
+                            fill="#10b981" 
+                            rx="2"
+                            className="hover:opacity-80 transition-opacity"
+                        >
+                            <title>{d.label} Income: {formatCurrency(d.income)}</title>
+                        </rect>
+                        {/* Expense Bar */}
+                        <rect 
+                            x={x + barSpace/2 + 2} 
+                            y={height - padding - expenseH} 
+                            width={barWidth} 
+                            height={expenseH} 
+                            fill="#ef4444" 
+                            rx="2"
+                            className="hover:opacity-80 transition-opacity"
+                        >
+                            <title>{d.label} Expense: {formatCurrency(d.expense)}</title>
+                        </rect>
+                        
+                        {/* X-Axis Label */}
+                        <text 
+                            x={x + barSpace/2} 
+                            y={height - padding + 15} 
+                            textAnchor="middle" 
+                            className="text-[10px] fill-slate-500"
+                        >
+                            {d.label}
+                        </text>
+                    </g>
+                );
+            })}
         </svg>
     );
 };
 
-const DonutChart: React.FC<{ data: { name: string, value: number, color: string }[] }> = ({ data }) => {
+const CategoryTrendChart: React.FC<{ data: { label: string, value: number }[], color: string, title: string }> = ({ data, color, title }) => {
+    const width = 300;
+    const height = 100;
+    const padding = 10;
+    const maxY = Math.max(...data.map(d => d.value), 10);
+    
+    const points = data.map((d, i) => {
+        const x = i * (width / (data.length - 1 || 1));
+        const y = height - (d.value / maxY) * height;
+        return `${x},${y}`;
+    }).join(' ');
+
+    return (
+        <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+            <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">{title} Trend</h4>
+            <svg viewBox={`0 -10 ${width} ${height + 20}`} className="w-full h-20 overflow-visible">
+                <polyline points={points} fill="none" stroke={color} strokeWidth="2" />
+                {data.map((d, i) => (
+                    <circle 
+                        key={i} 
+                        cx={i * (width / (data.length - 1 || 1))} 
+                        cy={height - (d.value / maxY) * height} 
+                        r="3" 
+                        fill={color} 
+                        className="hover:r-5 transition-all cursor-pointer"
+                    >
+                        <title>{d.label}: {formatCurrency(d.value)}</title>
+                    </circle>
+                ))}
+            </svg>
+        </div>
+    )
+}
+
+const DonutChart: React.FC<{ 
+    data: { id: string, name: string, value: number, color: string }[], 
+    onItemClick: (id: string, name: string) => void 
+}> = ({ data, onItemClick }) => {
     const total = data.reduce((acc, item) => acc + item.value, 0);
     const radius = 80;
     const circumference = 2 * Math.PI * radius;
@@ -81,30 +179,50 @@ const DonutChart: React.FC<{ data: { name: string, value: number, color: string 
 
     let offset = 0;
     return (
-        <svg viewBox="0 0 200 200" className="w-48 h-48">
+        <svg viewBox="0 0 200 200" className="w-48 h-48 transform -rotate-90">
             {data.map(item => {
                 const percentage = (item.value / total) * 100;
                 const strokeDasharray = `${(percentage / 100) * circumference} ${circumference}`;
                 const strokeDashoffset = -offset;
                 offset += (percentage / 100) * circumference;
+                
+                if (percentage < 1) return null;
+
                 return (
-                    <circle key={item.name} cx="100" cy="100" r={radius} fill="transparent" stroke={item.color} strokeWidth="30" strokeDasharray={strokeDasharray} strokeDashoffset={strokeDashoffset} transform="rotate(-90 100 100)" />
+                    <circle 
+                        key={item.id} 
+                        cx="100" 
+                        cy="100" 
+                        r={radius} 
+                        fill="transparent" 
+                        stroke={item.color} 
+                        strokeWidth="30" 
+                        strokeDasharray={strokeDasharray} 
+                        strokeDashoffset={strokeDashoffset} 
+                        className="cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => onItemClick(item.id, item.name)}
+                    >
+                        <title>{item.name}: {formatCurrency(item.value)}</title>
+                    </circle>
                 );
             })}
         </svg>
     );
 };
 
-const TopSpendingBarChart: React.FC<{ data: { name: string; value: number; color: string }[] }> = ({ data }) => {
+const TopSpendingBarChart: React.FC<{ 
+    data: { id: string; name: string; value: number; color: string }[],
+    onItemClick: (id: string, name: string) => void
+}> = ({ data, onItemClick }) => {
     const maxValue = Math.max(...data.map(d => d.value), 1);
     return (
         <div className="space-y-3">
             {data.map(item => (
-                <div key={item.name} className="grid grid-cols-4 items-center gap-2 text-sm">
-                    <span className="col-span-1 truncate" title={item.name}>{item.name}</span>
+                <div key={item.id} className="grid grid-cols-4 items-center gap-2 text-sm cursor-pointer group" onClick={() => onItemClick(item.id, item.name)}>
+                    <span className="col-span-1 truncate group-hover:text-indigo-600 transition-colors" title={item.name}>{item.name}</span>
                     <div className="col-span-3 flex items-center gap-2">
-                        <div className="w-full bg-slate-200 rounded-full h-4">
-                            <div className="h-4 rounded-full" style={{ width: `${(item.value / maxValue) * 100}%`, backgroundColor: item.color }} />
+                        <div className="w-full bg-slate-200 rounded-full h-4 overflow-hidden">
+                            <div className="h-4 rounded-full group-hover:opacity-80 transition-opacity" style={{ width: `${(item.value / maxValue) * 100}%`, backgroundColor: item.color }} />
                         </div>
                         <span className="font-medium text-slate-700 w-24 text-right">{formatCurrency(item.value)}</span>
                     </div>
@@ -116,230 +234,332 @@ const TopSpendingBarChart: React.FC<{ data: { name: string; value: number; color
 
 
 const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users, tags }) => {
-    const [isFilterOpen, setIsFilterOpen] = useState(true);
-
+    // State
     const [dateRange, setDateRange] = useState(() => {
         const start = new Date();
         start.setDate(1);
         start.setHours(0, 0, 0, 0);
         const end = new Date(start.getFullYear(), start.getMonth() + 1, 0);
         end.setHours(23, 59, 59, 999);
-        return { key: 'thisMonth', start, end };
+        return { key: 'thisMonth', start, end, label: 'This Month' };
     });
 
-    const [selectedCategories, setSelectedCategories] = useState(() => new Set<string>());
-    const [selectedPayees, setSelectedPayees] = useState(() => new Set<string>());
-    const [selectedUsers, setSelectedUsers] = useState(() => new Set<string>());
-    const [selectedTags, setSelectedTags] = useState(() => new Set<string>());
-    const [selectedBalanceEffects, setSelectedBalanceEffects] = useState<Set<BalanceEffect>>(() => new Set(['income', 'expense']));
-    
+    const [activeFilter, setActiveFilter] = useState<{ type: 'category' | 'payee' | 'tag' | 'user' | null, id: string | null, name: string | null }>({ type: null, id: null, name: null });
+
     const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
     const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p])), [payees]);
     const userMap = useMemo(() => new Map(users.map(u => [u.id, u.name])), [users]);
+    const tagMap = useMemo(() => new Map(tags.map(t => [t.id, t])), [tags]);
 
-    const filteredData = useMemo(() => {
-        return transactions.filter(tx => {
+    // Date Range Handlers
+    const handleSetDateRange = (preset: 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'all') => {
+        const now = new Date();
+        let start = new Date();
+        let end = new Date();
+        let label = '';
+
+        if (preset === 'all') {
+            start = new Date(2000, 0, 1);
+            end = new Date(now.getFullYear(), 11, 31);
+            label = 'All Time';
+        } else if (preset === 'thisMonth') {
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+            label = 'This Month';
+        } else if (preset === 'lastMonth') {
+            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0);
+            label = 'Last Month';
+        } else if (preset === 'thisYear') {
+            start = new Date(now.getFullYear(), 0, 1);
+            end = new Date(now.getFullYear(), 11, 31);
+            label = 'This Year';
+        } else if (preset === 'lastYear') {
+            start = new Date(now.getFullYear() - 1, 0, 1);
+            end = new Date(now.getFullYear() - 1, 11, 31);
+            label = 'Last Year';
+        }
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        setDateRange({ key: preset, start, end, label });
+    };
+
+    // Calculate Previous Period Range
+    const prevDateRange = useMemo(() => {
+        const duration = dateRange.end.getTime() - dateRange.start.getTime();
+        const prevEnd = new Date(dateRange.start.getTime() - 1);
+        const prevStart = new Date(prevEnd.getTime() - duration);
+        return { start: prevStart, end: prevEnd };
+    }, [dateRange]);
+
+    // Filter Data by Date
+    const filterByDate = (data: Transaction[], start: Date, end: Date) => {
+        return data.filter(tx => {
             const txDate = new Date(tx.date);
-            if (txDate < dateRange.start || txDate > dateRange.end) return false;
-            
-            const balanceEffect = transactionTypeMap.get(tx.typeId)?.balanceEffect;
-            if (!balanceEffect || !selectedBalanceEffects.has(balanceEffect)) return false;
+            return txDate >= start && txDate <= end;
+        });
+    };
 
-            if (selectedCategories.size > 0 && !selectedCategories.has(tx.categoryId)) return false;
-            if (selectedPayees.size > 0 && (!tx.payeeId || !selectedPayees.has(tx.payeeId))) return false;
-            if (selectedUsers.size > 0 && (!tx.userId || !selectedUsers.has(tx.userId))) return false;
-            
-            if (selectedTags.size > 0) {
-                const txTags = tx.tagIds || [];
-                if (!txTags.some(t => selectedTags.has(t))) return false;
+    const currentData = useMemo(() => filterByDate(transactions, dateRange.start, dateRange.end), [transactions, dateRange]);
+    const prevData = useMemo(() => filterByDate(transactions, prevDateRange.start, prevDateRange.end), [transactions, prevDateRange]);
+
+    // Stats Calculation
+    const calculateStats = (data: Transaction[]) => {
+        let income = 0;
+        let expenses = 0;
+        const expenseCatMap = new Map<string, number>();
+        const userSpendMap = new Map<string, number>();
+        const tagSpendMap = new Map<string, number>();
+
+        data.forEach(tx => {
+            const type = transactionTypeMap.get(tx.typeId);
+            if (type?.balanceEffect === 'income') {
+                income += tx.amount;
+            } else if (type?.balanceEffect === 'expense') {
+                expenses += tx.amount;
+                
+                // Category Breakdown
+                const category = categoryMap.get(tx.categoryId);
+                if (category) {
+                    const parentCategory = category.parentId ? categoryMap.get(category.parentId) : category;
+                    const id = parentCategory?.id || category.id;
+                    expenseCatMap.set(id, (expenseCatMap.get(id) || 0) + tx.amount);
+                }
+
+                // User Breakdown
+                const userId = tx.userId || 'unknown';
+                userSpendMap.set(userId, (userSpendMap.get(userId) || 0) + tx.amount);
+
+                // Tag Breakdown
+                if (tx.tagIds) {
+                    tx.tagIds.forEach(tagId => {
+                        tagSpendMap.set(tagId, (tagSpendMap.get(tagId) || 0) + tx.amount);
+                    });
+                }
             }
+        });
+        return { income, expenses, expenseCatMap, userSpendMap, tagSpendMap };
+    };
 
+    const currentStats = useMemo(() => calculateStats(currentData), [currentData]);
+    const prevStats = useMemo(() => calculateStats(prevData), [prevData]);
+
+    // Interactive Filter Logic
+    const filteredTableTransactions = useMemo(() => {
+        if (!activeFilter.type || !activeFilter.id) return currentData;
+        
+        return currentData.filter(tx => {
+            if (activeFilter.type === 'category') {
+                const cat = categoryMap.get(tx.categoryId);
+                // Match category or parent category
+                return tx.categoryId === activeFilter.id || cat?.parentId === activeFilter.id;
+            }
+            if (activeFilter.type === 'payee') return tx.payeeId === activeFilter.id;
+            if (activeFilter.type === 'user') return tx.userId === activeFilter.id;
+            if (activeFilter.type === 'tag') return tx.tagIds?.includes(activeFilter.id!);
             return true;
         });
-    }, [transactions, dateRange, selectedCategories, selectedPayees, selectedUsers, selectedTags, selectedBalanceEffects, transactionTypeMap]);
+    }, [currentData, activeFilter, categoryMap]);
 
-    const { kpis, trendData, expenseByCategory, topSpending, spendingByUser } = useMemo(() => {
-        let totalIncome = 0;
-        let totalExpenses = 0;
+    // Trend Data Preparation
+    const cashFlowData = useMemo(() => {
         const trendMap = new Map<string, { income: number; expense: number }>();
-        const expenseMap = new Map<string, number>();
-        const userSpendingMap = new Map<string, number>();
-
         const timeDiff = dateRange.end.getTime() - dateRange.start.getTime();
         const dayDiff = timeDiff / (1000 * 3600 * 24);
+        
+        // Dynamic grouping based on range
         const getLabel = (date: Date) => {
-            // Use strict formatting for graph labels
-            if (dayDiff <= 31) return formatDate(date).slice(5); // MM-DD
-            return formatDate(date).slice(0, 7); // YYYY-MM
+            if (dayDiff <= 60) return formatDate(date).slice(5); // MM-DD for short ranges
+            return formatDate(date).slice(0, 7); // YYYY-MM for long ranges
         };
 
-        filteredData.forEach(tx => {
+        currentData.forEach(tx => {
             const type = transactionTypeMap.get(tx.typeId);
             const label = getLabel(new Date(tx.date));
             if (!trendMap.has(label)) trendMap.set(label, { income: 0, expense: 0 });
             const trendEntry = trendMap.get(label)!;
 
-            if (type?.balanceEffect === 'income') {
-                totalIncome += tx.amount;
-                trendEntry.income += tx.amount;
-            } else if (type?.balanceEffect === 'expense') {
-                totalExpenses += tx.amount;
-                trendEntry.expense += tx.amount;
-                
-                const category = categoryMap.get(tx.categoryId);
-                if (category) {
-                    const parentCategory = category.parentId ? categoryMap.get(category.parentId) : category;
-                    const name = parentCategory?.name || 'Uncategorized';
-                    expenseMap.set(name, (expenseMap.get(name) || 0) + tx.amount);
-                }
-                
-                const userId = tx.userId || 'unknown';
-                userSpendingMap.set(userId, (userSpendingMap.get(userId) || 0) + tx.amount);
-            }
+            if (type?.balanceEffect === 'income') trendEntry.income += tx.amount;
+            else if (type?.balanceEffect === 'expense') trendEntry.expense += tx.amount;
         });
         
-        const sortedTrend = Array.from(trendMap.entries())
-            .sort(([a], [b]) => a.localeCompare(b)) // YYYY-MM sort works alphabetically
+        return Array.from(trendMap.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
             .map(([label, values]) => ({ label, ...values }));
+    }, [currentData, dateRange]);
 
-        const sortedExpenses = Array.from(expenseMap.entries())
-            .map(([name, value], index) => ({ name, value, color: generateColor(name, index) }))
+    // Selected Category Trend Data
+    const selectedTrendData = useMemo(() => {
+        if (!activeFilter.type || !activeFilter.id) return [];
+        
+        const data = filteredTableTransactions;
+        const trendMap = new Map<string, number>();
+        
+        data.forEach(tx => {
+            const label = formatDate(new Date(tx.date)).slice(0, 7); // YYYY-MM
+            trendMap.set(label, (trendMap.get(label) || 0) + tx.amount);
+        });
+
+        return Array.from(trendMap.entries())
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([label, value]) => ({ label, value }));
+    }, [filteredTableTransactions, activeFilter]);
+
+    // Chart Data Formatters
+    const sortedExpenses = useMemo(() => {
+        return Array.from(currentStats.expenseCatMap.entries())
+            .map(([id, value], index) => ({ 
+                id, 
+                name: categoryMap.get(id)?.name || 'Unknown', 
+                value, 
+                color: generateColor(id, index) 
+            }))
             .sort((a, b) => b.value - a.value);
+    }, [currentStats.expenseCatMap, categoryMap]);
 
-        const sortedSpendingByUser = Array.from(userSpendingMap.entries())
-            .map(([userId, value], index) => {
-                const name = userMap.get(userId) || 'Unassigned';
-                return { name, value, color: generateColor(name, index) };
-            })
+    const sortedSpendingByTag = useMemo(() => {
+        return Array.from(currentStats.tagSpendMap.entries())
+            .map(([id, value], index) => ({ 
+                id, 
+                name: tagMap.get(id)?.name || 'Unknown Tag', 
+                value, 
+                color: generateColor(id, index + 10) 
+            }))
             .sort((a, b) => b.value - a.value);
+    }, [currentStats.tagSpendMap, tagMap]);
 
-        return {
-            kpis: {
-                income: totalIncome,
-                expenses: totalExpenses,
-                net: totalIncome - totalExpenses,
-            },
-            trendData: sortedTrend,
-            expenseByCategory: sortedExpenses,
-            topSpending: sortedExpenses.slice(0, 5),
-            spendingByUser: sortedSpendingByUser
-        };
-    }, [filteredData, transactionTypeMap, categoryMap, dateRange, userMap]);
-
-    const handleBalanceEffectToggle = (effect: BalanceEffect) => {
-        setSelectedBalanceEffects(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(effect)) {
-                newSet.delete(effect);
-            } else {
-                newSet.add(effect);
-            }
-            return newSet;
-        });
-    };
-
-    const flattenedCategories = useMemo(() => {
-        const flattened: {id: string, name: string}[] = [];
-        const parents = categories.filter(c => !c.parentId).sort((a,b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-            flattened.push({id: parent.id, name: parent.name});
-            const children = categories.filter(c => c.parentId === parent.id).sort((a,b) => a.name.localeCompare(b.name));
-            children.forEach(child => {
-                flattened.push({id: child.id, name: `  ${child.name}`});
-            });
-        });
-        return flattened;
-    }, [categories]);
-
-    const flattenedPayees = useMemo(() => {
-        const flattened: {id: string, name: string}[] = [];
-        const parents = payees.filter(p => !p.parentId).sort((a,b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-            flattened.push({id: parent.id, name: parent.name});
-            const children = payees.filter(p => p.parentId === parent.id).sort((a,b) => a.name.localeCompare(b.name));
-            children.forEach(child => {
-                flattened.push({id: child.id, name: `  ${child.name}`});
-            });
-        });
-        return flattened;
-    }, [payees]);
-
+    // Handlers
+    const handleCategoryClick = (id: string, name: string) => setActiveFilter({ type: 'category', id, name });
+    const handleTagClick = (id: string, name: string) => setActiveFilter({ type: 'tag', id, name });
+    const clearActiveFilter = () => setActiveFilter({ type: null, id: null, name: null });
 
     return (
-        <div className="flex flex-col md:flex-row gap-6">
-            {/* Filter Sidebar */}
-            <aside className={`bg-white p-4 rounded-xl shadow-sm border border-slate-200 transition-all duration-300 ${isFilterOpen ? 'md:w-72' : 'md:w-16'}`}>
-                <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="w-full flex justify-between items-center mb-4">
-                    <span className={`font-bold text-lg ${!isFilterOpen && 'hidden'}`}>Filters</span>
-                    <span>{isFilterOpen ? '‹' : '›'}</span>
-                </button>
-                <div className={`${!isFilterOpen && 'hidden'}`}>
-                    <div className="space-y-4">
-                        <DateRangePicker onChange={(range) => setDateRange(range)} />
-                        
-                        <div>
-                            <h4 className="font-semibold text-sm mb-2">Transaction Type</h4>
-                            <div className="flex gap-2">
-                                {(['income', 'expense', 'transfer'] as BalanceEffect[]).map(effect => (
-                                    <button key={effect} onClick={() => handleBalanceEffectToggle(effect)} className={`w-full text-xs capitalize py-1.5 rounded-md transition-colors ${selectedBalanceEffects.has(effect) ? 'bg-indigo-600 text-white' : 'bg-slate-200 hover:bg-slate-300'}`}>
-                                        {effect}
-                                    </button>
-                                ))}
+        <div className="flex flex-col gap-6 h-full overflow-hidden">
+            {/* Header with Quick Filters */}
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 flex-shrink-0">
+                <h1 className="text-2xl font-bold text-slate-800">Reports</h1>
+                <div className="flex gap-2 overflow-x-auto pb-1 sm:pb-0 max-w-full">
+                    {(['thisMonth', 'lastMonth', 'thisYear', 'lastYear', 'all'] as const).map(key => (
+                        <button 
+                            key={key}
+                            onClick={() => handleSetDateRange(key)}
+                            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${dateRange.key === key ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                        >
+                            {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-2 space-y-6">
+                
+                {/* KPI Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    <KPICard title="Total Income" value={currentStats.income} prevValue={prevStats.income} />
+                    <KPICard title="Total Expenses" value={currentStats.expenses} prevValue={prevStats.expenses} isInverse />
+                    <KPICard title="Net Flow" value={currentStats.income - currentStats.expenses} prevValue={prevStats.income - prevStats.expenses} />
+                </div>
+
+                {/* Charts Row 1: Cash Flow & Category Breakdown */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-lg font-bold text-slate-700">Cash Flow</h2>
+                            <div className="flex gap-3 text-xs font-medium">
+                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> Income</span>
+                                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500"></span> Expense</span>
                             </div>
                         </div>
-
-                        <MultiSelect title="Categories" items={flattenedCategories} selectedIds={selectedCategories} onSelectionChange={setSelectedCategories} />
-                        <MultiSelect title="Tags" items={tags} selectedIds={selectedTags} onSelectionChange={setSelectedTags} />
-                        <MultiSelect title="Payees" items={flattenedPayees} selectedIds={selectedPayees} onSelectionChange={setSelectedPayees} />
-                        <MultiSelect title="Users" items={users} selectedIds={selectedUsers} onSelectionChange={setSelectedUsers} />
-                    </div>
-                </div>
-            </aside>
-            
-            {/* Main Content */}
-            <main className="flex-1 space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <KPICard title="Total Income" value={formatCurrency(kpis.income)} />
-                    <KPICard title="Total Expenses" value={formatCurrency(kpis.expenses)} />
-                    <KPICard title="Net Flow" value={formatCurrency(kpis.net)} />
-                </div>
-
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <h2 className="text-xl font-bold text-slate-700 mb-4">Income vs Expense Trend</h2>
-                    <div className="flex justify-center items-center gap-4 text-sm mb-2">
-                        <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-emerald-500 rounded-sm" />Income</span>
-                        <span className="flex items-center gap-1.5"><div className="w-3 h-3 bg-red-500 rounded-sm" />Expense</span>
-                    </div>
-                    {trendData.length > 0 ? <TrendChart data={trendData} /> : <p className="text-center text-slate-500 py-16">No data for this period.</p>}
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                        <h2 className="text-xl font-bold text-slate-700 mb-4">Expense Breakdown</h2>
-                        <div className="flex flex-col sm:flex-row items-center gap-6">
-                            <DonutChart data={expenseByCategory} />
-                            <ul className="text-sm space-y-1 overflow-y-auto max-h-48 flex-grow">
-                                {expenseByCategory.map(item => (
-                                    <li key={item.name} className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full" style={{backgroundColor: item.color}} />{item.name}</div>
-                                        <span className="font-medium">{formatCurrency(item.value)}</span>
-                                    </li>
-                                ))}
-                            </ul>
+                        <div className="flex-grow min-h-[250px]">
+                            {cashFlowData.length > 0 ? <CashFlowChart data={cashFlowData} /> : <p className="text-center text-slate-400 py-20">No data available.</p>}
                         </div>
                     </div>
-                     <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                        <h2 className="text-xl font-bold text-slate-700 mb-4">Top Spending Categories</h2>
-                        {topSpending.length > 0 ? <TopSpendingBarChart data={topSpending} /> : <p className="text-center text-slate-500 py-16">No spending data.</p>}
+
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col">
+                        <h2 className="text-lg font-bold text-slate-700 mb-4">Expense Breakdown</h2>
+                        <div className="flex flex-col sm:flex-row items-center gap-8 flex-grow">
+                            <DonutChart data={sortedExpenses} onItemClick={handleCategoryClick} />
+                            <div className="flex-grow w-full sm:w-auto h-64 overflow-y-auto pr-2">
+                                <ul className="space-y-2">
+                                    {sortedExpenses.map(item => (
+                                        <li 
+                                            key={item.id} 
+                                            onClick={() => handleCategoryClick(item.id, item.name)}
+                                            className="flex items-center justify-between text-sm p-2 rounded hover:bg-slate-50 cursor-pointer group transition-colors"
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <span className="w-3 h-3 rounded-full flex-shrink-0" style={{backgroundColor: item.color}}></span>
+                                                <span className="group-hover:text-indigo-600 truncate max-w-[120px]" title={item.name}>{item.name}</span>
+                                            </div>
+                                            <span className="font-medium">{formatCurrency(item.value)}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <h2 className="text-xl font-bold text-slate-700 mb-4">Spending by User</h2>
-                    {spendingByUser.length > 0 ? <TopSpendingBarChart data={spendingByUser} /> : <p className="text-center text-slate-500 py-16">No spending data for the selected users.</p>}
+                {/* Charts Row 2: Top Spending & Tags */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                        <h2 className="text-lg font-bold text-slate-700 mb-4">Top Spending Categories</h2>
+                        {sortedExpenses.length > 0 ? (
+                            <TopSpendingBarChart data={sortedExpenses.slice(0, 5)} onItemClick={handleCategoryClick} />
+                        ) : (
+                            <p className="text-center text-slate-400 py-10">No expenses recorded.</p>
+                        )}
+                    </div>
+                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                        <div className="flex items-center gap-2 mb-4">
+                            <TagIcon className="w-5 h-5 text-indigo-600" />
+                            <h2 className="text-lg font-bold text-slate-700">Spending by Tag</h2>
+                        </div>
+                        {sortedSpendingByTag.length > 0 ? (
+                            <TopSpendingBarChart data={sortedSpendingByTag.slice(0, 5)} onItemClick={handleTagClick} />
+                        ) : (
+                            <p className="text-center text-slate-400 py-10">No tagged transactions found.</p>
+                        )}
+                    </div>
                 </div>
-            </main>
+
+                {/* Interactive Transaction Table Section */}
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+                    <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-lg font-bold text-slate-800">Transaction Details</h2>
+                            {activeFilter.type && (
+                                <div className="flex items-center gap-2 bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-sm font-medium animate-fade-in">
+                                    <span className="capitalize">{activeFilter.type}: {activeFilter.name}</span>
+                                    <button onClick={clearActiveFilter} className="hover:text-indigo-900"><CloseIcon className="w-4 h-4"/></button>
+                                </div>
+                            )}
+                        </div>
+                        {/* Mini Trend Chart in Header if filtered */}
+                        {activeFilter.type && selectedTrendData.length > 1 && (
+                            <div className="hidden sm:block w-48">
+                                <CategoryTrendChart data={selectedTrendData} color="#6366f1" title={activeFilter.name || 'Selection'} />
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="h-96 relative">
+                        <TransactionTable 
+                            transactions={filteredTableTransactions}
+                            accounts={[]} // Not needed for reporting view usually
+                            categories={categories}
+                            tags={tags}
+                            transactionTypes={transactionTypes}
+                            payees={payees}
+                            users={users}
+                            onUpdateTransaction={() => {}}
+                            onDeleteTransaction={() => {}}
+                            visibleColumns={new Set(['date', 'description', 'amount', 'category', 'type', 'payee', 'tags'])}
+                        />
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

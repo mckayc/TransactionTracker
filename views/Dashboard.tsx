@@ -77,7 +77,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState('');
   
-  // Dashboard filtering state
+  // Dashboard filtering state - Default to Year
   const [dashboardRange, setDashboardRange] = useState<'all' | 'year' | 'month' | 'week'>('year');
   
   const apiKeyAvailable = hasApiKey();
@@ -281,10 +281,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     
     return transactions.filter(tx => {
         const txDate = new Date(tx.date);
-        // Adjust local date interpretation if necessary, usually parsing 'YYYY-MM-DD' as UTC or local depends on method.
-        // Assuming tx.date is 'YYYY-MM-DD'.
-        // Adding time T00:00:00 ensures local browser time interpretation which matches Date() constructor usually.
-        // Better yet, create date components for reliable comparison.
+        // Normalize dates to start of day for accurate comparison
+        txDate.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0,0,0,0);
+
         const txYear = txDate.getFullYear();
         const txMonth = txDate.getMonth();
         
@@ -296,13 +297,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         }
         if (dashboardRange === 'week') {
              // Get Sunday of current week
-             const startOfWeek = new Date(now);
-             startOfWeek.setHours(0, 0, 0, 0);
-             startOfWeek.setDate(now.getDate() - now.getDay());
+             const startOfWeek = new Date(today);
+             startOfWeek.setDate(today.getDate() - today.getDay());
              
              const endOfWeek = new Date(startOfWeek);
              endOfWeek.setDate(startOfWeek.getDate() + 6);
-             endOfWeek.setHours(23, 59, 59, 999);
              
              return txDate >= startOfWeek && txDate <= endOfWeek;
         }
