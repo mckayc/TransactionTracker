@@ -427,6 +427,7 @@ const App: React.FC = () => {
   };
 
   const handleAddAccount = (account: Account) => setAccounts(prev => [...prev, account]);
+  const handleUpdateAccount = (updatedAccount: Account) => setAccounts(prev => prev.map(acc => acc.id === updatedAccount.id ? updatedAccount : acc));
   const handleRemoveAccount = (accountId: string) => setAccounts(prev => prev.filter(c => c.id !== accountId));
   const handleAddAccountType = (type: AccountType) => setAccountTypes(prev => [...prev, type]);
   const handleRemoveAccountType = (typeId: string) => setAccountTypes(prev => prev.filter(p => p.id !== typeId));
@@ -649,7 +650,7 @@ const App: React.FC = () => {
       case 'reports':
         return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} />;
       case 'accounts':
-        return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
+        return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
       case 'users':
         return <UsersPage users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} />;
       case 'payees':

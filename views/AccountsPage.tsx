@@ -1,12 +1,13 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Account, AccountType } from '../types';
-import { DeleteIcon } from '../components/Icons';
+import { DeleteIcon, EditIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface AccountsPageProps {
     accounts: Account[];
     onAddAccount: (account: Account) => void;
+    onUpdateAccount: (account: Account) => void;
     onRemoveAccount: (accountId: string) => void;
     accountTypes: AccountType[];
     onAddAccountType: (profile: AccountType) => void;
@@ -22,11 +23,12 @@ const Section: React.FC<{title: string, children: React.ReactNode}> = ({title, c
     </details>
 );
 
-const AccountsPage: React.FC<AccountsPageProps> = ({ accounts, onAddAccount, onRemoveAccount, accountTypes, onAddAccountType, onRemoveAccountType }) => {
+const AccountsPage: React.FC<AccountsPageProps> = ({ accounts, onAddAccount, onUpdateAccount, onRemoveAccount, accountTypes, onAddAccountType, onRemoveAccountType }) => {
     const [accountName, setAccountName] = useState('');
     const [identifier, setIdentifier] = useState('');
     const [accountTypeId, setAccountTypeId] = useState('');
     const [newTypeName, setNewTypeName] = useState('');
+    const [editingAccount, setEditingAccount] = useState<Account | null>(null);
 
     const accountTypeMap = useMemo(() => new Map(accountTypes.map(type => [type.id, type])), [accountTypes]);
     const usedAccountTypes = useMemo(() => new Set(accounts.map(acc => acc.accountTypeId)), [accounts]);
@@ -59,6 +61,23 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ accounts, onAddAccount, onR
             setNewTypeName('');
         }
     }
+
+    const handleStartEdit = (account: Account) => {
+        setEditingAccount(account);
+    };
+
+    const handleCancelEdit = () => {
+        setEditingAccount(null);
+    };
+
+    const handleSaveEdit = () => {
+        if (editingAccount && editingAccount.name.trim() && editingAccount.identifier.trim() && editingAccount.accountTypeId) {
+            onUpdateAccount(editingAccount);
+            setEditingAccount(null);
+        } else {
+            alert("Please fill in all fields.");
+        }
+    };
 
     return (
         <div className="space-y-8">
@@ -100,13 +119,54 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ accounts, onAddAccount, onR
                                 <ul className="space-y-3">
                                     {accounts.map(account => (
                                         <li key={account.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200">
-                                            <div>
-                                                <p className="font-medium text-slate-800">{account.name}</p>
-                                                <p className="text-sm text-slate-500">{accountTypeMap.get(account.accountTypeId)?.name} • {account.identifier}</p>
+                                            {editingAccount?.id === account.id ? (
+                                                <div className="flex-grow grid grid-cols-1 sm:grid-cols-3 gap-2 mr-4">
+                                                     <input 
+                                                        type="text" 
+                                                        value={editingAccount.name} 
+                                                        onChange={e => setEditingAccount({...editingAccount, name: e.target.value})}
+                                                        className="p-1 text-sm border rounded"
+                                                        placeholder="Name"
+                                                     />
+                                                     <input 
+                                                        type="text" 
+                                                        value={editingAccount.identifier} 
+                                                        onChange={e => setEditingAccount({...editingAccount, identifier: e.target.value})}
+                                                        className="p-1 text-sm border rounded"
+                                                        placeholder="Identifier"
+                                                     />
+                                                     <select 
+                                                        value={editingAccount.accountTypeId} 
+                                                        onChange={e => setEditingAccount({...editingAccount, accountTypeId: e.target.value})}
+                                                        className="p-1 text-sm border rounded"
+                                                     >
+                                                        {accountTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+                                                     </select>
+                                                </div>
+                                            ) : (
+                                                <div>
+                                                    <p className="font-medium text-slate-800">{account.name}</p>
+                                                    <p className="text-sm text-slate-500">{accountTypeMap.get(account.accountTypeId)?.name} • {account.identifier}</p>
+                                                </div>
+                                            )}
+                                            
+                                            <div className="flex items-center gap-2">
+                                                {editingAccount?.id === account.id ? (
+                                                    <>
+                                                        <button onClick={handleSaveEdit} className="text-green-600 hover:text-green-800 text-sm font-medium">Save</button>
+                                                        <button onClick={handleCancelEdit} className="text-slate-500 hover:text-slate-700 text-sm font-medium">Cancel</button>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <button onClick={() => handleStartEdit(account)} className="text-slate-400 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50">
+                                                            <EditIcon className="w-4 h-4" />
+                                                        </button>
+                                                        <button onClick={() => onRemoveAccount(account.id)} className="text-slate-400 hover:text-red-600 p-1 rounded hover:bg-red-50">
+                                                            <DeleteIcon className="w-4 h-4" />
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
-                                            <button onClick={() => onRemoveAccount(account.id)} className="text-red-500 hover:text-red-700 font-medium text-sm">
-                                                Remove
-                                            </button>
                                         </li>
                                     ))}
                                 </ul>
