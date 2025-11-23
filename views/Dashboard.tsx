@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument, DocumentFolder } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument, DocumentFolder, Tag } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText, hasApiKey } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
@@ -23,6 +23,7 @@ interface DashboardProps {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
+  tags: Tag[];
   transactionTypes: TransactionType[];
   rules: ReconciliationRule[];
   payees: Payee[];
@@ -71,7 +72,7 @@ const getNextTaxDeadline = () => {
     };
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, categories, transactionTypes, rules, payees, users, onAddDocument, documentFolders, onCreateFolder }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, categories, tags, transactionTypes, rules, payees, users, onAddDocument, documentFolders, onCreateFolder }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState('');
@@ -416,6 +417,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
             transactions={recentTransactions} 
             accounts={accounts} 
             categories={categories} 
+            tags={tags}
             transactionTypes={transactionTypes} 
             payees={payees}
             users={users}

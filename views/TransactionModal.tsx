@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Transaction, Account, TransactionType, Payee, Category, User } from '../types';
+import type { Transaction, Account, TransactionType, Payee, Category, User, Tag } from '../types';
 import { CloseIcon } from '../components/Icons';
 
 interface TransactionModalProps {
@@ -9,6 +10,7 @@ interface TransactionModalProps {
     onSave: (transaction: Omit<Transaction, 'id'>) => void;
     accounts: Account[];
     categories: Category[];
+    tags: Tag[];
     transactionTypes: TransactionType[];
     payees: Payee[];
     users: User[];
@@ -23,7 +25,7 @@ const getTodayDate = () => {
 };
 
 
-const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction, onClose, onSave, accounts, categories, transactionTypes, payees, users }) => {
+const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction, onClose, onSave, accounts, categories, tags, transactionTypes, payees, users }) => {
     
     const getDefaultState = () => {
         const defaultExpenseType = transactionTypes.find(t => t.name === 'Purchase') || transactionTypes.find(t => t.balanceEffect === 'expense');
@@ -40,6 +42,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
             notes: '',
             payeeId: '',
             userId: defaultUser?.id || '',
+            tagIds: [] as string[],
         }
     };
     
@@ -75,7 +78,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
     useEffect(() => {
         if (isOpen) {
             if (isEditMode && transaction) {
-                setFormData(transaction);
+                setFormData({ ...transaction, tagIds: transaction.tagIds || [] });
             } else {
                 const defaultState = getDefaultState();
                 const defaultAccountId = accounts.length > 0 ? accounts[0].id : '';
@@ -97,6 +100,17 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
         }));
     };
 
+    const toggleTag = (tagId: string) => {
+        setFormData(prev => {
+            const currentTags = prev.tagIds || [];
+            if (currentTags.includes(tagId)) {
+                return { ...prev, tagIds: currentTags.filter(id => id !== tagId) };
+            } else {
+                return { ...prev, tagIds: [...currentTags, tagId] };
+            }
+        });
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
@@ -110,7 +124,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
             role="dialog"
         >
             <div 
-                className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 m-4 transform transition-all"
+                className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 m-4 transform transition-all max-h-[90vh] overflow-y-auto"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="flex justify-between items-center mb-4">
@@ -178,6 +192,25 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                            ))}
                         </select>
                     </div>
+                    
+                    {/* Tags Input */}
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Tags</label>
+                        <div className="flex flex-wrap gap-2">
+                            {tags.map(tag => (
+                                <button
+                                    key={tag.id}
+                                    type="button"
+                                    onClick={() => toggleTag(tag.id)}
+                                    className={`px-2 py-1 rounded-full text-xs border transition-colors ${formData.tagIds?.includes(tag.id) ? tag.color + ' ring-1 ring-offset-1 ring-slate-400' : 'bg-white text-slate-600 border-slate-300'}`}
+                                >
+                                    {tag.name}
+                                </button>
+                            ))}
+                            {tags.length === 0 && <span className="text-sm text-slate-400 italic">No tags available. Create them in the Tags page.</span>}
+                        </div>
+                    </div>
+
                     <div>
                         <label className="block text-sm font-medium text-slate-700">Notes</label>
                         <textarea name="notes" value={formData.notes || ''} onChange={handleChange} rows={3}></textarea>

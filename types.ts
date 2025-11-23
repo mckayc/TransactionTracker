@@ -20,6 +20,12 @@ export interface Category {
   parentId?: string;
 }
 
+export interface Tag {
+  id: string;
+  name: string;
+  color: string; // Hex code or Tailwind class suffix
+}
+
 export interface User {
   id: string;
   name: string;
@@ -42,6 +48,7 @@ export interface Transaction {
   linkGroupId?: string; // New 1-to-many group link
   sourceFilename?: string;
   userId?: string;
+  tagIds?: string[];
 }
 
 export interface AccountType {
@@ -203,6 +210,7 @@ export interface ReconciliationRule {
   setPayeeId?: string;
   setTransactionTypeId?: string;
   setDescription?: string;
+  assignTagIds?: string[]; // New: Auto-assign tags
 }
 
 // Types for AI Audit

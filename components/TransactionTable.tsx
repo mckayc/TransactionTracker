@@ -1,12 +1,13 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Account, TransactionType, Payee, Category, User } from '../types';
+import type { Transaction, Account, TransactionType, Payee, Category, User, Tag } from '../types';
 import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronDownIcon } from './Icons';
 
 interface TransactionTableProps {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
+  tags: Tag[];
   transactionTypes: TransactionType[];
   payees: Payee[];
   users: User[];
@@ -62,6 +63,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   transactions, 
   accounts, 
   categories,
+  tags,
   transactionTypes,
   payees,
   users,
@@ -74,7 +76,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onToggleSelectAll = () => {},
   onBulkSelection,
   deleteConfirmationMessage = 'Are you sure you want to delete this transaction? This action cannot be undone.',
-  visibleColumns = new Set(['date', 'description', 'payee', 'category', 'account', 'type', 'amount', 'actions']),
+  visibleColumns = new Set(['date', 'description', 'payee', 'category', 'tags', 'account', 'type', 'amount', 'actions']),
   onManageLink
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('date');
@@ -88,6 +90,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p])), [payees]);
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c])), [categories]);
   const userMap = useMemo(() => new Map(users.map(u => [u.id, u.name])), [users]);
+  const tagMap = useMemo(() => new Map(tags.map(t => [t.id, t])), [tags]);
 
   const sortedPayeeOptions = useMemo(() => {
     const sorted: { id: string, name: string }[] = [];
@@ -452,6 +455,27 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   </td>
               )}
 
+              {/* Tags */}
+              {visibleColumns.has('tags') && (
+                  <td className={cellClass(false)}>
+                      <div className="flex flex-wrap gap-1 max-w-[150px]">
+                          {transaction.tagIds && transaction.tagIds.length > 0 ? (
+                              transaction.tagIds.map(tagId => {
+                                  const tag = tagMap.get(tagId);
+                                  if (!tag) return null;
+                                  return (
+                                      <span key={tagId} className={`px-1.5 py-0.5 text-[10px] rounded-full border ${tag.color}`}>
+                                          {tag.name}
+                                      </span>
+                                  );
+                              })
+                          ) : (
+                              <span className="text-slate-300 text-xs italic">--</span>
+                          )}
+                      </div>
+                  </td>
+              )}
+
               {/* Account */}
               {visibleColumns.has('account') && (
                   <td className={cellClass(true)}>
@@ -585,6 +609,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
               {visibleColumns.has('payee') && <td className="px-3 py-2 text-sm text-slate-500 italic">Multiple</td>}
               {visibleColumns.has('category') && <td className="px-3 py-2 text-sm text-slate-500 italic">Split / Multiple</td>}
+              {visibleColumns.has('tags') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
               {visibleColumns.has('account') && <td className="px-3 py-2 text-sm text-slate-500">{accountMap.get(primaryTx.accountId || '')?.name}</td>}
               {visibleColumns.has('location') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
               {visibleColumns.has('user') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
@@ -634,6 +659,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px] max-w-xs')}
             {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-48')}
             {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}
+            {visibleColumns.has('tags') && <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200 w-32">Tags</th>}
             {visibleColumns.has('account') && renderHeader('Account', 'accountId', 'w-40')}
             {visibleColumns.has('location') && renderHeader('Location', 'location', 'w-32')}
             {visibleColumns.has('user') && renderHeader('User', 'userId', 'w-32')}

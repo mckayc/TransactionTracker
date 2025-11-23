@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User } from '../types';
+import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag } from '../types';
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import RuleModal from '../components/RuleModal';
@@ -31,6 +31,7 @@ interface AllTransactionsProps {
   transactions: Transaction[];
   accounts: Account[];
   categories: Category[];
+  tags: Tag[];
   transactionTypes: TransactionType[];
   payees: Payee[];
   users: User[];
@@ -44,7 +45,7 @@ interface AllTransactionsProps {
   onAddTransactionType: (type: TransactionType) => void;
 }
 
-const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onAddTransactionType }) => {
+const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, tags, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onAddTransactionType }) => {
   // State for immediate input values
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -80,7 +81,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   // Column Visibility State - Persisted
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
       const saved = localStorage.getItem('transaction_columns');
-      return saved ? new Set(JSON.parse(saved)) : new Set(['date', 'description', 'payee', 'category', 'account', 'type', 'amount', 'actions']);
+      return saved ? new Set(JSON.parse(saved)) : new Set(['date', 'description', 'payee', 'category', 'tags', 'account', 'type', 'amount', 'actions']);
   });
   
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
@@ -489,6 +490,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       { id: 'description', label: 'Description' },
       { id: 'payee', label: 'Payee' },
       { id: 'category', label: 'Category' },
+      { id: 'tags', label: 'Tags' },
       { id: 'account', label: 'Account' },
       { id: 'location', label: 'Location' },
       { id: 'user', label: 'User' },
@@ -595,6 +597,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             transactions={filteredTransactions} 
             accounts={accounts} 
             categories={categories}
+            tags={tags}
             transactionTypes={transactionTypes}
             payees={payees}
             users={users}
@@ -623,7 +626,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             <div className="flex items-center gap-2">
                  <button
                     onClick={handleBulkLink}
-                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 rounded-full transition-colors shadow-sm"
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-50 rounded-full transition-colors shadow-sm"
                 >
                     <LinkIcon className="w-4 h-4"/>
                     Link
@@ -647,6 +650,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             onSave={handleSave}
             accounts={accounts}
             categories={categories}
+            tags={tags}
             transactionTypes={transactionTypes}
             payees={payees}
             users={users}
@@ -683,6 +687,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             accounts={accounts}
             transactionTypes={transactionTypes}
             categories={categories}
+            tags={tags}
             payees={payees}
             transaction={transactionForRule}
             onSaveCategory={onSaveCategory}

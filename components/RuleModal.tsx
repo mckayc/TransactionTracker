@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleCondition } from '../types';
+import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleCondition, Tag } from '../types';
 import { CloseIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
@@ -12,6 +12,7 @@ interface RuleModalProps {
     accounts: Account[];
     transactionTypes: TransactionType[];
     categories: Category[];
+    tags: Tag[];
     payees: Payee[];
     transaction: Transaction | null;
     onSaveCategory?: (category: Category) => void;
@@ -19,7 +20,7 @@ interface RuleModalProps {
     onAddTransactionType?: (type: TransactionType) => void;
 }
 
-const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, payees, transaction, onSaveCategory, onSavePayee, onAddTransactionType }) => {
+const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, payees, transaction, onSaveCategory, onSavePayee, onAddTransactionType }) => {
     
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
@@ -29,6 +30,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
     const [setPayeeId, setSetPayeeId] = useState('');
     const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
     const [setDescription, setSetDescription] = useState('');
+    const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         if (isOpen) {
@@ -45,6 +47,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                 setSetCategoryId(transaction.categoryId || '');
                 setSetPayeeId(transaction.payeeId || '');
                 setSetTransactionTypeId(transaction.typeId || '');
+                setAssignTagIds(new Set());
             } else {
                 setName('');
                 setConditions([{ id: generateUUID(), field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
@@ -52,6 +55,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                 setSetPayeeId('');
                 setSetTransactionTypeId('');
                 setSetDescription('');
+                setAssignTagIds(new Set());
             }
         }
     }, [isOpen, transaction]);
@@ -111,6 +115,15 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
         }
     };
 
+    const toggleTag = (tagId: string) => {
+        setAssignTagIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(tagId)) newSet.delete(tagId);
+            else newSet.add(tagId);
+            return newSet;
+        });
+    };
+
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault();
         if (!name.trim()) {
@@ -131,6 +144,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
             setPayeeId: setPayeeId || undefined,
             setTransactionTypeId: setTransactionTypeId || undefined,
             setDescription: setDescription || undefined,
+            assignTagIds: assignTagIds.size > 0 ? Array.from(assignTagIds) : undefined,
         });
         onClose();
     };
@@ -198,6 +212,22 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Set Description</label>
                                 <input type="text" value={setDescription} onChange={(e) => setSetDescription(e.target.value)} placeholder="e.g., Clean Name" className="w-full p-2 border rounded-md" />
+                            </div>
+                            <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+                                <label className="block text-sm font-medium text-slate-700 mb-2">Assign Tags</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {tags.map(tag => (
+                                        <button
+                                            key={tag.id}
+                                            type="button"
+                                            onClick={() => toggleTag(tag.id)}
+                                            className={`px-2 py-1 rounded-full text-xs border transition-colors ${assignTagIds.has(tag.id) ? tag.color + ' ring-1 ring-offset-1 ring-slate-400' : 'bg-white text-slate-600 border-slate-300'}`}
+                                        >
+                                            {tag.name}
+                                        </button>
+                                    ))}
+                                    {tags.length === 0 && <span className="text-sm text-slate-400 italic">No tags available. Create them in the Tags page.</span>}
+                                </div>
                             </div>
                         </div>
                     </div>

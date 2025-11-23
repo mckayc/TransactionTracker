@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Template, ScheduledEvent, TaskCompletions, TransactionType, Account, Category, Payee, User, TaskItem } from '../types';
+import type { Transaction, Template, ScheduledEvent, TaskCompletions, TransactionType, Account, Category, Payee, User, TaskItem, Tag } from '../types';
 import ScheduleEventModal from '../components/ScheduleEventModal';
 import TransactionModal from './TransactionModal';
 import { CheckCircleIcon, ChecklistIcon, RepeatIcon } from '../components/Icons';
@@ -14,6 +14,7 @@ interface CalendarPageProps {
   taskCompletions: TaskCompletions;
   accounts: Account[];
   categories: Category[];
+  tags: Tag[];
   payees: Payee[];
   users: User[];
   onAddEvent: (event: ScheduledEvent) => void;
@@ -45,7 +46,7 @@ const LinkRenderer: React.FC<{ text: string }> = ({ text }) => {
     );
 };
 
-const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, transactionTypes, onUpdateTransaction, accounts, categories, payees, users }) => {
+const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, transactionTypes, onUpdateTransaction, accounts, categories, tags, payees, users }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -296,6 +297,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
         onSave={handleSaveTransaction}
         accounts={accounts}
         categories={categories}
+        tags={tags}
         transactionTypes={transactionTypes}
         payees={payees}
         users={users}

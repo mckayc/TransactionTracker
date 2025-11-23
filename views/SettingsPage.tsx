@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, User, BusinessProfile, DocumentFolder, BusinessDocument } from '../types';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag } from '../types';
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
@@ -17,6 +17,7 @@ interface SettingsPageProps {
     // Data props for export
     accounts: Account[];
     categories: Category[];
+    tags: Tag[];
     payees: Payee[];
     rules: ReconciliationRule[];
     templates: Template[];
@@ -39,7 +40,7 @@ const Section: React.FC<{title: string, children: React.ReactNode}> = ({title, c
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ 
     transactions, transactionTypes, onAddTransactionType, onRemoveTransactionType, systemSettings, onUpdateSystemSettings,
-    accounts, categories, payees, rules, templates, scheduledEvents, users, businessProfile, documentFolders, onAddDocument, onCreateFolder
+    accounts, categories, tags, payees, rules, templates, scheduledEvents, users, businessProfile, documentFolders, onAddDocument, onCreateFolder
 }) => {
     const [newTypeName, setNewTypeName] = useState('');
     const [newTypeEffect, setNewTypeEffect] = useState<'income' | 'expense' | 'transfer'>('expense');
@@ -107,6 +108,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             accounts,
             accountTypes: [], // Legacy support mostly
             categories,
+            tags,
             payees,
             reconciliationRules: rules,
             templates,
@@ -199,6 +201,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 await api.save('transactions', json.transactions || []);
                 await api.save('accounts', json.accounts || []);
                 await api.save('categories', json.categories || []);
+                await api.save('tags', json.tags || []);
                 await api.save('payees', json.payees || []);
                 await api.save('reconciliationRules', json.reconciliationRules || []);
                 await api.save('templates', json.templates || []);

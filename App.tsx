@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -12,6 +12,7 @@ import TasksPage from './views/TasksPage';
 import RulesPage from './views/RulesPage';
 import PayeesPage from './views/PayeesPage';
 import CategoriesPage from './views/CategoriesPage';
+import TagsPage from './views/TagsPage';
 import UsersPage from './views/UsersPage';
 import BusinessHub from './views/BusinessHub';
 import DocumentsPage from './views/DocumentsPage';
@@ -23,7 +24,7 @@ import { generateUUID } from './utils';
 import { api } from './services/apiService';
 import { saveFile, deleteFile } from './services/storageService';
 
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'users' | 'hub' | 'documents';
+type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents';
 
 const DEFAULT_CATEGORIES: Category[] = [
     "Groceries", "Dining", "Shopping", "Travel", "Entertainment", "Utilities", "Health", "Services", "Transportation", "Income", "Other"
@@ -62,6 +63,7 @@ const App: React.FC = () => {
   const [accountTypes, setAccountTypes] = useState<AccountType[]>([]);
   const [transactionTypes, setTransactionTypes] = useState<TransactionType[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [scheduledEvents, setScheduledEvents] = useState<ScheduledEvent[]>([]);
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -146,6 +148,7 @@ const App: React.FC = () => {
       }
       
       setTransactionTypes(safeLoad<TransactionType[]>('transactionTypes', DEFAULT_TRANSACTION_TYPES));
+      setTags(safeLoad<Tag[]>('tags', []));
       setTemplates(safeLoad<Template[]>('templates', []));
       setScheduledEvents(safeLoad<ScheduledEvent[]>('scheduledEvents', []));
       setTasks(safeLoad<TaskItem[]>('tasks', []));
@@ -213,8 +216,8 @@ const App: React.FC = () => {
                   // 1. Prepare Data
                   const exportData = {
                       exportDate: new Date().toISOString(),
-                      version: '0.0.9-auto',
-                      transactions, accounts, accountTypes, categories, payees, 
+                      version: '0.0.10-auto',
+                      transactions, accounts, accountTypes, categories, tags, payees, 
                       reconciliationRules, templates, scheduledEvents, users, 
                       transactionTypes, businessProfile, documentFolders
                   };
@@ -283,7 +286,7 @@ const App: React.FC = () => {
       const timeout = setTimeout(checkAndRunBackup, 5000);
       return () => clearTimeout(timeout);
 
-  }, [isLoading, systemSettings.backupConfig, transactions, accounts, categories]); // Dependencies trigger re-check if data changes, but frequency logic prevents spam
+  }, [isLoading, systemSettings.backupConfig, transactions, accounts, categories, tags]); 
 
 
   // Save data to API whenever it changes
@@ -327,6 +330,12 @@ const App: React.FC = () => {
     const handler = setTimeout(() => api.save('categories', categories), 500);
     return () => clearTimeout(handler);
   }, [categories, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('tags', tags), 500);
+    return () => clearTimeout(handler);
+  }, [tags, isLoading]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -562,6 +571,29 @@ const App: React.FC = () => {
     });
   };
 
+  const handleSaveTag = (tag: Tag) => {
+    setTags(prev => {
+        const index = prev.findIndex(t => t.id === tag.id);
+        if (index > -1) {
+            const newTags = [...prev];
+            newTags[index] = tag;
+            return newTags;
+        }
+        return [...prev, tag];
+    });
+  };
+
+  const handleDeleteTag = (tagId: string) => {
+      setTags(prev => prev.filter(t => t.id !== tagId));
+      // Clean up transactions that used this tag
+      setTransactions(prev => prev.map(tx => {
+          if (tx.tagIds && tx.tagIds.includes(tagId)) {
+              return { ...tx, tagIds: tx.tagIds.filter(id => id !== tagId) };
+          }
+          return tx;
+      }));
+  };
+
   const handleSaveUser = (user: User) => {
     setUsers(prev => {
         const index = prev.findIndex(u => u.id === user.id);
@@ -609,11 +641,11 @@ const App: React.FC = () => {
   const renderView = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
+        return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
       case 'transactions':
-        return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
+        return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
       case 'calendar':
-        return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} accounts={accounts} categories={categories} payees={payees} users={users} />;
+        return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} />;
       case 'reports':
         return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} />;
       case 'accounts':
@@ -624,10 +656,12 @@ const App: React.FC = () => {
         return <PayeesPage payees={payees} onSavePayee={handleSavePayee} onDeletePayee={handleDeletePayee} transactions={transactions}/>;
       case 'categories':
         return <CategoriesPage categories={categories} onSaveCategory={handleSaveCategory} onDeleteCategory={handleDeleteCategory} transactions={transactions}/>;
+      case 'tags':
+        return <TagsPage tags={tags} onSaveTag={handleSaveTag} onDeleteTag={handleDeleteTag} />;
       case 'rules':
-        return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
+        return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
       case 'settings':
-        return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} users={users} businessProfile={businessProfile} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
+        return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} tags={tags} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} users={users} businessProfile={businessProfile} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
       case 'tasks':
         return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
       case 'hub':

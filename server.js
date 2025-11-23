@@ -60,8 +60,8 @@ const getFileMeta = db.prepare('SELECT * FROM files_meta WHERE id = ?');
 const deleteFileMeta = db.prepare('DELETE FROM files_meta WHERE id = ?');
 
 // Middleware
+// Increase limit to handle large backups
 app.use(express.json({ limit: '100mb' }));
-// FIX: Accept all content types for raw body to ensure file uploads (PDF, CSV, Images) are captured
 app.use(express.raw({ type: '*/*', limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -131,7 +131,9 @@ app.post('/api/files/:id', (req, res) => {
     // req.body will be an object, not a buffer. We need to convert it back to a buffer/string to save it as a file.
     if (!Buffer.isBuffer(buffer)) {
         if (typeof buffer === 'object' && buffer !== null) {
-            buffer = Buffer.from(JSON.stringify(buffer));
+            // Convert parsed JSON object back to string buffer
+            // Using null, 2 for pretty printing to ensure the backup is readable
+            buffer = Buffer.from(JSON.stringify(buffer, null, 2));
         } else {
             console.error("Upload failed: Body is not a buffer and not a valid object. Type:", typeof buffer);
             return res.status(400).json({ error: 'Invalid or empty file data' });

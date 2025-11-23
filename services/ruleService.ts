@@ -128,6 +128,11 @@ export const applyRulesToTransactions = (
             }
             modifiedTx.description = rule.setDescription;
         }
+        if (rule.assignTagIds && rule.assignTagIds.length > 0) {
+            const currentTags = new Set(modifiedTx.tagIds || []);
+            rule.assignTagIds.forEach(id => currentTags.add(id));
+            modifiedTx.tagIds = Array.from(currentTags);
+        }
         // First matching rule wins, so we break
         return modifiedTx;
       }
@@ -167,6 +172,16 @@ export const findMatchingTransactions = (
           }
           updatedTx.description = rule.setDescription;
           changed = true;
+      }
+      if (rule.assignTagIds && rule.assignTagIds.length > 0) {
+          const originalTagSet = new Set(updatedTx.tagIds || []);
+          const newTagSet = new Set(updatedTx.tagIds || []);
+          rule.assignTagIds.forEach(id => newTagSet.add(id));
+          
+          if (newTagSet.size > originalTagSet.size) {
+              updatedTx.tagIds = Array.from(newTagSet);
+              changed = true;
+          }
       }
       
       if (changed) {

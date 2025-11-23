@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition } from '../types';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon } from '../components/Icons';
 import RulePreviewModal from '../components/RulePreviewModal';
 import { generateUUID } from '../utils';
@@ -13,6 +13,7 @@ interface RulesPageProps {
     accounts: Account[];
     transactionTypes: TransactionType[];
     categories: Category[];
+    tags: Tag[];
     payees: Payee[];
     transactions: Transaction[];
     onUpdateTransactions: (transactions: Transaction[]) => void;
@@ -28,11 +29,12 @@ const RuleEditor: React.FC<{
     accounts: Account[];
     transactionTypes: TransactionType[];
     categories: Category[];
+    tags: Tag[];
     payees: Payee[];
     onSaveCategory: (category: Category) => void;
     onSavePayee: (payee: Payee) => void;
     onAddTransactionType: (type: TransactionType) => void;
-}> = ({ selectedRule, onSave, onCancel, accounts, transactionTypes, categories, payees, onSaveCategory, onSavePayee, onAddTransactionType }) => {
+}> = ({ selectedRule, onSave, onCancel, accounts, transactionTypes, categories, tags, payees, onSaveCategory, onSavePayee, onAddTransactionType }) => {
     
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
@@ -40,6 +42,7 @@ const RuleEditor: React.FC<{
     const [setPayeeId, setSetPayeeId] = useState('');
     const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
     const [setDescription, setSetDescription] = useState('');
+    const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         if (selectedRule) {
@@ -60,6 +63,7 @@ const RuleEditor: React.FC<{
             setSetPayeeId(selectedRule.setPayeeId || '');
             setSetTransactionTypeId(selectedRule.setTransactionTypeId || '');
             setSetDescription(selectedRule.setDescription || '');
+            setAssignTagIds(new Set(selectedRule.assignTagIds || []));
         } else {
             setName('');
             setConditions([{ id: generateUUID(), field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
@@ -67,6 +71,7 @@ const RuleEditor: React.FC<{
             setSetPayeeId('');
             setSetTransactionTypeId('');
             setSetDescription('');
+            setAssignTagIds(new Set());
         }
     }, [selectedRule]);
     
@@ -123,6 +128,15 @@ const RuleEditor: React.FC<{
         }
     };
 
+    const toggleTag = (tagId: string) => {
+        setAssignTagIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(tagId)) newSet.delete(tagId);
+            else newSet.add(tagId);
+            return newSet;
+        });
+    };
+
     const handleSave = () => {
         if (!name.trim()) {
             alert('Rule Name is required.');
@@ -137,6 +151,7 @@ const RuleEditor: React.FC<{
             setPayeeId: setPayeeId || undefined,
             setTransactionTypeId: setTransactionTypeId || undefined,
             setDescription: setDescription || undefined,
+            assignTagIds: assignTagIds.size > 0 ? Array.from(assignTagIds) : undefined,
         });
     };
     
@@ -197,13 +212,29 @@ const RuleEditor: React.FC<{
                         <label className="block text-sm font-medium text-slate-700 mb-1">Set Description</label>
                         <input type="text" value={setDescription} onChange={(e) => setSetDescription(e.target.value)} placeholder="e.g., Clean Name" className="w-full p-2 border rounded-md" />
                     </div>
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+                        <label className="block text-sm font-medium text-slate-700 mb-2">Assign Tags</label>
+                        <div className="flex flex-wrap gap-2">
+                            {tags.map(tag => (
+                                <button
+                                    key={tag.id}
+                                    type="button"
+                                    onClick={() => toggleTag(tag.id)}
+                                    className={`px-2 py-1 rounded-full text-xs border transition-colors ${assignTagIds.has(tag.id) ? tag.color + ' ring-1 ring-offset-1 ring-slate-400' : 'bg-white text-slate-600 border-slate-300'}`}
+                                >
+                                    {tag.name}
+                                </button>
+                            ))}
+                            {tags.length === 0 && <span className="text-sm text-slate-400 italic">No tags available.</span>}
+                        </div>
+                    </div>
                 </div>
             </div>
          </div>
     );
 };
 
-const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, payees, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onAddTransactionType }) => {
+const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onAddTransactionType }) => {
     const [selectedRule, setSelectedRule] = useState<ReconciliationRule | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [ruleToRun, setRuleToRun] = useState<ReconciliationRule | null>(null);
@@ -286,6 +317,7 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                                 accounts={accounts} 
                                 transactionTypes={transactionTypes} 
                                 categories={categories} 
+                                tags={tags}
                                 payees={payees} 
                                 onSaveCategory={onSaveCategory}
                                 onSavePayee={onSavePayee}
