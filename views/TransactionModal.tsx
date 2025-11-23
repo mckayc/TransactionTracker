@@ -75,12 +75,16 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
         return sorted;
     }, [categories]);
 
+    // Only reset form when modal opens or specific transaction changes
     useEffect(() => {
         if (isOpen) {
             if (isEditMode && transaction) {
                 setFormData({ ...transaction, tagIds: transaction.tagIds || [] });
             } else {
                 const defaultState = getDefaultState();
+                // We want to use the current accounts list to pick a default if needed, 
+                // but we don't want to reset if the user is already typing.
+                // This effect runs on open.
                 const defaultAccountId = accounts.length > 0 ? accounts[0].id : '';
                 setFormData({
                     ...defaultState,
@@ -88,7 +92,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                 });
             }
         }
-    }, [transaction, isOpen, isEditMode, categories, accounts, transactionTypes, users]);
+    }, [isOpen, transaction]); // Removed data dependencies to prevent form reset on background updates
 
     if (!isOpen) return null;
 

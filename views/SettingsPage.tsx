@@ -416,4 +416,4 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     );
 };
 
-export default React.memo(SettingsPage);
+export default SettingsPage;

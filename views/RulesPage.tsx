@@ -451,7 +451,7 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                         <div className="h-64 flex flex-col items-center justify-center text-slate-400 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
                             <SparklesIcon className="w-12 h-12 mb-3 opacity-50" />
                             <p className="font-medium">No rules found.</p>
-                            <p className="text-sm">Try a different search or create a new rule.</p>
+                            <p className="text-sm text-slate-500">Try a different search or create a new rule.</p>
                         </div>
                     )}
                 </div>
@@ -490,4 +490,4 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
     );
 };
 
-export default React.memo(RulesPage);
+export default RulesPage;

@@ -77,6 +77,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState('');
   
+  // Dashboard filtering state
+  const [dashboardRange, setDashboardRange] = useState<'all' | 'year' | 'month' | 'week'>('year');
+  
   const apiKeyAvailable = hasApiKey();
   const [useAi, setUseAi] = useState(apiKeyAvailable);
   
@@ -271,22 +274,84 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
   }, [transactions]);
   
+  // Dashboard Card Filtering Logic
+  const dashboardTransactions = useMemo(() => {
+    const now = new Date();
+    if (dashboardRange === 'all') return transactions;
+    
+    return transactions.filter(tx => {
+        const txDate = new Date(tx.date);
+        // Adjust local date interpretation if necessary, usually parsing 'YYYY-MM-DD' as UTC or local depends on method.
+        // Assuming tx.date is 'YYYY-MM-DD'.
+        // Adding time T00:00:00 ensures local browser time interpretation which matches Date() constructor usually.
+        // Better yet, create date components for reliable comparison.
+        const txYear = txDate.getFullYear();
+        const txMonth = txDate.getMonth();
+        
+        if (dashboardRange === 'year') {
+            return txYear === now.getFullYear();
+        }
+        if (dashboardRange === 'month') {
+            return txYear === now.getFullYear() && txMonth === now.getMonth();
+        }
+        if (dashboardRange === 'week') {
+             // Get Sunday of current week
+             const startOfWeek = new Date(now);
+             startOfWeek.setHours(0, 0, 0, 0);
+             startOfWeek.setDate(now.getDate() - now.getDay());
+             
+             const endOfWeek = new Date(startOfWeek);
+             endOfWeek.setDate(startOfWeek.getDate() + 6);
+             endOfWeek.setHours(23, 59, 59, 999);
+             
+             return txDate >= startOfWeek && txDate <= endOfWeek;
+        }
+        return true;
+    });
+  }, [transactions, dashboardRange]);
+
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
-  const totalIncome = useMemo(() => transactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'income').reduce((sum, t) => sum + t.amount, 0), [transactions, transactionTypeMap]);
-  const totalExpenses = useMemo(() => transactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'expense').reduce((sum, t) => sum + t.amount, 0), [transactions, transactionTypeMap]);
+  const totalIncome = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'income').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
+  const totalExpenses = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'expense').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
 
   const nextDeadline = useMemo(() => getNextTaxDeadline(), []);
 
+  const getRangeLabel = () => {
+      switch(dashboardRange) {
+          case 'year': return 'This Year';
+          case 'month': return 'This Month';
+          case 'week': return 'This Week';
+          default: return 'All Time';
+      }
+  }
+
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
-        <p className="text-slate-500 mt-1">An overview of your financial activity.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+            <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
+            <p className="text-slate-500 mt-1">An overview of your financial activity.</p>
+        </div>
+        <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200 overflow-x-auto">
+            {(['all', 'year', 'month', 'week'] as const).map(range => (
+                <button
+                    key={range}
+                    onClick={() => setDashboardRange(range)}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
+                        dashboardRange === range 
+                        ? 'bg-indigo-50 text-indigo-700 shadow-sm' 
+                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                    }`}
+                >
+                    {range === 'all' ? 'All Time' : range === 'year' ? 'This Year' : range === 'month' ? 'This Month' : 'This Week'}
+                </button>
+            ))}
+        </div>
       </div>
       
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <SummaryWidget title="Total Income" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)} helpText="All time" />
-        <SummaryWidget title="Total Expenses" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)} helpText="All time" />
+        <SummaryWidget title="Total Income" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)} helpText={getRangeLabel()} />
+        <SummaryWidget title="Total Expenses" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)} helpText={getRangeLabel()} />
         <SummaryWidget title="Net Flow" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome - totalExpenses)} helpText="Income minus expenses" />
         <SummaryWidget 
             title={nextDeadline.label} 

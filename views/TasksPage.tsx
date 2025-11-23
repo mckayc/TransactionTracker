@@ -302,4 +302,4 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
     );
 };
 
-export default React.memo(TasksPage);
+export default TasksPage;

@@ -157,4 +157,4 @@ const TemplatesPage: React.FC<TemplatesPageProps> = ({ templates, scheduledEvent
     );
 };
 
-export default React.memo(TemplatesPage);
+export default TemplatesPage;

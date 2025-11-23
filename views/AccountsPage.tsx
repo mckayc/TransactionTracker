@@ -228,4 +228,4 @@ const AccountsPage: React.FC<AccountsPageProps> = ({ accounts, onAddAccount, onU
     );
 };
 
-export default React.memo(AccountsPage);
+export default AccountsPage;

@@ -1,5 +1,5 @@
 {
-  "name": "TransactionTracker - 0.0.15",
+  "name": "TransactionTracker - 0.0.16",
   "description": "An AI-powered tool to upload credit card or bank statement PDFs, extract transaction data, and automatically categorize expenses for small business owners and individuals.",
   "requestFramePermissions": []
 }

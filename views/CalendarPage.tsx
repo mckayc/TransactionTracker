@@ -307,4 +307,4 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   );
 };
 
-export default React.memo(CalendarPage);
+export default CalendarPage;

@@ -648,7 +648,7 @@ const App: React.FC = () => {
       case 'calendar':
         return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} />;
       case 'reports':
-        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} />;
+        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} />;
       case 'accounts':
         return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
       case 'users':

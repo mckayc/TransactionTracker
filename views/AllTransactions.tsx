@@ -8,7 +8,7 @@ import LinkTransactionModal from '../components/LinkTransactionModal';
 import LinkedGroupModal from '../components/LinkedGroupModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
-import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon } from '../components/Icons';
+import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -25,6 +25,65 @@ function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay]);
   return debouncedValue;
 }
+
+// Bulk Tag Modal Component
+const BulkTagModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    tags: Tag[];
+    onApply: (tagIds: string[]) => void;
+    count: number;
+}> = ({ isOpen, onClose, tags, onApply, count }) => {
+    const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        if(isOpen) setSelectedTags(new Set());
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    const toggleTag = (id: string) => {
+        const newSet = new Set(selectedTags);
+        if (newSet.has(id)) newSet.delete(id);
+        else newSet.add(id);
+        setSelectedTags(newSet);
+    };
+
+    const handleApply = () => {
+        onApply(Array.from(selectedTags));
+        onClose();
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800">Add Tags to {count} Transactions</h3>
+                    <button onClick={onClose}><CloseIcon className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
+                </div>
+                <div className="p-6">
+                    <p className="text-sm text-slate-600 mb-4">Select tags to append to the selected transactions.</p>
+                    <div className="flex flex-wrap gap-2 max-h-60 overflow-y-auto">
+                        {tags.map(tag => (
+                            <button
+                                key={tag.id}
+                                onClick={() => toggleTag(tag.id)}
+                                className={`px-3 py-1.5 rounded-full text-sm border transition-all ${selectedTags.has(tag.id) ? tag.color + ' ring-2 ring-offset-1 ring-indigo-500 font-semibold' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
+                            >
+                                {tag.name}
+                            </button>
+                        ))}
+                        {tags.length === 0 && <p className="text-sm text-slate-400 italic">No tags available. Create them in the Tags page.</p>}
+                    </div>
+                </div>
+                <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-xl">
+                    <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 font-medium hover:bg-slate-200 rounded-lg">Cancel</button>
+                    <button onClick={handleApply} disabled={selectedTags.size === 0} className="px-4 py-2 text-sm text-white bg-indigo-600 font-medium rounded-lg hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">Apply Tags</button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 
 interface AllTransactionsProps {
@@ -68,6 +127,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isLinkedGroupModalOpen, setIsLinkedGroupModalOpen] = useState(false);
+  const [isBulkTagModalOpen, setIsBulkTagModalOpen] = useState(false);
   const [selectedLinkGroupId, setSelectedLinkGroupId] = useState<string | null>(null);
   
   // Auditor State
@@ -305,6 +365,18 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       }
       setIsLinkModalOpen(true);
   }
+
+  const handleBulkAddTags = (newTagIds: string[]) => {
+      selectedTxIds.forEach(id => {
+          const tx = transactions.find(t => t.id === id);
+          if (tx) {
+              const currentTags = new Set(tx.tagIds || []);
+              newTagIds.forEach(tagId => currentTags.add(tagId));
+              onUpdateTransaction({ ...tx, tagIds: Array.from(currentTags) });
+          }
+      });
+      setSelectedTxIds(new Set());
+  };
 
   const handleManageLink = (groupId: string) => {
       setSelectedLinkGroupId(groupId);
@@ -625,6 +697,13 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             </div>
             <div className="flex items-center gap-2">
                  <button
+                    onClick={() => setIsBulkTagModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-50 rounded-full transition-colors shadow-sm"
+                >
+                    <TagIcon className="w-4 h-4"/>
+                    Tags
+                </button>
+                 <button
                     onClick={handleBulkLink}
                     className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-50 rounded-full transition-colors shadow-sm"
                 >
@@ -679,6 +758,15 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             onFindSimilar={handleFindSimilarFromGroup}
           />
       )}
+      {isBulkTagModalOpen && (
+          <BulkTagModal 
+            isOpen={isBulkTagModalOpen}
+            onClose={() => setIsBulkTagModalOpen(false)}
+            tags={tags}
+            onApply={handleBulkAddTags}
+            count={selectedTxIds.size}
+          />
+      )}
       {isRuleModalOpen && (
         <RuleModal
             isOpen={isRuleModalOpen}
@@ -710,4 +798,4 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   );
 };
 
-export default React.memo(AllTransactions);
+export default AllTransactions;

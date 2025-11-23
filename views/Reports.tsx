@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
-import type { Transaction, TransactionType, Category, Payee, BalanceEffect, User } from '../types';
+import type { Transaction, TransactionType, Category, Payee, BalanceEffect, User, Tag } from '../types';
 import DateRangePicker from '../components/DateRangePicker';
 import MultiSelect from '../components/MultiSelect';
 import { formatDate } from '../dateUtils';
@@ -11,6 +11,7 @@ interface ReportsProps {
   categories: Category[];
   payees: Payee[];
   users: User[];
+  tags: Tag[];
 }
 
 const generateColor = (str: string, index: number): string => {
@@ -114,7 +115,7 @@ const TopSpendingBarChart: React.FC<{ data: { name: string; value: number; color
 };
 
 
-const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users, tags }) => {
     const [isFilterOpen, setIsFilterOpen] = useState(true);
 
     const [dateRange, setDateRange] = useState(() => {
@@ -129,6 +130,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
     const [selectedCategories, setSelectedCategories] = useState(() => new Set<string>());
     const [selectedPayees, setSelectedPayees] = useState(() => new Set<string>());
     const [selectedUsers, setSelectedUsers] = useState(() => new Set<string>());
+    const [selectedTags, setSelectedTags] = useState(() => new Set<string>());
     const [selectedBalanceEffects, setSelectedBalanceEffects] = useState<Set<BalanceEffect>>(() => new Set(['income', 'expense']));
     
     const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
@@ -147,10 +149,15 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
             if (selectedCategories.size > 0 && !selectedCategories.has(tx.categoryId)) return false;
             if (selectedPayees.size > 0 && (!tx.payeeId || !selectedPayees.has(tx.payeeId))) return false;
             if (selectedUsers.size > 0 && (!tx.userId || !selectedUsers.has(tx.userId))) return false;
+            
+            if (selectedTags.size > 0) {
+                const txTags = tx.tagIds || [];
+                if (!txTags.some(t => selectedTags.has(t))) return false;
+            }
 
             return true;
         });
-    }, [transactions, dateRange, selectedCategories, selectedPayees, selectedUsers, selectedBalanceEffects, transactionTypeMap]);
+    }, [transactions, dateRange, selectedCategories, selectedPayees, selectedUsers, selectedTags, selectedBalanceEffects, transactionTypeMap]);
 
     const { kpis, trendData, expenseByCategory, topSpending, spendingByUser } = useMemo(() => {
         let totalIncome = 0;
@@ -283,6 +290,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                         </div>
 
                         <MultiSelect title="Categories" items={flattenedCategories} selectedIds={selectedCategories} onSelectionChange={setSelectedCategories} />
+                        <MultiSelect title="Tags" items={tags} selectedIds={selectedTags} onSelectionChange={setSelectedTags} />
                         <MultiSelect title="Payees" items={flattenedPayees} selectedIds={selectedPayees} onSelectionChange={setSelectedPayees} />
                         <MultiSelect title="Users" items={users} selectedIds={selectedUsers} onSelectionChange={setSelectedUsers} />
                     </div>
@@ -336,4 +344,4 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
     );
 };
 
-export default React.memo(Reports);
+export default Reports;
