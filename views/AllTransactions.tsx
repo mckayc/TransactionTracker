@@ -588,7 +588,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                             <span>Columns</span>
                         </button>
                         {isColumnMenuOpen && (
-                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-20">
+                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50">
                                 <div className="p-2">
                                     <h4 className="font-semibold text-xs text-slate-500 uppercase mb-2 px-2">Toggle Columns</h4>
                                     {columnOptions.map(col => (
