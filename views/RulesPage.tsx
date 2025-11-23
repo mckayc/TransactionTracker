@@ -34,93 +34,84 @@ const RuleCard: React.FC<{
     tags: Tag[];
 }> = ({ rule, onEdit, onRun, onDelete, categories, payees, types, tags }) => {
     
-    const categoryName = categories.find(c => c.id === rule.setCategoryId)?.name;
-    const payeeName = payees.find(p => p.id === rule.setPayeeId)?.name;
-    const typeName = types.find(t => t.id === rule.setTransactionTypeId)?.name;
-    
-    const conditionsCount = rule.conditions?.length || (rule.descriptionContains ? 1 : 0);
+    const getConditionSummary = () => {
+        if (rule.conditions && rule.conditions.length > 0) {
+            const first = rule.conditions[0] as RuleCondition; // cast for safety
+            if (!first.field) return "Complex Rule";
+            
+            let text = "";
+            if (first.field === 'description') text = `Desc ${first.operator === 'contains' ? 'has' : first.operator} "${first.value}"`;
+            else if (first.field === 'amount') text = `Amt ${first.operator === 'equals' ? '=' : first.operator} ${first.value}`;
+            else if (first.field === 'accountId') text = `Acct is ...`;
+            
+            if (rule.conditions.length > 1) {
+                return `${text} +${rule.conditions.length - 1}`;
+            }
+            return text;
+        }
+        if (rule.descriptionContains) return `Desc has "${rule.descriptionContains}"`;
+        if (rule.amountEquals) return `Amt = ${rule.amountEquals}`;
+        return "All Transactions";
+    };
+
+    const getActionSummary = () => {
+        const actions = [];
+        if (rule.setCategoryId) {
+            const name = categories.find(c => c.id === rule.setCategoryId)?.name;
+            if (name) actions.push(`Cat: ${name}`);
+        }
+        if (rule.setPayeeId) {
+            const name = payees.find(p => p.id === rule.setPayeeId)?.name;
+            if (name) actions.push(`Payee: ${name}`);
+        }
+        if (rule.setTransactionTypeId) {
+            const name = types.find(t => t.id === rule.setTransactionTypeId)?.name;
+            if (name) actions.push(`Type: ${name}`);
+        }
+        if (rule.setDescription) actions.push(`Rename`);
+        if (rule.assignTagIds && rule.assignTagIds.length > 0) actions.push(`+Tags`);
+
+        if (actions.length === 0) return "No Actions";
+        if (actions.length === 1) return actions[0];
+        return `${actions[0]} +${actions.length - 1}`;
+    };
+
+    const summaryCond = getConditionSummary();
+    const summaryAction = getActionSummary();
 
     return (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all flex flex-col overflow-hidden group">
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-start">
-                <h3 className="font-bold text-slate-800 truncate pr-2" title={rule.name}>{rule.name}</h3>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={(e) => { e.stopPropagation(); onRun(rule); }} className="p-1.5 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded" title="Run Rule">
+        <div 
+            className="bg-white rounded-lg border border-slate-200 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all p-3 flex flex-col gap-2 group h-full cursor-pointer"
+            onClick={() => onEdit(rule)}
+        >
+            <div className="flex justify-between items-start">
+                <h3 className="font-bold text-slate-800 text-sm truncate pr-2 flex-grow" title={rule.name}>{rule.name}</h3>
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white pl-2">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onRun(rule); }} 
+                        className="text-slate-400 hover:text-green-600 p-0.5" 
+                        title="Run Rule"
+                    >
                         <PlayIcon className="w-4 h-4" />
                     </button>
-                    <button onClick={(e) => { e.stopPropagation(); onEdit(rule); }} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded" title="Edit Rule">
-                        <EditIcon className="w-4 h-4" />
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(rule.id); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded" title="Delete Rule">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onDelete(rule.id); }} 
+                        className="text-slate-400 hover:text-red-600 p-0.5" 
+                        title="Delete Rule"
+                    >
                         <DeleteIcon className="w-4 h-4" />
                     </button>
                 </div>
             </div>
             
-            <div className="p-4 flex-grow space-y-4">
-                {/* Conditions Summary */}
-                <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">If Match</p>
-                    <div className="flex flex-wrap gap-2">
-                        {rule.conditions && rule.conditions.length > 0 ? (
-                            rule.conditions.map((c, i) => (
-                                'field' in c ? (
-                                    <span key={i} className="inline-flex items-center px-2 py-1 rounded bg-indigo-50 text-indigo-700 text-xs border border-indigo-100">
-                                        {c.field === 'description' && 'Desc'}
-                                        {c.field === 'amount' && 'Amt'}
-                                        {c.field === 'accountId' && 'Acct'}
-                                        {' '}
-                                        {c.operator === 'contains' && 'has'}
-                                        {c.operator === 'equals' && '='}
-                                        {c.operator === 'greater_than' && '>'}
-                                        {c.operator === 'less_than' && '<'}
-                                        {' '}
-                                        <span className="font-mono ml-1 font-semibold max-w-[100px] truncate">"{c.value}"</span>
-                                    </span>
-                                ) : null
-                            ))
-                        ) : (
-                            <span className="inline-flex items-center px-2 py-1 rounded bg-indigo-50 text-indigo-700 text-xs border border-indigo-100">
-                                Desc has "{rule.descriptionContains}"
-                            </span>
-                        )}
-                    </div>
-                </div>
-
-                {/* Actions Summary */}
-                <div>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Then Set</p>
-                    <div className="flex flex-wrap gap-2 text-sm text-slate-700">
-                        {categoryName && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 border border-slate-200 text-xs">
-                                <span className="text-slate-500">Cat:</span> <strong>{categoryName}</strong>
-                            </span>
-                        )}
-                        {payeeName && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 border border-slate-200 text-xs">
-                                <span className="text-slate-500">Payee:</span> <strong>{payeeName}</strong>
-                            </span>
-                        )}
-                        {typeName && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 border border-slate-200 text-xs">
-                                <span className="text-slate-500">Type:</span> <strong>{typeName}</strong>
-                            </span>
-                        )}
-                        {rule.setDescription && (
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 border border-slate-200 text-xs">
-                                <span className="text-slate-500">Rename:</span> <strong className="truncate max-w-[80px]">{rule.setDescription}</strong>
-                            </span>
-                        )}
-                        {rule.assignTagIds && rule.assignTagIds.length > 0 && (
-                             <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-slate-100 border border-slate-200 text-xs">
-                                <span className="text-slate-500">Tags:</span> <strong>{rule.assignTagIds.length}</strong>
-                            </span>
-                        )}
-                        {!categoryName && !payeeName && !typeName && !rule.setDescription && (!rule.assignTagIds || rule.assignTagIds.length === 0) && (
-                            <span className="text-slate-400 text-xs italic">No actions defined</span>
-                        )}
-                    </div>
-                </div>
+            <div className="flex items-center text-xs gap-2 mt-auto">
+                 <div className="flex-1 min-w-0 bg-slate-50 border border-slate-200 rounded px-2 py-1 truncate text-slate-600 font-medium" title={summaryCond}>
+                    {summaryCond}
+                 </div>
+                 <span className="text-slate-300 font-bold">→</span>
+                 <div className="flex-1 min-w-0 bg-green-50 border border-green-100 rounded px-2 py-1 truncate text-green-700 font-medium" title={summaryAction}>
+                    {summaryAction}
+                 </div>
             </div>
         </div>
     );
@@ -438,10 +429,10 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                     </div>
                 </div>
 
-                {/* Rules Grid */}
+                {/* Rules Grid - Updated for more density */}
                 <div className="flex-1 overflow-y-auto pr-2">
                     {filteredRules.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                             {filteredRules.map(rule => (
                                 <RuleCard 
                                     key={rule.id}
