@@ -8,7 +8,7 @@ import LinkTransactionModal from '../components/LinkTransactionModal';
 import LinkedGroupModal from '../components/LinkedGroupModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
-import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon } from '../components/Icons';
+import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
 import MultiSelect from '../components/MultiSelect';
@@ -179,6 +179,8 @@ interface AllTransactionsProps {
   onAddTransactionType: (type: TransactionType) => void;
 }
 
+type DateMode = 'month' | 'year' | 'custom';
+
 const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, tags, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onAddTransactionType }) => {
   // State for immediate input values
   const [searchTerm, setSearchTerm] = useState('');
@@ -189,15 +191,58 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
 
+  // Date Logic
+  const [dateMode, setDateMode] = useState<DateMode>('month');
+  const [dateCursor, setDateCursor] = useState(new Date());
+  
+  // Computed range strings for filtering (YYYY-MM-DD)
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  
+  // Initialize date range based on mode/cursor
+  useEffect(() => {
+      const year = dateCursor.getFullYear();
+      const month = dateCursor.getMonth();
+      
+      if (dateMode === 'month') {
+          const firstDay = new Date(year, month, 1);
+          const lastDay = new Date(year, month + 1, 0);
+          setStartDate(firstDay.toISOString().split('T')[0]);
+          setEndDate(lastDay.toISOString().split('T')[0]);
+      } else if (dateMode === 'year') {
+          const firstDay = new Date(year, 0, 1);
+          const lastDay = new Date(year, 11, 31);
+          setStartDate(firstDay.toISOString().split('T')[0]);
+          setEndDate(lastDay.toISOString().split('T')[0]);
+      }
+      // 'custom' mode handled by direct input state changes
+  }, [dateMode, dateCursor]);
+
+  const handleDateNavigate = (direction: 'prev' | 'next') => {
+      const newCursor = new Date(dateCursor);
+      if (dateMode === 'month') {
+          newCursor.setMonth(newCursor.getMonth() + (direction === 'next' ? 1 : -1));
+      } else if (dateMode === 'year') {
+          newCursor.setFullYear(newCursor.getFullYear() + (direction === 'next' ? 1 : -1));
+      }
+      setDateCursor(newCursor);
+  };
+
+  const dateLabel = useMemo(() => {
+      if (dateMode === 'month') {
+          return dateCursor.toLocaleString('default', { month: 'long', year: 'numeric' });
+      }
+      if (dateMode === 'year') {
+          return dateCursor.getFullYear().toString();
+      }
+      return 'Custom Range';
+  }, [dateMode, dateCursor]);
   
   // UI State
   const [showFilters, setShowFilters] = useState(false);
 
   // Debounced values
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
-  // We don't necessarily need to debounce checkbox selections as they are less frequent/rapid than typing
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
@@ -286,8 +331,9 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
     setSelectedTypes(new Set());
     setSelectedAccounts(new Set());
     setSelectedUsers(new Set());
-    setStartDate('');
-    setEndDate('');
+    // Reset date to month mode current month
+    setDateMode('month');
+    setDateCursor(new Date());
   }
 
   const handleAddNew = () => {
@@ -520,123 +566,6 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
   const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
 
-  const handleSetDateRange = (preset: 'thisMonth' | 'lastMonth' | 'thisQuarter' | 'lastQuarter' | 'thisYear') => {
-    const now = new Date();
-    let start = new Date();
-    let end = new Date();
-
-    switch (preset) {
-      case 'thisMonth':
-        start = new Date(now.getFullYear(), now.getMonth(), 1);
-        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-      case 'lastMonth':
-        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        end = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      case 'thisQuarter':
-        const currentQuarter = Math.floor(now.getMonth() / 3);
-        start = new Date(now.getFullYear(), currentQuarter * 3, 1);
-        end = new Date(now.getFullYear(), currentQuarter * 3 + 3, 0);
-        break;
-      case 'lastQuarter':
-        const lastQuarter = Math.floor(now.getMonth() / 3) - 1;
-        if (lastQuarter < 0) {
-            start = new Date(now.getFullYear() - 1, 9, 1);
-            end = new Date(now.getFullYear() - 1, 12, 0);
-        } else {
-            start = new Date(now.getFullYear(), lastQuarter * 3, 1);
-            end = new Date(now.getFullYear(), lastQuarter * 3 + 3, 0);
-        }
-        break;
-      case 'thisYear':
-        start = new Date(now.getFullYear(), 0, 1);
-        end = new Date(now.getFullYear(), 11, 31);
-        break;
-    }
-    setStartDate(start.toISOString().split('T')[0]);
-    setEndDate(end.toISOString().split('T')[0]);
-  };
-
-  const handleExportCsv = () => {
-    const headers = ['Date', 'Description', 'Location', 'Payee', 'Account', 'Category', 'Type', 'Amount'];
-    const rows = filteredTransactions.map(tx => {
-      const type = transactionTypeMap.get(tx.typeId);
-      const amount = type?.balanceEffect === 'expense' ? -tx.amount : tx.amount;
-      return [
-        tx.date,
-        `"${tx.description.replace(/"/g, '""')}"`,
-        tx.location || '',
-        payeeMap.get(tx.payeeId || '') || '',
-        accountMap.get(tx.accountId || '') || '',
-        categoryMap.get(tx.categoryId) || '',
-        type?.name || '',
-        amount.toFixed(2)
-      ].join(',');
-    });
-
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `transactions-export-${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handleExportPdf = () => {
-    const headers = ['Date', 'Description', 'Location', 'Payee', 'Account', 'Category', 'Type', 'Amount'];
-    const rows = filteredTransactions.map(tx => {
-      const type = transactionTypeMap.get(tx.typeId);
-      const amount = type?.balanceEffect === 'expense' ? -tx.amount : tx.amount;
-      return `
-        <tr>
-          <td>${tx.date}</td>
-          <td>${tx.description}</td>
-          <td>${tx.location || ''}</td>
-          <td>${payeeMap.get(tx.payeeId || '') || ''}</td>
-          <td>${accountMap.get(tx.accountId || '') || ''}</td>
-          <td>${categoryMap.get(tx.categoryId) || ''}</td>
-          <td>${type?.name || ''}</td>
-          <td style="text-align: right;">${amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</td>
-        </tr>
-      `;
-    }).join('');
-
-    const printWindow = window.open('', '_blank');
-    printWindow?.document.write(`
-      <html>
-        <head>
-          <title>Transactions Export</title>
-          <style>
-            body { font-family: sans-serif; }
-            table { width: 100%; border-collapse: collapse; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #f2f2f2; }
-            @media print {
-              @page { size: landscape; }
-              body { -webkit-print-color-adjust: exact; }
-            }
-          </style>
-        </head>
-        <body>
-          <h1>Transactions Export</h1>
-          <p>Filters applied: ${debouncedSearchTerm || 'None'}, ${startDate || 'Start'} to ${endDate || 'End'}</p>
-          <table>
-            <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </body>
-      </html>
-    `);
-    printWindow?.document.close();
-    printWindow?.focus();
-    printWindow?.print();
-  };
-
   if (duplicateGroups) {
     return (
         <DuplicateFinder
@@ -683,14 +612,17 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-shrink-0">
            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-                <div className="flex items-center gap-4">
-                    <h2 className="text-xl font-bold text-slate-700">All Transactions</h2>
+                <div className="flex items-center gap-3">
+                    <h2 className="text-xl font-bold text-slate-700">Transactions</h2>
+                    <span className="text-sm text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                        {filteredTransactions.length} items
+                    </span>
                     <input 
                         type="text" 
                         placeholder="Search..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
-                        className="w-full md:w-64 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        className="hidden sm:block w-full md:w-48 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                     />
                 </div>
                 
@@ -702,7 +634,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                     >
                         <SortIcon className="w-4 h-4"/>
                         <span>Filters</span>
-                        {(selectedCategories.size > 0 || selectedTypes.size > 0 || selectedAccounts.size > 0 || selectedUsers.size > 0 || startDate || endDate) && (
+                        {(selectedCategories.size > 0 || selectedTypes.size > 0 || selectedAccounts.size > 0 || selectedUsers.size > 0) && (
                             <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
                         )}
                     </button>
@@ -743,7 +675,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             {showFilters && (
                 <div className="mt-4 pt-4 border-t border-slate-100 animate-slide-down">
                     <div className="flex flex-col lg:flex-row gap-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-grow">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-grow relative z-20">
                             <MultiSelect 
                                 label="Categories" 
                                 options={categories} 
@@ -770,24 +702,48 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                             />
                         </div>
                         
-                        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center border-l pl-4 border-slate-200">
-                            <div className="flex items-center gap-2">
-                                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2 border rounded-md text-xs" />
-                                <span className="text-slate-400">-</span>
-                                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2 border rounded-md text-xs" />
+                        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center border-l pl-4 border-slate-200 relative z-10">
+                            
+                            <div className="flex items-center bg-slate-100 rounded-lg p-1">
+                                <select 
+                                    value={dateMode} 
+                                    onChange={(e) => setDateMode(e.target.value as DateMode)}
+                                    className="bg-transparent border-none text-xs font-semibold focus:ring-0 cursor-pointer py-1 pl-2 pr-6"
+                                >
+                                    <option value="month">Month</option>
+                                    <option value="year">Year</option>
+                                    <option value="custom">Custom</option>
+                                </select>
                             </div>
-                            <div className="flex gap-2">
-                                <button onClick={() => handleSetDateRange('thisMonth')} className="px-2 py-1 text-xs bg-slate-100 rounded hover:bg-slate-200">Month</button>
-                                <button onClick={() => handleSetDateRange('thisYear')} className="px-2 py-1 text-xs bg-slate-100 rounded hover:bg-slate-200">Year</button>
-                                <button onClick={clearFilters} className="text-xs text-red-500 hover:underline px-2">Clear</button>
-                            </div>
+
+                            {dateMode === 'custom' ? (
+                                <div className="flex items-center gap-2">
+                                    <input type="date" value={startDate} onChange={e => { setStartDate(e.target.value); setDateMode('custom'); }} className="p-1.5 border rounded-md text-xs w-32" />
+                                    <span className="text-slate-400">-</span>
+                                    <input type="date" value={endDate} onChange={e => { setEndDate(e.target.value); setDateMode('custom'); }} className="p-1.5 border rounded-md text-xs w-32" />
+                                </div>
+                            ) : (
+                                <div className="flex items-center bg-white border border-slate-300 rounded-lg overflow-hidden">
+                                    <button onClick={() => handleDateNavigate('prev')} className="p-1.5 hover:bg-slate-100 text-slate-500">
+                                        <ChevronLeftIcon className="w-4 h-4" />
+                                    </button>
+                                    <span className="px-3 text-sm font-medium text-slate-700 min-w-[120px] text-center">
+                                        {dateLabel}
+                                    </span>
+                                    <button onClick={() => handleDateNavigate('next')} className="p-1.5 hover:bg-slate-100 text-slate-500">
+                                        <ChevronRightIcon className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            )}
+
+                            <button onClick={clearFilters} className="text-xs text-red-500 hover:underline px-2">Clear</button>
                         </div>
                     </div>
                 </div>
             )}
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 min-h-0 flex flex-col overflow-hidden relative">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 min-h-0 flex flex-col overflow-hidden relative z-0">
           <TransactionTable 
             transactions={filteredTransactions} 
             accounts={accounts} 

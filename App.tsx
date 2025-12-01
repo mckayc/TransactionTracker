@@ -87,6 +87,7 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [initialTaskId, setInitialTaskId] = useState<string | undefined>(undefined);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
   // Load data from API on initial render
   useEffect(() => {
@@ -672,7 +673,8 @@ const App: React.FC = () => {
         return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
       case 'calendar':
         // Modified to pass handleSaveTask to support full editing from calendar
-        return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
+        // Added onAddTransaction for Donation modal support
+        return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports':
         return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} />;
       case 'accounts':
@@ -718,11 +720,21 @@ const App: React.FC = () => {
       
       <div className="flex">
         <div className="hidden md:block">
-          <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} />
+          <Sidebar 
+            currentView={currentView} 
+            onNavigate={setCurrentView} 
+            transactions={transactions} 
+            onChatToggle={() => setIsChatOpen(!isChatOpen)}
+          />
         </div>
         
         <div className={`md:hidden fixed inset-0 z-30 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-          <Sidebar currentView={currentView} onNavigate={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} transactions={transactions} />
+          <Sidebar 
+            currentView={currentView} 
+            onNavigate={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} 
+            transactions={transactions} 
+            onChatToggle={() => { setIsChatOpen(!isChatOpen); setIsSidebarOpen(false); }}
+          />
         </div>
         {isSidebarOpen && <div className="md:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)}></div>}
 
@@ -732,7 +744,11 @@ const App: React.FC = () => {
           </div>
         </main>
       </div>
-      <Chatbot contextData={{ transactions, accounts, templates, scheduledEvents, tasks, businessProfile, businessDocuments }} />
+      <Chatbot 
+        isOpen={isChatOpen}
+        onClose={() => setIsChatOpen(false)}
+        contextData={{ transactions, accounts, templates, scheduledEvents, tasks, businessProfile, businessDocuments }} 
+      />
     </div>
   );
 };

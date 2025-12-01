@@ -4,7 +4,8 @@ import type { Transaction, Template, ScheduledEvent, TaskCompletions, Transactio
 import ScheduleEventModal from '../components/ScheduleEventModal';
 import TransactionModal from './TransactionModal';
 import TaskModal from './TaskModal';
-import { CheckCircleIcon, ChecklistIcon, RepeatIcon, LinkIcon, UsersIcon, ExternalLinkIcon } from '../components/Icons';
+import DonationModal from '../components/DonationModal';
+import { CheckCircleIcon, ChecklistIcon, RepeatIcon, LinkIcon, UsersIcon, ExternalLinkIcon, HeartIcon } from '../components/Icons';
 import { formatDate, calculateNextDate } from '../dateUtils';
 
 interface CalendarPageProps {
@@ -20,6 +21,7 @@ interface CalendarPageProps {
   users: User[];
   onAddEvent: (event: ScheduledEvent) => void;
   onUpdateTransaction: (transaction: Transaction) => void;
+  onAddTransaction: (transaction: Transaction) => void;
   onToggleTaskCompletion: (date: string, eventId: string, taskId: string) => void;
   onToggleTask: (taskId: string) => void;
   onSaveTask?: (task: TaskItem) => void; // Added for updating task from modal view mode
@@ -68,10 +70,11 @@ const USER_COLORS = [
     'bg-pink-500', 'bg-teal-500', 'bg-cyan-500', 'bg-rose-500'
 ];
 
-const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, onSaveTask, transactionTypes, onUpdateTransaction, accounts, categories, tags, payees, users, initialTaskId }) => {
+const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, onSaveTask, transactionTypes, onUpdateTransaction, onAddTransaction, accounts, categories, tags, payees, users, initialTaskId }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -310,12 +313,22 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   return (
     <>
     <div className="space-y-6">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
             <div>
                 <h1 className="text-3xl font-bold text-slate-800">Calendar</h1>
                 <p className="text-slate-500 mt-1">View your schedule, tasks, and cash flow.</p>
             </div>
-            <button onClick={() => setIsModalOpen(true)} className="mt-2 sm:mt-0 px-4 py-2 text-white font-semibold bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700">Schedule Checklist</button>
+            <div className="flex items-center gap-2">
+                <button 
+                    onClick={() => setIsDonationModalOpen(true)}
+                    className="px-3 py-2 text-pink-600 bg-pink-50 border border-pink-100 rounded-lg hover:bg-pink-100 transition-colors flex items-center gap-2 font-medium text-sm"
+                    title="Calculate and generate donation transaction based on monthly income"
+                >
+                    <HeartIcon className="w-4 h-4" />
+                    Calculate Donation
+                </button>
+                <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 text-white font-semibold bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700">Schedule Checklist</button>
+            </div>
         </div>
 
         {/* User Filters */}
@@ -498,6 +511,18 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
     
     <ScheduleEventModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={onAddEvent} templates={templates} initialDate={selectedDate || new Date()} />
     
+    <DonationModal
+        isOpen={isDonationModalOpen}
+        onClose={() => setIsDonationModalOpen(false)}
+        onSave={onAddTransaction}
+        totalIncome={monthlySummary.income}
+        monthName={currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+        payees={payees}
+        accounts={accounts}
+        categories={categories}
+        transactionTypes={transactionTypes}
+    />
+
     {editingTransaction && (
       <TransactionModal
         isOpen={!!editingTransaction}

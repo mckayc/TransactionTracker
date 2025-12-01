@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon } from './Icons';
 
 type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents';
 
@@ -10,9 +10,10 @@ interface SidebarProps {
   currentView: View;
   onNavigate: (view: View) => void;
   transactions: Transaction[];
+  onChatToggle?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions, onChatToggle }) => {
   const [isManagementOpen, setIsManagementOpen] = useState(false);
 
   const mainNavItems = [
@@ -39,7 +40,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
       <div>
         <div className="flex items-center space-x-3 mb-8 px-2 pt-2">
             <svg className="h-8 w-8 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.75A.75.75 0 013 4.5h.75m0 0A.75.75 0 014.5 6v.75m0 0v-.75A.75.75 0 016 4.5h.75m0 0A.75.75 0 017.5 6v.75m0 0v-.75A.75.75 0 017.5 4.5h.75m0 0A.75.75 0 019 6v.75m0 0v-.75A.75.75 0 019 4.5h.75m0 0a.75.75 0 01.75.75v.75m0 0v-.75a.75.75 0 01.75-.75H15M21.75 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.75A.75.75 0 013 4.5h.75m0 0A.75.75 0 014.5 6v.75m0 0v-.75A.75.75 0 014.5 4.5h.75m0 0A.75.75 0 016 6v.75m0 0v-.75A.75.75 0 016 4.5h.75m0 0A.75.75 0 017.5 6v.75m0 0v-.75A.75.75 0 017.5 4.5h.75m0 0A.75.75 0 019 6v.75m0 0v-.75A.75.75 0 019 4.5h.75m0 0a.75.75 0 01.75.75v.75m0 0v-.75a.75.75 0 01.75-.75H15M21.75 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <h1 className="text-xl font-bold text-white">FinParser</h1>
         </div>
@@ -106,7 +107,17 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
           </ul>
         </nav>
       </div>
-      <div className="mt-auto pt-4">
+      
+      <div className="mt-auto pt-4 space-y-4">
+          {onChatToggle && (
+              <button 
+                onClick={onChatToggle}
+                className="w-full flex items-center gap-3 px-5 py-3 text-sm font-medium text-indigo-300 hover:text-white hover:bg-slate-700 transition-colors"
+              >
+                  <ChatBubbleIcon className="w-5 h-5" />
+                  <span>AI Assistant</span>
+              </button>
+          )}
           <CalendarView transactions={transactions} />
       </div>
     </aside>
