@@ -25,6 +25,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
     // Subtask input state
     const [newSubtaskText, setNewSubtaskText] = useState('');
     const [newSubtaskLink, setNewSubtaskLink] = useState('');
+    const [newSubtaskLinkText, setNewSubtaskLinkText] = useState('');
     const [showLinkInput, setShowLinkInput] = useState(false);
 
     const dueDateRef = useRef<HTMLInputElement>(null);
@@ -72,6 +73,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
             }
             setShowLinkInput(false);
             setNewSubtaskLink('');
+            setNewSubtaskLinkText('');
             setNewSubtaskText('');
         }
     }, [isOpen, task]);
@@ -107,10 +109,12 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
                 id: generateUUID(), 
                 text: newSubtaskText.trim(), 
                 isCompleted: false,
-                linkUrl: newSubtaskLink.trim() || undefined
+                linkUrl: newSubtaskLink.trim() || undefined,
+                linkText: newSubtaskLinkText.trim() || undefined
             }]);
             setNewSubtaskText('');
             setNewSubtaskLink('');
+            setNewSubtaskLinkText('');
             setShowLinkInput(false);
         }
     };
@@ -270,7 +274,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
                                                     {st.linkUrl && (
                                                         <a href={st.linkUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1 mt-1">
                                                             <LinkIcon className="w-3 h-3" />
-                                                            {st.linkUrl}
+                                                            {st.linkText || st.linkUrl}
                                                         </a>
                                                     )}
                                                 </div>
@@ -306,14 +310,24 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
                                         </button>
                                     </div>
                                     {showLinkInput && (
-                                        <input 
-                                            type="url"
-                                            value={newSubtaskLink}
-                                            onChange={e => setNewSubtaskLink(e.target.value)}
-                                            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
-                                            className="w-full p-2 border rounded-md text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                                            placeholder="Paste URL (https://...)"
-                                        />
+                                        <div className="grid grid-cols-2 gap-2 animate-slide-down">
+                                            <input 
+                                                type="text"
+                                                value={newSubtaskLinkText}
+                                                onChange={e => setNewSubtaskLinkText(e.target.value)}
+                                                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
+                                                className="w-full p-2 border rounded-md text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                                placeholder="Link Text (optional)"
+                                            />
+                                            <input 
+                                                type="url"
+                                                value={newSubtaskLink}
+                                                onChange={e => setNewSubtaskLink(e.target.value)}
+                                                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
+                                                className="w-full p-2 border rounded-md text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                                placeholder="URL (https://...)"
+                                            />
+                                        </div>
                                     )}
                                 </div>
                             </div>

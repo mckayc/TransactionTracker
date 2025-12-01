@@ -237,8 +237,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   const handleSelectionChange = (e: React.ChangeEvent<HTMLInputElement>, id: string) => {
-      // e.stopPropagation() is handled by the separate onClick handler on the input
-      // but we also stop it here just in case.
+      // Stop propagation to prevent row click
       e.stopPropagation();
       
       const nativeEvent = e.nativeEvent as any;
@@ -357,11 +356,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 className={`transition-colors group ${stickyBgClass}`}
             >
               {showCheckboxes && (
-                  <td className={`w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent ${stickyBgClass}`}>
+                  <td className={`w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-50 border-r border-transparent ${stickyBgClass}`}>
                       <div className={isChild ? "pl-4 border-l-2 border-slate-300" : ""}>
                         <input
                             type="checkbox"
-                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer pointer-events-auto"
                             checked={isSelected}
                             onChange={(e) => handleSelectionChange(e, transaction.id)}
                             onClick={(e) => e.stopPropagation()}
@@ -581,10 +580,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             onClick={() => toggleGroup(group.id)}
           >
               {showCheckboxes && (
-                  <td className="w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-20 border-r border-transparent bg-slate-100">
+                  <td className="w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-50 border-r border-transparent bg-slate-100">
                       <input
                           type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer pointer-events-auto"
                           checked={isFullySelected}
                           onChange={(e) => handleGroupSelection(e, group)}
                           onClick={(e) => e.stopPropagation()}
@@ -648,10 +647,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
           <tr>
             {showCheckboxes && (
-              <th scope="col" className="w-10 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-40 border-b border-slate-200">
+              <th scope="col" className="w-10 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-50 border-b border-slate-200">
                   <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 pointer-events-auto"
                       checked={transactions.length > 0 && selectedTxIds.size === transactions.length}
                       onChange={onToggleSelectAll}
                       aria-label="Select all transactions"
