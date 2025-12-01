@@ -279,6 +279,128 @@ const parseDate = (dateStr: string): Date | null => {
     return null;
 }
 
+// Dedicated parser for structured Pay Stubs
+const parsePayStubText = (text: string, accountId: string, transactionTypes: TransactionType[], sourceFilename?: string): RawTransaction[] => {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+    
+    // 1. Detect Date
+    let dateStr = '';
+    const dateRegex = /(?:check date|pay date|advice date|period end)\s*[:\-]?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4})/i;
+    
+    for (const line of lines) {
+        const match = line.match(dateRegex);
+        if (match) {
+            dateStr = match[1];
+            break;
+        }
+    }
+    // Fallback: search for any date if specific label not found, but prioritize labelled one
+    if (!dateStr) {
+        const anyDate = lines.find(l => /\d{1,2}\/\d{1,2}\/\d{4}/.test(l));
+        if (anyDate) {
+            const m = anyDate.match(/(\d{1,2}\/\d{1,2}\/\d{4})/);
+            if(m) dateStr = m[1];
+        }
+    }
+
+    const date = parseDate(dateStr);
+    if (!date) return []; // Cannot proceed without a date
+
+    // 2. Detect Gross Pay via Column Mapping
+    // Look for a header line containing "Gross Pay"
+    let headerLineIndex = -1;
+    let grossPayColumnIndex = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].toLowerCase();
+        if (line.includes('gross pay') || line.includes('gross earnings') || line.includes('total gross')) {
+            headerLineIndex = i;
+            // Determine column index by splitting on logic gaps (2+ spaces)
+            const headers = lines[i].split(/\s{2,}/); 
+            grossPayColumnIndex = headers.findIndex(h => /gross/i.test(h));
+            break;
+        }
+    }
+
+    let grossAmount = 0;
+
+    // Strategy A: Header/Column alignment (Best for tables like Weave PDF)
+    if (headerLineIndex !== -1 && grossPayColumnIndex !== -1) {
+        // Look for the "Current" row below the header
+        for (let i = headerLineIndex + 1; i < lines.length; i++) {
+            const line = lines[i];
+            if (/current/i.test(line)) {
+                const columns = line.split(/\s+/).filter(c => /[\d\.,]+/.test(c)); // Filter for number-like columns
+                // Adjust index: The 'Current' label might be column 0 in our split, or implied.
+                // Usually "Hours" is before "Gross".
+                // Let's try to map loosely. If headers were ["Hours", "Rate", "Amount"], and Gross is "Amount".
+                // Just grab the largest number in this row that isn't YTD?
+                // Or use the index.
+                
+                // Let's use a safer heuristic for the "Current" row:
+                // Extract all numbers.
+                const numbers = columns.map(c => parseFloat(c.replace(/,/g, ''))).filter(n => !isNaN(n));
+                
+                if (numbers.length > 0) {
+                    // Usually Gross Pay is the largest number in the "Current" block, 
+                    // unless YTD is on the same line. 
+                    // If the line has "Current", usually it means "Current Period" values only.
+                    // YTD is often on a separate line or separate block.
+                    // However, some lines are "Current   YTD".
+                    // If we have "Current" and "YTD" headers, we need to be careful.
+                    
+                    // Simple heuristic: Gross Pay is likely the largest number that matches a standard paycheck size.
+                    // Let's rely on the column index if possible.
+                    if (grossPayColumnIndex < numbers.length) {
+                         // The headers might be: [Desc, Hours, Rate, Current, YTD]
+                         // But our `headers` split used 2 spaces. 
+                         // Let's just look for the pattern: `Current [Hours] [Rate] [GROSS] ...`
+                         // In the screenshot: Current | 72.17 | 1,983.34 | ...
+                         // The gross is the 2nd number.
+                         // Let's assume Gross is > 100 usually.
+                         grossAmount = numbers.find(n => n > 100) || numbers[0];
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    // Strategy B: Fallback Regex (Current ... Number)
+    if (grossAmount === 0) {
+        // Look for "Current" followed by a substantial number
+        for (const line of lines) {
+            if (/current/i.test(line)) {
+                const matches = line.matchAll(/([\d,]+\.\d{2})/g);
+                for (const match of matches) {
+                    const val = parseFloat(match[1].replace(/,/g, ''));
+                    // Gross pay is typically > 0 and usually the first "large" number if hours/rate are small
+                    if (val > 50) { 
+                        grossAmount = val; 
+                        break; 
+                    }
+                }
+            }
+            if (grossAmount > 0) break;
+        }
+    }
+
+    if (grossAmount === 0) return [];
+
+    // Find Income Type ID
+    const incomeTypeId = transactionTypes.find(t => t.balanceEffect === 'income')?.id || '';
+
+    return [{
+        date: date.toISOString().split('T')[0],
+        description: `Paycheck - ${sourceFilename || 'Import'}`,
+        amount: grossAmount,
+        category: 'Income',
+        typeId: incomeTypeId,
+        accountId,
+        sourceFilename
+    }];
+};
+
 const parseMortgageCsv = (text: string, accountId: string, transactionTypes: TransactionType[], sourceFilename?: string): RawTransaction[] => {
     const lines = text.split('\n').filter(line => line.trim() !== '');
     if (lines.length < 2) return [];
@@ -585,12 +707,19 @@ export const parseTransactionsFromFiles = async (files: File[], accountId: strin
                 transactions = parseCsvText(text, accountId, transactionTypes, file.name);
             } else if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
                 text = await extractTextFromPdf(file);
-                // Try to parse as CSV first (if extraction aligned things perfectly with commas)
-                transactions = parseCsvText(text, accountId, transactionTypes, file.name);
                 
-                // If structure is loose, use regex parser
-                if (transactions.length === 0) {
-                    transactions = parseGenericText(text, accountId, transactionTypes, file.name);
+                // 1. Check for Pay Stub patterns first (e.g. "Gross Pay", "Check Date")
+                if (/gross pay|total earnings/i.test(text) && /check date|pay date|period end/i.test(text)) {
+                    transactions = parsePayStubText(text, accountId, transactionTypes, file.name);
+                } 
+                // 2. Try to parse as CSV (if extraction aligned things perfectly with commas)
+                else {
+                    transactions = parseCsvText(text, accountId, transactionTypes, file.name);
+                    
+                    // 3. If structure is loose, use regex parser
+                    if (transactions.length === 0) {
+                        transactions = parseGenericText(text, accountId, transactionTypes, file.name);
+                    }
                 }
             } else {
                 onProgress(`Skipping unsupported file type: ${file.name}`);

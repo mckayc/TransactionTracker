@@ -26,26 +26,70 @@ export const formatDate = (date: Date | string): string => {
 export const calculateNextDate = (currentDateStr: string, rule: RecurrenceRule): string => {
     // Parse YYYY-MM-DD explicitly to avoid timezone shifts
     const parts = currentDateStr.split('-');
-    const date = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    const current = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     
     const interval = rule.interval && rule.interval > 0 ? rule.interval : 1;
 
     switch (rule.frequency) {
         case 'daily':
-            date.setDate(date.getDate() + interval);
+            current.setDate(current.getDate() + interval);
             break;
+            
         case 'weekly':
-            date.setDate(date.getDate() + (interval * 7));
+            if (rule.byWeekDays && rule.byWeekDays.length > 0) {
+                // Find the next occurrence of one of the specified days
+                // Sort days (0-6)
+                const targetDays = [...rule.byWeekDays].sort((a, b) => a - b);
+                const currentDay = current.getDay();
+                
+                // Check if there is a remaining day in the *current* week
+                const nextDayInWeek = targetDays.find(d => d > currentDay);
+                
+                if (nextDayInWeek !== undefined) {
+                    // Same week, just move to that day
+                    const diff = nextDayInWeek - currentDay;
+                    current.setDate(current.getDate() + diff);
+                } else {
+                    // Next week (or next interval weeks), first available day
+                    const daysUntilNextWeek = 7 - currentDay; // Days to finish current week
+                    const daysToFirstTarget = targetDays[0]; // Days from Sunday to target
+                    // Add interval - 1 weeks (since we are crossing a week boundary)
+                    const weeksToAdd = Math.max(0, interval - 1);
+                    
+                    current.setDate(current.getDate() + daysUntilNextWeek + (weeksToAdd * 7) + daysToFirstTarget);
+                }
+            } else {
+                // Simple interval
+                current.setDate(current.getDate() + (interval * 7));
+            }
             break;
+            
         case 'monthly':
-            date.setMonth(date.getMonth() + interval);
+            // Logic for "First Day", "Last Day", or "Specific Day"
+            // Move forward by interval months first
+            current.setMonth(current.getMonth() + interval);
+            
+            if (rule.byMonthDay !== undefined) {
+                if (rule.byMonthDay === -1) {
+                    // Last day of the month: Move to 1st of next month, then subtract 1 day
+                    current.setMonth(current.getMonth() + 1, 0); 
+                } else {
+                    // Specific day (e.g. 1st, 15th)
+                    // Ensure valid day (e.g. don't set Feb 30th)
+                    const maxDays = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
+                    const dayToSet = Math.min(rule.byMonthDay, maxDays);
+                    current.setDate(dayToSet);
+                }
+            }
+            // If no byMonthDay, it keeps the relative day from the original date (standard setMonth behavior)
             break;
+            
         case 'yearly':
-            date.setFullYear(date.getFullYear() + interval);
+            current.setFullYear(current.getFullYear() + interval);
             break;
     }
     
-    return formatDate(date);
+    return formatDate(current);
 };
 
 /**

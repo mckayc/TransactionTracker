@@ -158,12 +158,15 @@ export interface SubTask {
   id: string;
   text: string;
   isCompleted: boolean;
+  linkUrl?: string; // Optional URL for checklist items
 }
 
 export interface RecurrenceRule {
   frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
   interval: number; // e.g. 1 for "every day", 2 for "every 2 weeks"
   endDate?: string; // YYYY-MM-DD
+  byWeekDays?: number[]; // 0=Sun, 1=Mon, etc. for Weekly
+  byMonthDay?: number; // 1-31, or -1 for Last Day for Monthly
 }
 
 export interface TaskItem {

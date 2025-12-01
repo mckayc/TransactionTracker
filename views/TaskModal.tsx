@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { TaskItem, SubTask, RecurrenceRule, TaskPriority } from '../types';
-import { CloseIcon, ChecklistIcon, CalendarIcon, RepeatIcon, DeleteIcon, AddIcon } from '../components/Icons';
+import { CloseIcon, ChecklistIcon, CalendarIcon, RepeatIcon, DeleteIcon, AddIcon, LinkIcon } from '../components/Icons';
 import { formatDate, getTodayDate } from '../dateUtils';
 import { generateUUID } from '../utils';
 
@@ -21,7 +21,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
     const [isRecurring, setIsRecurring] = useState(false);
     const [recurrence, setRecurrence] = useState<RecurrenceRule>({ frequency: 'weekly', interval: 1 });
     const [activeTab, setActiveTab] = useState<'details' | 'checklist' | 'schedule'>('details');
+    
+    // Subtask input state
     const [newSubtaskText, setNewSubtaskText] = useState('');
+    const [newSubtaskLink, setNewSubtaskLink] = useState('');
+    const [showLinkInput, setShowLinkInput] = useState(false);
 
     const dueDateRef = useRef<HTMLInputElement>(null);
     const endDateRef = useRef<HTMLInputElement>(null);
@@ -66,6 +70,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
                 setRecurrence({ frequency: 'weekly', interval: 1 });
                 setActiveTab('details');
             }
+            setShowLinkInput(false);
+            setNewSubtaskLink('');
+            setNewSubtaskText('');
         }
     }, [isOpen, task]);
 
@@ -96,8 +103,15 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
 
     const addSubtask = () => {
         if (newSubtaskText.trim()) {
-            setSubtasks([...subtasks, { id: generateUUID(), text: newSubtaskText.trim(), isCompleted: false }]);
+            setSubtasks([...subtasks, { 
+                id: generateUUID(), 
+                text: newSubtaskText.trim(), 
+                isCompleted: false,
+                linkUrl: newSubtaskLink.trim() || undefined
+            }]);
             setNewSubtaskText('');
+            setNewSubtaskLink('');
+            setShowLinkInput(false);
         }
     };
 
@@ -109,11 +123,23 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
         setSubtasks(subtasks.map(st => st.id === id ? { ...st, isCompleted: !st.isCompleted } : st));
     };
 
+    const toggleWeekDay = (dayIndex: number) => {
+        const currentDays = new Set(recurrence.byWeekDays || []);
+        if (currentDays.has(dayIndex)) {
+            currentDays.delete(dayIndex);
+        } else {
+            currentDays.add(dayIndex);
+        }
+        setRecurrence({ ...recurrence, byWeekDays: Array.from(currentDays) });
+    };
+
     const priorityColors = {
         low: 'bg-blue-100 text-blue-700',
         medium: 'bg-amber-100 text-amber-700',
         high: 'bg-red-100 text-red-700',
     };
+
+    const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
@@ -234,12 +260,20 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
                                                     onChange={() => toggleSubtask(st.id)} 
                                                     className="mt-1 w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer border-slate-300" 
                                                 />
-                                                <span 
-                                                    className={`flex-grow text-sm cursor-pointer transition-all ${st.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 font-medium'}`} 
-                                                    onClick={() => toggleSubtask(st.id)}
-                                                >
-                                                    {st.text}
-                                                </span>
+                                                <div className="flex-grow flex flex-col">
+                                                    <span 
+                                                        className={`text-sm cursor-pointer transition-all ${st.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 font-medium'}`} 
+                                                        onClick={() => toggleSubtask(st.id)}
+                                                    >
+                                                        {st.text}
+                                                    </span>
+                                                    {st.linkUrl && (
+                                                        <a href={st.linkUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1 mt-1">
+                                                            <LinkIcon className="w-3 h-3" />
+                                                            {st.linkUrl}
+                                                        </a>
+                                                    )}
+                                                </div>
                                                 <button type="button" onClick={() => removeSubtask(st.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">
                                                     <DeleteIcon className="w-4 h-4" />
                                                 </button>
@@ -248,19 +282,39 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
                                     </ul>
                                 )}
 
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        value={newSubtaskText} 
-                                        onChange={e => setNewSubtaskText(e.target.value)} 
-                                        onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
-                                        className="flex-grow p-2 border rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm" 
-                                        placeholder="Add a new item..." 
-                                        autoFocus
-                                    />
-                                    <button type="button" onClick={addSubtask} className="px-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
-                                        <AddIcon className="w-5 h-5" />
-                                    </button>
+                                <div className="space-y-2 border p-2 rounded-md bg-slate-50">
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            value={newSubtaskText} 
+                                            onChange={e => setNewSubtaskText(e.target.value)} 
+                                            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
+                                            className="flex-grow p-2 border rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm" 
+                                            placeholder="New checklist item..." 
+                                            autoFocus
+                                        />
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setShowLinkInput(!showLinkInput)}
+                                            className={`p-2 rounded-md transition-colors ${showLinkInput ? 'bg-indigo-100 text-indigo-600' : 'bg-white border text-slate-500 hover:bg-slate-100'}`}
+                                            title="Add Link"
+                                        >
+                                            <LinkIcon className="w-5 h-5" />
+                                        </button>
+                                        <button type="button" onClick={addSubtask} className="px-3 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
+                                            <AddIcon className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                    {showLinkInput && (
+                                        <input 
+                                            type="url"
+                                            value={newSubtaskLink}
+                                            onChange={e => setNewSubtaskLink(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())}
+                                            className="w-full p-2 border rounded-md text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                            placeholder="Paste URL (https://...)"
+                                        />
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -298,7 +352,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-1">Every</label>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">Interval</label>
                                             <div className="flex items-center gap-2">
                                                 <input 
                                                     type="number" 
@@ -315,6 +369,52 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task }) 
                                             </div>
                                         </div>
                                     </div>
+
+                                    {/* Advanced Weekly Options */}
+                                    {recurrence.frequency === 'weekly' && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">On these days:</label>
+                                            <div className="flex gap-2">
+                                                {weekDays.map((day, index) => {
+                                                    const isSelected = recurrence.byWeekDays?.includes(index);
+                                                    return (
+                                                        <button 
+                                                            key={index} 
+                                                            type="button"
+                                                            onClick={() => toggleWeekDay(index)}
+                                                            className={`w-8 h-8 rounded-full text-xs font-bold transition-colors ${isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                                        >
+                                                            {day}
+                                                        </button>
+                                                    )
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Advanced Monthly Options */}
+                                    {recurrence.frequency === 'monthly' && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">On day:</label>
+                                            <select 
+                                                value={recurrence.byMonthDay !== undefined ? recurrence.byMonthDay : 'same'}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setRecurrence({ 
+                                                        ...recurrence, 
+                                                        byMonthDay: val === 'same' ? undefined : parseInt(val) 
+                                                    });
+                                                }}
+                                                className="w-full p-2 border rounded-md"
+                                            >
+                                                <option value="same">Same day of the month</option>
+                                                <option value="1">1st (First Day)</option>
+                                                <option value="15">15th</option>
+                                                <option value="-1">Last Day of Month</option>
+                                            </select>
+                                        </div>
+                                    )}
+
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-1">End Date (Optional)</label>
                                         <div className="relative">
