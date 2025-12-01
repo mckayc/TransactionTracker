@@ -156,10 +156,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
 
   const { itemsByDay, monthlySummary } = useMemo(() => {
-    const map = new Map<string, { transactions: Transaction[], events: ScheduledEvent[], tasks: TaskItem[], income: number, expenses: number, investments: number }>();
+    const map = new Map<string, { transactions: Transaction[], events: ScheduledEvent[], tasks: TaskItem[], income: number, expenses: number, investments: number, donations: number }>();
     let monthlyIncome = 0;
     let monthlyExpenses = 0;
     let monthlyInvestments = 0;
+    let monthlyDonations = 0;
     const currentMonth = currentDate.getMonth();
     const currentYear = currentDate.getFullYear();
 
@@ -170,7 +171,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
 
     const getDayData = (dateKey: string) => {
         if (!map.has(dateKey)) {
-            map.set(dateKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0 });
+            map.set(dateKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0 });
         }
         return map.get(dateKey)!;
     }
@@ -194,6 +195,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
          if (type?.balanceEffect === 'income') monthlyIncome += tx.amount;
          else if (type?.balanceEffect === 'expense') monthlyExpenses += tx.amount;
          else if (type?.balanceEffect === 'investment') monthlyInvestments += tx.amount;
+         else if (type?.balanceEffect === 'donation') monthlyDonations += tx.amount;
       }
 
       const dateKey = getDayKey(txDate);
@@ -202,6 +204,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
        if (type?.balanceEffect === 'income') dayData.income += tx.amount;
        else if (type?.balanceEffect === 'expense') dayData.expenses += tx.amount;
        else if (type?.balanceEffect === 'investment') dayData.investments += tx.amount;
+       else if (type?.balanceEffect === 'donation') dayData.donations += tx.amount;
     });
 
     // Process Recurring Events (Templates)
@@ -282,7 +285,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
 
     return { 
         itemsByDay: map, 
-        monthlySummary: { income: monthlyIncome, expenses: monthlyExpenses, investments: monthlyInvestments }
+        monthlySummary: { income: monthlyIncome, expenses: monthlyExpenses, investments: monthlyInvestments, donations: monthlyDonations }
     };
   }, [transactions, scheduledEvents, tasks, currentDate, transactionTypeMap, selectedUserIds, users]);
   
@@ -338,10 +341,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
             <button onClick={selectAllUsers} className="text-xs text-indigo-600 hover:underline ml-auto font-medium">Select All</button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
             <SummaryWidget title="Income" value={formatCurrency(monthlySummary.income)} helpText="Total income & refunds" />
             <SummaryWidget title="Expenses" value={formatCurrency(monthlySummary.expenses)} helpText="Total spending" />
             <SummaryWidget title="Investments" value={formatCurrency(monthlySummary.investments)} helpText="Assets & contributions" />
+            <SummaryWidget title="Donations" value={formatCurrency(monthlySummary.donations)} helpText="Charitable giving" />
             <SummaryWidget title="Net Flow" value={formatCurrency(monthlySummary.income - monthlySummary.expenses)} helpText="Income - Expenses" />
         </div>
 
@@ -362,6 +366,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                         const dayIncome = dayData?.income || 0;
                         const dayExpenses = dayData?.expenses || 0;
                         const dayInvestments = dayData?.investments || 0;
+                        const dayDonations = dayData?.donations || 0;
 
                         return (
                             <div key={i} onClick={() => setSelectedDate(d)} className={`relative p-2 h-28 flex flex-col border-r border-b cursor-pointer transition-colors ${isCurrentMonth ? 'bg-white hover:bg-slate-50' : 'bg-slate-50 hover:bg-slate-100'} ${isSelected ? 'ring-2 ring-indigo-500 z-10' : ''}`}>
@@ -371,6 +376,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                                     {dayIncome > 0 && <p className="text-green-600 truncate font-medium">+{formatCurrency(dayIncome)}</p>}
                                     {dayExpenses > 0 && <p className="text-red-600 truncate font-medium">-{formatCurrency(dayExpenses)}</p>}
                                     {dayInvestments > 0 && <p className="text-purple-600 truncate font-medium">-{formatCurrency(dayInvestments)}</p>}
+                                    {dayDonations > 0 && <p className="text-blue-500 truncate font-medium">-{formatCurrency(dayDonations)}</p>}
                                 </div>
                             </div>
                         );
@@ -459,6 +465,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                                     const type = transactionTypeMap.get(tx.typeId);
                                     const isExpense = type?.balanceEffect === 'expense';
                                     const isInvestment = type?.balanceEffect === 'investment';
+                                    const isDonation = type?.balanceEffect === 'donation';
                                     const category = categories.find(c => c.id === tx.categoryId);
                                     const userColorClass = getUserColorClass(tx.userId);
                                     
@@ -474,8 +481,8 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                                                     {tx.userId && <span className="ml-1 opacity-60">• {users.find(u => u.id === tx.userId)?.name.split(' ')[0]}</span>}
                                                 </p>
                                             </div>
-                                            <p className={`font-semibold flex-shrink-0 ml-4 ${isExpense ? 'text-red-600' : (isInvestment ? 'text-purple-600' : 'text-green-600')}`}>
-                                                {(isExpense || isInvestment) ? `-${formatCurrency(tx.amount)}` : formatCurrency(tx.amount)}
+                                            <p className={`font-semibold flex-shrink-0 ml-4 ${isExpense ? 'text-red-600' : (isInvestment ? 'text-purple-600' : (isDonation ? 'text-blue-600' : 'text-green-600'))}`}>
+                                                {(isExpense || isInvestment || isDonation) ? `-${formatCurrency(tx.amount)}` : formatCurrency(tx.amount)}
                                             </p>
                                         </li>
                                     );

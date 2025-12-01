@@ -327,6 +327,22 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     return colors[categoryName] || 'bg-slate-100 text-slate-800';
   };
 
+  const getAmountColor = (typeId: string) => {
+      const type = transactionTypeMap.get(typeId);
+      if (type?.balanceEffect === 'expense') return 'text-red-600';
+      if (type?.balanceEffect === 'investment') return 'text-purple-600';
+      if (type?.balanceEffect === 'donation') return 'text-blue-600'; // Donations are Blue
+      if (type?.balanceEffect === 'income') return 'text-green-600';
+      return 'text-slate-600'; // Transfer
+  };
+
+  const getAmountPrefix = (typeId: string) => {
+      const type = transactionTypeMap.get(typeId);
+      if (type?.balanceEffect === 'expense' || type?.balanceEffect === 'investment' || type?.balanceEffect === 'donation') return '-';
+      if (type?.balanceEffect === 'income') return '+';
+      return '';
+  };
+
   // Note: sticky z-indices are set in index.css to ensure proper layering
   // If check boxes are shown, we offset the Date column by 2.5rem (w-10)
   const dateColumnStyle = showCheckboxes ? { left: '2.5rem' } : {};
@@ -349,11 +365,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         const category = categoryMap.get(transaction.categoryId);
         const categoryName = category?.name || 'Uncategorized';
         
-        const isExpense = type?.balanceEffect === 'expense';
-        const isInvestment = type?.balanceEffect === 'investment';
-        
-        const amountColor = isExpense ? 'text-red-600' : (isInvestment ? 'text-purple-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600'));
-        const amountPrefix = (isExpense || isInvestment) ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
+        const amountColor = getAmountColor(transaction.typeId);
+        const amountPrefix = getAmountPrefix(transaction.typeId);
         
         const isSelected = selectedTxIds.has(transaction.id);
         
@@ -590,11 +603,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       const primaryTx = group.primaryTx;
       const type = transactionTypeMap.get(primaryTx.typeId);
       
-      const isExpense = type?.balanceEffect === 'expense';
-      const isInvestment = type?.balanceEffect === 'investment';
-      
-      const amountColor = isExpense ? 'text-red-600' : (isInvestment ? 'text-purple-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600'));
-      const amountPrefix = (isExpense || isInvestment) ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
+      const amountColor = getAmountColor(primaryTx.typeId);
+      const amountPrefix = getAmountPrefix(primaryTx.typeId);
 
       return (
           <tr 

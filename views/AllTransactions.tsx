@@ -8,9 +8,10 @@ import LinkTransactionModal from '../components/LinkTransactionModal';
 import LinkedGroupModal from '../components/LinkedGroupModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
-import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon } from '../components/Icons';
+import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
+import MultiSelect from '../components/MultiSelect';
 
 // A custom hook to debounce a value
 function useDebounce<T>(value: T, delay: number): T {
@@ -142,6 +143,23 @@ const BulkUserModal: React.FC<{
     );
 };
 
+// --- Filter Summary Card ---
+const SummaryCard: React.FC<{ title: string; value: number; type: 'income' | 'expense' | 'investment' | 'donation' }> = ({ title, value, type }) => {
+    const colors = {
+        income: 'text-green-600 bg-green-50 border-green-100',
+        expense: 'text-red-600 bg-red-50 border-red-100',
+        investment: 'text-purple-600 bg-purple-50 border-purple-100',
+        donation: 'text-blue-600 bg-blue-50 border-blue-100'
+    };
+    
+    return (
+        <div className={`p-4 rounded-xl border ${colors[type]} flex flex-col`}>
+            <span className="text-xs font-bold uppercase tracking-wider opacity-70 mb-1">{title}</span>
+            <span className="text-xl font-bold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)}</span>
+        </div>
+    );
+};
+
 
 interface AllTransactionsProps {
   transactions: Transaction[];
@@ -164,21 +182,22 @@ interface AllTransactionsProps {
 const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, tags, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onAddTransactionType }) => {
   // State for immediate input values
   const [searchTerm, setSearchTerm] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [accountFilter, setAccountFilter] = useState('');
-  const [userFilter, setUserFilter] = useState('');
+  
+  // Multi-Select States
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
+  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   
-  // Debounced values for filtering logic
+  // UI State
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Debounced values
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
-  const debouncedCategoryFilter = useDebounce(categoryFilter, 300);
-  const debouncedTypeFilter = useDebounce(typeFilter, 300);
-  const debouncedAccountFilter = useDebounce(accountFilter, 300);
-  const debouncedUserFilter = useDebounce(userFilter, 300);
-  const debouncedStartDate = useDebounce(startDate, 300);
-  const debouncedEndDate = useDebounce(endDate, 300);
+  // We don't necessarily need to debounce checkbox selections as they are less frequent/rapid than typing
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
@@ -219,46 +238,54 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       localStorage.setItem('transaction_columns', JSON.stringify(Array.from(visibleColumns)));
   }, [visibleColumns]);
 
-  const sortedCategoryOptions = useMemo(() => {
-    const sorted: { id: string, name: string }[] = [];
-    const parents = categories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
-    parents.forEach(parent => {
-      sorted.push({ id: parent.id, name: parent.name });
-      const children = categories.filter(c => c.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-      children.forEach(child => {
-        sorted.push({ id: child.id, name: `  - ${child.name}` });
-      });
-    });
-    return sorted;
-  }, [categories]);
-
-
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
       const txDate = new Date(tx.date);
-      const start = debouncedStartDate ? new Date(debouncedStartDate) : null;
-      const end = debouncedEndDate ? new Date(debouncedEndDate) : null;
+      const start = startDate ? new Date(startDate) : null;
+      const end = endDate ? new Date(endDate) : null;
       if (start) start.setHours(0, 0, 0, 0);
       if (end) end.setHours(23, 59, 59, 999);
 
       if (start && txDate < start) return false;
       if (end && txDate > end) return false;
       if (debouncedSearchTerm && !tx.description.toLowerCase().includes(debouncedSearchTerm.toLowerCase())) return false;
-      if (debouncedCategoryFilter && tx.categoryId !== debouncedCategoryFilter) return false;
-      if (debouncedTypeFilter && tx.typeId !== debouncedTypeFilter) return false;
-      if (debouncedAccountFilter && tx.accountId !== debouncedAccountFilter) return false;
-      if (debouncedUserFilter && tx.userId !== debouncedUserFilter) return false;
+      
+      // Multi-select filters logic
+      if (selectedCategories.size > 0 && !selectedCategories.has(tx.categoryId)) return false;
+      if (selectedTypes.size > 0 && !selectedTypes.has(tx.typeId)) return false;
+      if (selectedAccounts.size > 0 && !selectedAccounts.has(tx.accountId || '')) return false;
+      if (selectedUsers.size > 0 && !selectedUsers.has(tx.userId || '')) return false;
       
       return true;
     });
-  }, [transactions, debouncedSearchTerm, debouncedCategoryFilter, debouncedTypeFilter, debouncedAccountFilter, debouncedUserFilter, debouncedStartDate, debouncedEndDate]);
+  }, [transactions, debouncedSearchTerm, selectedCategories, selectedTypes, selectedAccounts, selectedUsers, startDate, endDate]);
   
+  // Calculate Summaries based on Filtered Data
+  const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
+  
+  const summaries = useMemo(() => {
+      let income = 0;
+      let expenses = 0;
+      let investments = 0;
+      let donations = 0;
+
+      filteredTransactions.forEach(tx => {
+          const type = transactionTypeMap.get(tx.typeId);
+          if (type?.balanceEffect === 'income') income += tx.amount;
+          else if (type?.balanceEffect === 'expense') expenses += tx.amount;
+          else if (type?.balanceEffect === 'investment') investments += tx.amount;
+          else if (type?.balanceEffect === 'donation') donations += tx.amount;
+      });
+
+      return { income, expenses, investments, donations };
+  }, [filteredTransactions, transactionTypeMap]);
+
   const clearFilters = () => {
     setSearchTerm('');
-    setCategoryFilter('');
-    setTypeFilter('');
-    setAccountFilter('');
-    setUserFilter('');
+    setSelectedCategories(new Set());
+    setSelectedTypes(new Set());
+    setSelectedAccounts(new Set());
+    setSelectedUsers(new Set());
     setStartDate('');
     setEndDate('');
   }
@@ -492,7 +519,6 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc.name])), [accounts]);
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
   const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
-  const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
 
   const handleSetDateRange = (preset: 'thisMonth' | 'lastMonth' | 'thisQuarter' | 'lastQuarter' | 'thisYear') => {
     const now = new Date();
@@ -598,7 +624,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
         </head>
         <body>
           <h1>Transactions Export</h1>
-          <p>Filters applied: ${debouncedSearchTerm || 'None'}, ${categoryMap.get(debouncedCategoryFilter) || 'All Categories'}, ${transactionTypeMap.get(debouncedTypeFilter)?.name || 'All Types'}, ${accountMap.get(debouncedAccountFilter) || 'All Accounts'}, ${debouncedStartDate} to ${debouncedEndDate}</p>
+          <p>Filters applied: ${debouncedSearchTerm || 'None'}, ${startDate || 'Start'} to ${endDate || 'End'}</p>
           <table>
             <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
             <tbody>${rows}</tbody>
@@ -646,14 +672,45 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   return (
     <>
       <div className="flex flex-col h-full overflow-hidden gap-4">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex-shrink-0">
-           <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4">
-                <h2 className="text-2xl font-bold text-slate-700">All Transactions</h2>
-                <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-wrap">
+        
+        {/* Dynamic Summary Cards (Based on Filters) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-shrink-0">
+            <SummaryCard title="Income" value={summaries.income} type="income" />
+            <SummaryCard title="Expenses" value={summaries.expenses} type="expense" />
+            <SummaryCard title="Investments" value={summaries.investments} type="investment" />
+            <SummaryCard title="Donations" value={summaries.donations} type="donation" />
+        </div>
+
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-shrink-0">
+           <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+                <div className="flex items-center gap-4">
+                    <h2 className="text-xl font-bold text-slate-700">All Transactions</h2>
+                    <input 
+                        type="text" 
+                        placeholder="Search..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full md:w-64 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                    />
+                </div>
+                
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Collapsible Filter Button */}
+                    <button 
+                        onClick={() => setShowFilters(!showFilters)} 
+                        className={`flex items-center gap-2 px-3 py-2 font-medium rounded-lg border transition-all ${showFilters ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}
+                    >
+                        <SortIcon className="w-4 h-4"/>
+                        <span>Filters</span>
+                        {(selectedCategories.size > 0 || selectedTypes.size > 0 || selectedAccounts.size > 0 || selectedUsers.size > 0 || startDate || endDate) && (
+                            <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+                        )}
+                    </button>
+
                     <div className="relative" ref={columnMenuRef}>
-                        <button onClick={() => setIsColumnMenuOpen(!isColumnMenuOpen)} className="flex items-center gap-2 px-4 py-2 text-slate-600 font-semibold bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200">
-                            <EyeIcon className="w-5 h-5"/>
-                            <span>Columns</span>
+                        <button onClick={() => setIsColumnMenuOpen(!isColumnMenuOpen)} className="flex items-center gap-2 px-3 py-2 text-slate-600 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                            <EyeIcon className="w-4 h-4"/>
+                            <span className="hidden sm:inline">Cols</span>
                         </button>
                         {isColumnMenuOpen && (
                             <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50">
@@ -669,67 +726,65 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                             </div>
                         )}
                     </div>
-                    <button onClick={() => setIsAuditorOpen(true)} disabled={!hasApiKey()} className="flex items-center gap-2 px-4 py-2 text-indigo-700 font-semibold bg-indigo-50 border border-indigo-200 rounded-lg shadow-sm hover:bg-indigo-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed" title={!hasApiKey() ? "API Key missing" : "AI Audit"}>
-                        <RobotIcon className="w-5 h-5"/>
-                        <span>AI Audit</span>
+                    
+                    <button onClick={() => setIsAuditorOpen(true)} disabled={!hasApiKey()} className="flex items-center gap-2 px-3 py-2 text-indigo-700 font-medium bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <RobotIcon className="w-4 h-4"/>
+                        <span className="hidden sm:inline">Audit</span>
                     </button>
-                    <button onClick={handleFindDuplicates} className="flex items-center gap-2 px-4 py-2 text-indigo-600 font-semibold bg-indigo-100 rounded-lg shadow-sm hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200">
-                        <DuplicateIcon className="w-5 h-5"/>
-                        <span>Find Duplicates</span>
-                    </button>
-                    <button onClick={handleAddNew} className="flex items-center gap-2 px-4 py-2 text-white font-semibold bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200">
-                        <AddIcon className="w-5 h-5"/>
-                        <span>Add Transaction</span>
+                    
+                    <button onClick={handleAddNew} className="flex items-center gap-2 px-4 py-2 text-white font-medium bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700">
+                        <AddIcon className="w-4 h-4"/>
+                        <span className="hidden sm:inline">Add</span>
                     </button>
                 </div>
             </div>
-            <div className="border-t pt-4">
-                <div className="flex flex-wrap items-center gap-2 mb-4">
-                    <span className="text-sm font-medium text-slate-600">Quick Date Filters:</span>
-                    <button onClick={() => handleSetDateRange('thisMonth')} className="px-3 py-1 text-xs font-semibold rounded-full bg-slate-100 hover:bg-slate-200">This Month</button>
-                    <button onClick={() => handleSetDateRange('lastMonth')} className="px-3 py-1 text-xs font-semibold rounded-full bg-slate-100 hover:bg-slate-200">Last Month</button>
-                    <button onClick={() => handleSetDateRange('thisQuarter')} className="px-3 py-1 text-xs font-semibold rounded-full bg-slate-100 hover:bg-slate-200">This Quarter</button>
-                    <button onClick={() => handleSetDateRange('lastQuarter')} className="px-3 py-1 text-xs font-semibold rounded-full bg-slate-100 hover:bg-slate-200">Last Quarter</button>
-                    <button onClick={() => handleSetDateRange('thisYear')} className="px-3 py-1 text-xs font-semibold rounded-full bg-slate-100 hover:bg-slate-200">This Year</button>
-                    <div className="flex-grow"></div>
-                    <button onClick={handleExportCsv} className="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-800 hover:bg-green-200">Export CSV</button>
-                    <button onClick={handleExportPdf} className="px-3 py-1 text-xs font-semibold rounded-full bg-red-100 text-red-800 hover:bg-red-200">Export PDF</button>
+
+            {/* Collapsible Filter Drawer */}
+            {showFilters && (
+                <div className="mt-4 pt-4 border-t border-slate-100 animate-slide-down">
+                    <div className="flex flex-col lg:flex-row gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-grow">
+                            <MultiSelect 
+                                label="Categories" 
+                                options={categories} 
+                                selectedIds={selectedCategories} 
+                                onChange={setSelectedCategories} 
+                            />
+                            <MultiSelect 
+                                label="Types" 
+                                options={transactionTypes} 
+                                selectedIds={selectedTypes} 
+                                onChange={setSelectedTypes} 
+                            />
+                            <MultiSelect 
+                                label="Accounts" 
+                                options={accounts} 
+                                selectedIds={selectedAccounts} 
+                                onChange={setSelectedAccounts} 
+                            />
+                            <MultiSelect 
+                                label="Users" 
+                                options={users} 
+                                selectedIds={selectedUsers} 
+                                onChange={setSelectedUsers} 
+                            />
+                        </div>
+                        
+                        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center border-l pl-4 border-slate-200">
+                            <div className="flex items-center gap-2">
+                                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2 border rounded-md text-xs" />
+                                <span className="text-slate-400">-</span>
+                                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2 border rounded-md text-xs" />
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => handleSetDateRange('thisMonth')} className="px-2 py-1 text-xs bg-slate-100 rounded hover:bg-slate-200">Month</button>
+                                <button onClick={() => handleSetDateRange('thisYear')} className="px-2 py-1 text-xs bg-slate-100 rounded hover:bg-slate-200">Year</button>
+                                <button onClick={clearFilters} className="text-xs text-red-500 hover:underline px-2">Clear</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-center">
-              <input 
-                  type="text" 
-                  placeholder="Search description..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="sm:col-span-2 lg:col-span-1"
-              />
-              <select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
-                  <option value="">All Categories</option>
-                  {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-              </select>
-              <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
-                  <option value="">All Types</option>
-                  {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
-              </select>
-              <select value={accountFilter} onChange={e => setAccountFilter(e.target.value)}>
-                  <option value="">All Accounts</option>
-                  {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-              </select>
-              <select value={userFilter} onChange={e => setUserFilter(e.target.value)}>
-                  <option value="">All Users</option>
-                  {users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
-              </select>
-              <div className="relative">
-                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                  <CalendarIcon className="w-5 h-5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-              <div className="relative">
-                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
-                   <CalendarIcon className="w-5 h-5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-              <button onClick={clearFilters} className="text-sm text-indigo-600 hover:underline">Clear Filters</button>
-          </div>
+            )}
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 min-h-0 flex flex-col overflow-hidden relative">
