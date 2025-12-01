@@ -14,6 +14,10 @@ const cleanDescription = (string: string): string => {
   cleaned = cleaned.replace(/^["']+|["']+$/g, '');
   // Remove one or more trailing commas or periods
   cleaned = cleaned.replace(/[,.]+$/, '');
+  
+  // Clean up common bank statement noise prefixes
+  cleaned = cleaned.replace(/^(Pos Debit|Debit Purchase|Recurring Payment|Preauthorized Debit|Checkcard|Visa Purchase) - /i, '');
+  
   // Trim again in case the removals left whitespace at the ends
   return cleaned.trim();
 };
@@ -244,6 +248,8 @@ const extractTextFromPdf = async (file: File): Promise<string> => {
 };
 
 const parseDate = (dateStr: string): Date | null => {
+    if (!dateStr || dateStr.length < 5) return null; // Avoid tiny strings
+
     // Try YYYY-MM-DD
     if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) {
         const date = new Date(dateStr + 'T00:00:00'); // Add time to avoid timezone issues
@@ -272,9 +278,14 @@ const parseDate = (dateStr: string): Date | null => {
         if (!isNaN(date.getTime())) return date;
     }
 
-    // Fallback for other potential formats
-    const date = new Date(dateStr);
-    if (!isNaN(date.getTime())) return date;
+    // Fallback for textual dates like "Nov 6, 2025"
+    // We add a strict check to ensure it contains a month name or looks date-like
+    const hasDateStructure = /[a-zA-Z]{3,}\s+\d{1,2},?\s+\d{4}/.test(dateStr) || /\d{1,2}\s+[a-zA-Z]{3,}\s+\d{4}/.test(dateStr);
+    
+    if (hasDateStructure) {
+        const date = new Date(dateStr);
+        if (!isNaN(date.getTime()) && date.getFullYear() > 1990 && date.getFullYear() < 2050) return date;
+    }
     
     return null;
 }
@@ -331,33 +342,10 @@ const parsePayStubText = (text: string, accountId: string, transactionTypes: Tra
             const line = lines[i];
             if (/current/i.test(line)) {
                 const columns = line.split(/\s+/).filter(c => /[\d\.,]+/.test(c)); // Filter for number-like columns
-                // Adjust index: The 'Current' label might be column 0 in our split, or implied.
-                // Usually "Hours" is before "Gross".
-                // Let's try to map loosely. If headers were ["Hours", "Rate", "Amount"], and Gross is "Amount".
-                // Just grab the largest number in this row that isn't YTD?
-                // Or use the index.
-                
-                // Let's use a safer heuristic for the "Current" row:
-                // Extract all numbers.
                 const numbers = columns.map(c => parseFloat(c.replace(/,/g, ''))).filter(n => !isNaN(n));
                 
                 if (numbers.length > 0) {
-                    // Usually Gross Pay is the largest number in the "Current" block, 
-                    // unless YTD is on the same line. 
-                    // If the line has "Current", usually it means "Current Period" values only.
-                    // YTD is often on a separate line or separate block.
-                    // However, some lines are "Current   YTD".
-                    // If we have "Current" and "YTD" headers, we need to be careful.
-                    
-                    // Simple heuristic: Gross Pay is likely the largest number that matches a standard paycheck size.
-                    // Let's rely on the column index if possible.
                     if (grossPayColumnIndex < numbers.length) {
-                         // The headers might be: [Desc, Hours, Rate, Current, YTD]
-                         // But our `headers` split used 2 spaces. 
-                         // Let's just look for the pattern: `Current [Hours] [Rate] [GROSS] ...`
-                         // In the screenshot: Current | 72.17 | 1,983.34 | ...
-                         // The gross is the 2nd number.
-                         // Let's assume Gross is > 100 usually.
                          grossAmount = numbers.find(n => n > 100) || numbers[0];
                     }
                 }
@@ -695,6 +683,97 @@ const parseGenericText = (text: string, accountId: string, transactionTypes: Tra
     return transactions;
 };
 
+// New parser for multi-line unstructured text (e.g. copied tables)
+const parseUnstructuredText = (text: string, accountId: string, transactionTypes: TransactionType[], sourceFilename?: string): RawTransaction[] => {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+    const transactions: RawTransaction[] = [];
+    const defaultExpenseTypeId = transactionTypes.find(t => t.balanceEffect === 'expense')?.id || '';
+    const defaultIncomeTypeId = transactionTypes.find(t => t.balanceEffect === 'income')?.id || '';
+
+    // Step 1: Tag lines with potential metadata
+    const lineData = lines.map((line, index) => {
+        const date = parseDate(line);
+        // Strict amount regex to avoid years like 2025 being seen as amount 2025.00
+        // Look for currency symbols or explicit decimal format
+        const amountMatch = line.match(/^[-+]?\$?[\d,]+\.\d{2}$/);
+        const amount = amountMatch ? parseFloat(amountMatch[0].replace(/[$,]/g, '')) : null;
+        return { index, text: line, date, amount };
+    });
+
+    // Step 2: Find potential transaction anchors (Dates)
+    const dateLines = lineData.filter(l => l.date !== null);
+    
+    if (dateLines.length === 0) return [];
+
+    // Step 3: For each date, find the nearest unused amount
+    const usedLineIndices = new Set<number>();
+
+    dateLines.forEach(dateLine => {
+        if (!dateLine.date) return;
+
+        // Search for amount within a window (e.g. +/- 5 lines)
+        // Prefer lines that are NOT dates themselves
+        const windowSize = 5;
+        const potentialAmounts = lineData.filter(l => 
+            l.amount !== null && 
+            !usedLineIndices.has(l.index) &&
+            Math.abs(l.index - dateLine.index) <= windowSize &&
+            l.index !== dateLine.index // Amount usually not on same line as date in this specific multi-line format
+        );
+
+        // Sort by proximity to date line
+        potentialAmounts.sort((a, b) => Math.abs(a.index - dateLine.index) - Math.abs(b.index - dateLine.index));
+
+        const amountLine = potentialAmounts[0];
+
+        if (amountLine && amountLine.amount !== null) {
+            usedLineIndices.add(dateLine.index);
+            usedLineIndices.add(amountLine.index);
+
+            // Description extraction:
+            // Look at lines in the block [min, max] +/- 1 line padding.
+            // We want to find the most "Description-like" line.
+            
+            const minIdx = Math.min(dateLine.index, amountLine.index);
+            const maxIdx = Math.max(dateLine.index, amountLine.index);
+            
+            const startSearch = Math.max(0, minIdx - 3);
+            const endSearch = Math.min(lines.length - 1, maxIdx + 1);
+            
+            const candidates = lineData.slice(startSearch, endSearch + 1).filter(l => 
+                l.index !== dateLine.index && 
+                l.index !== amountLine.index &&
+                !usedLineIndices.has(l.index) // Only pick lines not already claimed
+            );
+
+            // Simple heuristic: Take the first unused line above the block, or inside the block
+            const descLine = candidates.find(c => c.index < minIdx) || candidates[0];
+            
+            let description = "Unknown Transaction";
+            if (descLine) {
+                description = cleanDescription(descLine.text);
+                // Mark as used so next transaction doesn't grab it
+                usedLineIndices.add(descLine.index);
+            }
+
+            const amount = amountLine.amount;
+            const typeId = amount < 0 ? defaultExpenseTypeId : defaultIncomeTypeId;
+
+            transactions.push({
+                date: dateLine.date.toISOString().split('T')[0],
+                description,
+                category: 'Other',
+                amount: Math.abs(amount),
+                typeId,
+                accountId,
+                sourceFilename: sourceFilename || 'Pasted Text'
+            });
+        }
+    });
+
+    return transactions;
+};
+
 export const parseTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     let allTransactions: RawTransaction[] = [];
     for (const file of files) {
@@ -738,11 +817,21 @@ export const parseTransactionsFromFiles = async (files: File[], accountId: strin
 export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     onProgress('Parsing text...');
     try {
+        // Strategy 1: Attempt CSV parsing (Tab to Comma conversion)
         const csvText = text.replace(/\t/g, ',');
         let transactions = parseCsvText(csvText, accountId, transactionTypes, 'Pasted Text');
+        
+        // Strategy 2: If CSV yielded nothing, try standard single-line regex
         if (transactions.length === 0) {
             transactions = parseGenericText(text, accountId, transactionTypes, 'Pasted Text');
         }
+
+        // Strategy 3: If single-line yielded nothing or extremely few (heuristic), try multi-line unstructured parser
+        // This handles cases where data is spread across lines (Date on line 1, Amount on line 4, etc.)
+        if (transactions.length === 0) {
+             transactions = parseUnstructuredText(text, accountId, transactionTypes, 'Pasted Text');
+        }
+
         onProgress(`Parsed ${transactions.length} transactions.`);
         return transactions;
     } catch (e) {

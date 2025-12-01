@@ -92,14 +92,20 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [importMethod, setImportMethod] = useState<ImportMethod>('upload');
   const [textInput, setTextInput] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
+  
+  // State for Paste Account Selection
+  const [pasteAccountId, setPasteAccountId] = useState<string>('');
 
-  // Set default user on initial load
+  // Set default user and account on initial load or when lists update
   useEffect(() => {
     const defaultUser = users.find(u => u.isDefault) || users[0];
-    if (defaultUser) {
+    if (defaultUser && !selectedUserId) {
         setSelectedUserId(defaultUser.id);
     }
-  }, [users]);
+    if (accounts.length > 0 && !pasteAccountId) {
+        setPasteAccountId(accounts[0].id);
+    }
+  }, [users, accounts, selectedUserId, pasteAccountId]);
 
   // State for the import and review flow
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; })[]>([]);
@@ -211,21 +217,20 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   }, [useAi, transactionTypes, prepareForVerification, selectedUserId, onAddDocument, documentFolders, onCreateFolder]);
 
   const handleTextPaste = useCallback(async () => {
-    if (!textInput.trim() || accounts.length === 0) return;
+    if (!textInput.trim() || !pasteAccountId) return;
     setAppState('processing');
     setError(null);
     try {
-      const accountId = accounts[0].id; 
       const rawTransactions = useAi
-        ? await extractTransactionsFromText(textInput, accountId, transactionTypes, handleProgress)
-        : await parseTransactionsFromText(textInput, accountId, transactionTypes, handleProgress);
+        ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress)
+        : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress);
       await prepareForVerification(rawTransactions, selectedUserId);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
       setAppState('error');
     }
-  }, [textInput, useAi, accounts, transactionTypes, prepareForVerification, selectedUserId]);
+  }, [textInput, useAi, pasteAccountId, transactionTypes, prepareForVerification, selectedUserId]);
   
   const handleVerificationComplete = (verifiedTransactions: (RawTransaction & { categoryId: string; })[]) => {
       handleProgress('Checking for duplicates...');
@@ -388,18 +393,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
             ) : (
                 <div className="space-y-4">
                      {accounts.length > 0 && (
-                        <select
-                            value={accounts[0].id}
-                            disabled
-                            className="w-full p-2 border rounded-md bg-slate-100"
-                        >
-                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                        </select>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Select Account</label>
+                            <select
+                                value={pasteAccountId}
+                                onChange={(e) => setPasteAccountId(e.target.value)}
+                                className="w-full p-2 border rounded-md"
+                            >
+                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                            </select>
+                        </div>
                      )}
                     <textarea
                         value={textInput}
                         onChange={e => setTextInput(e.target.value)}
-                        placeholder="Paste transaction text here..."
+                        placeholder="Paste transaction text here (CSV rows, or table data from your bank website)..."
                         className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono text-sm"
                     />
                     <button
