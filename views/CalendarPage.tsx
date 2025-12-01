@@ -1,10 +1,10 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, Template, ScheduledEvent, TaskCompletions, TransactionType, Account, Category, Payee, User, TaskItem, Tag } from '../types';
 import ScheduleEventModal from '../components/ScheduleEventModal';
 import TransactionModal from './TransactionModal';
 import TaskModal from './TaskModal';
-import { CheckCircleIcon, ChecklistIcon, RepeatIcon, LinkIcon, UsersIcon } from '../components/Icons';
+import { CheckCircleIcon, ChecklistIcon, RepeatIcon, LinkIcon, UsersIcon, ExternalLinkIcon } from '../components/Icons';
 import { formatDate, calculateNextDate } from '../dateUtils';
 
 interface CalendarPageProps {
@@ -23,6 +23,7 @@ interface CalendarPageProps {
   onToggleTaskCompletion: (date: string, eventId: string, taskId: string) => void;
   onToggleTask: (taskId: string) => void;
   transactionTypes: TransactionType[];
+  initialTaskId?: string;
 }
 
 const SummaryWidget: React.FC<{title: string, value: string, helpText: string}> = ({title, value, helpText}) => (
@@ -66,7 +67,7 @@ const USER_COLORS = [
     'bg-pink-500', 'bg-teal-500', 'bg-cyan-500', 'bg-rose-500'
 ];
 
-const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, transactionTypes, onUpdateTransaction, accounts, categories, tags, payees, users }) => {
+const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, transactionTypes, onUpdateTransaction, accounts, categories, tags, payees, users, initialTaskId }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -76,6 +77,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   
   // User Filtering State
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set(users.map(u => u.id)));
+  const hasOpenedInitialTask = useRef(false);
 
   // Ensure selection is valid if users change (e.g. load)
   useEffect(() => {
@@ -84,6 +86,18 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
           setSelectedUserIds(new Set(users.map(u => u.id)));
       }
   }, [users.length]);
+
+  // Handle deep linking to a specific task
+  useEffect(() => {
+    if (initialTaskId && tasks.length > 0 && !hasOpenedInitialTask.current) {
+        const task = tasks.find(t => t.id === initialTaskId);
+        if (task) {
+            setEditingTask(task);
+            setIsTaskModalOpen(true);
+            hasOpenedInitialTask.current = true;
+        }
+    }
+  }, [initialTaskId, tasks]);
 
   const toggleUserSelection = (userId: string) => {
       const newSet = new Set(selectedUserIds);
@@ -108,6 +122,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   const handleTaskClick = (task: TaskItem) => {
       setEditingTask(task);
       setIsTaskModalOpen(true);
+  };
+
+  const handleOpenTaskInNewTab = (e: React.MouseEvent, taskId: string) => {
+      e.stopPropagation();
+      const url = `${window.location.pathname}?view=calendar&taskId=${taskId}`;
+      window.open(url, '_blank');
   };
 
   const handleSaveTransaction = (formData: Omit<Transaction, 'id'>) => {
@@ -359,7 +379,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                             <h4 className="font-semibold text-slate-600 mb-2 border-b pb-1">To-Do List</h4>
                             <ul className="space-y-2">
                                 {selectedDayTasks.map(task => (
-                                    <li key={task.id} className="flex items-start gap-2 p-2 bg-slate-50 rounded-lg transition-colors hover:bg-slate-100 group">
+                                    <li key={task.id} className="flex items-start gap-2 p-2 bg-slate-50 rounded-lg transition-colors hover:bg-slate-100 group relative">
                                          <button onClick={() => onToggleTask(task.id)} className={`flex-shrink-0 mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center ${task.isCompleted ? 'bg-green-500 border-green-500' : 'border-slate-400 hover:border-indigo-500'}`}>
                                             {task.isCompleted && <CheckCircleIcon className="w-3 h-3 text-white" />}
                                          </button>
@@ -379,6 +399,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                                                 )}
                                              </div>
                                          </div>
+                                         {/* Open in New Tab Button */}
+                                         <button 
+                                            onClick={(e) => handleOpenTaskInNewTab(e, task.id)}
+                                            className="absolute top-2 right-2 p-1 text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-50 rounded hover:bg-white"
+                                            title="Open in new tab"
+                                         >
+                                             <ExternalLinkIcon className="w-3 h-3" />
+                                         </button>
                                     </li>
                                 ))}
                             </ul>

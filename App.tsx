@@ -82,6 +82,7 @@ const App: React.FC = () => {
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [initialTaskId, setInitialTaskId] = useState<string | undefined>(undefined);
 
   // Load data from API on initial render
   useEffect(() => {
@@ -190,6 +191,22 @@ const App: React.FC = () => {
       setAccountTypes(finalAccountTypes);
       setAccounts(finalAccounts);
       
+      // Parse URL Parameters for deep linking
+      const params = new URLSearchParams(window.location.search);
+      const viewParam = params.get('view');
+      const taskId = params.get('taskId');
+      
+      if (viewParam && ['dashboard', 'transactions', 'calendar', 'accounts', 'reports', 'settings', 'tasks', 'rules', 'payees', 'categories', 'tags', 'users', 'hub', 'documents'].includes(viewParam)) {
+          setCurrentView(viewParam as View);
+      } else if (taskId) {
+          // If taskId is present but no view, default to calendar context
+          setCurrentView('calendar');
+      }
+      
+      if (taskId) {
+          setInitialTaskId(taskId);
+      }
+
       setIsLoading(false);
     };
     loadData();
@@ -651,7 +668,7 @@ const App: React.FC = () => {
         return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
       case 'calendar':
         // Modified to pass handleSaveTask to support full editing from calendar
-        return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} />;
+        return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports':
         return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} />;
       case 'accounts':
