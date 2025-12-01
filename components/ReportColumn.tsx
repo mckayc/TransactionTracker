@@ -1,6 +1,7 @@
 
+
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect } from '../types';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
@@ -12,6 +13,8 @@ interface ReportColumnProps {
     transactionTypes: TransactionType[];
     accounts: Account[];
     users: User[];
+    tags: Tag[];
+    payees: Payee[];
     onSaveReport: (config: ReportConfig) => void;
 }
 
@@ -43,6 +46,11 @@ const getDateRangeFromPreset = (preset: DateRangePreset, customStart?: string, c
         case 'sameMonthLastYear':
             start = new Date(now.getFullYear() - 1, now.getMonth(), 1);
             end = new Date(now.getFullYear() - 1, now.getMonth() + 1, 0);
+            label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
+            break;
+        case 'lastMonthPriorYear':
+            start = new Date(now.getFullYear() - 1, now.getMonth() - 1, 1);
+            end = new Date(now.getFullYear() - 1, now.getMonth(), 0);
             label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
             break;
         case 'thisYear':
@@ -127,7 +135,7 @@ interface AggregatedCategory {
     subcategories: AggregatedCategory[];
 }
 
-const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, onSaveReport }) => {
+const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport }) => {
     
     // Internal state allows modifying the report on the fly without affecting the saved version until explicit save
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
@@ -153,6 +161,16 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             if (config.filters.userIds && config.filters.userIds.length > 0 && !config.filters.userIds.includes(tx.userId || '')) return false;
             if (config.filters.categoryIds && config.filters.categoryIds.length > 0 && !config.filters.categoryIds.includes(tx.categoryId)) return false;
             if (config.filters.typeIds && config.filters.typeIds.length > 0 && !config.filters.typeIds.includes(tx.typeId)) return false;
+            
+            // Tags Filter
+            if (config.filters.tagIds && config.filters.tagIds.length > 0) {
+                if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) return false;
+            }
+
+            // Payees Filter
+            if (config.filters.payeeIds && config.filters.payeeIds.length > 0) {
+                if (!config.filters.payeeIds.includes(tx.payeeId || '')) return false;
+            }
             
             // Check Balance Effect
             const type = transactionTypes.find(t => t.id === tx.typeId);
@@ -342,9 +360,12 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             >
                                 <option value="thisMonth">This Month</option>
                                 <option value="lastMonth">Last Month</option>
+                                <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
                                 <option value="thisYear">This Year</option>
                                 <option value="lastYear">Last Year</option>
                                 <option value="last3Months">Last 90 Days</option>
+                                <option value="sameMonthLastYear">Same Month Last Year</option>
+                                <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
                                 <option value="custom">Custom Range</option>
                             </select>
                             {config.datePreset === 'custom' && (
@@ -361,10 +382,38 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 className="text-xs"
                             />
                             <MultiSelect 
+                                label="Users" 
+                                options={users} 
+                                selectedIds={new Set(config.filters.userIds)} 
+                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, userIds: Array.from(ids) }})}
+                                className="text-xs"
+                            />
+                            <MultiSelect 
                                 label="Categories" 
                                 options={categories} 
                                 selectedIds={new Set(config.filters.categoryIds)} 
                                 onChange={(ids) => setConfig({...config, filters: { ...config.filters, categoryIds: Array.from(ids) }})}
+                                className="text-xs"
+                            />
+                            <MultiSelect 
+                                label="Types" 
+                                options={transactionTypes} 
+                                selectedIds={new Set(config.filters.typeIds)} 
+                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, typeIds: Array.from(ids) }})}
+                                className="text-xs"
+                            />
+                            <MultiSelect 
+                                label="Tags" 
+                                options={tags} 
+                                selectedIds={new Set(config.filters.tagIds)} 
+                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, tagIds: Array.from(ids) }})}
+                                className="text-xs"
+                            />
+                            <MultiSelect 
+                                label="Payees" 
+                                options={payees} 
+                                selectedIds={new Set(config.filters.payeeIds)} 
+                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, payeeIds: Array.from(ids) }})}
                                 className="text-xs"
                             />
                         </div>

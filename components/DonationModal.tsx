@@ -15,6 +15,7 @@ interface DonationModalProps {
     accounts: Account[];
     categories: Category[];
     transactionTypes: TransactionType[];
+    initialDate?: string;
 }
 
 interface DonationItem {
@@ -23,9 +24,10 @@ interface DonationItem {
     customPercentage: string;
     amount: number;
     description: string;
+    payeeId?: string;
 }
 
-const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, totalIncome, monthName, accounts, categories, transactionTypes }) => {
+const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, totalIncome, monthName, payees, accounts, categories, transactionTypes, initialDate }) => {
     const [items, setItems] = useState<DonationItem[]>([]);
     const [date, setDate] = useState<string>(getTodayDate());
     const [accountId, setAccountId] = useState<string>('');
@@ -33,7 +35,7 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
     // Initialize defaults
     useEffect(() => {
         if (isOpen) {
-            setDate(getTodayDate());
+            setDate(initialDate || getTodayDate());
             if (accounts.length > 0) setAccountId(accounts[0].id);
             
             // Default to one item with 10%
@@ -42,10 +44,11 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
                 percentage: 10,
                 customPercentage: '',
                 amount: Number((totalIncome * 0.10).toFixed(2)),
-                description: 'Tithing'
+                description: 'Tithing',
+                payeeId: ''
             }]);
         }
-    }, [isOpen, totalIncome, accounts]);
+    }, [isOpen, totalIncome, accounts, initialDate]);
 
     const handlePercentageChange = (id: string, val: number | 'custom') => {
         setItems(prev => prev.map(item => {
@@ -86,13 +89,20 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
         ));
     };
 
+    const handlePayeeChange = (id: string, val: string) => {
+        setItems(prev => prev.map(item => 
+            item.id === id ? { ...item, payeeId: val } : item
+        ));
+    };
+
     const addItem = () => {
         setItems(prev => [...prev, {
             id: generateUUID(),
             percentage: 'custom',
             customPercentage: '',
             amount: 0,
-            description: ''
+            description: '',
+            payeeId: ''
         }]);
     };
 
@@ -121,6 +131,7 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
                     amount: item.amount,
                     description: item.description || 'Donation',
                     accountId,
+                    payeeId: item.payeeId || undefined,
                     typeId: donationType.id,
                     categoryId: donationCategory.id,
                     notes: `Calculated from ${monthName} income of $${totalIncome.toLocaleString()}.`,
@@ -209,8 +220,23 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
                                         />
                                     </div>
 
-                                    {/* Amount */}
+                                    {/* Payee Selection */}
                                     <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Payee (Optional)</label>
+                                        <select 
+                                            value={item.payeeId || ''} 
+                                            onChange={(e) => handlePayeeChange(item.id, e.target.value)}
+                                            className="w-full p-2 border rounded-md text-sm"
+                                        >
+                                            <option value="">Select Payee...</option>
+                                            {payees.map(p => (
+                                                <option key={p.id} value={p.id}>{p.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Amount */}
+                                    <div className="md:col-span-2">
                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Amount</label>
                                         <div className="flex rounded-md shadow-sm">
                                             <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-slate-300 bg-slate-50 text-slate-500 font-bold text-sm">

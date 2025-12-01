@@ -1038,6 +1038,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
         accounts={accounts}
         categories={categories}
         transactionTypes={transactionTypes}
+        initialDate={endDate}
       />
     </>
   );

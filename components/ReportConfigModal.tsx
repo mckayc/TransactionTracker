@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect } from 'react';
-import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect } from '../types';
+import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee } from '../types';
 import { CloseIcon, ChartPieIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
@@ -14,10 +15,12 @@ interface ReportConfigModalProps {
     categories: Category[];
     users: User[];
     transactionTypes: TransactionType[];
+    tags: Tag[];
+    payees: Payee[];
 }
 
 const ReportConfigModal: React.FC<ReportConfigModalProps> = ({ 
-    isOpen, onClose, onSave, initialConfig, accounts, categories, users, transactionTypes 
+    isOpen, onClose, onSave, initialConfig, accounts, categories, users, transactionTypes, tags, payees
 }) => {
     const [name, setName] = useState('');
     const [datePreset, setDatePreset] = useState<DateRangePreset>('thisMonth');
@@ -30,6 +33,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
     const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
     const [selectedEffects, setSelectedEffects] = useState<Set<BalanceEffect>>(new Set(['expense']));
+    const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+    const [selectedPayees, setSelectedPayees] = useState<Set<string>>(new Set());
 
     useEffect(() => {
         if (isOpen) {
@@ -43,6 +48,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setSelectedCategories(new Set(initialConfig.filters.categoryIds));
                 setSelectedTypes(new Set(initialConfig.filters.typeIds));
                 setSelectedEffects(new Set(initialConfig.filters.balanceEffects || ['expense']));
+                setSelectedTags(new Set(initialConfig.filters.tagIds));
+                setSelectedPayees(new Set(initialConfig.filters.payeeIds));
             } else {
                 setName('');
                 setDatePreset('thisMonth');
@@ -53,6 +60,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setSelectedCategories(new Set());
                 setSelectedTypes(new Set());
                 setSelectedEffects(new Set(['expense']));
+                setSelectedTags(new Set());
+                setSelectedPayees(new Set());
             }
         }
     }, [isOpen, initialConfig]);
@@ -71,7 +80,9 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : undefined,
                 categoryIds: selectedCategories.size > 0 ? Array.from(selectedCategories) : undefined,
                 typeIds: selectedTypes.size > 0 ? Array.from(selectedTypes) : undefined,
-                balanceEffects: Array.from(selectedEffects)
+                balanceEffects: Array.from(selectedEffects),
+                tagIds: selectedTags.size > 0 ? Array.from(selectedTags) : undefined,
+                payeeIds: selectedPayees.size > 0 ? Array.from(selectedPayees) : undefined,
             },
             hiddenCategoryIds: initialConfig?.hiddenCategoryIds || []
         };
@@ -121,6 +132,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                             >
                                 <option value="thisMonth">This Month</option>
                                 <option value="lastMonth">Last Month</option>
+                                <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
                                 <option value="thisYear">This Year</option>
                                 <option value="lastYear">Last Year</option>
                                 <option value="last3Months">Last 90 Days</option>
@@ -160,6 +172,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                             <MultiSelect label="Users" options={users} selectedIds={selectedUsers} onChange={setSelectedUsers} />
                             <MultiSelect label="Categories" options={categories} selectedIds={selectedCategories} onChange={setSelectedCategories} />
                             <MultiSelect label="Transaction Types" options={transactionTypes} selectedIds={selectedTypes} onChange={setSelectedTypes} />
+                            <MultiSelect label="Tags" options={tags} selectedIds={selectedTags} onChange={setSelectedTags} />
+                            <MultiSelect label="Payees" options={payees} selectedIds={selectedPayees} onChange={setSelectedPayees} />
                         </div>
                     </div>
                 </div>

@@ -28,18 +28,13 @@ interface CalendarPageProps {
   initialTaskId?: string;
 }
 
-const SummaryWidget: React.FC<{title: string, value: string, helpText: string}> = ({title, value, helpText}) => (
+const SummaryWidget: React.FC<{title: string, value: string, helpText: string, colorClass?: string}> = ({title, value, helpText, colorClass = "text-slate-800"}) => (
     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
         <h3 className="text-sm font-medium text-slate-500">{title}</h3>
-        <p className="text-2xl font-bold text-slate-800 mt-1">{value}</p>
+        <p className={`text-2xl font-bold mt-1 ${colorClass}`}>{value}</p>
         <p className="text-xs text-slate-400 mt-1">{helpText}</p>
     </div>
 );
-
-const USER_COLORS = [
-    'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-orange-500', 
-    'bg-pink-500', 'bg-teal-500', 'bg-cyan-500', 'bg-rose-500'
-];
 
 const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, onSaveTask, transactionTypes, onUpdateTransaction, onAddTransaction, accounts, categories, tags, payees, users, initialTaskId }) => {
   const [currentDate, setCurrentDate] = useState(() => {
@@ -78,13 +73,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
       if (newSet.has(userId)) newSet.delete(userId);
       else newSet.add(userId);
       setSelectedUserIds(newSet);
-  };
-
-  const getUserColorClass = (userId: string | undefined) => {
-      if (!userId) return 'bg-slate-300';
-      const index = users.findIndex(u => u.id === userId);
-      if (index === -1) return 'bg-slate-300';
-      return USER_COLORS[index % USER_COLORS.length];
   };
   
   const handleTransactionClick = (tx: Transaction) => {
@@ -199,55 +187,110 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
       setCurrentDate(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
   };
 
+  const handlePrevYear = () => {
+      setCurrentDate(prev => new Date(prev.getFullYear() - 1, prev.getMonth(), 1));
+  };
+
+  const handleNextYear = () => {
+      setCurrentDate(prev => new Date(prev.getFullYear() + 1, prev.getMonth(), 1));
+  };
+
+  const handleToday = () => {
+      const now = new Date();
+      setCurrentDate(new Date(now.getFullYear(), now.getMonth(), 1));
+      setSelectedDate(now);
+  };
+
+  // Helper to determine styles based on transaction type
+  const getItemStyle = (tx: Transaction) => {
+      const type = transactionTypeMap.get(tx.typeId);
+      const effect = type?.balanceEffect || 'expense';
+      
+      switch (effect) {
+          case 'income':
+              return 'bg-emerald-50 text-emerald-800 border-l-4 border-emerald-500 hover:bg-emerald-100';
+          case 'expense':
+              return 'bg-rose-50 text-rose-800 border-l-4 border-rose-500 hover:bg-rose-100';
+          case 'investment':
+              return 'bg-purple-50 text-purple-800 border-l-4 border-purple-500 hover:bg-purple-100';
+          case 'donation':
+              return 'bg-blue-50 text-blue-800 border-l-4 border-blue-500 hover:bg-blue-100';
+          default:
+              return 'bg-slate-50 text-slate-700 border-l-4 border-slate-400 hover:bg-slate-200';
+      }
+  };
+
   return (
       <div className="space-y-6 h-full flex flex-col">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
               <h1 className="text-3xl font-bold text-slate-800">Calendar</h1>
               <div className="flex items-center gap-2">
-                  <button onClick={() => setIsScheduleModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700 font-medium">
-                      <CalendarIcon className="w-5 h-5"/> Schedule
+                  <button onClick={() => setIsScheduleModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-700 font-medium shadow-sm transition-all">
+                      <CalendarIcon className="w-5 h-5"/> Schedule Task
                   </button>
-                  <button onClick={() => { setEditingTransaction(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium">
-                      <AddIcon className="w-5 h-5"/> Add
+                  <button onClick={() => { setEditingTransaction(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium shadow-md transition-all">
+                      <AddIcon className="w-5 h-5"/> Add Transaction
                   </button>
               </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-shrink-0">
-              <SummaryWidget title="Income" value={formatCurrency(monthlySummary.income)} helpText="This Month" />
-              <SummaryWidget title="Expenses" value={formatCurrency(monthlySummary.expenses)} helpText="This Month" />
-              <SummaryWidget title="Investments" value={formatCurrency(monthlySummary.investments)} helpText="This Month" />
-              <SummaryWidget title="Donations" value={formatCurrency(monthlySummary.donations)} helpText="This Month" />
+              <SummaryWidget title="Income" value={formatCurrency(monthlySummary.income)} helpText="This Month" colorClass="text-emerald-600" />
+              <SummaryWidget title="Expenses" value={formatCurrency(monthlySummary.expenses)} helpText="This Month" colorClass="text-rose-600" />
+              <SummaryWidget title="Investments" value={formatCurrency(monthlySummary.investments)} helpText="This Month" colorClass="text-purple-600" />
+              <SummaryWidget title="Donations" value={formatCurrency(monthlySummary.donations)} helpText="This Month" colorClass="text-blue-600" />
           </div>
 
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0">
-              <div className="p-4 border-b border-slate-200 flex justify-between items-center">
-                  <div className="flex items-center gap-4">
-                      <h2 className="text-xl font-bold text-slate-700">{currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}</h2>
-                      <div className="flex items-center rounded-md border border-slate-300 bg-white">
-                          <button onClick={handlePrevMonth} className="p-1.5 hover:bg-slate-100 border-r border-slate-300"><ChevronLeftIcon className="w-5 h-5 text-slate-600" /></button>
-                          <button onClick={handleNextMonth} className="p-1.5 hover:bg-slate-100"><ChevronRightIcon className="w-5 h-5 text-slate-600" /></button>
-                      </div>
-                  </div>
-                  {/* User Filter */}
-                  <div className="flex -space-x-2 overflow-hidden">
-                      {users.map(u => (
-                          <button 
-                              key={u.id}
-                              onClick={() => toggleUserSelection(u.id)}
-                              className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs text-white font-bold ${getUserColorClass(u.id)} ${selectedUserIds.has(u.id) ? 'opacity-100 ring-2 ring-offset-1 ring-indigo-500' : 'opacity-40 grayscale'}`}
-                              title={u.name}
-                          >
-                              {u.name.charAt(0)}
+          <div className="bg-white rounded-xl shadow-md border border-slate-200 flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Calendar Header Controls */}
+              <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50">
+                  
+                  <div className="flex items-center gap-2">
+                      <button onClick={handleToday} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-md text-sm font-bold hover:bg-slate-100 shadow-sm">
+                          Today
+                      </button>
+                      <div className="h-6 w-px bg-slate-300 mx-2"></div>
+                      <div className="flex items-center bg-white rounded-lg border border-slate-300 shadow-sm overflow-hidden">
+                          <button onClick={handlePrevYear} className="p-2 hover:bg-slate-100 border-r border-slate-200 text-slate-500" title="Previous Year">
+                              <span className="text-xs font-bold">«</span>
                           </button>
-                      ))}
+                          <button onClick={handlePrevMonth} className="p-2 hover:bg-slate-100 border-r border-slate-200 text-slate-600">
+                              <ChevronLeftIcon className="w-4 h-4" />
+                          </button>
+                          <button onClick={handleNextMonth} className="p-2 hover:bg-slate-100 border-r border-slate-200 text-slate-600">
+                              <ChevronRightIcon className="w-4 h-4" />
+                          </button>
+                          <button onClick={handleNextYear} className="p-2 hover:bg-slate-100 text-slate-500" title="Next Year">
+                              <span className="text-xs font-bold">»</span>
+                          </button>
+                      </div>
+                      <h2 className="text-xl font-bold text-slate-800 ml-4 min-w-[180px]">
+                          {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                      </h2>
+                  </div>
+
+                  {/* User Filter */}
+                  <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-500 font-medium uppercase">Filter User:</span>
+                      <div className="flex -space-x-2 overflow-hidden">
+                          {users.map(u => (
+                              <button 
+                                  key={u.id}
+                                  onClick={() => toggleUserSelection(u.id)}
+                                  className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-xs bg-slate-500 text-white font-bold transition-all ${selectedUserIds.has(u.id) ? 'opacity-100 ring-2 ring-offset-1 ring-indigo-500 z-10' : 'opacity-40 grayscale hover:opacity-70'}`}
+                                  title={u.name}
+                              >
+                                  {u.name.charAt(0)}
+                              </button>
+                          ))}
+                      </div>
                   </div>
               </div>
 
-              <div className="flex-1 grid grid-cols-7 grid-rows-[auto_1fr] min-h-0">
+              <div className="flex-1 grid grid-cols-7 grid-rows-[auto_1fr] min-h-0 bg-slate-200 gap-px border-b border-slate-200">
                   {/* Weekday Headers */}
                   {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                      <div key={day} className="p-2 text-center text-xs font-semibold text-slate-500 uppercase border-b border-r border-slate-100 last:border-r-0 bg-slate-50">
+                      <div key={day} className="p-2 text-center text-xs font-bold text-slate-500 uppercase bg-slate-50">
                           {day}
                       </div>
                   ))}
@@ -258,42 +301,47 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                       const data = itemsByDay.get(dateKey);
                       const isCurrentMonth = date.getMonth() === currentDate.getMonth();
                       const isToday = dateKey === formatDate(new Date());
+                      const isSelected = selectedDate && formatDate(selectedDate) === dateKey;
                       
                       return (
                           <div 
                               key={i} 
-                              className={`min-h-[100px] border-b border-r border-slate-100 last:border-r-0 p-1 flex flex-col gap-1 overflow-hidden transition-colors ${!isCurrentMonth ? 'bg-slate-50 text-slate-400' : 'bg-white'} ${selectedDate && formatDate(selectedDate) === dateKey ? 'ring-2 ring-indigo-500 inset-0 z-10' : ''}`}
+                              className={`min-h-[100px] p-1 flex flex-col gap-1 overflow-hidden transition-all relative group hover:z-10
+                                  ${isCurrentMonth ? 'bg-white' : 'bg-slate-50 text-slate-400'} 
+                                  ${isToday ? 'bg-indigo-50/30' : ''}
+                                  ${isSelected ? 'ring-2 ring-inset ring-indigo-500' : ''}
+                              `}
                               onClick={() => setSelectedDate(date)}
                           >
-                              <div className={`text-right text-sm font-medium p-1 ${isToday ? 'text-indigo-600 font-bold' : ''}`}>
-                                  {isToday && <span className="bg-indigo-600 text-white rounded-full w-6 h-6 inline-flex items-center justify-center text-xs mr-1">Today</span>}
-                                  {date.getDate()}
+                              <div className="flex justify-between items-start px-1">
+                                  {isToday && <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full">Today</span>}
+                                  <span className={`text-sm font-medium ml-auto ${isToday ? 'text-indigo-700' : ''}`}>{date.getDate()}</span>
                               </div>
                               
-                              <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar">
-                                  {/* Transactions */}
-                                  {data?.transactions.map(tx => (
-                                      <div 
-                                          key={tx.id} 
-                                          onClick={(e) => { e.stopPropagation(); handleTransactionClick(tx); }}
-                                          className={`text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:opacity-80 flex justify-between items-center ${getUserColorClass(tx.userId)} text-white`}
-                                          title={`${tx.description}: $${tx.amount}`}
-                                      >
-                                          <span className="truncate">{tx.description}</span>
-                                          <span className="font-mono ml-1">${Math.round(tx.amount)}</span>
-                                      </div>
-                                  ))}
-                                  
+                              <div className="flex-1 overflow-y-auto space-y-1 custom-scrollbar px-0.5">
                                   {/* Tasks */}
                                   {data?.tasks.map(task => (
                                       <div 
                                           key={task.id}
                                           onClick={(e) => { e.stopPropagation(); handleTaskClick(task); }}
-                                          className={`text-[10px] px-1.5 py-0.5 rounded truncate cursor-pointer hover:bg-slate-200 border border-slate-200 bg-slate-100 text-slate-700 flex items-center gap-1 ${task.isCompleted ? 'line-through opacity-50' : ''}`}
+                                          className={`text-[10px] px-1.5 py-1 rounded-md border-l-4 cursor-pointer flex items-center gap-1 shadow-sm transition-transform hover:scale-[1.02] ${task.isCompleted ? 'bg-slate-100 border-slate-300 text-slate-400 line-through' : 'bg-amber-50 border-amber-400 text-amber-900 hover:bg-amber-100'}`}
                                           title={task.title}
                                       >
                                           <ChecklistIcon className="w-3 h-3 flex-shrink-0" />
-                                          <span className="truncate">{task.title}</span>
+                                          <span className="truncate font-medium">{task.title}</span>
+                                      </div>
+                                  ))}
+
+                                  {/* Transactions */}
+                                  {data?.transactions.map(tx => (
+                                      <div 
+                                          key={tx.id} 
+                                          onClick={(e) => { e.stopPropagation(); handleTransactionClick(tx); }}
+                                          className={`text-[10px] px-1.5 py-1 rounded-md cursor-pointer flex justify-between items-center shadow-sm transition-transform hover:scale-[1.02] ${getItemStyle(tx)}`}
+                                          title={`${tx.description} - ${formatCurrency(tx.amount)}`}
+                                      >
+                                          <span className="truncate font-medium">{tx.description}</span>
+                                          <span className="ml-1 font-mono">${Math.round(Math.abs(tx.amount))}</span>
                                       </div>
                                   ))}
                               </div>

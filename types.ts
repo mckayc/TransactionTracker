@@ -1,4 +1,5 @@
 
+
 export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation';
 
 export interface TransactionType {
@@ -236,7 +237,7 @@ export interface AuditFinding {
 
 // --- Report Types ---
 
-export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'last3Months' | 'custom' | 'sameMonthLastYear' | 'sameMonth2YearsAgo';
+export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'last3Months' | 'custom' | 'sameMonthLastYear' | 'sameMonth2YearsAgo' | 'lastMonthPriorYear';
 
 export interface ReportConfig {
     id: string;
@@ -250,6 +251,8 @@ export interface ReportConfig {
         typeIds?: string[];
         categoryIds?: string[];
         balanceEffects?: BalanceEffect[]; // New filter
+        tagIds?: string[];
+        payeeIds?: string[];
     };
     hiddenCategoryIds?: string[]; // IDs of categories hidden via the eye icon
 }

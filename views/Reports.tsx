@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account } from '../types';
 import ReportColumn from '../components/ReportColumn';
@@ -155,6 +156,8 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                     transactionTypes={transactionTypes}
                                     accounts={accounts}
                                     users={users}
+                                    tags={tags}
+                                    payees={payees}
                                     onSaveReport={handleSaveReport}
                                 />
                             </div>
@@ -183,6 +186,8 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                 categories={categories}
                 users={users}
                 transactionTypes={transactionTypes}
+                tags={tags}
+                payees={payees}
             />
 
             {isSavedReportsOpen && (
