@@ -8,7 +8,7 @@ import LinkTransactionModal from '../components/LinkTransactionModal';
 import LinkedGroupModal from '../components/LinkedGroupModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
-import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon } from '../components/Icons';
+import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -85,6 +85,63 @@ const BulkTagModal: React.FC<{
     );
 };
 
+// Bulk User Modal Component
+const BulkUserModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    users: User[];
+    onApply: (userId: string) => void;
+    count: number;
+}> = ({ isOpen, onClose, users, onApply, count }) => {
+    const [selectedUserId, setSelectedUserId] = useState<string>('');
+
+    useEffect(() => {
+        if(isOpen) setSelectedUserId('');
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    const handleApply = () => {
+        if (selectedUserId) {
+            onApply(selectedUserId);
+            onClose();
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800">Assign User to {count} Transactions</h3>
+                    <button onClick={onClose}><CloseIcon className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
+                </div>
+                <div className="p-6">
+                    <p className="text-sm text-slate-600 mb-4">Select a user to assign to the selected transactions.</p>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {users.map(user => (
+                            <label key={user.id} className={`flex items-center p-3 border rounded-lg cursor-pointer transition-colors ${selectedUserId === user.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
+                                <input 
+                                    type="radio" 
+                                    name="bulkUserSelect" 
+                                    value={user.id} 
+                                    checked={selectedUserId === user.id} 
+                                    onChange={() => setSelectedUserId(user.id)}
+                                    className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                                />
+                                <span className="ml-3 text-sm font-medium text-slate-700">{user.name}</span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+                <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-xl">
+                    <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 font-medium hover:bg-slate-200 rounded-lg">Cancel</button>
+                    <button onClick={handleApply} disabled={!selectedUserId} className="px-4 py-2 text-sm text-white bg-indigo-600 font-medium rounded-lg hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed">Assign User</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 interface AllTransactionsProps {
   transactions: Transaction[];
@@ -128,6 +185,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [isLinkedGroupModalOpen, setIsLinkedGroupModalOpen] = useState(false);
   const [isBulkTagModalOpen, setIsBulkTagModalOpen] = useState(false);
+  const [isBulkUserModalOpen, setIsBulkUserModalOpen] = useState(false);
   const [selectedLinkGroupId, setSelectedLinkGroupId] = useState<string | null>(null);
   
   // Auditor State
@@ -373,6 +431,16 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
               const currentTags = new Set(tx.tagIds || []);
               newTagIds.forEach(tagId => currentTags.add(tagId));
               onUpdateTransaction({ ...tx, tagIds: Array.from(currentTags) });
+          }
+      });
+      setSelectedTxIds(new Set());
+  };
+
+  const handleBulkAssignUser = (userId: string) => {
+      selectedTxIds.forEach(id => {
+          const tx = transactions.find(t => t.id === id);
+          if (tx) {
+              onUpdateTransaction({ ...tx, userId });
           }
       });
       setSelectedTxIds(new Set());
@@ -697,6 +765,13 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             </div>
             <div className="flex items-center gap-2">
                  <button
+                    onClick={() => setIsBulkUserModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-50 rounded-full transition-colors shadow-sm"
+                >
+                    <UserGroupIcon className="w-4 h-4"/>
+                    User
+                </button>
+                 <button
                     onClick={() => setIsBulkTagModalOpen(true)}
                     className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-50 rounded-full transition-colors shadow-sm"
                 >
@@ -764,6 +839,15 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             onClose={() => setIsBulkTagModalOpen(false)}
             tags={tags}
             onApply={handleBulkAddTags}
+            count={selectedTxIds.size}
+          />
+      )}
+      {isBulkUserModalOpen && (
+          <BulkUserModal 
+            isOpen={isBulkUserModalOpen}
+            onClose={() => setIsBulkUserModalOpen(false)}
+            users={users}
+            onApply={handleBulkAssignUser}
             count={selectedTxIds.size}
           />
       )}

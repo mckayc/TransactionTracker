@@ -236,12 +236,17 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       }
   };
 
-  const handleSelectionClick = (e: React.MouseEvent<HTMLInputElement>, id: string) => {
+  const handleSelectionChange = (e: React.ChangeEvent<HTMLInputElement>, id: string) => {
+      // e.stopPropagation() is handled by the separate onClick handler on the input
+      // but we also stop it here just in case.
       e.stopPropagation();
       
-      const willSelect = !selectedTxIds.has(id);
+      const nativeEvent = e.nativeEvent as any;
+      const isShiftKey = nativeEvent && nativeEvent.shiftKey;
+      
+      const willSelect = e.target.checked;
 
-      if (e.shiftKey && lastClickedId && onBulkSelection) {
+      if (isShiftKey && lastClickedId && onBulkSelection) {
           const start = sortedTransactions.findIndex(t => t.id === lastClickedId);
           const end = sortedTransactions.findIndex(t => t.id === id);
 
@@ -259,15 +264,13 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       setLastClickedId(id);
   };
 
-  const handleGroupSelection = (e: React.MouseEvent<HTMLInputElement>, group: GroupItem) => {
+  const handleGroupSelection = (e: React.ChangeEvent<HTMLInputElement>, group: GroupItem) => {
       e.stopPropagation();
       if (!onBulkSelection) return;
       
       const allIds = [group.primaryTx.id, ...group.children.map(c => c.id)];
-      // Check if all are currently selected
-      const allSelected = allIds.every(id => selectedTxIds.has(id));
-      
-      onBulkSelection(allIds, !allSelected); // Toggle all
+      // Toggle all based on the new checked state of the checkbox
+      onBulkSelection(allIds, e.target.checked);
   };
 
   const toggleGroup = (groupId: string) => {
@@ -360,8 +363,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             type="checkbox"
                             className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                             checked={isSelected}
-                            onClick={(e) => handleSelectionClick(e, transaction.id)}
-                            onChange={() => {}}
+                            onChange={(e) => handleSelectionChange(e, transaction.id)}
+                            onClick={(e) => e.stopPropagation()}
                             aria-label={`Select transaction ${transaction.description}`}
                         />
                       </div>
@@ -583,8 +586,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                           type="checkbox"
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                           checked={isFullySelected}
-                          onClick={(e) => handleGroupSelection(e, group)}
-                          onChange={() => {}}
+                          onChange={(e) => handleGroupSelection(e, group)}
+                          onClick={(e) => e.stopPropagation()}
                       />
                   </td>
               )}
