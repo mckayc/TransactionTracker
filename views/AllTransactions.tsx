@@ -193,7 +193,12 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
   // Date Logic
   const [dateMode, setDateMode] = useState<DateMode>('month');
-  const [dateCursor, setDateCursor] = useState(new Date());
+  const [dateCursor, setDateCursor] = useState(() => {
+      // Default to Previous Month
+      const d = new Date();
+      d.setMonth(d.getMonth() - 1);
+      return d;
+  });
   
   // Computed range strings for filtering (YYYY-MM-DD)
   const [startDate, setStartDate] = useState('');
@@ -239,7 +244,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   }, [dateMode, dateCursor]);
   
   // UI State
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true); // Default Expanded
 
   // Debounced values
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
@@ -331,9 +336,11 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
     setSelectedTypes(new Set());
     setSelectedAccounts(new Set());
     setSelectedUsers(new Set());
-    // Reset date to month mode current month
+    // Reset date to month mode previous month
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
     setDateMode('month');
-    setDateCursor(new Date());
+    setDateCursor(d);
   }
 
   const handleAddNew = () => {
@@ -600,7 +607,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
   return (
     <>
-      <div className="flex flex-col h-full overflow-hidden gap-4">
+      <div className="flex flex-col h-full overflow-hidden gap-4 w-full max-w-full">
         
         {/* Dynamic Summary Cards (Based on Filters) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-shrink-0">
