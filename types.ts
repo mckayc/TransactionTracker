@@ -238,7 +238,7 @@ export interface AuditFinding {
 // --- Report Types ---
 
 export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'last3Months' | 'custom' | 'sameMonthLastYear' | 'sameMonth2YearsAgo' | 'lastMonthPriorYear';
-export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type';
+export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account';
 
 export interface ReportConfig {
     id: string;
@@ -246,7 +246,8 @@ export interface ReportConfig {
     datePreset: DateRangePreset;
     customStartDate?: string;
     customEndDate?: string;
-    groupBy?: ReportGroupBy; // New: Dimension to group by (default: category)
+    groupBy?: ReportGroupBy; // Dimension to group by (default: category)
+    subGroupBy?: ReportGroupBy; // Secondary dimension to group by (e.g. Account -> Category)
     filters: {
         accountIds?: string[];
         userIds?: string[];

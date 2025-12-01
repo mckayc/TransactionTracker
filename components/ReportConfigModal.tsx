@@ -27,6 +27,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [groupBy, setGroupBy] = useState<ReportGroupBy>('category');
+    const [subGroupBy, setSubGroupBy] = useState<ReportGroupBy | ''>('');
     
     // Filters
     const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
@@ -45,6 +46,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setCustomStartDate(initialConfig.customStartDate || '');
                 setCustomEndDate(initialConfig.customEndDate || '');
                 setGroupBy(initialConfig.groupBy || 'category');
+                setSubGroupBy(initialConfig.subGroupBy || '');
                 setSelectedAccounts(new Set(initialConfig.filters.accountIds));
                 setSelectedUsers(new Set(initialConfig.filters.userIds));
                 setSelectedCategories(new Set(initialConfig.filters.categoryIds));
@@ -58,6 +60,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setCustomStartDate('');
                 setCustomEndDate('');
                 setGroupBy('category');
+                setSubGroupBy('');
                 setSelectedAccounts(new Set());
                 setSelectedUsers(new Set());
                 setSelectedCategories(new Set());
@@ -79,6 +82,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             customStartDate: datePreset === 'custom' ? customStartDate : undefined,
             customEndDate: datePreset === 'custom' ? customEndDate : undefined,
             groupBy,
+            subGroupBy: subGroupBy || undefined,
             filters: {
                 accountIds: selectedAccounts.size > 0 ? Array.from(selectedAccounts) : undefined,
                 userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : undefined,
@@ -129,36 +133,53 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
 
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Group By</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Group By (Level 1)</label>
                             <select 
                                 value={groupBy} 
                                 onChange={(e) => setGroupBy(e.target.value as ReportGroupBy)}
                                 className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                             >
                                 <option value="category">Category</option>
+                                <option value="account">Account</option>
                                 <option value="payee">Payee</option>
                                 <option value="type">Transaction Type</option>
                                 <option value="tag">Tag</option>
                             </select>
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Date Range</label>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Then Group By (Level 2)</label>
                             <select 
-                                value={datePreset} 
-                                onChange={(e) => setDatePreset(e.target.value as DateRangePreset)}
+                                value={subGroupBy} 
+                                onChange={(e) => setSubGroupBy(e.target.value as any)}
                                 className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                             >
-                                <option value="thisMonth">This Month</option>
-                                <option value="lastMonth">Last Month</option>
-                                <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
-                                <option value="last3Months">Last 90 Days</option>
-                                <option value="thisYear">This Year</option>
-                                <option value="lastYear">Last Year</option>
-                                <option value="sameMonthLastYear">Same Month Last Year</option>
-                                <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
-                                <option value="custom">Custom Range</option>
+                                <option value="">-- None --</option>
+                                <option value="category">Category</option>
+                                <option value="account">Account</option>
+                                <option value="payee">Payee</option>
+                                <option value="type">Transaction Type</option>
+                                <option value="tag">Tag</option>
                             </select>
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Date Range</label>
+                        <select 
+                            value={datePreset} 
+                            onChange={(e) => setDatePreset(e.target.value as DateRangePreset)}
+                            className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        >
+                            <option value="thisMonth">This Month</option>
+                            <option value="lastMonth">Last Month</option>
+                            <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
+                            <option value="last3Months">Last 90 Days</option>
+                            <option value="thisYear">This Year</option>
+                            <option value="lastYear">Last Year</option>
+                            <option value="sameMonthLastYear">Same Month Last Year</option>
+                            <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
+                            <option value="custom">Custom Range</option>
+                        </select>
                     </div>
 
                     {datePreset === 'custom' && (

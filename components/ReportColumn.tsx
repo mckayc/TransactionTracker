@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, UsersIcon, TagIcon } from './Icons';
@@ -144,9 +145,9 @@ interface AggregationItem {
     children: AggregationItem[];
     // For visual display only
     isHidden: boolean;
-    // Temp storage for calculating payee breakdown
-    payeeStats?: Map<string, number>;
-    type: 'group' | 'payee'; // To distinguish visual rendering
+    type: 'group' | 'payee'; 
+    // Temp storage for multi-pass aggregation
+    transactions?: Transaction[]; 
 }
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
@@ -165,7 +166,7 @@ const ReportRow: React.FC<{
         ? (item.amount / totalVisibleAmount) * 100 
         : 0;
 
-    const color = item.type === 'payee' ? stringToColor(item.name) : '#6366f1'; // Default Indigo for groups
+    const color = item.type === 'payee' ? stringToColor(item.name) : '#6366f1'; 
 
     return (
         <div className={`text-sm ${item.isHidden ? 'opacity-50 grayscale' : ''}`}>
@@ -231,6 +232,34 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
     const dateRange = useMemo(() => getDateRangeFromPreset(config.datePreset, config.customStartDate, config.customEndDate), [config.datePreset, config.customStartDate, config.customEndDate]);
 
+    // Helper to extract keys for a transaction based on dimension
+    const getKeys = (tx: Transaction, dimension: ReportGroupBy): { id: string, name: string, type: 'group' | 'payee' }[] => {
+        switch (dimension) {
+            case 'category':
+                const cat = categories.find(c => c.id === tx.categoryId);
+                return [{ id: tx.categoryId, name: cat?.name || 'Uncategorized', type: 'group' }];
+            case 'account':
+                const acc = accounts.find(a => a.id === tx.accountId);
+                return [{ id: tx.accountId || 'no-account', name: acc?.name || 'Unknown Account', type: 'group' }];
+            case 'payee':
+                const payee = payees.find(p => p.id === tx.payeeId);
+                return [{ id: tx.payeeId || 'no-payee', name: payee?.name || 'No Payee', type: 'payee' }];
+            case 'type':
+                const type = transactionTypes.find(t => t.id === tx.typeId);
+                return [{ id: tx.typeId, name: type?.name || 'Unknown Type', type: 'group' }];
+            case 'tag':
+                if (!tx.tagIds || tx.tagIds.length === 0) {
+                    return [{ id: 'no-tag', name: 'No Tags', type: 'group' }];
+                }
+                return tx.tagIds.map(tId => {
+                    const tag = tags.find(t => t.id === tId);
+                    return { id: tId, name: tag?.name || 'Unknown Tag', type: 'group' };
+                });
+            default:
+                return [{ id: 'unknown', name: 'Unknown', type: 'group' }];
+        }
+    };
+
     const activeData = useMemo(() => {
         const allowedEffects = new Set(config.filters.balanceEffects || ['expense']); 
         
@@ -260,233 +289,134 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             return true;
         });
 
-        // --- 2. Aggregation Logic based on GroupBy ---
-        const aggregationMap = new Map<string, AggregationItem>();
-        
-        // Helper to get or create aggregate item
-        const getAggItem = (id: string, name: string): AggregationItem => {
-            if (!aggregationMap.has(id)) {
-                // Check if this ID is in the hidden list (either modern hiddenIds or legacy hiddenCategoryIds)
-                const isHidden = (config.hiddenIds && config.hiddenIds.includes(id)) || 
-                                 (config.hiddenCategoryIds && config.hiddenCategoryIds.includes(id)) || false;
-                aggregationMap.set(id, { id, name, amount: 0, children: [], isHidden, type: 'group' });
-            }
-            return aggregationMap.get(id)!;
+        // --- 2. Generic Grouping Engine ---
+        const buildGroups = (txs: Transaction[], dimension: ReportGroupBy): AggregationItem[] => {
+            const map = new Map<string, AggregationItem>();
+            
+            txs.forEach(tx => {
+                const keys = getKeys(tx, dimension);
+                keys.forEach(({id, name, type}) => {
+                    if (!map.has(id)) {
+                        // Check visibility
+                        const isHidden = (config.hiddenIds && config.hiddenIds.includes(id)) || 
+                                         (config.hiddenCategoryIds && config.hiddenCategoryIds.includes(id)) || false;
+                        map.set(id, { id, name, amount: 0, children: [], isHidden, type, transactions: [] });
+                    }
+                    const item = map.get(id)!;
+                    item.amount += tx.amount;
+                    item.transactions?.push(tx);
+                });
+            });
+            return Array.from(map.values());
         };
 
-        const groupBy = config.groupBy || 'category';
+        const primaryGroupBy = config.groupBy || 'category';
+        const primaryItems = buildGroups(filtered, primaryGroupBy);
 
-        if (groupBy === 'category') {
-            const catNameMap = new Map(categories.map(c => [c.id, c]));
-            filtered.forEach(tx => {
-                const catDef = catNameMap.get(tx.categoryId);
-                if (!catDef) return;
-                const agg = getAggItem(tx.categoryId, catDef.name);
-                agg.amount += tx.amount;
-                
-                // Collect Payee data for drilldown
-                const payeeId = tx.payeeId || 'no-payee';
-                if (!agg.payeeStats) agg.payeeStats = new Map();
-                agg.payeeStats.set(payeeId, (agg.payeeStats.get(payeeId) || 0) + tx.amount);
-            });
-        } else if (groupBy === 'payee') {
-            const payeeNameMap = new Map(payees.map(p => [p.id, p]));
-            filtered.forEach(tx => {
-                const pId = tx.payeeId;
-                if (!pId) {
-                    const agg = getAggItem('no-payee', 'No Payee');
-                    agg.amount += tx.amount;
-                } else {
-                    const pDef = payeeNameMap.get(pId);
-                    const agg = getAggItem(pId, pDef?.name || 'Unknown');
-                    agg.amount += tx.amount;
+        // --- 3. Sub-Grouping or Hierarchy Building ---
+        
+        // Case A: Explicit Sub-Grouping (User selected "Then Group By")
+        if (config.subGroupBy) {
+            primaryItems.forEach(item => {
+                if (item.transactions && item.transactions.length > 0) {
+                    item.children = buildGroups(item.transactions, config.subGroupBy!);
+                    // Clear txs to free memory
+                    delete item.transactions;
                 }
             });
-        } else if (groupBy === 'type') {
-            const typeNameMap = new Map(transactionTypes.map(t => [t.id, t]));
-            filtered.forEach(tx => {
-                const tDef = typeNameMap.get(tx.typeId);
-                const agg = getAggItem(tx.typeId, tDef?.name || 'Unknown');
-                agg.amount += tx.amount;
+        } 
+        // Case B: No Sub-Grouping, use default Hierarchies (Category Tree, Payee Tree)
+        else {
+            if (primaryGroupBy === 'category') {
+                // Reconstruct Category Tree
+                const treeMap = new Map<string, AggregationItem>();
+                const roots: AggregationItem[] = [];
+                const catNameMap = new Map(categories.map(c => [c.id, c]));
 
-                // Collect Payee data for drilldown
-                const payeeId = tx.payeeId || 'no-payee';
-                if (!agg.payeeStats) agg.payeeStats = new Map();
-                agg.payeeStats.set(payeeId, (agg.payeeStats.get(payeeId) || 0) + tx.amount);
-            });
-        } else if (groupBy === 'tag') {
-            const tagNameMap = new Map(tags.map(t => [t.id, t]));
-            filtered.forEach(tx => {
-                if (!tx.tagIds || tx.tagIds.length === 0) {
-                    const agg = getAggItem('no-tag', 'No Tags');
-                    agg.amount += tx.amount;
-                } else {
-                    tx.tagIds.forEach(tagId => {
-                        const tagDef = tagNameMap.get(tagId);
-                        const agg = getAggItem(tagId, tagDef?.name || 'Unknown');
-                        agg.amount += tx.amount;
-                    });
-                }
-            });
-        }
+                // First pass: put all current items in map
+                primaryItems.forEach(item => treeMap.set(item.id, item));
 
-        // --- 3. Build Hierarchy (Tree) and Payee Drilldown ---
-        const rootItems: AggregationItem[] = [];
-        const processedMap = new Map<string, AggregationItem>(); // To track items already placed in tree
-
-        // Step A: Build Payee Hierarchy for Drilldown (Category/Type grouping)
-        if (groupBy === 'category' || groupBy === 'type') {
-            const payeeNameMap = new Map(payees.map(p => [p.id, p]));
-            
-            for (const agg of aggregationMap.values()) {
-                if (agg.payeeStats && agg.payeeStats.size > 0) {
-                    const localPayeeNodes = new Map<string, AggregationItem>();
-                    const localRoots: AggregationItem[] = [];
-
-                    // 1. Create Nodes
-                    for (const [pId, amount] of agg.payeeStats.entries()) {
-                        const pName = pId === 'no-payee' ? 'No Payee' : payeeNameMap.get(pId)?.name || 'Unknown Payee';
-                        const isHidden = config.hiddenIds?.includes(pId) || false;
+                // Second pass: assign parents
+                primaryItems.forEach(item => {
+                    const def = catNameMap.get(item.id);
+                    if (def?.parentId) {
+                        let parent = treeMap.get(def.parentId);
+                        if (!parent) {
+                            // Create virtual parent if it has transactions but wasn't in list (shouldn't happen with current logic) or if we just need a container
+                            const parentDef = catNameMap.get(def.parentId);
+                            const isHidden = (config.hiddenIds && config.hiddenIds.includes(def.parentId)) || false;
+                            parent = { 
+                                id: def.parentId, 
+                                name: parentDef?.name || 'Unknown Parent', 
+                                amount: 0, // Sum will be calculated from children
+                                children: [], 
+                                isHidden, 
+                                type: 'group' 
+                            };
+                            treeMap.set(def.parentId, parent);
+                            roots.push(parent); // Newly created parent is a root candidate
+                        }
                         
-                        localPayeeNodes.set(pId, {
-                            id: pId, // Use Payee ID directly so hiding works universally
-                            name: pName,
-                            amount: amount,
-                            children: [],
-                            isHidden: isHidden,
-                            type: 'payee'
-                        });
-                    }
-
-                    // 2. Build Mini-Tree
-                    for (const [pId, node] of localPayeeNodes.entries()) {
-                        if (pId === 'no-payee') {
-                            localRoots.push(node);
-                            continue;
+                        // Check if item is already added to prevent dupes
+                        if (!parent.children.find(c => c.id === item.id)) {
+                            parent.children.push(item);
+                            parent.amount += item.amount;
                         }
-                        const def = payeeNameMap.get(pId);
-                        if (def?.parentId) {
-                            let parentNode = localPayeeNodes.get(def.parentId);
-                            
-                            // Virtual Parent Creation: If parent has no txs in this category but child does, create grouping node
-                            if (!parentNode) {
-                                const parentDef = payeeNameMap.get(def.parentId);
-                                if (parentDef) {
-                                    const isParentHidden = config.hiddenIds?.includes(def.parentId) || false;
-                                    parentNode = {
-                                        id: def.parentId,
-                                        name: parentDef.name,
-                                        amount: 0, // Will sum children
-                                        children: [],
-                                        isHidden: isParentHidden,
-                                        type: 'payee'
-                                    };
-                                    localPayeeNodes.set(def.parentId, parentNode);
-                                    localRoots.push(parentNode);
-                                }
-                            }
-
-                            if (parentNode) {
-                                // Ensure parent isn't in root list if we just found it was a child of someone else (multi-level)
-                                // But here we just assume 2 levels for now or simple tree
-                                parentNode.children.push(node);
-                                parentNode.amount += node.amount;
-                            } else {
-                                localRoots.push(node);
-                            }
-                        } else {
-                            // If this node is a root (no parent), ensure it's in roots list
-                            // But check if it was already added as a virtual parent
-                            if (!localRoots.includes(node)) localRoots.push(node);
-                        }
+                        // Remove item from roots if it was there
+                        const rootIdx = roots.findIndex(r => r.id === item.id);
+                        if (rootIdx > -1) roots.splice(rootIdx, 1);
+                    } else {
+                        if (!roots.find(r => r.id === item.id)) roots.push(item);
                     }
-                    agg.children = localRoots;
-                }
+                });
+                
+                // Replace primary list with tree roots
+                primaryItems.splice(0, primaryItems.length, ...roots);
+            } else if (primaryGroupBy === 'payee') {
+                // Reconstruct Payee Tree (similar logic)
+                const treeMap = new Map<string, AggregationItem>();
+                const roots: AggregationItem[] = [];
+                const payeeNameMap = new Map(payees.map(p => [p.id, p]));
+
+                primaryItems.forEach(item => treeMap.set(item.id, item));
+
+                primaryItems.forEach(item => {
+                    if (item.id === 'no-payee') {
+                        if (!roots.find(r => r.id === item.id)) roots.push(item);
+                        return;
+                    }
+                    const def = payeeNameMap.get(item.id);
+                    if (def?.parentId) {
+                        let parent = treeMap.get(def.parentId);
+                        if (!parent) {
+                            const parentDef = payeeNameMap.get(def.parentId);
+                            const isHidden = (config.hiddenIds && config.hiddenIds.includes(def.parentId)) || false;
+                            parent = {
+                                id: def.parentId,
+                                name: parentDef?.name || 'Unknown Parent',
+                                amount: 0,
+                                children: [],
+                                isHidden,
+                                type: 'payee'
+                            };
+                            treeMap.set(def.parentId, parent);
+                            roots.push(parent);
+                        }
+                        if (!parent.children.find(c => c.id === item.id)) {
+                            parent.children.push(item);
+                            parent.amount += item.amount;
+                        }
+                        const rootIdx = roots.findIndex(r => r.id === item.id);
+                        if (rootIdx > -1) roots.splice(rootIdx, 1);
+                    } else {
+                        if (!roots.find(r => r.id === item.id)) roots.push(item);
+                    }
+                });
+                primaryItems.splice(0, primaryItems.length, ...roots);
             }
         }
 
-        // Step B: Build Tree Structure based on Metadata Hierarchy (for main grouping)
-        if (groupBy === 'category') {
-            const catNameMap = new Map(categories.map(c => [c.id, c]));
-            
-            for (const [id, agg] of aggregationMap.entries()) {
-                const def = catNameMap.get(id);
-                if (def?.parentId) {
-                    // Child: find or create parent
-                    const parentDef = catNameMap.get(def.parentId);
-                    let parentAgg = processedMap.get(def.parentId);
-                    
-                    if (!parentAgg) {
-                        if (aggregationMap.has(def.parentId)) {
-                            parentAgg = aggregationMap.get(def.parentId)!;
-                        } else {
-                            const isParentHidden = (config.hiddenIds && config.hiddenIds.includes(def.parentId)) || 
-                                                   (config.hiddenCategoryIds && config.hiddenCategoryIds.includes(def.parentId)) || false;
-                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden, type: 'group' };
-                        }
-                        processedMap.set(def.parentId, parentAgg);
-                        if (!rootItems.find(r => r.id === def.parentId)) {
-                            rootItems.push(parentAgg);
-                        }
-                    }
-                    
-                    if (!parentAgg.children.find(c => c.id === agg.id)) {
-                        parentAgg.children.push(agg);
-                        parentAgg.amount += agg.amount;
-                    }
-                    processedMap.set(id, agg);
-                } else {
-                    if (!processedMap.has(id)) {
-                        rootItems.push(agg);
-                        processedMap.set(id, agg);
-                    }
-                }
-            }
-        } else if (groupBy === 'payee') {
-            const payeeNameMap = new Map(payees.map(p => [p.id, p]));
-            
-            for (const [id, agg] of aggregationMap.entries()) {
-                if (id === 'no-payee') {
-                    rootItems.push(agg);
-                    continue;
-                }
-                const def = payeeNameMap.get(id);
-                if (def?.parentId) {
-                    const parentDef = payeeNameMap.get(def.parentId);
-                    let parentAgg = processedMap.get(def.parentId);
-                    
-                    if (!parentAgg) {
-                        if (aggregationMap.has(def.parentId)) {
-                            parentAgg = aggregationMap.get(def.parentId)!;
-                        } else {
-                            const isParentHidden = config.hiddenIds?.includes(def.parentId) || false;
-                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden, type: 'payee' };
-                        }
-                        processedMap.set(def.parentId, parentAgg);
-                        if (!rootItems.find(r => r.id === def.parentId)) {
-                            rootItems.push(parentAgg);
-                        }
-                    }
-                    if (!parentAgg.children.find(c => c.id === agg.id)) {
-                        parentAgg.children.push(agg);
-                        parentAgg.amount += agg.amount;
-                    }
-                    processedMap.set(id, agg);
-                } else {
-                    if (!processedMap.has(id)) {
-                        rootItems.push(agg);
-                        processedMap.set(id, agg);
-                    }
-                }
-            }
-        } else {
-            // Flat lists (Types, Tags)
-            for (const agg of aggregationMap.values()) {
-                rootItems.push(agg);
-            }
-        }
-
-        // --- 4. Sorting & Total Calculation (Respecting Hidden Items) ---
+        // --- 4. Sorting & Total Calculation ---
         const sortFn = (a: AggregationItem, b: AggregationItem) => {
             if (sortBy === 'amount') return b.amount - a.amount;
             return a.name.localeCompare(b.name);
@@ -498,47 +428,59 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 if (i.children.length > 0) sortRecursive(i.children);
             });
         };
-        sortRecursive(rootItems);
+        sortRecursive(primaryItems);
 
-        // Safer Total Calculation: Iterate transactions one last time
+        // Safe Total Calculation: Re-sum from transactions to handle complex hiding logic correctly
+        // (Iterating hierarchy is cleaner but prone to double counting if logic drifts)
+        // We will sum the *visible* root items and their visible descendants?
+        // Easier: Use the original filter pass, but add a visibility check function.
+        
         let totalVisibleAmount = filtered.filter(tx => {
-            let idToCheck = '';
-            // Basic grouping check
-            if (groupBy === 'category') idToCheck = tx.categoryId;
-            else if (groupBy === 'payee') idToCheck = tx.payeeId || 'no-payee';
-            else if (groupBy === 'type') idToCheck = tx.typeId;
-            else if (groupBy === 'tag') return true; 
-
-            // 1. Check direct bucket visibility
-            if (config.hiddenIds?.includes(idToCheck)) return false;
+            // Check visibility against config.hiddenIds
+            // This is complex because a transaction might be hidden because its Category is hidden, 
+            // OR because its Account is hidden (if grouped by Account).
             
-            // 2. Check parent visibility (Group Parent)
-            if (groupBy === 'category') {
-                const def = categories.find(c => c.id === idToCheck);
-                if (def?.parentId && (config.hiddenIds?.includes(def.parentId) || config.hiddenCategoryIds?.includes(def.parentId))) return false;
+            // Simplified check: If the primary group key for this tx is hidden, exclude it.
+            // If subGroup is on, if secondary key is hidden, exclude it.
+            
+            // Check Primary
+            const pKeys = getKeys(tx, primaryGroupBy);
+            // If any of the keys (for tags) are hidden, we might exclude? 
+            // For standard 1-to-1 dims:
+            if (pKeys.length === 1) {
+                if (config.hiddenIds?.includes(pKeys[0].id)) return false;
+                
+                // Check parent visibility if using default hierarchy
+                if (!config.subGroupBy && primaryGroupBy === 'category') {
+                    const def = categories.find(c => c.id === pKeys[0].id);
+                    if (def?.parentId && config.hiddenIds?.includes(def.parentId)) return false;
+                }
+                if (!config.subGroupBy && primaryGroupBy === 'payee') {
+                    const def = payees.find(p => p.id === pKeys[0].id);
+                    if (def?.parentId && config.hiddenIds?.includes(def.parentId)) return false;
+                }
             }
-            
-            // 3. Check Payee ID visibility (Universal Hiding)
-            // Even if grouped by Category, if specific Payee is hidden, exclude it
-            const pId = tx.payeeId || 'no-payee';
-            if (config.hiddenIds?.includes(pId)) return false;
-            
-            // 4. Check Payee Parent visibility
-            if (tx.payeeId) {
-                const pDef = payees.find(p => p.id === tx.payeeId);
-                if (pDef?.parentId && config.hiddenIds?.includes(pDef.parentId)) return false;
+
+            // Check Secondary
+            if (config.subGroupBy) {
+                const sKeys = getKeys(tx, config.subGroupBy);
+                if (sKeys.length === 1) {
+                    if (config.hiddenIds?.includes(sKeys[0].id)) return false;
+                }
             }
 
             return true;
         }).reduce((sum, tx) => sum + tx.amount, 0);
 
-        if (groupBy === 'tag') {
-            totalVisibleAmount = rootItems.filter(i => !i.isHidden).reduce((sum, i) => sum + i.amount, 0);
+        // Edge case: If grouping by Tag (many-to-many), total amount is inflated.
+        // We should sum the amounts of the visible root items instead.
+        if (primaryGroupBy === 'tag') {
+            totalVisibleAmount = primaryItems.filter(i => !i.isHidden).reduce((sum, i) => sum + i.amount, 0);
         }
 
-        return { rootItems, totalVisibleAmount };
+        return { rootItems: primaryItems, totalVisibleAmount };
 
-    }, [transactions, config, dateRange, categories, transactionTypes, payees, tags, sortBy]);
+    }, [transactions, config, dateRange, categories, transactionTypes, payees, tags, accounts, sortBy]);
 
     // --- Handlers ---
 
@@ -618,7 +560,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 {config.name} <EditIcon className="w-3 h-3 text-slate-400 opacity-50" />
                             </h3>
                         )}
-                        <p className="text-xs text-slate-500 truncate mt-0.5">{dateRange.label} • {config.groupBy ? config.groupBy.charAt(0).toUpperCase() + config.groupBy.slice(1) : 'Category'}</p>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">
+                            {dateRange.label} • {config.groupBy ? config.groupBy.charAt(0).toUpperCase() + config.groupBy.slice(1) : 'Category'}
+                            {config.subGroupBy ? ` → ${config.subGroupBy.charAt(0).toUpperCase() + config.subGroupBy.slice(1)}` : ''}
+                        </p>
                     </div>
                     <button onClick={handleSave} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-indigo-700 font-medium">Save</button>
                 </div>
@@ -668,9 +613,25 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                     className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
                                 >
                                     <option value="category">Category</option>
+                                    <option value="account">Account</option>
                                     <option value="payee">Payee</option>
-                                    <option value="tag">Tag</option>
                                     <option value="type">Type</option>
+                                    <option value="tag">Tag</option>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-[10px] font-medium text-slate-500 uppercase mb-1">Sub-Group By</label>
+                                <select 
+                                    value={config.subGroupBy || ''} 
+                                    onChange={(e) => setConfig({ ...config, subGroupBy: e.target.value as any })}
+                                    className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
+                                >
+                                    <option value="">-- None --</option>
+                                    <option value="category">Category</option>
+                                    <option value="account">Account</option>
+                                    <option value="payee">Payee</option>
+                                    <option value="type">Transaction Type</option>
                                 </select>
                             </div>
                             
