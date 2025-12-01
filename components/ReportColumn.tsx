@@ -1,7 +1,7 @@
 
 
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee } from '../types';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
@@ -128,18 +128,20 @@ const DonutChart: React.FC<{ data: { name: string; value: number; color: string 
     );
 };
 
-interface AggregatedCategory {
+interface AggregationItem {
     id: string;
     name: string;
     amount: number;
-    subcategories: AggregatedCategory[];
+    children: AggregationItem[];
+    // For visual display only
+    isHidden: boolean;
 }
 
 const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport }) => {
     
     // Internal state allows modifying the report on the fly without affecting the saved version until explicit save
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
-    const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+    const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set());
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
     const [showFilters, setShowFilters] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
@@ -147,11 +149,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     const dateRange = useMemo(() => getDateRangeFromPreset(config.datePreset, config.customStartDate, config.customEndDate), [config.datePreset, config.customStartDate, config.customEndDate]);
 
     const activeData = useMemo(() => {
-        const allowedEffects = new Set(config.filters.balanceEffects || ['expense']); // Default to expense if empty for safety
-
-        // 1. Filter Transactions
+        const allowedEffects = new Set(config.filters.balanceEffects || ['expense']); 
+        
+        // --- 1. Filter Transactions ---
         const filtered = transactions.filter(tx => {
-            // Skip Parent transactions (containers)
             if (tx.isParent) return false;
 
             const txDate = new Date(tx.date);
@@ -162,110 +163,300 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             if (config.filters.categoryIds && config.filters.categoryIds.length > 0 && !config.filters.categoryIds.includes(tx.categoryId)) return false;
             if (config.filters.typeIds && config.filters.typeIds.length > 0 && !config.filters.typeIds.includes(tx.typeId)) return false;
             
-            // Tags Filter
             if (config.filters.tagIds && config.filters.tagIds.length > 0) {
                 if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) return false;
             }
 
-            // Payees Filter
             if (config.filters.payeeIds && config.filters.payeeIds.length > 0) {
                 if (!config.filters.payeeIds.includes(tx.payeeId || '')) return false;
             }
             
-            // Check Balance Effect
             const type = transactionTypes.find(t => t.id === tx.typeId);
             if (!type || !allowedEffects.has(type.balanceEffect)) return false; 
 
             return true;
         });
 
-        // 2. Aggregate by Category Hierarchy
-        const categoryMap = new Map<string, AggregatedCategory>();
-        const catNameMap = new Map(categories.map(c => [c.id, c]));
-
-        filtered.forEach(tx => {
-            const catId = tx.categoryId;
-            const category = catNameMap.get(catId);
-            if (!category) return;
-
-            // Check hidden
-            if (config.hiddenCategoryIds?.includes(catId)) return;
-            if (category.parentId && config.hiddenCategoryIds?.includes(category.parentId)) return;
-
-            // Aggregate
-            if (!categoryMap.has(catId)) {
-                categoryMap.set(catId, { id: catId, name: category.name, amount: 0, subcategories: [] });
+        // --- 2. Aggregation Logic based on GroupBy ---
+        const aggregationMap = new Map<string, AggregationItem>();
+        
+        // Helper to get or create aggregate item
+        const getAggItem = (id: string, name: string): AggregationItem => {
+            if (!aggregationMap.has(id)) {
+                // Check if this ID is in the hidden list (either modern hiddenIds or legacy hiddenCategoryIds)
+                const isHidden = (config.hiddenIds && config.hiddenIds.includes(id)) || 
+                                 (config.hiddenCategoryIds && config.hiddenCategoryIds.includes(id)) || false;
+                aggregationMap.set(id, { id, name, amount: 0, children: [], isHidden });
             }
-            categoryMap.get(catId)!.amount += tx.amount;
-        });
+            return aggregationMap.get(id)!;
+        };
 
-        // Build Tree
-        const rootCategories: AggregatedCategory[] = [];
-        const processedMap = new Map<string, AggregatedCategory>();
+        const groupBy = config.groupBy || 'category';
 
-        for (const [catId, agg] of categoryMap.entries()) {
-            const catDef = catNameMap.get(catId);
-            if (catDef?.parentId) {
-                // It's a child. Find or create parent agg.
-                let parentAgg = processedMap.get(catDef.parentId);
-                if (!parentAgg) {
-                    const parentDef = catNameMap.get(catDef.parentId);
-                    parentAgg = { 
-                        id: catDef.parentId, 
-                        name: parentDef?.name || 'Unknown Parent', 
-                        amount: 0, 
-                        subcategories: [] 
-                    };
-                    processedMap.set(catDef.parentId, parentAgg);
-                }
-                parentAgg.subcategories.push(agg);
-                parentAgg.amount += agg.amount;
-            } else {
-                // It's a parent (or orphan).
-                let existing = processedMap.get(catId);
-                if (!existing) {
-                    processedMap.set(catId, agg);
+        if (groupBy === 'category') {
+            const catNameMap = new Map(categories.map(c => [c.id, c]));
+            filtered.forEach(tx => {
+                const catDef = catNameMap.get(tx.categoryId);
+                if (!catDef) return;
+                const agg = getAggItem(tx.categoryId, catDef.name);
+                agg.amount += tx.amount;
+            });
+        } else if (groupBy === 'payee') {
+            const payeeNameMap = new Map(payees.map(p => [p.id, p]));
+            filtered.forEach(tx => {
+                const pId = tx.payeeId;
+                if (!pId) {
+                    const agg = getAggItem('no-payee', 'No Payee');
+                    agg.amount += tx.amount;
                 } else {
-                    existing.amount += agg.amount;
+                    const pDef = payeeNameMap.get(pId);
+                    const agg = getAggItem(pId, pDef?.name || 'Unknown');
+                    agg.amount += tx.amount;
+                }
+            });
+        } else if (groupBy === 'type') {
+            const typeNameMap = new Map(transactionTypes.map(t => [t.id, t]));
+            filtered.forEach(tx => {
+                const tDef = typeNameMap.get(tx.typeId);
+                const agg = getAggItem(tx.typeId, tDef?.name || 'Unknown');
+                agg.amount += tx.amount;
+            });
+        } else if (groupBy === 'tag') {
+            const tagNameMap = new Map(tags.map(t => [t.id, t]));
+            filtered.forEach(tx => {
+                if (!tx.tagIds || tx.tagIds.length === 0) {
+                    const agg = getAggItem('no-tag', 'No Tags');
+                    agg.amount += tx.amount;
+                } else {
+                    tx.tagIds.forEach(tagId => {
+                        const tagDef = tagNameMap.get(tagId);
+                        const agg = getAggItem(tagId, tagDef?.name || 'Unknown');
+                        agg.amount += tx.amount;
+                    });
+                }
+            });
+        }
+
+        // --- 3. Build Hierarchy (Tree) ---
+        const rootItems: AggregationItem[] = [];
+        const processedMap = new Map<string, AggregationItem>(); // To track items already placed in tree
+
+        if (groupBy === 'category') {
+            const catNameMap = new Map(categories.map(c => [c.id, c]));
+            
+            // Loop through all aggregated items
+            for (const [id, agg] of aggregationMap.entries()) {
+                const def = catNameMap.get(id);
+                if (def?.parentId) {
+                    // Child: find or create parent
+                    const parentDef = catNameMap.get(def.parentId);
+                    let parentAgg = processedMap.get(def.parentId);
+                    
+                    if (!parentAgg) {
+                        // Check if parent was also aggregated (has its own transactions), if so use that, else create new container
+                        if (aggregationMap.has(def.parentId)) {
+                            parentAgg = aggregationMap.get(def.parentId)!;
+                        } else {
+                            const isParentHidden = (config.hiddenIds && config.hiddenIds.includes(def.parentId)) || 
+                                                   (config.hiddenCategoryIds && config.hiddenCategoryIds.includes(def.parentId)) || false;
+                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden };
+                        }
+                        processedMap.set(def.parentId, parentAgg);
+                        // Add parent to roots only if not already added
+                        if (!rootItems.find(r => r.id === def.parentId)) {
+                            rootItems.push(parentAgg);
+                        }
+                    }
+                    
+                    // Add current item as child to parent
+                    // NOTE: Parent amount assumes it aggregates children for display purposes, 
+                    // but we also track parent's own transaction amount if any.
+                    // For typical reports, Parent Total = Own Txs + Children Txs
+                    // We add this child to the parent's children array
+                    // Check if child already added to avoid dupes if logic runs twice
+                    if (!parentAgg.children.find(c => c.id === agg.id)) {
+                        parentAgg.children.push(agg);
+                        // Propagate amount up to parent for display total
+                        parentAgg.amount += agg.amount;
+                    }
+                    
+                    processedMap.set(id, agg); // Mark child as processed
+                } else {
+                    // Root item
+                    if (!processedMap.has(id)) {
+                        rootItems.push(agg);
+                        processedMap.set(id, agg);
+                    }
                 }
             }
-        }
-
-        for (const [id, agg] of processedMap.entries()) {
-            const def = catNameMap.get(id);
-            if (!def?.parentId) {
-                rootCategories.push(agg);
+        } else if (groupBy === 'payee') {
+            const payeeNameMap = new Map(payees.map(p => [p.id, p]));
+            
+            for (const [id, agg] of aggregationMap.entries()) {
+                if (id === 'no-payee') {
+                    rootItems.push(agg);
+                    continue;
+                }
+                const def = payeeNameMap.get(id);
+                if (def?.parentId) {
+                    const parentDef = payeeNameMap.get(def.parentId);
+                    let parentAgg = processedMap.get(def.parentId);
+                    
+                    if (!parentAgg) {
+                        if (aggregationMap.has(def.parentId)) {
+                            parentAgg = aggregationMap.get(def.parentId)!;
+                        } else {
+                            const isParentHidden = config.hiddenIds?.includes(def.parentId) || false;
+                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden };
+                        }
+                        processedMap.set(def.parentId, parentAgg);
+                        if (!rootItems.find(r => r.id === def.parentId)) {
+                            rootItems.push(parentAgg);
+                        }
+                    }
+                    if (!parentAgg.children.find(c => c.id === agg.id)) {
+                        parentAgg.children.push(agg);
+                        parentAgg.amount += agg.amount;
+                    }
+                    processedMap.set(id, agg);
+                } else {
+                    if (!processedMap.has(id)) {
+                        rootItems.push(agg);
+                        processedMap.set(id, agg);
+                    }
+                }
+            }
+        } else {
+            // Flat lists (Types, Tags)
+            for (const agg of aggregationMap.values()) {
+                rootItems.push(agg);
             }
         }
 
-        // Sort
-        const sortFn = (a: AggregatedCategory, b: AggregatedCategory) => {
+        // --- 4. Sorting & Total Calculation (Respecting Hidden Items) ---
+        const sortFn = (a: AggregationItem, b: AggregationItem) => {
             if (sortBy === 'amount') return b.amount - a.amount;
             return a.name.localeCompare(b.name);
         };
 
-        rootCategories.sort(sortFn);
-        rootCategories.forEach(root => root.subcategories.sort(sortFn));
+        // Recurse to sort children
+        const sortRecursive = (items: AggregationItem[]) => {
+            items.sort(sortFn);
+            items.forEach(i => {
+                if (i.children.length > 0) sortRecursive(i.children);
+            });
+        };
+        sortRecursive(rootItems);
 
-        const totalAmount = rootCategories.reduce((sum, cat) => sum + cat.amount, 0);
+        // Calculate Visible Total
+        // We walk the tree. If an item is hidden, its amount is excluded from the *Total*.
+        // However, if a parent is NOT hidden, but a child IS hidden, the parent's amount should technically reflect that subtraction?
+        // Simpler approach: Flatten the list of visible items for total calculation. 
+        // But wait, the aggregation logic above propagated amounts up. We need to be careful not to double count or count hidden.
+        
+        // Actually, the most robust way for the "Total" is to iterate the source `aggregationMap` (which are the leaves/nodes with actual transactions)
+        // and sum only those that are not hidden and whose ancestors are not hidden.
+        
+        // Helper to check ancestry visibility
+        const isNodeVisible = (id: string, type: 'category' | 'payee'): boolean => {
+            // Check self
+            if (config.hiddenIds?.includes(id) || config.hiddenCategoryIds?.includes(id)) return false;
+            
+            // Check parent
+            if (type === 'category') {
+                const def = categories.find(c => c.id === id);
+                if (def?.parentId) return isNodeVisible(def.parentId, 'category');
+            } else if (type === 'payee') {
+                const def = payees.find(p => p.id === id);
+                if (def?.parentId) return isNodeVisible(def.parentId, 'payee');
+            }
+            return true;
+        };
 
-        return { rootCategories, totalAmount };
+        let totalVisibleAmount = 0;
+        
+        // Re-calculate based on leaf aggregations from map to ensure accurate totals excluding hidden
+        for (const [id, agg] of aggregationMap.entries()) {
+            // Only sum up the "own" amount of this node (which we stored in map initially). 
+            // The tree construction added children amounts to parents, so we shouldn't use tree roots for this sum directly if we want granular hiding.
+            // BUT: The map contains the raw sum for that ID.
+            const type = groupBy === 'category' ? 'category' : groupBy === 'payee' ? 'payee' : 'other';
+            
+            // Determine if this specific bucket is visible
+            let visible = true;
+            if (config.hiddenIds?.includes(id)) visible = false;
+            if (groupBy === 'category' && config.hiddenCategoryIds?.includes(id)) visible = false;
+            
+            // Also check ancestor visibility if hierarchical
+            if (visible && (type === 'category' || type === 'payee')) {
+                visible = isNodeVisible(id, type);
+            }
 
-    }, [transactions, config, dateRange, categories, transactionTypes, sortBy]);
+            if (visible) {
+               // We need the raw amount for this node, not the tree-accumulated amount.
+               // The aggregationMap values were modified during tree building (passed by reference? objects are ref). 
+               // Wait, `parentAgg.amount += agg.amount` modifies the parent object in the map if the parent was in the map.
+               // To avoid confusion, let's just use the filtered transaction list again for the total. It's safer.
+            }
+        }
+
+        // Safer Total Calculation: Iterate transactions one last time
+        totalVisibleAmount = filtered.filter(tx => {
+            let idToCheck = '';
+            if (groupBy === 'category') idToCheck = tx.categoryId;
+            else if (groupBy === 'payee') idToCheck = tx.payeeId || 'no-payee';
+            else if (groupBy === 'type') idToCheck = tx.typeId;
+            else if (groupBy === 'tag') return true; // Tag total logic is tricky (1 tx = multiple tags). Usually we just sum unique transactions.
+
+            // Check visibility of this specific transaction's bucket
+            if (config.hiddenIds?.includes(idToCheck)) return false;
+            if (groupBy === 'category' && config.hiddenCategoryIds?.includes(idToCheck)) return false;
+            
+            // Check parent visibility
+            if (groupBy === 'category') {
+                const def = categories.find(c => c.id === idToCheck);
+                if (def?.parentId && (config.hiddenIds?.includes(def.parentId) || config.hiddenCategoryIds?.includes(def.parentId))) return false;
+            }
+            if (groupBy === 'payee') {
+                const def = payees.find(p => p.id === idToCheck);
+                if (def?.parentId && config.hiddenIds?.includes(def.parentId)) return false;
+            }
+
+            return true;
+        }).reduce((sum, tx) => sum + tx.amount, 0);
+
+        // For Tag grouping specifically, the "Total" is usually just the sum of the visible bars, which might > total money spent.
+        if (groupBy === 'tag') {
+            totalVisibleAmount = rootItems.filter(i => !i.isHidden).reduce((sum, i) => sum + i.amount, 0);
+        }
+
+        return { rootItems, totalVisibleAmount };
+
+    }, [transactions, config, dateRange, categories, transactionTypes, payees, tags, sortBy]);
 
     // --- Handlers ---
 
     const toggleVisibility = (id: string) => {
         setConfig(prev => {
-            const hidden = new Set(prev.hiddenCategoryIds || []);
+            const hidden = new Set(prev.hiddenIds || []);
+            // Migrate legacy hiddenCategoryIds if present and we are in category mode
+            if (prev.groupBy === 'category' || !prev.groupBy) {
+                prev.hiddenCategoryIds?.forEach(hid => hidden.add(hid));
+            }
+            
             if (hidden.has(id)) hidden.delete(id);
             else hidden.add(id);
-            return { ...prev, hiddenCategoryIds: Array.from(hidden) };
+            
+            return { 
+                ...prev, 
+                hiddenIds: Array.from(hidden),
+                hiddenCategoryIds: [] // Clear legacy to avoid sync issues, use hiddenIds forward
+            };
         });
     };
 
     const toggleCollapse = (id: string) => {
-        setCollapsedCategories(prev => {
+        setCollapsedItems(prev => {
             const newSet = new Set(prev);
             if (newSet.has(id)) newSet.delete(id);
             else newSet.add(id);
@@ -288,15 +479,22 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 
-    // Prepare Chart Data
-    const chartData = activeData.rootCategories.slice(0, 8).map((cat, i) => ({
-        name: cat.name,
-        value: cat.amount,
-        color: COLORS[i % COLORS.length]
-    }));
+    // Prepare Chart Data (Top 8 Visible)
+    const chartData = activeData.rootItems
+        .filter(i => !i.isHidden) // Don't show hidden in chart
+        .slice(0, 8)
+        .map((cat, i) => ({
+            name: cat.name,
+            value: cat.amount,
+            color: COLORS[i % COLORS.length]
+        }));
     
-    // Add "Other" if needed
-    const otherAmount = activeData.rootCategories.slice(8).reduce((sum, cat) => sum + cat.amount, 0);
+    // Add "Other"
+    const otherAmount = activeData.rootItems
+        .filter(i => !i.isHidden)
+        .slice(8)
+        .reduce((sum, cat) => sum + cat.amount, 0);
+    
     if (otherAmount > 0) {
         chartData.push({ name: 'Other', value: otherAmount, color: '#cbd5e1' });
     }
@@ -325,7 +523,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 {config.name} <EditIcon className="w-3 h-3 text-slate-400 opacity-50" />
                             </h3>
                         )}
-                        <p className="text-xs text-slate-500 truncate mt-0.5">{dateRange.label}</p>
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{dateRange.label} • {config.groupBy ? config.groupBy.charAt(0).toUpperCase() + config.groupBy.slice(1) : 'Category'}</p>
                     </div>
                     <button onClick={handleSave} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-indigo-700 font-medium">Save</button>
                 </div>
@@ -353,21 +551,34 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
                     {showFilters && (
                         <div className="space-y-2 pt-2 animate-slide-down border-t border-slate-200 mt-2">
-                            <select 
-                                value={config.datePreset} 
-                                onChange={(e) => setConfig({ ...config, datePreset: e.target.value as DateRangePreset })}
-                                className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
-                            >
-                                <option value="thisMonth">This Month</option>
-                                <option value="lastMonth">Last Month</option>
-                                <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
-                                <option value="thisYear">This Year</option>
-                                <option value="lastYear">Last Year</option>
-                                <option value="last3Months">Last 90 Days</option>
-                                <option value="sameMonthLastYear">Same Month Last Year</option>
-                                <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
-                                <option value="custom">Custom Range</option>
-                            </select>
+                            <div className="grid grid-cols-2 gap-2">
+                                <select 
+                                    value={config.datePreset} 
+                                    onChange={(e) => setConfig({ ...config, datePreset: e.target.value as DateRangePreset })}
+                                    className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
+                                >
+                                    <option value="thisMonth">This Month</option>
+                                    <option value="lastMonth">Last Month</option>
+                                    <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
+                                    <option value="thisYear">This Year</option>
+                                    <option value="lastYear">Last Year</option>
+                                    <option value="last3Months">Last 90 Days</option>
+                                    <option value="sameMonthLastYear">Same Month Last Year</option>
+                                    <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
+                                    <option value="custom">Custom Range</option>
+                                </select>
+                                <select 
+                                    value={config.groupBy || 'category'} 
+                                    onChange={(e) => setConfig({ ...config, groupBy: e.target.value as ReportGroupBy })}
+                                    className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
+                                >
+                                    <option value="category">Category</option>
+                                    <option value="payee">Payee</option>
+                                    <option value="tag">Tag</option>
+                                    <option value="type">Type</option>
+                                </select>
+                            </div>
+                            
                             {config.datePreset === 'custom' && (
                                 <div className="flex gap-1">
                                     <input type="date" className="text-xs p-1 border rounded w-1/2" value={config.customStartDate || ''} onChange={e => setConfig({...config, customStartDate: e.target.value})} />
@@ -424,7 +635,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 <div className="text-center mb-6">
-                    <p className="text-3xl font-bold text-slate-800 tracking-tight">{formatCurrency(activeData.totalAmount)}</p>
+                    <p className="text-3xl font-bold text-slate-800 tracking-tight">{formatCurrency(activeData.totalVisibleAmount)}</p>
                     <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mt-1">Total</p>
                 </div>
 
@@ -439,24 +650,27 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
                 {/* List */}
                 <div className="space-y-1 pb-4">
-                    {activeData.rootCategories.map(cat => {
-                        const percent = activeData.totalAmount !== 0 ? (cat.amount / activeData.totalAmount) * 100 : 0;
-                        const isCollapsed = collapsedCategories.has(cat.id);
+                    {activeData.rootItems.map(item => {
+                        // Calculate percentage based on visible amount, but if hidden, show 0% on bar
+                        const percent = activeData.totalVisibleAmount !== 0 && !item.isHidden 
+                            ? (item.amount / activeData.totalVisibleAmount) * 100 
+                            : 0;
+                        const isCollapsed = collapsedItems.has(item.id);
                         
                         return (
-                            <div key={cat.id} className="text-sm">
+                            <div key={item.id} className={`text-sm ${item.isHidden ? 'opacity-50 grayscale' : ''}`}>
                                 {/* Parent Row */}
                                 <div className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded-lg group transition-colors">
-                                    {cat.subcategories.length > 0 ? (
-                                        <button onClick={() => toggleCollapse(cat.id)} className="text-slate-400 hover:text-indigo-600">
+                                    {item.children.length > 0 ? (
+                                        <button onClick={() => toggleCollapse(item.id)} className="text-slate-400 hover:text-indigo-600">
                                             {isCollapsed ? <ChevronRightIcon className="w-3 h-3"/> : <ChevronDownIcon className="w-3 h-3"/>}
                                         </button>
                                     ) : <div className="w-3" />}
                                     
                                     <div className="flex-grow min-w-0">
                                         <div className="flex justify-between items-baseline">
-                                            <span className="font-medium text-slate-700 truncate text-xs" title={cat.name}>{cat.name}</span>
-                                            <span className="font-mono font-bold text-slate-800 text-xs">{formatCurrency(cat.amount)}</span>
+                                            <span className="font-medium text-slate-700 truncate text-xs" title={item.name}>{item.name}</span>
+                                            <span className="font-mono font-bold text-slate-800 text-xs">{formatCurrency(item.amount)}</span>
                                         </div>
                                         <div className="w-full bg-slate-100 h-1 rounded-full mt-1 overflow-hidden">
                                             <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${percent}%` }}></div>
@@ -464,27 +678,27 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                     </div>
 
                                     <button 
-                                        onClick={() => toggleVisibility(cat.id)}
-                                        className="text-slate-300 hover:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        title="Hide from report"
+                                        onClick={() => toggleVisibility(item.id)}
+                                        className={`text-slate-300 hover:text-slate-500 transition-opacity ${item.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                        title={item.isHidden ? "Show in calculation" : "Hide from calculation"}
                                     >
-                                        <EyeIcon className="w-3 h-3" />
+                                        {item.isHidden ? <EyeSlashIcon className="w-3 h-3 text-slate-400" /> : <EyeIcon className="w-3 h-3" />}
                                     </button>
                                 </div>
 
                                 {/* Children Rows */}
-                                {!isCollapsed && cat.subcategories.length > 0 && (
+                                {!isCollapsed && item.children.length > 0 && (
                                     <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-3.5 my-1">
-                                        {cat.subcategories.map(sub => (
-                                            <div key={sub.id} className="flex justify-between items-center text-xs p-1.5 hover:bg-slate-50 rounded group">
+                                        {item.children.map(sub => (
+                                            <div key={sub.id} className={`flex justify-between items-center text-xs p-1.5 hover:bg-slate-50 rounded group ${sub.isHidden ? 'opacity-50' : ''}`}>
                                                 <span className="text-slate-500 truncate pl-1">{sub.name}</span>
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-mono text-slate-600">{formatCurrency(sub.amount)}</span>
                                                     <button 
                                                         onClick={() => toggleVisibility(sub.id)}
-                                                        className="text-slate-300 hover:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        className={`text-slate-300 hover:text-slate-500 transition-opacity ${sub.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                                                     >
-                                                        <EyeIcon className="w-3 h-3" />
+                                                        {sub.isHidden ? <EyeSlashIcon className="w-3 h-3" /> : <EyeIcon className="w-3 h-3" />}
                                                     </button>
                                                 </div>
                                             </div>
@@ -495,27 +709,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         );
                     })}
                 </div>
-                
-                {config.hiddenCategoryIds && config.hiddenCategoryIds.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-dashed border-slate-300">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Hidden Categories</p>
-                        <div className="flex flex-wrap gap-2">
-                            {config.hiddenCategoryIds.map(id => {
-                                const cat = categories.find(c => c.id === id);
-                                return (
-                                    <button 
-                                        key={id} 
-                                        onClick={() => toggleVisibility(id)}
-                                        className="flex items-center gap-1 bg-slate-100 text-slate-500 px-2 py-1 rounded-full text-[10px] hover:bg-slate-200 hover:text-slate-700"
-                                    >
-                                        <EyeSlashIcon className="w-3 h-3" />
-                                        <span className="truncate max-w-[80px]">{cat?.name || 'Unknown'}</span>
-                                    </button>
-                                )
-                            })}
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );

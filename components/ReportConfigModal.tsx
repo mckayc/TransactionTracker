@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee } from '../types';
+import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy } from '../types';
 import { CloseIcon, ChartPieIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
@@ -26,6 +26,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     const [datePreset, setDatePreset] = useState<DateRangePreset>('thisMonth');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
+    const [groupBy, setGroupBy] = useState<ReportGroupBy>('category');
     
     // Filters
     const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
@@ -43,6 +44,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setDatePreset(initialConfig.datePreset);
                 setCustomStartDate(initialConfig.customStartDate || '');
                 setCustomEndDate(initialConfig.customEndDate || '');
+                setGroupBy(initialConfig.groupBy || 'category');
                 setSelectedAccounts(new Set(initialConfig.filters.accountIds));
                 setSelectedUsers(new Set(initialConfig.filters.userIds));
                 setSelectedCategories(new Set(initialConfig.filters.categoryIds));
@@ -55,6 +57,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setDatePreset('thisMonth');
                 setCustomStartDate('');
                 setCustomEndDate('');
+                setGroupBy('category');
                 setSelectedAccounts(new Set());
                 setSelectedUsers(new Set());
                 setSelectedCategories(new Set());
@@ -75,6 +78,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             datePreset,
             customStartDate: datePreset === 'custom' ? customStartDate : undefined,
             customEndDate: datePreset === 'custom' ? customEndDate : undefined,
+            groupBy,
             filters: {
                 accountIds: selectedAccounts.size > 0 ? Array.from(selectedAccounts) : undefined,
                 userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : undefined,
@@ -84,7 +88,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 tagIds: selectedTags.size > 0 ? Array.from(selectedTags) : undefined,
                 payeeIds: selectedPayees.size > 0 ? Array.from(selectedPayees) : undefined,
             },
-            hiddenCategoryIds: initialConfig?.hiddenCategoryIds || []
+            hiddenCategoryIds: initialConfig?.hiddenCategoryIds || [],
+            hiddenIds: initialConfig?.hiddenIds || []
         };
         onSave(config);
         onClose();
@@ -104,85 +109,104 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 <div className="flex justify-between items-center p-6 border-b">
                     <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                         <ChartPieIcon className="w-6 h-6 text-indigo-600" />
-                        {initialConfig ? 'Edit Report' : 'Create New Report'}
+                        {initialConfig ? 'Edit Report Config' : 'New Report Config'}
                     </h2>
                     <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-100"><CloseIcon className="w-6 h-6" /></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="p-6 space-y-6 flex-1 overflow-y-auto">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Report Name</label>
                         <input 
                             type="text" 
                             value={name} 
                             onChange={e => setName(e.target.value)} 
-                            placeholder="e.g. Monthly Expenses, Income vs Expenses"
-                            className="w-full p-2 border rounded-md focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="e.g., Monthly Expenses" 
+                            className="w-full p-2 border rounded-md focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                             autoFocus
                         />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Group By</label>
+                            <select 
+                                value={groupBy} 
+                                onChange={(e) => setGroupBy(e.target.value as ReportGroupBy)}
+                                className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                            >
+                                <option value="category">Category</option>
+                                <option value="payee">Payee</option>
+                                <option value="type">Transaction Type</option>
+                                <option value="tag">Tag</option>
+                            </select>
+                        </div>
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Date Range</label>
                             <select 
                                 value={datePreset} 
                                 onChange={(e) => setDatePreset(e.target.value as DateRangePreset)}
-                                className="w-full p-2 border rounded-md mb-2"
+                                className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                             >
                                 <option value="thisMonth">This Month</option>
                                 <option value="lastMonth">Last Month</option>
                                 <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
+                                <option value="last3Months">Last 90 Days</option>
                                 <option value="thisYear">This Year</option>
                                 <option value="lastYear">Last Year</option>
-                                <option value="last3Months">Last 90 Days</option>
                                 <option value="sameMonthLastYear">Same Month Last Year</option>
                                 <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
                                 <option value="custom">Custom Range</option>
                             </select>
-                            
-                            {datePreset === 'custom' && (
-                                <div className="flex gap-2">
-                                    <input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} className="w-full p-2 border rounded-md text-xs" />
-                                    <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} className="w-full p-2 border rounded-md text-xs" />
-                                </div>
-                            )}
                         </div>
+                    </div>
 
+                    {datePreset === 'custom' && (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Start Date</label>
+                                <input type="date" value={customStartDate} onChange={e => setCustomStartDate(e.target.value)} className="w-full p-2 border rounded-md" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 uppercase mb-1">End Date</label>
+                                <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} className="w-full p-2 border rounded-md" />
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                        <label className="block text-sm font-bold text-slate-700">Filters</label>
+                        
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Show Transactions For:</label>
-                            <div className="flex flex-wrap gap-2">
-                                {(['income', 'expense', 'investment', 'donation', 'transfer'] as BalanceEffect[]).map(effect => (
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Balance Impact</label>
+                            <div className="flex gap-2">
+                                {(['expense', 'income', 'investment'] as BalanceEffect[]).map(effect => (
                                     <button
                                         key={effect}
+                                        type="button"
                                         onClick={() => toggleEffect(effect)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase border transition-colors ${selectedEffects.has(effect) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase border transition-colors ${selectedEffects.has(effect) ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-300 text-slate-500 hover:bg-slate-50'}`}
                                     >
                                         {effect}
                                     </button>
                                 ))}
                             </div>
                         </div>
-                    </div>
 
-                    <div className="space-y-4">
-                        <h3 className="text-sm font-bold text-slate-500 uppercase border-b pb-1">Filters</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <MultiSelect label="Accounts" options={accounts} selectedIds={selectedAccounts} onChange={setSelectedAccounts} />
-                            <MultiSelect label="Users" options={users} selectedIds={selectedUsers} onChange={setSelectedUsers} />
                             <MultiSelect label="Categories" options={categories} selectedIds={selectedCategories} onChange={setSelectedCategories} />
                             <MultiSelect label="Transaction Types" options={transactionTypes} selectedIds={selectedTypes} onChange={setSelectedTypes} />
+                            <MultiSelect label="Users" options={users} selectedIds={selectedUsers} onChange={setSelectedUsers} />
                             <MultiSelect label="Tags" options={tags} selectedIds={selectedTags} onChange={setSelectedTags} />
                             <MultiSelect label="Payees" options={payees} selectedIds={selectedPayees} onChange={setSelectedPayees} />
                         </div>
                     </div>
                 </div>
 
-                <div className="p-4 border-t bg-slate-50 flex justify-end gap-3 rounded-b-xl">
-                    <button onClick={onClose} className="px-4 py-2 font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
-                    <button onClick={handleSave} className="px-6 py-2 font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm">
-                        {initialConfig ? 'Update Report' : 'Create Report'}
-                    </button>
+                <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100">Cancel</button>
+                    <button onClick={handleSave} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm">Save Report</button>
                 </div>
             </div>
         </div>

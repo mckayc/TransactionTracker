@@ -238,6 +238,7 @@ export interface AuditFinding {
 // --- Report Types ---
 
 export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'last3Months' | 'custom' | 'sameMonthLastYear' | 'sameMonth2YearsAgo' | 'lastMonthPriorYear';
+export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type';
 
 export interface ReportConfig {
     id: string;
@@ -245,16 +246,18 @@ export interface ReportConfig {
     datePreset: DateRangePreset;
     customStartDate?: string;
     customEndDate?: string;
+    groupBy?: ReportGroupBy; // New: Dimension to group by (default: category)
     filters: {
         accountIds?: string[];
         userIds?: string[];
         typeIds?: string[];
         categoryIds?: string[];
-        balanceEffects?: BalanceEffect[]; // New filter
+        balanceEffects?: BalanceEffect[]; 
         tagIds?: string[];
         payeeIds?: string[];
     };
-    hiddenCategoryIds?: string[]; // IDs of categories hidden via the eye icon
+    hiddenCategoryIds?: string[]; // Legacy: IDs of categories hidden via the eye icon
+    hiddenIds?: string[]; // New: Universal hidden IDs for any group type (replaces hiddenCategoryIds logic)
 }
 
 export interface SavedReport {
