@@ -4,7 +4,6 @@ import type { Transaction, Template, ScheduledEvent, TaskCompletions, Transactio
 import ScheduleEventModal from '../components/ScheduleEventModal';
 import TransactionModal from './TransactionModal';
 import TaskModal from './TaskModal';
-import DonationModal from '../components/DonationModal';
 import { CheckCircleIcon, ChecklistIcon, RepeatIcon, LinkIcon, UsersIcon, ExternalLinkIcon, HeartIcon } from '../components/Icons';
 import { formatDate, calculateNextDate } from '../dateUtils';
 
@@ -71,10 +70,13 @@ const USER_COLORS = [
 ];
 
 const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, onSaveTask, transactionTypes, onUpdateTransaction, onAddTransaction, accounts, categories, tags, payees, users, initialTaskId }) => {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
+  // Default to Previous Month
+  const [currentDate, setCurrentDate] = useState(() => {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  });
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
@@ -191,10 +193,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
           return;
       }
 
-      const txDate = new Date(tx.date);
+      // FIX: Parse date manually to avoid UTC timezone shifts which can cause off-by-one day errors in summaries
+      const [y, m, d] = tx.date.split('-').map(Number);
+      const txDate = new Date(y, m - 1, d); // Construct in Local Time
+      
       const type = transactionTypeMap.get(tx.typeId);
 
-      if (txDate.getMonth() === currentMonth && txDate.getFullYear() === currentYear) {
+      // Compare month/year indices directly
+      if (m - 1 === currentMonth && y === currentYear) {
          if (type?.balanceEffect === 'income') monthlyIncome += tx.amount;
          else if (type?.balanceEffect === 'expense') monthlyExpenses += tx.amount;
          else if (type?.balanceEffect === 'investment') monthlyInvestments += tx.amount;
@@ -239,9 +245,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
         const taskKey = getDayKey(taskDueDate);
 
         // 1. Always add the original instance if it falls in relevant range or if it's the specific task
-        // Actually, simpler to just add it where it belongs.
-        // For performance, only add if within broader view range? No, Calendar view might scroll?
-        // Let's just add it.
         getDayData(taskKey).tasks.push(task);
 
         // 2. Project Future Instances
@@ -319,14 +322,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                 <p className="text-slate-500 mt-1">View your schedule, tasks, and cash flow.</p>
             </div>
             <div className="flex items-center gap-2">
-                <button 
-                    onClick={() => setIsDonationModalOpen(true)}
-                    className="px-3 py-2 text-pink-600 bg-pink-50 border border-pink-100 rounded-lg hover:bg-pink-100 transition-colors flex items-center gap-2 font-medium text-sm"
-                    title="Calculate and generate donation transaction based on monthly income"
-                >
-                    <HeartIcon className="w-4 h-4" />
-                    Calculate Donations
-                </button>
                 <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 text-white font-semibold bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700">Schedule Checklist</button>
             </div>
         </div>
@@ -511,18 +506,6 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
     
     <ScheduleEventModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSave={onAddEvent} templates={templates} initialDate={selectedDate || new Date()} />
     
-    <DonationModal
-        isOpen={isDonationModalOpen}
-        onClose={() => setIsDonationModalOpen(false)}
-        onSave={onAddTransaction}
-        totalIncome={monthlySummary.income}
-        monthName={currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
-        payees={payees}
-        accounts={accounts}
-        categories={categories}
-        transactionTypes={transactionTypes}
-    />
-
     {editingTransaction && (
       <TransactionModal
         isOpen={!!editingTransaction}

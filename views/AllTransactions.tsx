@@ -9,7 +9,8 @@ import LinkedGroupModal from '../components/LinkedGroupModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
 import VerifyModal from '../components/VerifyModal';
-import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, PrinterIcon, DownloadIcon, ShieldCheckIcon } from '../components/Icons';
+import DonationModal from '../components/DonationModal';
+import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, PrinterIcon, DownloadIcon, ShieldCheckIcon, HeartIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
 import MultiSelect from '../components/MultiSelect';
@@ -258,6 +259,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isBulkUserModalOpen, setIsBulkUserModalOpen] = useState(false);
   const [selectedLinkGroupId, setSelectedLinkGroupId] = useState<string | null>(null);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
+  const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   
   // Auditor State
   const [isAuditorOpen, setIsAuditorOpen] = useState(false);
@@ -724,6 +726,15 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                         )}
                     </div>
                     
+                    <button 
+                        onClick={() => setIsDonationModalOpen(true)}
+                        className="group flex items-center gap-2 px-3 py-2 text-pink-600 bg-pink-50 border border-pink-200 rounded-lg hover:bg-pink-100 transition-all overflow-hidden w-10 hover:w-48 whitespace-nowrap"
+                        title="Calculate Donations"
+                    >
+                        <HeartIcon className="w-4 h-4 flex-shrink-0" />
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 font-medium">Calculate Donations</span>
+                    </button>
+
                     <button onClick={() => setIsVerifyModalOpen(true)} className="flex items-center gap-2 px-3 py-2 text-teal-700 font-medium bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100">
                         <ShieldCheckIcon className="w-4 h-4"/>
                         <span className="hidden sm:inline">Verify</span>
@@ -967,6 +978,17 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             transactionTypes={transactionTypes}
           />
       )}
+      <DonationModal
+        isOpen={isDonationModalOpen}
+        onClose={() => setIsDonationModalOpen(false)}
+        onSave={onAddTransaction}
+        totalIncome={summaries.income}
+        monthName={dateLabel}
+        payees={payees}
+        accounts={accounts}
+        categories={categories}
+        transactionTypes={transactionTypes}
+      />
     </>
   );
 };

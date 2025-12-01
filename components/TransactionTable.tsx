@@ -564,11 +564,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
               {/* Amount */}
               {visibleColumns.has('amount') && (
-                  <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-medium`}>
+                  <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-medium pr-8 min-w-[120px]`}>
                      {editingCell?.id === transaction.id && editingCell.field === 'amount' ? (
-                        <input type="number" step="0.01" defaultValue={transaction.amount} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'amount')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'amount')} className={`${commonInputClass} text-right`} />
+                        <input type="number" step="0.01" defaultValue={transaction.amount} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'amount')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'amount')} className={`${commonInputClass} text-right font-mono`} />
                     ) : (
-                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'amount' })} className={`cursor-pointer hover:opacity-75 ${amountColor}`}>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'amount' })} className={`cursor-pointer hover:opacity-75 tabular-nums font-mono font-bold ${amountColor}`}>
                             {amountPrefix}{formatCurrency(Math.abs(transaction.amount))}
                         </div>
                     )}
@@ -654,7 +654,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               )}
 
               {visibleColumns.has('amount') && (
-                  <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-bold ${amountColor}`}>
+                  <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-bold pr-8 tabular-nums font-mono ${amountColor}`}>
                       {amountPrefix}{formatCurrency(Math.abs(primaryTx.amount))}
                   </td>
               )}
@@ -701,8 +701,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 {visibleColumns.has('user') && renderHeader('User', 'userId', 'w-32')}
                 {visibleColumns.has('type') && renderHeader('Type', 'typeId', 'w-32')}
                 {visibleColumns.has('amount') && (
-                    <th scope="col" className="w-32 px-3 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-30 border-b border-slate-200">
-                    <button onClick={() => requestSort('amount')} className="group flex items-center gap-1 float-right focus:outline-none hover:text-slate-700">
+                    <th scope="col" className="w-32 px-3 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-30 border-b border-slate-200 pr-8">
+                    <button onClick={() => requestSort('amount')} className="group flex items-center justify-end gap-1 w-full focus:outline-none hover:text-slate-700">
                         Amount
                         <span className="text-indigo-600">{getSortIndicator('amount')}</span>
                     </button>
