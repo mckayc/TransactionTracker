@@ -174,6 +174,7 @@ export interface TaskItem {
   id: string;
   title: string;
   description?: string;
+  notes?: string; // Longer detailed notes
   dueDate?: string; // YYYY-MM-DD
   isCompleted: boolean;
   priority: TaskPriority;

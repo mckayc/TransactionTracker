@@ -297,6 +297,7 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
                 onClose={() => setIsTaskModalOpen(false)} 
                 onSave={onSaveTask} 
                 task={editingTask} 
+                initialMode="edit"
             />
         </div>
     );

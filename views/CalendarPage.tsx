@@ -22,6 +22,7 @@ interface CalendarPageProps {
   onUpdateTransaction: (transaction: Transaction) => void;
   onToggleTaskCompletion: (date: string, eventId: string, taskId: string) => void;
   onToggleTask: (taskId: string) => void;
+  onSaveTask?: (task: TaskItem) => void; // Added for updating task from modal view mode
   transactionTypes: TransactionType[];
   initialTaskId?: string;
 }
@@ -67,7 +68,7 @@ const USER_COLORS = [
     'bg-pink-500', 'bg-teal-500', 'bg-cyan-500', 'bg-rose-500'
 ];
 
-const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, transactionTypes, onUpdateTransaction, accounts, categories, tags, payees, users, initialTaskId }) => {
+const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, onSaveTask, transactionTypes, onUpdateTransaction, accounts, categories, tags, payees, users, initialTaskId }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -139,6 +140,14 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
       onUpdateTransaction(updatedTransaction);
       setEditingTransaction(null);
     }
+  };
+
+  const handleSaveTaskWrapper = (task: TaskItem) => {
+      if (onSaveTask) {
+          onSaveTask(task);
+      }
+      // If needed, update local task list logic here, but parent usually handles refresh
+      setEditingTask(null);
   };
 
   const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -501,11 +510,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
         <TaskModal 
             isOpen={isTaskModalOpen} 
             onClose={() => setIsTaskModalOpen(false)} 
-            onSave={(updatedTask) => {
-                console.log("Task updated", updatedTask);
-                setEditingTask(null);
-            }} 
+            onSave={handleSaveTaskWrapper} 
             task={editingTask} 
+            initialMode="view"
         />
     )}
     </>
