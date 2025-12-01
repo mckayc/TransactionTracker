@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -83,6 +83,7 @@ const App: React.FC = () => {
   const [businessDocuments, setBusinessDocuments] = useState<BusinessDocument[]>([]);
   const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
+  const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -169,6 +170,7 @@ const App: React.FC = () => {
       setBusinessProfile(safeLoad<BusinessProfile>('businessProfile', { info: {}, tax: {}, completedSteps: [] }));
       setBusinessDocuments(safeLoad<BusinessDocument[]>('businessDocuments', []));
       setDocumentFolders(safeLoad<DocumentFolder[]>('documentFolders', []));
+      setSavedReports(safeLoad<SavedReport[]>('savedReports', []));
 
       // Handle Account Types and Accounts
       let finalAccountTypes = safeLoad<AccountType[]>('accountTypes', []);
@@ -246,7 +248,7 @@ const App: React.FC = () => {
                       version: '0.0.10-auto',
                       transactions, accounts, accountTypes, categories, tags, payees, 
                       reconciliationRules, templates, scheduledEvents, users, 
-                      transactionTypes, businessProfile, documentFolders
+                      transactionTypes, businessProfile, documentFolders, savedReports
                   };
                   const jsonString = JSON.stringify(exportData, null, 2);
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
@@ -423,6 +425,12 @@ const App: React.FC = () => {
     const handler = setTimeout(() => api.save('documentFolders', documentFolders), 500);
     return () => clearTimeout(handler);
   }, [documentFolders, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('savedReports', savedReports), 500);
+    return () => clearTimeout(handler);
+  }, [savedReports, isLoading]);
 
 
   // Handlers
@@ -677,7 +685,7 @@ const App: React.FC = () => {
         // Added onAddTransaction for Donation modal support
         return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports':
-        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} />;
+        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} />;
       case 'accounts':
         return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
       case 'users':

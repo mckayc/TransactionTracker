@@ -1,21 +1,18 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, Category, TransactionType, SavedReport, ReportConfig, DateRangePreset, Account, User } from '../types';
-import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon } from './Icons';
+import React, { useState, useMemo } from 'react';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect } from '../types';
+import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
 
 interface ReportColumnProps {
-    id: string;
+    config: ReportConfig;
     transactions: Transaction[];
     categories: Category[];
     transactionTypes: TransactionType[];
     accounts: Account[];
     users: User[];
-    savedReports: SavedReport[];
     onSaveReport: (config: ReportConfig) => void;
-    onDeleteReport: (reportId: string) => void;
-    initialConfig?: ReportConfig;
 }
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
@@ -130,27 +127,20 @@ interface AggregatedCategory {
     subcategories: AggregatedCategory[];
 }
 
-const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categories, transactionTypes, accounts, users, savedReports, onSaveReport, onDeleteReport, initialConfig }) => {
+const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, onSaveReport }) => {
     
-    // --- State ---
-    const [config, setConfig] = useState<ReportConfig>(initialConfig || {
-        id: crypto.randomUUID(),
-        name: 'New Report',
-        datePreset: 'thisMonth',
-        filters: {},
-        hiddenCategoryIds: []
-    });
-
+    // Internal state allows modifying the report on the fly without affecting the saved version until explicit save
+    const [config, setConfig] = useState<ReportConfig>(initialConfig);
     const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
     const [showFilters, setShowFilters] = useState(false);
-    const [reportNameInput, setReportNameInput] = useState('');
+    const [isEditingName, setIsEditingName] = useState(false);
 
-    // --- Data Processing ---
-    
     const dateRange = useMemo(() => getDateRangeFromPreset(config.datePreset, config.customStartDate, config.customEndDate), [config.datePreset, config.customStartDate, config.customEndDate]);
 
     const activeData = useMemo(() => {
+        const allowedEffects = new Set(config.filters.balanceEffects || ['expense']); // Default to expense if empty for safety
+
         // 1. Filter Transactions
         const filtered = transactions.filter(tx => {
             // Skip Parent transactions (containers)
@@ -161,19 +151,18 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
 
             if (config.filters.accountIds && config.filters.accountIds.length > 0 && !config.filters.accountIds.includes(tx.accountId || '')) return false;
             if (config.filters.userIds && config.filters.userIds.length > 0 && !config.filters.userIds.includes(tx.userId || '')) return false;
+            if (config.filters.categoryIds && config.filters.categoryIds.length > 0 && !config.filters.categoryIds.includes(tx.categoryId)) return false;
+            if (config.filters.typeIds && config.filters.typeIds.length > 0 && !config.filters.typeIds.includes(tx.typeId)) return false;
             
-            // Only include Expenses by default or if selected
+            // Check Balance Effect
             const type = transactionTypes.find(t => t.id === tx.typeId);
-            if (!type || type.balanceEffect !== 'expense') return false; 
+            if (!type || !allowedEffects.has(type.balanceEffect)) return false; 
 
             return true;
         });
 
         // 2. Aggregate by Category Hierarchy
         const categoryMap = new Map<string, AggregatedCategory>();
-        
-        // Initialize all categories (even empty ones if needed, but here we just process what we have)
-        // We need a map of ID -> Name first
         const catNameMap = new Map(categories.map(c => [c.id, c]));
 
         filtered.forEach(tx => {
@@ -181,7 +170,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
             const category = catNameMap.get(catId);
             if (!category) return;
 
-            // Check if this category OR its parent is hidden
+            // Check hidden
             if (config.hiddenCategoryIds?.includes(catId)) return;
             if (category.parentId && config.hiddenCategoryIds?.includes(category.parentId)) return;
 
@@ -194,21 +183,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
 
         // Build Tree
         const rootCategories: AggregatedCategory[] = [];
-        const parentMap = new Map<string, AggregatedCategory>();
-
-        // First pass: identify parents and root nodes
-        categories.forEach(c => {
-            if (!c.parentId) {
-                // It's a root category. Does it have data? 
-                // Or do any of its children have data? 
-                // We'll reconstruct the tree from the flat map of transaction data.
-            }
-        });
-
-        // Simpler approach: Iterate the map of categories with data, and place them.
         const processedMap = new Map<string, AggregatedCategory>();
 
-        // Sort keys to ensure we process parents? No, just loop and link.
         for (const [catId, agg] of categoryMap.entries()) {
             const catDef = catNameMap.get(catId);
             if (catDef?.parentId) {
@@ -219,7 +195,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
                     parentAgg = { 
                         id: catDef.parentId, 
                         name: parentDef?.name || 'Unknown Parent', 
-                        amount: 0, // Will sum up children
+                        amount: 0, 
                         subcategories: [] 
                     };
                     processedMap.set(catDef.parentId, parentAgg);
@@ -232,12 +208,11 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
                 if (!existing) {
                     processedMap.set(catId, agg);
                 } else {
-                    existing.amount += agg.amount; // Add direct transactions to existing agg (from children logic)
+                    existing.amount += agg.amount;
                 }
             }
         }
 
-        // Extract roots
         for (const [id, agg] of processedMap.entries()) {
             const def = catNameMap.get(id);
             if (!def?.parentId) {
@@ -281,18 +256,16 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
     };
 
     const handleSave = () => {
-        const name = prompt("Enter a name for this report configuration:", config.name || "New Report");
-        if (name) {
-            onSaveReport({ ...config, name, id: crypto.randomUUID() });
-        }
+        onSaveReport(config);
     };
 
-    const handleLoad = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const reportId = e.target.value;
-        const report = savedReports.find(r => r.id === reportId);
-        if (report) {
-            setConfig({ ...report.config, id: report.id, name: report.name }); // Keep ID separate if needed, or clone
-        }
+    const toggleEffect = (effect: BalanceEffect) => {
+        setConfig(prev => {
+            const current = new Set<BalanceEffect>(prev.filters.balanceEffects || (['expense'] as BalanceEffect[]));
+            if (current.has(effect)) current.delete(effect);
+            else current.add(effect);
+            return { ...prev, filters: { ...prev.filters, balanceEffects: Array.from(current) } };
+        });
     };
 
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
@@ -311,50 +284,69 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
     }
 
     return (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden min-w-[320px]">
+        <div className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-full overflow-hidden min-w-[320px]">
             {/* Header */}
             <div className="p-4 border-b border-slate-100 bg-slate-50">
-                <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-bold text-slate-800 text-lg truncate" title={config.name}>{config.name}</h3>
-                    <div className="flex gap-1">
-                        <select 
-                            className="text-xs p-1 border rounded bg-white max-w-[100px]" 
-                            onChange={handleLoad}
-                            value=""
-                        >
-                            <option value="" disabled>Load...</option>
-                            {savedReports.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                        </select>
-                        <button onClick={handleSave} className="text-xs bg-indigo-600 text-white px-2 py-1 rounded hover:bg-indigo-700">Save</button>
+                <div className="flex justify-between items-start mb-3">
+                    <div className="flex-grow min-w-0 pr-2">
+                        {isEditingName ? (
+                            <input 
+                                type="text" 
+                                value={config.name} 
+                                onChange={e => setConfig({...config, name: e.target.value})} 
+                                onBlur={() => setIsEditingName(false)}
+                                autoFocus
+                                className="w-full text-lg font-bold text-slate-800 bg-transparent border-b border-indigo-500 focus:outline-none"
+                            />
+                        ) : (
+                            <h3 
+                                className="font-bold text-slate-800 text-lg truncate cursor-pointer hover:text-indigo-600 flex items-center gap-2" 
+                                onClick={() => setIsEditingName(true)}
+                                title="Click to rename"
+                            >
+                                {config.name} <EditIcon className="w-3 h-3 text-slate-400 opacity-50" />
+                            </h3>
+                        )}
+                        <p className="text-xs text-slate-500 truncate mt-0.5">{dateRange.label}</p>
                     </div>
+                    <button onClick={handleSave} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-indigo-700 font-medium">Save</button>
                 </div>
                 
                 <div className="flex flex-col gap-2">
-                    <select 
-                        value={config.datePreset} 
-                        onChange={(e) => setConfig({ ...config, datePreset: e.target.value as DateRangePreset })}
-                        className="text-sm p-1.5 border rounded w-full font-medium text-slate-700"
-                    >
-                        <option value="thisMonth">This Month</option>
-                        <option value="lastMonth">Last Month</option>
-                        <option value="last3Months">Last 90 Days</option>
-                        <option value="thisYear">This Year</option>
-                        <option value="lastYear">Last Year</option>
-                        <option value="sameMonthLastYear">Same Month Last Year</option>
-                        <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
-                        <option value="custom">Custom Range</option>
-                    </select>
-                    
-                    <button 
-                        onClick={() => setShowFilters(!showFilters)}
-                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium text-left flex items-center gap-1"
-                    >
-                        <SortIcon className="w-3 h-3" /> 
-                        {showFilters ? 'Hide Filters' : 'Show Filters'}
-                    </button>
+                    <div className="flex justify-between items-center">
+                        <div className="flex gap-1">
+                            {(['income', 'expense', 'investment'] as BalanceEffect[]).map(eff => (
+                                <button
+                                    key={eff}
+                                    onClick={() => toggleEffect(eff)}
+                                    className={`text-[10px] px-2 py-0.5 rounded-full uppercase font-bold border transition-colors ${config.filters.balanceEffects?.includes(eff) ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-400 border-slate-200 opacity-60'}`}
+                                >
+                                    {eff.slice(0,3)}
+                                </button>
+                            ))}
+                        </div>
+                        <button 
+                            onClick={() => setShowFilters(!showFilters)}
+                            className="text-xs text-slate-500 hover:text-indigo-600 flex items-center gap-1"
+                        >
+                            <SortIcon className="w-3 h-3" /> Filters
+                        </button>
+                    </div>
 
                     {showFilters && (
-                        <div className="space-y-2 pt-2 animate-slide-down">
+                        <div className="space-y-2 pt-2 animate-slide-down border-t border-slate-200 mt-2">
+                            <select 
+                                value={config.datePreset} 
+                                onChange={(e) => setConfig({ ...config, datePreset: e.target.value as DateRangePreset })}
+                                className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
+                            >
+                                <option value="thisMonth">This Month</option>
+                                <option value="lastMonth">Last Month</option>
+                                <option value="thisYear">This Year</option>
+                                <option value="lastYear">Last Year</option>
+                                <option value="last3Months">Last 90 Days</option>
+                                <option value="custom">Custom Range</option>
+                            </select>
                             {config.datePreset === 'custom' && (
                                 <div className="flex gap-1">
                                     <input type="date" className="text-xs p-1 border rounded w-1/2" value={config.customStartDate || ''} onChange={e => setConfig({...config, customStartDate: e.target.value})} />
@@ -369,10 +361,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
                                 className="text-xs"
                             />
                             <MultiSelect 
-                                label="Users" 
-                                options={users} 
-                                selectedIds={new Set(config.filters.userIds)} 
-                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, userIds: Array.from(ids) }})}
+                                label="Categories" 
+                                options={categories} 
+                                selectedIds={new Set(config.filters.categoryIds)} 
+                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, categoryIds: Array.from(ids) }})}
                                 className="text-xs"
                             />
                         </div>
@@ -381,43 +373,43 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4">
-                <div className="text-center mb-4">
-                    <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">{dateRange.label}</p>
-                    <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(activeData.totalAmount)}</p>
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                <div className="text-center mb-6">
+                    <p className="text-3xl font-bold text-slate-800 tracking-tight">{formatCurrency(activeData.totalAmount)}</p>
+                    <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mt-1">Total</p>
                 </div>
 
                 <DonutChart data={chartData} />
 
                 {/* Sort Bar */}
-                <div className="flex justify-end gap-2 mb-2 text-xs text-slate-500">
-                    <button onClick={() => setSortBy('amount')} className={sortBy === 'amount' ? 'text-indigo-600 font-bold' : 'hover:text-slate-700'}>Amount</button>
-                    <span>|</span>
-                    <button onClick={() => setSortBy('name')} className={sortBy === 'name' ? 'text-indigo-600 font-bold' : 'hover:text-slate-700'}>Name</button>
+                <div className="flex justify-end gap-2 mb-2 text-[10px] uppercase font-bold text-slate-400">
+                    <button onClick={() => setSortBy('amount')} className={sortBy === 'amount' ? 'text-indigo-600' : 'hover:text-slate-600'}>Amount</button>
+                    <span>/</span>
+                    <button onClick={() => setSortBy('name')} className={sortBy === 'name' ? 'text-indigo-600' : 'hover:text-slate-600'}>Name</button>
                 </div>
 
                 {/* List */}
-                <div className="space-y-1">
+                <div className="space-y-1 pb-4">
                     {activeData.rootCategories.map(cat => {
-                        const percent = (cat.amount / activeData.totalAmount) * 100;
+                        const percent = activeData.totalAmount !== 0 ? (cat.amount / activeData.totalAmount) * 100 : 0;
                         const isCollapsed = collapsedCategories.has(cat.id);
                         
                         return (
                             <div key={cat.id} className="text-sm">
                                 {/* Parent Row */}
-                                <div className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded group">
+                                <div className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded-lg group transition-colors">
                                     {cat.subcategories.length > 0 ? (
                                         <button onClick={() => toggleCollapse(cat.id)} className="text-slate-400 hover:text-indigo-600">
-                                            {isCollapsed ? <ChevronRightIcon className="w-4 h-4"/> : <ChevronDownIcon className="w-4 h-4"/>}
+                                            {isCollapsed ? <ChevronRightIcon className="w-3 h-3"/> : <ChevronDownIcon className="w-3 h-3"/>}
                                         </button>
-                                    ) : <div className="w-4" />}
+                                    ) : <div className="w-3" />}
                                     
                                     <div className="flex-grow min-w-0">
                                         <div className="flex justify-between items-baseline">
-                                            <span className="font-medium text-slate-700 truncate">{cat.name}</span>
-                                            <span className="font-mono font-bold text-slate-900">{formatCurrency(cat.amount)}</span>
+                                            <span className="font-medium text-slate-700 truncate text-xs" title={cat.name}>{cat.name}</span>
+                                            <span className="font-mono font-bold text-slate-800 text-xs">{formatCurrency(cat.amount)}</span>
                                         </div>
-                                        <div className="w-full bg-slate-100 h-1.5 rounded-full mt-1 overflow-hidden">
+                                        <div className="w-full bg-slate-100 h-1 rounded-full mt-1 overflow-hidden">
                                             <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${percent}%` }}></div>
                                         </div>
                                     </div>
@@ -427,18 +419,18 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
                                         className="text-slate-300 hover:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity"
                                         title="Hide from report"
                                     >
-                                        <EyeIcon className="w-4 h-4" />
+                                        <EyeIcon className="w-3 h-3" />
                                     </button>
                                 </div>
 
                                 {/* Children Rows */}
                                 {!isCollapsed && cat.subcategories.length > 0 && (
-                                    <div className="pl-8 space-y-1 border-l-2 border-slate-100 ml-4 my-1">
+                                    <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-3.5 my-1">
                                         {cat.subcategories.map(sub => (
-                                            <div key={sub.id} className="flex justify-between items-center text-xs p-1 hover:bg-slate-50 rounded group">
-                                                <span className="text-slate-600 truncate">{sub.name}</span>
+                                            <div key={sub.id} className="flex justify-between items-center text-xs p-1.5 hover:bg-slate-50 rounded group">
+                                                <span className="text-slate-500 truncate pl-1">{sub.name}</span>
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-mono text-slate-700">{formatCurrency(sub.amount)}</span>
+                                                    <span className="font-mono text-slate-600">{formatCurrency(sub.amount)}</span>
                                                     <button 
                                                         onClick={() => toggleVisibility(sub.id)}
                                                         className="text-slate-300 hover:text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -456,8 +448,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
                 </div>
                 
                 {config.hiddenCategoryIds && config.hiddenCategoryIds.length > 0 && (
-                    <div className="mt-6 pt-4 border-t border-dashed border-slate-300">
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-2">Hidden Categories</p>
+                    <div className="mt-4 pt-4 border-t border-dashed border-slate-300">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Hidden Categories</p>
                         <div className="flex flex-wrap gap-2">
                             {config.hiddenCategoryIds.map(id => {
                                 const cat = categories.find(c => c.id === id);
@@ -465,10 +457,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ id, transactions, categorie
                                     <button 
                                         key={id} 
                                         onClick={() => toggleVisibility(id)}
-                                        className="flex items-center gap-1 bg-slate-100 text-slate-500 px-2 py-1 rounded-full text-xs hover:bg-slate-200 hover:text-slate-700"
+                                        className="flex items-center gap-1 bg-slate-100 text-slate-500 px-2 py-1 rounded-full text-[10px] hover:bg-slate-200 hover:text-slate-700"
                                     >
                                         <EyeSlashIcon className="w-3 h-3" />
-                                        <span className="truncate max-w-[100px]">{cat?.name || 'Unknown'}</span>
+                                        <span className="truncate max-w-[80px]">{cat?.name || 'Unknown'}</span>
                                     </button>
                                 )
                             })}

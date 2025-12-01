@@ -248,6 +248,8 @@ export interface ReportConfig {
         accountIds?: string[];
         userIds?: string[];
         typeIds?: string[];
+        categoryIds?: string[];
+        balanceEffects?: BalanceEffect[]; // New filter
     };
     hiddenCategoryIds?: string[]; // IDs of categories hidden via the eye icon
 }
