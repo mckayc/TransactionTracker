@@ -675,7 +675,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full w-full min-w-0">
         <div className="overflow-x-auto overflow-y-auto flex-grow w-full max-w-full">
         <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
             <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
@@ -739,9 +739,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         
         {/* Pagination Controls */}
         {totalPages > 1 && (
-            <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 sticky bottom-0 z-30">
+            <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 sticky bottom-0 z-30 w-full min-w-0">
                 <div className="flex items-center text-sm text-slate-600">
-                    <span className="mr-2">Rows per page:</span>
+                    <span className="mr-2 hidden sm:inline">Rows per page:</span>
                     <select 
                         value={rowsPerPage} 
                         onChange={(e) => {
@@ -755,8 +755,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         <option value={100}>100</option>
                         <option value={displayItems.length}>All</option>
                     </select>
-                    <span className="mx-4 text-slate-400">|</span>
-                    <span>
+                    <span className="mx-4 text-slate-400 hidden sm:inline">|</span>
+                    <span className="hidden sm:inline">
                         {startIndex + 1}-{Math.min(endIndex, displayItems.length)} of {displayItems.length}
                     </span>
                 </div>

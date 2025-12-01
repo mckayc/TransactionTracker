@@ -325,7 +325,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                     title="Calculate and generate donation transaction based on monthly income"
                 >
                     <HeartIcon className="w-4 h-4" />
-                    Calculate Donation
+                    Calculate Donations
                 </button>
                 <button onClick={() => setIsModalOpen(true)} className="px-4 py-2 text-white font-semibold bg-indigo-600 rounded-lg shadow-md hover:bg-indigo-700">Schedule Checklist</button>
             </div>

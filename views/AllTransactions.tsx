@@ -8,7 +8,8 @@ import LinkTransactionModal from '../components/LinkTransactionModal';
 import LinkedGroupModal from '../components/LinkedGroupModal';
 import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
-import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon } from '../components/Icons';
+import VerifyModal from '../components/VerifyModal';
+import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, PrinterIcon, DownloadIcon, ShieldCheckIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
 import MultiSelect from '../components/MultiSelect';
@@ -256,6 +257,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isBulkTagModalOpen, setIsBulkTagModalOpen] = useState(false);
   const [isBulkUserModalOpen, setIsBulkUserModalOpen] = useState(false);
   const [selectedLinkGroupId, setSelectedLinkGroupId] = useState<string | null>(null);
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   
   // Auditor State
   const [isAuditorOpen, setIsAuditorOpen] = useState(false);
@@ -273,11 +275,18 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   
   const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
   const columnMenuRef = useRef<HTMLDivElement>(null);
+  
+  // Export Menu
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
       const handleClickOutside = (event: MouseEvent) => {
           if (columnMenuRef.current && !columnMenuRef.current.contains(event.target as Node)) {
               setIsColumnMenuOpen(false);
+          }
+          if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+              setIsExportMenuOpen(false);
           }
       };
       document.addEventListener('mousedown', handleClickOutside);
@@ -569,6 +578,36 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       });
   };
 
+  const handleExportCSV = () => {
+      const headers = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Account', 'Payee', 'User'];
+      const rows = filteredTransactions.map(tx => [
+          tx.date,
+          `"${tx.description.replace(/"/g, '""')}"`, // Escape quotes
+          tx.amount.toFixed(2),
+          transactionTypeMap.get(tx.typeId)?.name || '',
+          categories.find(c => c.id === tx.categoryId)?.name || '',
+          accountMap.get(tx.accountId || '') || '',
+          payeeMap.get(tx.payeeId || '') || '',
+          users.find(u => u.id === tx.userId)?.name || ''
+      ]);
+      
+      const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `transactions_export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setIsExportMenuOpen(false);
+  };
+
+  const handlePrint = () => {
+      window.print();
+      setIsExportMenuOpen(false);
+  }
+
   const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc.name])), [accounts]);
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
   const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
@@ -610,14 +649,14 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       <div className="flex flex-col h-full overflow-hidden gap-4 w-full max-w-full">
         
         {/* Dynamic Summary Cards (Based on Filters) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-shrink-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-shrink-0 print:hidden">
             <SummaryCard title="Income" value={summaries.income} type="income" />
             <SummaryCard title="Expenses" value={summaries.expenses} type="expense" />
             <SummaryCard title="Investments" value={summaries.investments} type="investment" />
             <SummaryCard title="Donations" value={summaries.donations} type="donation" />
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-shrink-0">
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-shrink-0 print:hidden">
            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
                 <div className="flex items-center gap-3">
                     <h2 className="text-xl font-bold text-slate-700">Transactions</h2>
@@ -665,7 +704,31 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                             </div>
                         )}
                     </div>
+
+                    <div className="relative" ref={exportMenuRef}>
+                        <button onClick={() => setIsExportMenuOpen(!isExportMenuOpen)} className="flex items-center gap-2 px-3 py-2 text-slate-600 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all">
+                            <DownloadIcon className="w-4 h-4" />
+                            <span className="hidden sm:inline">Export</span>
+                        </button>
+                        {isExportMenuOpen && (
+                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-lg border border-slate-200 z-50">
+                                <div className="p-1">
+                                    <button onClick={handleExportCSV} className="flex w-full items-center px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-md text-left">
+                                        <span className="mr-2">📄</span> CSV
+                                    </button>
+                                    <button onClick={handlePrint} className="flex w-full items-center px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-md text-left">
+                                        <PrinterIcon className="w-4 h-4 mr-2 text-slate-500" /> Print / PDF
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     
+                    <button onClick={() => setIsVerifyModalOpen(true)} className="flex items-center gap-2 px-3 py-2 text-teal-700 font-medium bg-teal-50 border border-teal-200 rounded-lg hover:bg-teal-100">
+                        <ShieldCheckIcon className="w-4 h-4"/>
+                        <span className="hidden sm:inline">Verify</span>
+                    </button>
+
                     <button onClick={() => setIsAuditorOpen(true)} disabled={!hasApiKey()} className="flex items-center gap-2 px-3 py-2 text-indigo-700 font-medium bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed">
                         <RobotIcon className="w-4 h-4"/>
                         <span className="hidden sm:inline">Audit</span>
@@ -680,7 +743,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
             {/* Collapsible Filter Drawer */}
             {showFilters && (
-                <div className="mt-4 pt-4 border-t border-slate-100 animate-slide-down">
+                <div className="mt-4 pt-4 border-t border-slate-100 animate-slide-down print:hidden">
                     <div className="flex flex-col lg:flex-row gap-4">
                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-grow relative z-20">
                             <MultiSelect 
@@ -774,7 +837,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       </div>
       
       {selectedTxIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 animate-slide-up">
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 animate-slide-up print:hidden">
             <div className="flex items-center gap-3 border-r border-slate-700 pr-4">
                 <span className="font-medium text-sm">{selectedTxIds.size} selected</span>
                 <button onClick={() => setSelectedTxIds(new Set())} className="text-slate-400 hover:text-white transition-colors p-1 rounded-full hover:bg-slate-800">
@@ -894,6 +957,14 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             categories={categories}
             onApplyChanges={handleApplyAuditChanges}
             exampleGroup={auditorExampleGroup}
+          />
+      )}
+      {isVerifyModalOpen && (
+          <VerifyModal 
+            isOpen={isVerifyModalOpen}
+            onClose={() => setIsVerifyModalOpen(false)}
+            currentTransactions={filteredTransactions}
+            transactionTypes={transactionTypes}
           />
       )}
     </>
