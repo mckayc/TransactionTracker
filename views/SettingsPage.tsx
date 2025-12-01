@@ -43,7 +43,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     accounts, categories, tags, payees, rules, templates, scheduledEvents, users, businessProfile, documentFolders, onAddDocument, onCreateFolder
 }) => {
     const [newTypeName, setNewTypeName] = useState('');
-    const [newTypeEffect, setNewTypeEffect] = useState<'income' | 'expense' | 'transfer'>('expense');
+    const [newTypeEffect, setNewTypeEffect] = useState<'income' | 'expense' | 'transfer' | 'investment'>('expense');
     const [apiKey, setApiKey] = useState('');
     const [apiKeySaved, setApiKeySaved] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
@@ -373,6 +373,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                     <select id="typeEffect" value={newTypeEffect} onChange={e => setNewTypeEffect(e.target.value as any)} required>
                                         <option value="expense">Expense (decreases net worth)</option>
                                         <option value="income">Income (increases net worth)</option>
+                                        <option value="investment">Investment (asset purchase)</option>
                                         <option value="transfer">Transfer (no change)</option>
                                     </select>
                                 </div>

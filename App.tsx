@@ -48,10 +48,14 @@ const DEFAULT_TRANSACTION_TYPES: TransactionType[] = [
     // Transfers
     { id: 'default-transfer-payment', name: 'Credit Card Payment', balanceEffect: 'transfer', isDefault: true },
     { id: 'default-transfer-transfer', name: 'Transfer', balanceEffect: 'transfer', isDefault: true },
+    // Investments
+    { id: 'default-investment-contribution', name: 'Investment Contribution', balanceEffect: 'investment', isDefault: true },
+    { id: 'default-investment-purchase', name: 'Asset Purchase', balanceEffect: 'investment', isDefault: true },
     // A fallback 'Other' for each type
     { id: 'default-expense-other', name: 'Other Expense', balanceEffect: 'expense', isDefault: true },
     { id: 'default-income-other', name: 'Other Income', balanceEffect: 'income', isDefault: true },
     { id: 'default-transfer-other', name: 'Other Transfer', balanceEffect: 'transfer', isDefault: true },
+    { id: 'default-investment-other', name: 'Other Investment', balanceEffect: 'investment', isDefault: true },
 ];
 
 

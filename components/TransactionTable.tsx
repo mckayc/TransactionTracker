@@ -332,9 +332,13 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         const type = transactionTypeMap.get(transaction.typeId);
         const category = categoryMap.get(transaction.categoryId);
         const categoryName = category?.name || 'Uncategorized';
-        const isNegative = type?.balanceEffect === 'expense';
-        const amountColor = isNegative ? 'text-red-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600');
-        const amountPrefix = isNegative ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
+        
+        const isExpense = type?.balanceEffect === 'expense';
+        const isInvestment = type?.balanceEffect === 'investment';
+        
+        const amountColor = isExpense ? 'text-red-600' : (isInvestment ? 'text-purple-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600'));
+        const amountPrefix = (isExpense || isInvestment) ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
+        
         const isSelected = selectedTxIds.has(transaction.id);
         
         // For single items (not part of group logic)
@@ -569,9 +573,12 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       
       const primaryTx = group.primaryTx;
       const type = transactionTypeMap.get(primaryTx.typeId);
-      const isNegative = type?.balanceEffect === 'expense';
-      const amountColor = isNegative ? 'text-red-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600');
-      const amountPrefix = isNegative ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
+      
+      const isExpense = type?.balanceEffect === 'expense';
+      const isInvestment = type?.balanceEffect === 'investment';
+      
+      const amountColor = isExpense ? 'text-red-600' : (isInvestment ? 'text-purple-600' : (type?.balanceEffect === 'transfer' ? 'text-slate-600' : 'text-green-600'));
+      const amountPrefix = (isExpense || isInvestment) ? '-' : (type?.balanceEffect === 'transfer' ? '' : '+');
 
       return (
           <tr 

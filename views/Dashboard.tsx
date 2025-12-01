@@ -312,6 +312,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
   const totalIncome = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'income').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
   const totalExpenses = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'expense').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
+  const totalInvestments = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'investment').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
 
   const nextDeadline = useMemo(() => getNextTaxDeadline(), []);
 
@@ -348,10 +349,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <SummaryWidget title="Total Income" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)} helpText={getRangeLabel()} />
         <SummaryWidget title="Total Expenses" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)} helpText={getRangeLabel()} />
-        <SummaryWidget title="Net Flow" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome - totalExpenses)} helpText="Income minus expenses" />
+        <SummaryWidget title="Total Investments" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalInvestments)} helpText={getRangeLabel()} />
+        <SummaryWidget title="Net Flow" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome - totalExpenses)} helpText="Income - Expenses" />
         <SummaryWidget 
             title={nextDeadline.label} 
             value={`${nextDeadline.daysLeft} Days`} 
