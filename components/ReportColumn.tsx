@@ -1,8 +1,7 @@
 
-
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy } from '../types';
-import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon } from './Icons';
+import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, UsersIcon, TagIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
 
@@ -135,6 +134,9 @@ interface AggregationItem {
     children: AggregationItem[];
     // For visual display only
     isHidden: boolean;
+    // Temp storage for calculating payee breakdown
+    payeeStats?: Map<string, number>;
+    type: 'group' | 'payee'; // To distinguish visual rendering
 }
 
 const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport }) => {
@@ -186,7 +188,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 // Check if this ID is in the hidden list (either modern hiddenIds or legacy hiddenCategoryIds)
                 const isHidden = (config.hiddenIds && config.hiddenIds.includes(id)) || 
                                  (config.hiddenCategoryIds && config.hiddenCategoryIds.includes(id)) || false;
-                aggregationMap.set(id, { id, name, amount: 0, children: [], isHidden });
+                aggregationMap.set(id, { id, name, amount: 0, children: [], isHidden, type: 'group' });
             }
             return aggregationMap.get(id)!;
         };
@@ -200,6 +202,11 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 if (!catDef) return;
                 const agg = getAggItem(tx.categoryId, catDef.name);
                 agg.amount += tx.amount;
+                
+                // Collect Payee data for drilldown
+                const payeeId = tx.payeeId || 'no-payee';
+                if (!agg.payeeStats) agg.payeeStats = new Map();
+                agg.payeeStats.set(payeeId, (agg.payeeStats.get(payeeId) || 0) + tx.amount);
             });
         } else if (groupBy === 'payee') {
             const payeeNameMap = new Map(payees.map(p => [p.id, p]));
@@ -220,6 +227,11 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 const tDef = typeNameMap.get(tx.typeId);
                 const agg = getAggItem(tx.typeId, tDef?.name || 'Unknown');
                 agg.amount += tx.amount;
+
+                // Collect Payee data for drilldown
+                const payeeId = tx.payeeId || 'no-payee';
+                if (!agg.payeeStats) agg.payeeStats = new Map();
+                agg.payeeStats.set(payeeId, (agg.payeeStats.get(payeeId) || 0) + tx.amount);
             });
         } else if (groupBy === 'tag') {
             const tagNameMap = new Map(tags.map(t => [t.id, t]));
@@ -237,14 +249,36 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             });
         }
 
-        // --- 3. Build Hierarchy (Tree) ---
+        // --- 3. Build Hierarchy (Tree) and Payee Drilldown ---
         const rootItems: AggregationItem[] = [];
         const processedMap = new Map<string, AggregationItem>(); // To track items already placed in tree
 
+        // Step A: Convert Payee Stats to Children (for Category and Type grouping)
+        if (groupBy === 'category' || groupBy === 'type') {
+            const payeeNameMap = new Map(payees.map(p => [p.id, p]));
+            
+            for (const agg of aggregationMap.values()) {
+                if (agg.payeeStats && agg.payeeStats.size > 0) {
+                    for (const [pId, amount] of agg.payeeStats.entries()) {
+                        const pName = pId === 'no-payee' ? 'No Payee' : payeeNameMap.get(pId)?.name || 'Unknown Payee';
+                        const payeeNode: AggregationItem = {
+                            id: `payee-${pId}-in-${agg.id}`,
+                            name: pName,
+                            amount: amount,
+                            children: [],
+                            isHidden: false, // Payees inherit visibility from parent implicitly by structure
+                            type: 'payee'
+                        };
+                        agg.children.push(payeeNode);
+                    }
+                }
+            }
+        }
+
+        // Step B: Build Tree Structure based on Metadata Hierarchy
         if (groupBy === 'category') {
             const catNameMap = new Map(categories.map(c => [c.id, c]));
             
-            // Loop through all aggregated items
             for (const [id, agg] of aggregationMap.entries()) {
                 const def = catNameMap.get(id);
                 if (def?.parentId) {
@@ -253,36 +287,26 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     let parentAgg = processedMap.get(def.parentId);
                     
                     if (!parentAgg) {
-                        // Check if parent was also aggregated (has its own transactions), if so use that, else create new container
                         if (aggregationMap.has(def.parentId)) {
                             parentAgg = aggregationMap.get(def.parentId)!;
                         } else {
                             const isParentHidden = (config.hiddenIds && config.hiddenIds.includes(def.parentId)) || 
                                                    (config.hiddenCategoryIds && config.hiddenCategoryIds.includes(def.parentId)) || false;
-                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden };
+                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden, type: 'group' };
                         }
                         processedMap.set(def.parentId, parentAgg);
-                        // Add parent to roots only if not already added
                         if (!rootItems.find(r => r.id === def.parentId)) {
                             rootItems.push(parentAgg);
                         }
                     }
                     
-                    // Add current item as child to parent
-                    // NOTE: Parent amount assumes it aggregates children for display purposes, 
-                    // but we also track parent's own transaction amount if any.
-                    // For typical reports, Parent Total = Own Txs + Children Txs
-                    // We add this child to the parent's children array
-                    // Check if child already added to avoid dupes if logic runs twice
                     if (!parentAgg.children.find(c => c.id === agg.id)) {
                         parentAgg.children.push(agg);
-                        // Propagate amount up to parent for display total
                         parentAgg.amount += agg.amount;
                     }
                     
-                    processedMap.set(id, agg); // Mark child as processed
+                    processedMap.set(id, agg);
                 } else {
-                    // Root item
                     if (!processedMap.has(id)) {
                         rootItems.push(agg);
                         processedMap.set(id, agg);
@@ -307,7 +331,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             parentAgg = aggregationMap.get(def.parentId)!;
                         } else {
                             const isParentHidden = config.hiddenIds?.includes(def.parentId) || false;
-                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden };
+                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden, type: 'group' };
                         }
                         processedMap.set(def.parentId, parentAgg);
                         if (!rootItems.find(r => r.id === def.parentId)) {
@@ -339,7 +363,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             return a.name.localeCompare(b.name);
         };
 
-        // Recurse to sort children
         const sortRecursive = (items: AggregationItem[]) => {
             items.sort(sortFn);
             items.forEach(i => {
@@ -348,65 +371,13 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         };
         sortRecursive(rootItems);
 
-        // Calculate Visible Total
-        // We walk the tree. If an item is hidden, its amount is excluded from the *Total*.
-        // However, if a parent is NOT hidden, but a child IS hidden, the parent's amount should technically reflect that subtraction?
-        // Simpler approach: Flatten the list of visible items for total calculation. 
-        // But wait, the aggregation logic above propagated amounts up. We need to be careful not to double count or count hidden.
-        
-        // Actually, the most robust way for the "Total" is to iterate the source `aggregationMap` (which are the leaves/nodes with actual transactions)
-        // and sum only those that are not hidden and whose ancestors are not hidden.
-        
-        // Helper to check ancestry visibility
-        const isNodeVisible = (id: string, type: 'category' | 'payee'): boolean => {
-            // Check self
-            if (config.hiddenIds?.includes(id) || config.hiddenCategoryIds?.includes(id)) return false;
-            
-            // Check parent
-            if (type === 'category') {
-                const def = categories.find(c => c.id === id);
-                if (def?.parentId) return isNodeVisible(def.parentId, 'category');
-            } else if (type === 'payee') {
-                const def = payees.find(p => p.id === id);
-                if (def?.parentId) return isNodeVisible(def.parentId, 'payee');
-            }
-            return true;
-        };
-
-        let totalVisibleAmount = 0;
-        
-        // Re-calculate based on leaf aggregations from map to ensure accurate totals excluding hidden
-        for (const [id, agg] of aggregationMap.entries()) {
-            // Only sum up the "own" amount of this node (which we stored in map initially). 
-            // The tree construction added children amounts to parents, so we shouldn't use tree roots for this sum directly if we want granular hiding.
-            // BUT: The map contains the raw sum for that ID.
-            const type = groupBy === 'category' ? 'category' : groupBy === 'payee' ? 'payee' : 'other';
-            
-            // Determine if this specific bucket is visible
-            let visible = true;
-            if (config.hiddenIds?.includes(id)) visible = false;
-            if (groupBy === 'category' && config.hiddenCategoryIds?.includes(id)) visible = false;
-            
-            // Also check ancestor visibility if hierarchical
-            if (visible && (type === 'category' || type === 'payee')) {
-                visible = isNodeVisible(id, type);
-            }
-
-            if (visible) {
-               // We need the raw amount for this node, not the tree-accumulated amount.
-               // The aggregationMap values were modified during tree building (passed by reference? objects are ref). 
-               // Wait, `parentAgg.amount += agg.amount` modifies the parent object in the map if the parent was in the map.
-               // To avoid confusion, let's just use the filtered transaction list again for the total. It's safer.
-            }
-        }
-
         // Safer Total Calculation: Iterate transactions one last time
-        totalVisibleAmount = filtered.filter(tx => {
+        let totalVisibleAmount = filtered.filter(tx => {
             let idToCheck = '';
             if (groupBy === 'category') idToCheck = tx.categoryId;
             else if (groupBy === 'payee') idToCheck = tx.payeeId || 'no-payee';
             else if (groupBy === 'type') idToCheck = tx.typeId;
-            else if (groupBy === 'tag') return true; // Tag total logic is tricky (1 tx = multiple tags). Usually we just sum unique transactions.
+            else if (groupBy === 'tag') return true; 
 
             // Check visibility of this specific transaction's bucket
             if (config.hiddenIds?.includes(idToCheck)) return false;
@@ -425,7 +396,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             return true;
         }).reduce((sum, tx) => sum + tx.amount, 0);
 
-        // For Tag grouping specifically, the "Total" is usually just the sum of the visible bars, which might > total money spent.
         if (groupBy === 'tag') {
             totalVisibleAmount = rootItems.filter(i => !i.isHidden).reduce((sum, i) => sum + i.amount, 0);
         }
@@ -677,13 +647,15 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                         </div>
                                     </div>
 
-                                    <button 
-                                        onClick={() => toggleVisibility(item.id)}
-                                        className={`text-slate-300 hover:text-slate-500 transition-opacity ${item.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                                        title={item.isHidden ? "Show in calculation" : "Hide from calculation"}
-                                    >
-                                        {item.isHidden ? <EyeSlashIcon className="w-3 h-3 text-slate-400" /> : <EyeIcon className="w-3 h-3" />}
-                                    </button>
+                                    {item.type !== 'payee' && (
+                                        <button 
+                                            onClick={() => toggleVisibility(item.id)}
+                                            className={`text-slate-300 hover:text-slate-500 transition-opacity ${item.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                            title={item.isHidden ? "Show in calculation" : "Hide from calculation"}
+                                        >
+                                            {item.isHidden ? <EyeSlashIcon className="w-3 h-3 text-slate-400" /> : <EyeIcon className="w-3 h-3" />}
+                                        </button>
+                                    )}
                                 </div>
 
                                 {/* Children Rows */}
@@ -691,15 +663,21 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                     <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-3.5 my-1">
                                         {item.children.map(sub => (
                                             <div key={sub.id} className={`flex justify-between items-center text-xs p-1.5 hover:bg-slate-50 rounded group ${sub.isHidden ? 'opacity-50' : ''}`}>
-                                                <span className="text-slate-500 truncate pl-1">{sub.name}</span>
+                                                <div className="flex items-center gap-1.5 overflow-hidden">
+                                                    {sub.type === 'payee' && <UsersIcon className="w-3 h-3 text-indigo-400 flex-shrink-0" />}
+                                                    {sub.type === 'group' && <TagIcon className="w-3 h-3 text-slate-300 flex-shrink-0" />}
+                                                    <span className={`${sub.type === 'payee' ? 'text-indigo-800' : 'text-slate-500'} truncate pl-1`}>{sub.name}</span>
+                                                </div>
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-mono text-slate-600">{formatCurrency(sub.amount)}</span>
-                                                    <button 
-                                                        onClick={() => toggleVisibility(sub.id)}
-                                                        className={`text-slate-300 hover:text-slate-500 transition-opacity ${sub.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                                                    >
-                                                        {sub.isHidden ? <EyeSlashIcon className="w-3 h-3" /> : <EyeIcon className="w-3 h-3" />}
-                                                    </button>
+                                                    {sub.type !== 'payee' && (
+                                                        <button 
+                                                            onClick={() => toggleVisibility(sub.id)}
+                                                            className={`text-slate-300 hover:text-slate-500 transition-opacity ${sub.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                                        >
+                                                            {sub.isHidden ? <EyeSlashIcon className="w-3 h-3" /> : <EyeIcon className="w-3 h-3" />}
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </div>
                                         ))}
