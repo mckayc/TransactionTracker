@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import type { TaskItem, SubTask, RecurrenceRule, TaskPriority } from '../types';
 import { CloseIcon, ChecklistIcon, CalendarIcon, RepeatIcon, DeleteIcon, AddIcon, LinkIcon, EditIcon, CheckBadgeIcon } from '../components/Icons';
@@ -53,7 +52,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
     const [activeTab, setActiveTab] = useState<'details' | 'checklist' | 'schedule'>('details');
     const [isCompleted, setIsCompleted] = useState(false);
     
-    // Subtask input state
+    // Subtask Editing State
+    const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+    const [editSubtaskData, setEditSubtaskData] = useState<SubTask | null>(null);
+
+    // New Subtask input state
     const [newSubtaskText, setNewSubtaskText] = useState('');
     const [newSubtaskLink, setNewSubtaskLink] = useState('');
     const [newSubtaskLinkText, setNewSubtaskLinkText] = useState('');
@@ -111,6 +114,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
             setNewSubtaskLink('');
             setNewSubtaskLinkText('');
             setNewSubtaskText('');
+            setEditingSubtaskId(null);
+            setEditSubtaskData(null);
         }
     }, [isOpen, task, initialMode]);
 
@@ -195,6 +200,25 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
         }
     };
 
+    // --- Subtask Editing (Edit Mode) ---
+    const startEditingSubtask = (st: SubTask) => {
+        setEditingSubtaskId(st.id);
+        setEditSubtaskData({ ...st });
+    };
+
+    const saveEditingSubtask = () => {
+        if (editSubtaskData) {
+            setSubtasks(prev => prev.map(s => s.id === editSubtaskData.id ? editSubtaskData : s));
+            setEditingSubtaskId(null);
+            setEditSubtaskData(null);
+        }
+    };
+
+    const cancelEditingSubtask = () => {
+        setEditingSubtaskId(null);
+        setEditSubtaskData(null);
+    };
+
     const toggleWeekDay = (dayIndex: number) => {
         const currentDays = new Set(recurrence.byWeekDays || []);
         if (currentDays.has(dayIndex)) {
@@ -215,7 +239,14 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                 id: task?.id || generateUUID(), // Should have ID if in view mode
                 isCompleted: newStatus,
                 // Ensure other fields are carried over from state in case they were edited in background
-                title, description, notes, priority, dueDate, subtasks, recurrence: isRecurring ? recurrence : undefined
+                title, 
+                description, 
+                notes, 
+                priority, 
+                dueDate: dueDate || undefined, 
+                subtasks, 
+                recurrence: isRecurring ? recurrence : undefined,
+                createdAt: task?.createdAt || new Date().toISOString()
             };
             onSave(newTask);
             onClose(); // Close on completion toggle from view mode? Usually expected.
@@ -322,6 +353,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                                     <LinkRenderer text="" url={st.linkUrl} linkText={st.linkText} />
                                                 </div>
                                             )}
+                                            {st.notes && (
+                                                <p className="text-xs text-slate-500 mt-1 whitespace-pre-wrap pl-1 border-l-2 border-slate-200">
+                                                    {st.notes}
+                                                </p>
+                                            )}
                                         </div>
                                     </li>
                                 ))}
@@ -405,33 +441,97 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                             <p className="text-sm text-slate-500 italic mb-4">No checklist items yet. Add one below.</p>
                                         ) : (
                                             <ul className="space-y-2 mb-4">
-                                                {subtasks.map(st => (
-                                                    <li key={st.id} className="flex items-start gap-3 p-3 bg-white border rounded-md shadow-sm group hover:border-indigo-300 transition-colors">
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={st.isCompleted} 
-                                                            onChange={() => toggleSubtask(st.id)} 
-                                                            className="mt-1 w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer border-slate-300" 
-                                                        />
-                                                        <div className="flex-grow flex flex-col">
-                                                            <span 
-                                                                className={`text-sm cursor-pointer transition-all ${st.isCompleted ? 'line-through text-slate-400' : 'text-slate-700 font-medium'}`} 
-                                                                onClick={() => toggleSubtask(st.id)}
-                                                            >
-                                                                {st.text}
-                                                            </span>
-                                                            {st.linkUrl && (
-                                                                <a href={st.linkUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-1 mt-1">
-                                                                    <LinkIcon className="w-3 h-3" />
-                                                                    {st.linkText || st.linkUrl}
-                                                                </a>
-                                                            )}
-                                                        </div>
-                                                        <button type="button" onClick={() => removeSubtask(st.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">
-                                                            <DeleteIcon className="w-4 h-4" />
-                                                        </button>
-                                                    </li>
-                                                ))}
+                                                {subtasks.map(st => {
+                                                    if (editingSubtaskId === st.id && editSubtaskData) {
+                                                        // EDIT MODE FOR SUBTASK
+                                                        return (
+                                                            <li key={st.id} className="p-3 bg-indigo-50 border border-indigo-200 rounded-md shadow-sm space-y-3">
+                                                                <div>
+                                                                    <label className="block text-xs font-bold text-indigo-800 uppercase mb-1">Item Text</label>
+                                                                    <input 
+                                                                        type="text" 
+                                                                        value={editSubtaskData.text} 
+                                                                        onChange={(e) => setEditSubtaskData({...editSubtaskData, text: e.target.value})}
+                                                                        className="w-full p-2 border rounded text-sm focus:ring-indigo-500" 
+                                                                        autoFocus
+                                                                    />
+                                                                </div>
+                                                                
+                                                                <div>
+                                                                    <label className="block text-xs font-bold text-indigo-800 uppercase mb-1">Notes</label>
+                                                                    <textarea 
+                                                                        value={editSubtaskData.notes || ''} 
+                                                                        onChange={(e) => setEditSubtaskData({...editSubtaskData, notes: e.target.value})}
+                                                                        rows={2}
+                                                                        className="w-full p-2 border rounded text-sm focus:ring-indigo-500"
+                                                                        placeholder="Add details, instructions, or findings..."
+                                                                    />
+                                                                </div>
+
+                                                                <div className="grid grid-cols-2 gap-2">
+                                                                    <div>
+                                                                        <label className="block text-xs font-bold text-indigo-800 uppercase mb-1">Link URL</label>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={editSubtaskData.linkUrl || ''} 
+                                                                            onChange={(e) => setEditSubtaskData({...editSubtaskData, linkUrl: e.target.value})}
+                                                                            className="w-full p-2 border rounded text-xs" 
+                                                                            placeholder="https://..."
+                                                                        />
+                                                                    </div>
+                                                                    <div>
+                                                                        <label className="block text-xs font-bold text-indigo-800 uppercase mb-1">Link Text</label>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={editSubtaskData.linkText || ''} 
+                                                                            onChange={(e) => setEditSubtaskData({...editSubtaskData, linkText: e.target.value})}
+                                                                            className="w-full p-2 border rounded text-xs" 
+                                                                            placeholder="Display text"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="flex justify-end gap-2 pt-1">
+                                                                    <button type="button" onClick={cancelEditingSubtask} className="px-3 py-1.5 text-xs font-medium text-slate-600 bg-white border rounded hover:bg-slate-50">Cancel</button>
+                                                                    <button type="button" onClick={saveEditingSubtask} className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded hover:bg-indigo-700">Save Item</button>
+                                                                </div>
+                                                            </li>
+                                                        )
+                                                    } else {
+                                                        // DISPLAY MODE FOR SUBTASK (IN EDIT FORM)
+                                                        return (
+                                                            <li key={st.id} className="flex items-start gap-3 p-3 bg-white border rounded-md shadow-sm group hover:border-indigo-300 transition-colors">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={st.isCompleted} 
+                                                                    onChange={() => toggleSubtask(st.id)} 
+                                                                    className="mt-1 w-5 h-5 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer border-slate-300" 
+                                                                />
+                                                                <div className="flex-grow flex flex-col cursor-pointer" onClick={() => startEditingSubtask(st)}>
+                                                                    <span 
+                                                                        className={`text-sm font-medium text-slate-700 hover:text-indigo-600 ${st.isCompleted ? 'line-through text-slate-400' : ''}`} 
+                                                                    >
+                                                                        {st.text}
+                                                                    </span>
+                                                                    {st.linkUrl && (
+                                                                        <span className="text-xs text-indigo-500 flex items-center gap-1 mt-1">
+                                                                            <LinkIcon className="w-3 h-3" />
+                                                                            {st.linkText || st.linkUrl}
+                                                                        </span>
+                                                                    )}
+                                                                    {st.notes && (
+                                                                        <p className="text-xs text-slate-500 mt-1 whitespace-pre-wrap line-clamp-2">
+                                                                            {st.notes}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                                <button type="button" onClick={() => removeSubtask(st.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1">
+                                                                    <DeleteIcon className="w-4 h-4" />
+                                                                </button>
+                                                            </li>
+                                                        )
+                                                    }
+                                                })}
                                             </ul>
                                         )}
 

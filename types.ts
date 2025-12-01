@@ -160,6 +160,7 @@ export interface SubTask {
   isCompleted: boolean;
   linkUrl?: string; // Optional URL for checklist items
   linkText?: string; // Optional display text for the link
+  notes?: string; // Optional notes for the checklist item
 }
 
 export interface RecurrenceRule {
