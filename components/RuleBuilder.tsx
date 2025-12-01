@@ -53,7 +53,16 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
     const handleDragStart = (e: React.DragEvent, index: number) => {
         setDraggedIndex(index);
         e.dataTransfer.effectAllowed = 'move';
-        // Optional: set a transparent drag image or similar if needed
+        
+        // Use the parent row as the drag image so the user sees what they are moving
+        const rowElement = e.currentTarget.parentElement;
+        if (rowElement) {
+             try {
+                e.dataTransfer.setDragImage(rowElement, 0, 0);
+             } catch (err) {
+                 // Fallback to default behavior if setDragImage fails
+             }
+        }
     };
 
     const handleDragOver = (e: React.DragEvent, index: number) => {
@@ -79,14 +88,16 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
                 <div 
                     key={condition.id} 
                     className="relative"
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, index)}
                     onDragOver={(e) => handleDragOver(e, index)}
                     onDrop={(e) => handleDrop(e, index)}
                 >
                     {/* Condition Row */}
                     <div className={`flex flex-col sm:flex-row gap-2 items-start sm:items-center bg-white p-3 rounded border border-slate-200 shadow-sm z-10 relative transition-all ${draggedIndex === index ? 'opacity-50 bg-indigo-50 border-indigo-300' : ''}`}>
-                        <div className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 p-1">
+                        <div 
+                            className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 p-1"
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, index)}
+                        >
                             <DragHandleIcon className="w-5 h-5" />
                         </div>
                         <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-bold text-slate-500 mr-1 flex-shrink-0">
