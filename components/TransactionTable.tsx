@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, Account, TransactionType, Payee, Category, User, Tag } from '../types';
-import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronDownIcon } from './Icons';
+import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon } from './Icons';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -84,6 +84,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const [editingCell, setEditingCell] = useState<{ id: string; field: keyof Transaction } | null>(null);
   const [lastClickedId, setLastClickedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
   const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc])), [accounts]);
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
@@ -197,6 +201,17 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       }
       return items;
   }, [sortedTransactions, transactions]);
+
+  // Reset pagination when data changes
+  useEffect(() => {
+      setCurrentPage(1);
+  }, [displayItems.length]);
+
+  // 3. Paginate
+  const totalPages = Math.ceil(displayItems.length / rowsPerPage);
+  const startIndex = (currentPage - 1) * rowsPerPage;
+  const endIndex = startIndex + rowsPerPage;
+  const currentItems = displayItems.slice(startIndex, endIndex);
   
   const handleUpdate = (transaction: Transaction, field: keyof Transaction, value: any) => {
     let updatedValue = value;
@@ -246,6 +261,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       const willSelect = e.target.checked;
 
       if (isShiftKey && lastClickedId && onBulkSelection) {
+          // Find index in the CURRENT VIEW (sortedTransactions), not just current page
           const start = sortedTransactions.findIndex(t => t.id === lastClickedId);
           const end = sortedTransactions.findIndex(t => t.id === id);
 
@@ -649,65 +665,113 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   return (
-    <div className="overflow-auto h-full w-full">
-      <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
-        <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
-          <tr>
-            {showCheckboxes && (
-              <th scope="col" className="w-10 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-50 border-b border-slate-200">
-                  <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 pointer-events-auto"
-                      checked={transactions.length > 0 && selectedTxIds.size === transactions.length}
-                      onChange={onToggleSelectAll}
-                      aria-label="Select all transactions"
-                  />
-              </th>
-            )}
-            {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32 z-40', dateColumnStyle)}
-            {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px] max-w-xs')}
-            {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-48')}
-            {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}
-            {visibleColumns.has('tags') && <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200 w-32">Tags</th>}
-            {visibleColumns.has('account') && renderHeader('Account', 'accountId', 'w-40')}
-            {visibleColumns.has('location') && renderHeader('Location', 'location', 'w-32')}
-            {visibleColumns.has('user') && renderHeader('User', 'userId', 'w-32')}
-            {visibleColumns.has('type') && renderHeader('Type', 'typeId', 'w-32')}
-            {visibleColumns.has('amount') && (
-                <th scope="col" className="w-32 px-3 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-30 border-b border-slate-200">
-                <button onClick={() => requestSort('amount')} className="group flex items-center gap-1 float-right focus:outline-none hover:text-slate-700">
-                    Amount
-                    <span className="text-indigo-600">{getSortIndicator('amount')}</span>
-                </button>
+    <div className="flex flex-col h-full">
+        <div className="overflow-auto flex-grow w-full">
+        <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
+            <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
+            <tr>
+                {showCheckboxes && (
+                <th scope="col" className="w-10 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-50 border-b border-slate-200">
+                    <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 pointer-events-auto"
+                        checked={transactions.length > 0 && selectedTxIds.size === transactions.length}
+                        onChange={onToggleSelectAll}
+                        aria-label="Select all transactions"
+                    />
                 </th>
-            )}
-            {visibleColumns.has('actions') && (
-                <th scope="col" className="w-20 px-3 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky-col-right top-0 z-40 border-b border-slate-200">
-                    Action
-                </th>
-            )}
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-slate-200">
-          {displayItems.map((item) => {
-              if (item.type === 'group') {
-                  return (
-                      <React.Fragment key={item.id}>
-                          {renderGroupHeader(item)}
-                          {expandedGroups.has(item.id) && (
-                              <>
-                                {renderRow(item.primaryTx, true, item)}
-                                {item.children.map(child => renderRow(child, true, item))}
-                              </>
-                          )}
-                      </React.Fragment>
-                  );
-              } else {
-                  return renderRow(item.tx);
-              }
-          })}
-        </tbody>
-      </table>
+                )}
+                {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32 z-40', dateColumnStyle)}
+                {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px] max-w-xs')}
+                {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-48')}
+                {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}
+                {visibleColumns.has('tags') && <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200 w-32">Tags</th>}
+                {visibleColumns.has('account') && renderHeader('Account', 'accountId', 'w-40')}
+                {visibleColumns.has('location') && renderHeader('Location', 'location', 'w-32')}
+                {visibleColumns.has('user') && renderHeader('User', 'userId', 'w-32')}
+                {visibleColumns.has('type') && renderHeader('Type', 'typeId', 'w-32')}
+                {visibleColumns.has('amount') && (
+                    <th scope="col" className="w-32 px-3 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky top-0 z-30 border-b border-slate-200">
+                    <button onClick={() => requestSort('amount')} className="group flex items-center gap-1 float-right focus:outline-none hover:text-slate-700">
+                        Amount
+                        <span className="text-indigo-600">{getSortIndicator('amount')}</span>
+                    </button>
+                    </th>
+                )}
+                {visibleColumns.has('actions') && (
+                    <th scope="col" className="w-20 px-3 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 sticky-col-right top-0 z-40 border-b border-slate-200">
+                        Action
+                    </th>
+                )}
+            </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-slate-200">
+            {currentItems.map((item) => {
+                if (item.type === 'group') {
+                    return (
+                        <React.Fragment key={item.id}>
+                            {renderGroupHeader(item)}
+                            {expandedGroups.has(item.id) && (
+                                <>
+                                    {renderRow(item.primaryTx, true, item)}
+                                    {item.children.map(child => renderRow(child, true, item))}
+                                </>
+                            )}
+                        </React.Fragment>
+                    );
+                } else {
+                    return renderRow(item.tx);
+                }
+            })}
+            </tbody>
+        </table>
+        </div>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+            <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 sticky bottom-0 z-30">
+                <div className="flex items-center text-sm text-slate-600">
+                    <span className="mr-2">Rows per page:</span>
+                    <select 
+                        value={rowsPerPage} 
+                        onChange={(e) => {
+                            setRowsPerPage(Number(e.target.value));
+                            setCurrentPage(1);
+                        }}
+                        className="p-1 border rounded text-xs bg-white focus:ring-indigo-500 w-16"
+                    >
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                        <option value={displayItems.length}>All</option>
+                    </select>
+                    <span className="mx-4 text-slate-400">|</span>
+                    <span>
+                        {startIndex + 1}-{Math.min(endIndex, displayItems.length)} of {displayItems.length}
+                    </span>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                        <ChevronLeftIcon className="w-5 h-5 text-slate-600" />
+                    </button>
+                    <span className="text-sm font-medium text-slate-700 min-w-[3rem] text-center">
+                        Page {currentPage} of {totalPages}
+                    </span>
+                    <button 
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                    >
+                        <ChevronRightIcon className="w-5 h-5 text-slate-600" />
+                    </button>
+                </div>
+            </div>
+        )}
     </div>
   );
 };
