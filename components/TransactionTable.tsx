@@ -675,8 +675,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full w-full min-w-0">
-        <div className="overflow-x-auto overflow-y-auto flex-grow w-full max-w-full">
+    <div className="flex flex-col h-full w-full max-w-full min-w-0 relative">
+        <div className="flex-grow w-full overflow-x-auto overflow-y-auto">
         <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
             <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
             <tr>

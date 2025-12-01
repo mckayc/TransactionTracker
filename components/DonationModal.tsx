@@ -212,14 +212,14 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
                                     {/* Amount */}
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Amount</label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 font-bold">$</span>
+                                        <div className="flex items-center">
+                                            <span className="text-slate-500 font-bold mr-2 text-lg">$</span>
                                             <input 
                                                 type="number" 
                                                 step="0.01" 
                                                 value={item.amount} 
                                                 onChange={(e) => handleAmountChange(item.id, parseFloat(e.target.value))}
-                                                className="w-full pl-7 p-2 border rounded-md font-bold text-slate-800"
+                                                className="w-full p-2 border rounded-md font-bold text-slate-800"
                                             />
                                         </div>
                                     </div>
