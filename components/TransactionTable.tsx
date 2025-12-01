@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, Account, TransactionType, Payee, Category, User, Tag } from '../types';
-import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon } from './Icons';
+import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon } from './Icons';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -22,6 +22,7 @@ interface TransactionTableProps {
   deleteConfirmationMessage?: string;
   visibleColumns?: Set<string>;
   onManageLink?: (groupId: string) => void;
+  onSplit?: (transaction: Transaction) => void;
 }
 
 type SortKey = keyof Transaction | 'payeeId' | 'categoryId' | 'accountId' | 'userId' | 'typeId' | '';
@@ -77,7 +78,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onBulkSelection,
   deleteConfirmationMessage = 'Are you sure you want to delete this transaction? This action cannot be undone.',
   visibleColumns = new Set(['date', 'description', 'payee', 'category', 'tags', 'account', 'type', 'amount', 'actions']),
-  onManageLink
+  onManageLink,
+  onSplit
 }) => {
   const [sortKey, setSortKey] = useState<SortKey>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -183,9 +185,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               // Find all siblings
               const children = transactions.filter(t => t.linkGroupId === groupId);
               
-              // Heuristic: Find the "Primary" transaction (usually the Transfer source/largest amount)
-              // If all are equal, pick the first one in the sorted list.
-              const primaryTx = children.reduce((prev, current) => (Math.abs(current.amount) > Math.abs(prev.amount) ? current : prev), children[0]);
+              // Heuristic: Find the "Primary" transaction (usually the Transfer source/largest amount, or explicit Parent)
+              let primaryTx = children.find(c => c.isParent) || children.reduce((prev, current) => (Math.abs(current.amount) > Math.abs(prev.amount) ? current : prev), children[0]);
               
               items.push({
                   type: 'group',
@@ -428,6 +429,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                 <LinkIcon className={`w-3 h-3 ${generateGroupColor(linkGroupId!)}`} />
                             </button>
                         )}
+                        {transaction.isParent && <span title="Split Parent (Container)" className="bg-indigo-100 text-indigo-600 text-[10px] px-1 rounded flex-shrink-0">Split</span>}
                         {transaction.notes && <span title={transaction.notes} className="flex-shrink-0"><NotesIcon className="w-3 h-3 text-indigo-500" /></span>}
                         
                         {/* Input or Text */}
@@ -583,6 +585,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             <button onClick={(e) => { e.stopPropagation(); onCreateRule(transaction); }} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Rule">
                                 <SparklesIcon className="w-4 h-4" />
                             </button>
+                         )}
+                         {onSplit && !isChild && !groupData && ( // Only single items or parent items can be split
+                             <button onClick={(e) => { e.stopPropagation(); onSplit(transaction); }} className="text-slate-400 hover:text-indigo-600 p-1" title="Split Transaction">
+                                 <SplitIcon className="w-4 h-4" />
+                             </button>
                          )}
                          <button onClick={(e) => handleDelete(e, transaction.id)} className="text-slate-400 hover:text-red-600 p-1" title="Delete">
                             <DeleteIcon className="w-4 h-4" />

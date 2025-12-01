@@ -282,9 +282,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   // Dashboard Card Filtering Logic
   const dashboardTransactions = useMemo(() => {
     const now = new Date();
-    if (dashboardRange === 'all') return transactions;
+    // Filter out parent transactions immediately to avoid double counting split transactions
+    const baseTxs = transactions.filter(t => !t.isParent);
+
+    if (dashboardRange === 'all') return baseTxs;
     
-    return transactions.filter(tx => {
+    return baseTxs.filter(tx => {
         const txDate = new Date(tx.date);
         // Normalize dates to start of day for accurate comparison
         txDate.setHours(0, 0, 0, 0);

@@ -86,6 +86,7 @@ const App: React.FC = () => {
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
   const [initialTaskId, setInitialTaskId] = useState<string | undefined>(undefined);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
@@ -676,7 +677,7 @@ const App: React.FC = () => {
         // Added onAddTransaction for Donation modal support
         return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports':
-        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} />;
+        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} />;
       case 'accounts':
         return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
       case 'users':
@@ -725,6 +726,8 @@ const App: React.FC = () => {
             onNavigate={setCurrentView} 
             transactions={transactions} 
             onChatToggle={() => setIsChatOpen(!isChatOpen)}
+            isCollapsed={isCollapsed}
+            onToggleCollapse={() => setIsCollapsed(!isCollapsed)}
           />
         </div>
         
@@ -738,7 +741,7 @@ const App: React.FC = () => {
         </div>
         {isSidebarOpen && <div className="md:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)}></div>}
 
-        <main className="flex-1 md:pl-64">
+        <main className={`flex-1 transition-all duration-300 ${isCollapsed ? 'md:pl-20' : 'md:pl-64'}`}>
           <div className="container mx-auto p-4 md:p-8 h-screen flex flex-col">
             {renderView()}
           </div>

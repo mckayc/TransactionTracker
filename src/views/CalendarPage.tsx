@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, Template, ScheduledEvent, TaskCompletions, TransactionType, Account, Category, Payee, User, TaskItem, Tag } from '../types';
 import ScheduleEventModal from '../components/ScheduleEventModal';

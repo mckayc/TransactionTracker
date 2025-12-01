@@ -49,6 +49,8 @@ export interface Transaction {
   sourceFilename?: string;
   userId?: string;
   tagIds?: string[];
+  isParent?: boolean; // If true, this is a container for split transactions and should be excluded from sums
+  parentTransactionId?: string; // ID of the parent transaction if this is a split part
 }
 
 export interface AccountType {
@@ -230,4 +232,28 @@ export interface AuditFinding {
     typeId?: string; // ID of the transaction type to change to
     payeeName?: string; // Suggested payee name (to find or create)
   };
+}
+
+// --- Report Types ---
+
+export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'last3Months' | 'custom' | 'sameMonthLastYear' | 'sameMonth2YearsAgo';
+
+export interface ReportConfig {
+    id: string;
+    name: string;
+    datePreset: DateRangePreset;
+    customStartDate?: string;
+    customEndDate?: string;
+    filters: {
+        accountIds?: string[];
+        userIds?: string[];
+        typeIds?: string[];
+    };
+    hiddenCategoryIds?: string[]; // IDs of categories hidden via the eye icon
+}
+
+export interface SavedReport {
+    id: string;
+    name: string;
+    config: ReportConfig;
 }

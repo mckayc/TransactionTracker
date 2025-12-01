@@ -10,6 +10,7 @@ import DuplicateFinder from '../components/DuplicateFinder';
 import TransactionAuditor from '../components/TransactionAuditor';
 import VerifyModal from '../components/VerifyModal';
 import DonationModal from '../components/DonationModal';
+import SplitTransactionModal from '../components/SplitTransactionModal';
 import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, PrinterIcon, DownloadIcon, ShieldCheckIcon, HeartIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
@@ -187,13 +188,31 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   // State for immediate input values
   const [searchTerm, setSearchTerm] = useState('');
   
-  // Multi-Select States
-  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
-  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
-  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
-  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  // Multi-Select States with Persistence
+  const [selectedCategories, setSelectedCategories] = useState<Set<string>>(() => {
+      const saved = localStorage.getItem('filter_categories');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(() => {
+      const saved = localStorage.getItem('filter_types');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(() => {
+      const saved = localStorage.getItem('filter_accounts');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(() => {
+      const saved = localStorage.getItem('filter_users');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
 
-  // Date Logic
+  // Save filters on change
+  useEffect(() => { localStorage.setItem('filter_categories', JSON.stringify(Array.from(selectedCategories))); }, [selectedCategories]);
+  useEffect(() => { localStorage.setItem('filter_types', JSON.stringify(Array.from(selectedTypes))); }, [selectedTypes]);
+  useEffect(() => { localStorage.setItem('filter_accounts', JSON.stringify(Array.from(selectedAccounts))); }, [selectedAccounts]);
+  useEffect(() => { localStorage.setItem('filter_users', JSON.stringify(Array.from(selectedUsers))); }, [selectedUsers]);
+
+  // Date Logic - Default to Previous Month (Not Persisted to ensure default view)
   const [dateMode, setDateMode] = useState<DateMode>('month');
   const [dateCursor, setDateCursor] = useState(() => {
       // Default to Previous Month
@@ -261,6 +280,10 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
   
+  // Split Logic
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [transactionToSplit, setTransactionToSplit] = useState<Transaction | null>(null);
+
   // Auditor State
   const [isAuditorOpen, setIsAuditorOpen] = useState(false);
   const [auditorExampleGroup, setAuditorExampleGroup] = useState<Transaction[] | undefined>(undefined);
@@ -331,6 +354,9 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       let donations = 0;
 
       filteredTransactions.forEach(tx => {
+          // Skip Parent transactions in sums to avoid double counting
+          if (tx.isParent) return;
+
           const type = transactionTypeMap.get(tx.typeId);
           if (type?.balanceEffect === 'income') income += tx.amount;
           else if (type?.balanceEffect === 'expense') expenses += tx.amount;
@@ -370,6 +396,18 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const handleCreateRule = (transaction: Transaction) => {
     setTransactionForRule(transaction);
     setIsRuleModalOpen(true);
+  };
+  
+  const handleSplitTransaction = (transaction: Transaction) => {
+      setTransactionToSplit(transaction);
+      setIsSplitModalOpen(true);
+  };
+
+  const handleSaveSplit = (parent: Transaction, children: Transaction[]) => {
+      // Update original as Parent
+      onUpdateTransaction(parent);
+      // Add all new children
+      children.forEach(child => onAddTransaction(child));
   };
   
   const handleApplyAuditChanges = (updates: Transaction[]) => {
@@ -555,7 +593,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
   const handleUnlinkGroup = (txsToUnlink: Transaction[]) => {
       txsToUnlink.forEach(tx => {
-          onUpdateTransaction({ ...tx, linkGroupId: undefined, linkedTransactionId: undefined });
+          onUpdateTransaction({ ...tx, linkGroupId: undefined, linkedTransactionId: undefined, isParent: undefined, parentTransactionId: undefined });
       });
       setIsLinkedGroupModalOpen(false);
       setSelectedLinkGroupId(null);
@@ -582,7 +620,8 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
   const handleExportCSV = () => {
       const headers = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Account', 'Payee', 'User'];
-      const rows = filteredTransactions.map(tx => [
+      // Filter out Parents from export to avoid duplicates
+      const rows = filteredTransactions.filter(tx => !tx.isParent).map(tx => [
           tx.date,
           `"${tx.description.replace(/"/g, '""')}"`, // Escape quotes
           tx.amount.toFixed(2),
@@ -843,6 +882,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             onBulkSelection={handleBulkSelection}
             visibleColumns={visibleColumns}
             onManageLink={handleManageLink}
+            onSplit={handleSplitTransaction}
           />
         </div>
       </div>
@@ -901,6 +941,16 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             payees={payees}
             users={users}
         />
+      )}
+      {isSplitModalOpen && (
+          <SplitTransactionModal 
+            isOpen={isSplitModalOpen}
+            onClose={() => setIsSplitModalOpen(false)}
+            transaction={transactionToSplit}
+            categories={categories}
+            transactionTypes={transactionTypes}
+            onSplit={handleSaveSplit}
+          />
       )}
       {isLinkModalOpen && (
           <LinkTransactionModal 
