@@ -19,6 +19,16 @@ interface ReportColumnProps {
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
 
+// Helper to generate consistent color from string
+const stringToColor = (str: string) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = Math.abs(hash % 360);
+    return `hsl(${hue}, 70%, 45%)`;
+};
+
 const getDateRangeFromPreset = (preset: DateRangePreset, customStart?: string, customEnd?: string): { start: Date, end: Date, label: string } => {
     const now = new Date();
     let start = new Date();
@@ -139,11 +149,82 @@ interface AggregationItem {
     type: 'group' | 'payee'; // To distinguish visual rendering
 }
 
+const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+
+// --- Recursive Row Component ---
+const ReportRow: React.FC<{ 
+    item: AggregationItem; 
+    totalVisibleAmount: number; 
+    onToggleVisibility: (id: string) => void;
+    level?: number;
+}> = ({ item, totalVisibleAmount, onToggleVisibility, level = 0 }) => {
+    const [isCollapsed, setIsCollapsed] = useState(true);
+    
+    // Percent of total visible (if hidden, effectively 0 for visualization)
+    const percent = totalVisibleAmount !== 0 && !item.isHidden 
+        ? (item.amount / totalVisibleAmount) * 100 
+        : 0;
+
+    const color = item.type === 'payee' ? stringToColor(item.name) : '#6366f1'; // Default Indigo for groups
+
+    return (
+        <div className={`text-sm ${item.isHidden ? 'opacity-50 grayscale' : ''}`}>
+            {/* Row Content */}
+            <div className={`flex items-center gap-2 p-2 hover:bg-slate-50 rounded-lg group transition-colors ${level > 0 ? 'ml-3 border-l-2 border-slate-100 pl-2' : ''}`}>
+                {item.children.length > 0 ? (
+                    <button onClick={() => setIsCollapsed(!isCollapsed)} className="text-slate-400 hover:text-indigo-600 flex-shrink-0">
+                        {isCollapsed ? <ChevronRightIcon className="w-3 h-3"/> : <ChevronDownIcon className="w-3 h-3"/>}
+                    </button>
+                ) : <div className="w-3 flex-shrink-0" />}
+                
+                <div className="flex-grow min-w-0">
+                    <div className="flex justify-between items-baseline gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            {item.type === 'payee' && <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }}></div>}
+                            <span className={`font-medium truncate text-xs ${item.type === 'payee' ? 'text-slate-600' : 'text-slate-800'}`} title={item.name}>{item.name}</span>
+                        </div>
+                        <span className="font-mono font-bold text-slate-800 text-xs flex-shrink-0">{formatCurrency(item.amount)}</span>
+                    </div>
+                    {/* Bar only for top level or significant items */}
+                    {(level === 0 || percent > 5) && !item.isHidden && (
+                        <div className="w-full bg-slate-100 h-1 rounded-full mt-1 overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${percent}%`, backgroundColor: color }}></div>
+                        </div>
+                    )}
+                </div>
+
+                <button 
+                    onClick={() => onToggleVisibility(item.id)}
+                    className={`text-slate-300 hover:text-slate-500 transition-opacity flex-shrink-0 ${item.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    title={item.isHidden ? "Show in calculation" : "Hide from calculation"}
+                >
+                    {item.isHidden ? <EyeSlashIcon className="w-3 h-3 text-slate-400" /> : <EyeIcon className="w-3 h-3" />}
+                </button>
+            </div>
+
+            {/* Recursive Children */}
+            {!isCollapsed && item.children.length > 0 && (
+                <div>
+                    {item.children.map(sub => (
+                        <ReportRow 
+                            key={sub.id} 
+                            item={sub} 
+                            totalVisibleAmount={totalVisibleAmount} 
+                            onToggleVisibility={onToggleVisibility} 
+                            level={level + 1}
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport }) => {
     
     // Internal state allows modifying the report on the fly without affecting the saved version until explicit save
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
-    const [collapsedItems, setCollapsedItems] = useState<Set<string>>(new Set());
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
     const [showFilters, setShowFilters] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
@@ -253,29 +334,78 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         const rootItems: AggregationItem[] = [];
         const processedMap = new Map<string, AggregationItem>(); // To track items already placed in tree
 
-        // Step A: Convert Payee Stats to Children (for Category and Type grouping)
+        // Step A: Build Payee Hierarchy for Drilldown (Category/Type grouping)
         if (groupBy === 'category' || groupBy === 'type') {
             const payeeNameMap = new Map(payees.map(p => [p.id, p]));
             
             for (const agg of aggregationMap.values()) {
                 if (agg.payeeStats && agg.payeeStats.size > 0) {
+                    const localPayeeNodes = new Map<string, AggregationItem>();
+                    const localRoots: AggregationItem[] = [];
+
+                    // 1. Create Nodes
                     for (const [pId, amount] of agg.payeeStats.entries()) {
                         const pName = pId === 'no-payee' ? 'No Payee' : payeeNameMap.get(pId)?.name || 'Unknown Payee';
-                        const payeeNode: AggregationItem = {
-                            id: `payee-${pId}-in-${agg.id}`,
+                        const isHidden = config.hiddenIds?.includes(pId) || false;
+                        
+                        localPayeeNodes.set(pId, {
+                            id: pId, // Use Payee ID directly so hiding works universally
                             name: pName,
                             amount: amount,
                             children: [],
-                            isHidden: false, // Payees inherit visibility from parent implicitly by structure
+                            isHidden: isHidden,
                             type: 'payee'
-                        };
-                        agg.children.push(payeeNode);
+                        });
                     }
+
+                    // 2. Build Mini-Tree
+                    for (const [pId, node] of localPayeeNodes.entries()) {
+                        if (pId === 'no-payee') {
+                            localRoots.push(node);
+                            continue;
+                        }
+                        const def = payeeNameMap.get(pId);
+                        if (def?.parentId) {
+                            let parentNode = localPayeeNodes.get(def.parentId);
+                            
+                            // Virtual Parent Creation: If parent has no txs in this category but child does, create grouping node
+                            if (!parentNode) {
+                                const parentDef = payeeNameMap.get(def.parentId);
+                                if (parentDef) {
+                                    const isParentHidden = config.hiddenIds?.includes(def.parentId) || false;
+                                    parentNode = {
+                                        id: def.parentId,
+                                        name: parentDef.name,
+                                        amount: 0, // Will sum children
+                                        children: [],
+                                        isHidden: isParentHidden,
+                                        type: 'payee'
+                                    };
+                                    localPayeeNodes.set(def.parentId, parentNode);
+                                    localRoots.push(parentNode);
+                                }
+                            }
+
+                            if (parentNode) {
+                                // Ensure parent isn't in root list if we just found it was a child of someone else (multi-level)
+                                // But here we just assume 2 levels for now or simple tree
+                                parentNode.children.push(node);
+                                parentNode.amount += node.amount;
+                            } else {
+                                localRoots.push(node);
+                            }
+                        } else {
+                            // If this node is a root (no parent), ensure it's in roots list
+                            // But check if it was already added as a virtual parent
+                            if (!localRoots.includes(node)) localRoots.push(node);
+                        }
+                    }
+                    agg.children = localRoots;
                 }
             }
         }
 
-        // Step B: Build Tree Structure based on Metadata Hierarchy
+        // Step B: Build Tree Structure based on Metadata Hierarchy (for main grouping)
         if (groupBy === 'category') {
             const catNameMap = new Map(categories.map(c => [c.id, c]));
             
@@ -304,7 +434,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         parentAgg.children.push(agg);
                         parentAgg.amount += agg.amount;
                     }
-                    
                     processedMap.set(id, agg);
                 } else {
                     if (!processedMap.has(id)) {
@@ -331,7 +460,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             parentAgg = aggregationMap.get(def.parentId)!;
                         } else {
                             const isParentHidden = config.hiddenIds?.includes(def.parentId) || false;
-                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden, type: 'group' };
+                            parentAgg = { id: def.parentId, name: parentDef?.name || 'Unknown Parent', amount: 0, children: [], isHidden: isParentHidden, type: 'payee' };
                         }
                         processedMap.set(def.parentId, parentAgg);
                         if (!rootItems.find(r => r.id === def.parentId)) {
@@ -374,23 +503,30 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         // Safer Total Calculation: Iterate transactions one last time
         let totalVisibleAmount = filtered.filter(tx => {
             let idToCheck = '';
+            // Basic grouping check
             if (groupBy === 'category') idToCheck = tx.categoryId;
             else if (groupBy === 'payee') idToCheck = tx.payeeId || 'no-payee';
             else if (groupBy === 'type') idToCheck = tx.typeId;
             else if (groupBy === 'tag') return true; 
 
-            // Check visibility of this specific transaction's bucket
+            // 1. Check direct bucket visibility
             if (config.hiddenIds?.includes(idToCheck)) return false;
-            if (groupBy === 'category' && config.hiddenCategoryIds?.includes(idToCheck)) return false;
             
-            // Check parent visibility
+            // 2. Check parent visibility (Group Parent)
             if (groupBy === 'category') {
                 const def = categories.find(c => c.id === idToCheck);
                 if (def?.parentId && (config.hiddenIds?.includes(def.parentId) || config.hiddenCategoryIds?.includes(def.parentId))) return false;
             }
-            if (groupBy === 'payee') {
-                const def = payees.find(p => p.id === idToCheck);
-                if (def?.parentId && config.hiddenIds?.includes(def.parentId)) return false;
+            
+            // 3. Check Payee ID visibility (Universal Hiding)
+            // Even if grouped by Category, if specific Payee is hidden, exclude it
+            const pId = tx.payeeId || 'no-payee';
+            if (config.hiddenIds?.includes(pId)) return false;
+            
+            // 4. Check Payee Parent visibility
+            if (tx.payeeId) {
+                const pDef = payees.find(p => p.id === tx.payeeId);
+                if (pDef?.parentId && config.hiddenIds?.includes(pDef.parentId)) return false;
             }
 
             return true;
@@ -409,7 +545,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     const toggleVisibility = (id: string) => {
         setConfig(prev => {
             const hidden = new Set(prev.hiddenIds || []);
-            // Migrate legacy hiddenCategoryIds if present and we are in category mode
+            // Migrate legacy hiddenCategoryIds if present
             if (prev.groupBy === 'category' || !prev.groupBy) {
                 prev.hiddenCategoryIds?.forEach(hid => hidden.add(hid));
             }
@@ -425,15 +561,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         });
     };
 
-    const toggleCollapse = (id: string) => {
-        setCollapsedItems(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(id)) newSet.delete(id);
-            else newSet.add(id);
-            return newSet;
-        });
-    };
-
     const handleSave = () => {
         onSaveReport(config);
     };
@@ -446,8 +573,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             return { ...prev, filters: { ...prev.filters, balanceEffects: Array.from(current) } };
         });
     };
-
-    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 
     // Prepare Chart Data (Top 8 Visible)
     const chartData = activeData.rootItems
@@ -482,7 +607,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 onChange={e => setConfig({...config, name: e.target.value})} 
                                 onBlur={() => setIsEditingName(false)}
                                 autoFocus
-                                className="w-full text-lg font-bold text-slate-800 bg-transparent border-b border-indigo-500 focus:outline-none"
+                                className="w-full text-lg font-bold text-slate-800 bg-transparent border-b border-indigo-50 focus:outline-none"
                             />
                         ) : (
                             <h3 
@@ -618,74 +743,16 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     <button onClick={() => setSortBy('name')} className={sortBy === 'name' ? 'text-indigo-600' : 'hover:text-slate-600'}>Name</button>
                 </div>
 
-                {/* List */}
+                {/* List using Recursive Row */}
                 <div className="space-y-1 pb-4">
-                    {activeData.rootItems.map(item => {
-                        // Calculate percentage based on visible amount, but if hidden, show 0% on bar
-                        const percent = activeData.totalVisibleAmount !== 0 && !item.isHidden 
-                            ? (item.amount / activeData.totalVisibleAmount) * 100 
-                            : 0;
-                        const isCollapsed = collapsedItems.has(item.id);
-                        
-                        return (
-                            <div key={item.id} className={`text-sm ${item.isHidden ? 'opacity-50 grayscale' : ''}`}>
-                                {/* Parent Row */}
-                                <div className="flex items-center gap-2 p-2 hover:bg-slate-50 rounded-lg group transition-colors">
-                                    {item.children.length > 0 ? (
-                                        <button onClick={() => toggleCollapse(item.id)} className="text-slate-400 hover:text-indigo-600">
-                                            {isCollapsed ? <ChevronRightIcon className="w-3 h-3"/> : <ChevronDownIcon className="w-3 h-3"/>}
-                                        </button>
-                                    ) : <div className="w-3" />}
-                                    
-                                    <div className="flex-grow min-w-0">
-                                        <div className="flex justify-between items-baseline">
-                                            <span className="font-medium text-slate-700 truncate text-xs" title={item.name}>{item.name}</span>
-                                            <span className="font-mono font-bold text-slate-800 text-xs">{formatCurrency(item.amount)}</span>
-                                        </div>
-                                        <div className="w-full bg-slate-100 h-1 rounded-full mt-1 overflow-hidden">
-                                            <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${percent}%` }}></div>
-                                        </div>
-                                    </div>
-
-                                    {item.type !== 'payee' && (
-                                        <button 
-                                            onClick={() => toggleVisibility(item.id)}
-                                            className={`text-slate-300 hover:text-slate-500 transition-opacity ${item.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                                            title={item.isHidden ? "Show in calculation" : "Hide from calculation"}
-                                        >
-                                            {item.isHidden ? <EyeSlashIcon className="w-3 h-3 text-slate-400" /> : <EyeIcon className="w-3 h-3" />}
-                                        </button>
-                                    )}
-                                </div>
-
-                                {/* Children Rows */}
-                                {!isCollapsed && item.children.length > 0 && (
-                                    <div className="pl-3 space-y-0.5 border-l-2 border-slate-100 ml-3.5 my-1">
-                                        {item.children.map(sub => (
-                                            <div key={sub.id} className={`flex justify-between items-center text-xs p-1.5 hover:bg-slate-50 rounded group ${sub.isHidden ? 'opacity-50' : ''}`}>
-                                                <div className="flex items-center gap-1.5 overflow-hidden">
-                                                    {sub.type === 'payee' && <UsersIcon className="w-3 h-3 text-indigo-400 flex-shrink-0" />}
-                                                    {sub.type === 'group' && <TagIcon className="w-3 h-3 text-slate-300 flex-shrink-0" />}
-                                                    <span className={`${sub.type === 'payee' ? 'text-indigo-800' : 'text-slate-500'} truncate pl-1`}>{sub.name}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-mono text-slate-600">{formatCurrency(sub.amount)}</span>
-                                                    {sub.type !== 'payee' && (
-                                                        <button 
-                                                            onClick={() => toggleVisibility(sub.id)}
-                                                            className={`text-slate-300 hover:text-slate-500 transition-opacity ${sub.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                                                        >
-                                                            {sub.isHidden ? <EyeSlashIcon className="w-3 h-3" /> : <EyeIcon className="w-3 h-3" />}
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })}
+                    {activeData.rootItems.map(item => (
+                        <ReportRow 
+                            key={item.id} 
+                            item={item} 
+                            totalVisibleAmount={activeData.totalVisibleAmount} 
+                            onToggleVisibility={toggleVisibility}
+                        />
+                    ))}
                 </div>
             </div>
         </div>
