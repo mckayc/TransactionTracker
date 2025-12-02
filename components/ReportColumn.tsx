@@ -1,6 +1,7 @@
 
+
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange } from '../types';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
@@ -33,6 +34,28 @@ const stringToColor = (str: string) => {
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 
+const applyOffset = (date: Date, value: number, unit: DateRangeUnit) => {
+    const d = new Date(date);
+    switch (unit) {
+        case 'day':
+            d.setDate(d.getDate() - value);
+            break;
+        case 'week':
+            d.setDate(d.getDate() - (value * 7));
+            break;
+        case 'month':
+            d.setMonth(d.getMonth() - value);
+            break;
+        case 'quarter':
+            d.setMonth(d.getMonth() - (value * 3));
+            break;
+        case 'year':
+            d.setFullYear(d.getFullYear() - value);
+            break;
+    }
+    return d;
+};
+
 const calculateDateRange = (preset: DateRangePreset, customStart: string | undefined, customEnd: string | undefined, savedRanges: CustomDateRange[]): { start: Date, end: Date, label: string } => {
     const now = new Date();
     let start = new Date();
@@ -54,55 +77,48 @@ const calculateDateRange = (preset: DateRangePreset, customStart: string | undef
         const unit = customRange.unit;
         
         if (customRange.type === 'fixed_period') {
-            // "The month 3 months ago"
+            // Fixed Period: Define an anchor date based on offsets, then window around it based on unit
+            let anchor = new Date(now);
+            
+            if (customRange.offsets && customRange.offsets.length > 0) {
+                // New multi-offset logic
+                customRange.offsets.forEach(offset => {
+                    anchor = applyOffset(anchor, offset.value, offset.unit);
+                });
+            } else {
+                // Legacy single offset logic
+                anchor = applyOffset(anchor, val, unit);
+            }
+
+            // Determine Start/End based on the Window Unit (customRange.unit)
             if (unit === 'day') {
-                start = new Date(now);
-                start.setDate(now.getDate() - val);
-                end = new Date(start);
+                start = new Date(anchor);
+                end = new Date(anchor);
             } else if (unit === 'week') {
-                // Fixed week X weeks ago? Usually implies a specific 7-day window
-                // Let's define it as "The week starting X weeks ago Sunday"
-                const currentDay = now.getDay();
-                const diff = now.getDate() - currentDay - (val * 7); // Start of that week
-                start = new Date(now.setDate(diff));
+                // Standardize on Week starting Sunday
+                const day = anchor.getDay();
+                start = new Date(anchor);
+                start.setDate(anchor.getDate() - day);
                 end = new Date(start);
                 end.setDate(start.getDate() + 6);
             } else if (unit === 'month') {
-                start = new Date(now.getFullYear(), now.getMonth() - val, 1);
-                end = new Date(now.getFullYear(), now.getMonth() - val + 1, 0);
+                start = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+                end = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
             } else if (unit === 'quarter') {
-                const currentQuarter = Math.floor(now.getMonth() / 3);
-                // Shift quarters back
-                let targetQ = currentQuarter - val;
-                let targetYear = now.getFullYear();
-                while (targetQ < 0) {
-                    targetQ += 4;
-                    targetYear -= 1;
-                }
-                const startMonth = targetQ * 3;
-                start = new Date(targetYear, startMonth, 1);
-                end = new Date(targetYear, startMonth + 3, 0);
+                const q = Math.floor(anchor.getMonth() / 3);
+                start = new Date(anchor.getFullYear(), q * 3, 1);
+                end = new Date(anchor.getFullYear(), q * 3 + 3, 0);
             } else if (unit === 'year') {
-                start = new Date(now.getFullYear() - val, 0, 1);
-                end = new Date(now.getFullYear() - val, 11, 31);
+                start = new Date(anchor.getFullYear(), 0, 1);
+                end = new Date(anchor.getFullYear(), 11, 31);
             }
+
         } else {
             // Rolling Window ("Last 3 months")
             end = new Date(); // Ends today
             start = new Date();
             
-            if (unit === 'day') {
-                start.setDate(now.getDate() - val);
-            } else if (unit === 'week') {
-                start.setDate(now.getDate() - (val * 7));
-            } else if (unit === 'month') {
-                start.setMonth(now.getMonth() - val);
-            } else if (unit === 'quarter') {
-                // 1 Quarter = 3 months for rolling window calculation
-                start.setMonth(now.getMonth() - (val * 3));
-            } else if (unit === 'year') {
-                start.setFullYear(now.getFullYear() - val);
-            }
+            start = applyOffset(start, val, unit);
         }
     } else {
         // Fallback to legacy presets or standard ones not yet migrated
@@ -600,7 +616,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
         // --- 5. Sorting ---
         const sortFn = (a: AggregationItem, b: AggregationItem) => {
-            if (sortBy === 'amount') return b.visibleAmount - a.visibleAmount;
+            // Sort by total amount (including hidden) to maintain stable order when toggling visibility
+            if (sortBy === 'amount') return b.amount - a.amount;
             return a.name.localeCompare(b.name);
         };
 

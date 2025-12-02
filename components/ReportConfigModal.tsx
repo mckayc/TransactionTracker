@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType } from '../types';
+import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset } from '../types';
 import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
@@ -47,6 +47,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     const [rangeType, setRangeType] = useState<DateRangeType>('rolling_window');
     const [rangeValue, setRangeValue] = useState(1);
     const [rangeUnit, setRangeUnit] = useState<DateRangeUnit>('month');
+    const [rangeOffsets, setRangeOffsets] = useState<DateOffset[]>([]);
     const [editingRangeId, setEditingRangeId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -130,21 +131,27 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             name: rangeName.trim(),
             type: rangeType,
             unit: rangeUnit,
-            value: rangeValue
+            value: rangeValue,
+            offsets: rangeType === 'fixed_period' ? rangeOffsets : undefined
         };
         
         onSaveDateRange(newRange);
-        // Reset form
-        setEditingRangeId(null);
-        setRangeName('');
-        setRangeType('rolling_window');
-        setRangeValue(1);
-        setRangeUnit('month');
+        resetRangeForm();
+        
         // If creating new, automatically select it
         if (!editingRangeId) {
             setDatePreset(newRange.id);
             setIsManagingRanges(false);
         }
+    };
+
+    const resetRangeForm = () => {
+        setEditingRangeId(null);
+        setRangeName('');
+        setRangeType('rolling_window');
+        setRangeValue(1);
+        setRangeUnit('month');
+        setRangeOffsets([]);
     };
 
     const handleEditRange = (range: CustomDateRange) => {
@@ -153,18 +160,49 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         setRangeType(range.type);
         setRangeValue(range.value);
         setRangeUnit(range.unit);
+        
+        // Initialize offsets for editing
+        if (range.type === 'fixed_period') {
+            if (range.offsets && range.offsets.length > 0) {
+                setRangeOffsets(range.offsets);
+            } else {
+                // Migration: Convert legacy simple value to offset
+                setRangeOffsets([{ value: range.value, unit: range.unit }]);
+            }
+        } else {
+            setRangeOffsets([]);
+        }
+    };
+
+    const handleAddOffset = () => {
+        setRangeOffsets([...rangeOffsets, { value: 1, unit: 'year' }]);
+    };
+
+    const handleRemoveOffset = (index: number) => {
+        setRangeOffsets(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleUpdateOffset = (index: number, field: keyof DateOffset, value: any) => {
+        setRangeOffsets(prev => {
+            const updated = [...prev];
+            updated[index] = { ...updated[index], [field]: value };
+            return updated;
+        });
     };
 
     const getRangeDescription = () => {
-        const unitLabel = rangeValue === 1 ? rangeUnit : `${rangeUnit}s`;
         if (rangeType === 'rolling_window') {
+            const unitLabel = rangeValue === 1 ? rangeUnit : `${rangeUnit}s`;
             return `Show data for the last ${rangeValue} ${unitLabel}, including today.`;
         } else {
-            if (rangeUnit === 'day') return `Show data for the specific day ${rangeValue} days ago.`;
-            if (rangeUnit === 'month') return `Show data for the specific calendar month ${rangeValue} months ago.`;
-            if (rangeUnit === 'year') return `Show data for the specific calendar year ${rangeValue} years ago.`;
-            if (rangeUnit === 'quarter') return `Show data for the specific quarter ${rangeValue} quarters ago.`;
-            return `Show data for the period ${rangeValue} ${unitLabel} prior to the current one.`;
+            let desc = `Show data for the specific ${rangeUnit}`;
+            if (rangeOffsets.length > 0) {
+                const offsets = rangeOffsets.map(o => `${o.value} ${o.unit}${o.value === 1 ? '' : 's'}`).join(' + ');
+                desc += ` that happened ${offsets} ago.`;
+            } else {
+                desc += ` (No offset configured)`;
+            }
+            return desc;
         }
     };
 
@@ -199,47 +237,113 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                     />
                                 </div>
 
-                                <div className="flex flex-col sm:flex-row gap-4 items-center bg-white p-3 rounded-md border border-slate-200">
-                                    <span className="text-sm font-medium text-slate-600">Show me the</span>
-                                    
-                                    <select 
-                                        value={rangeType} 
-                                        onChange={(e) => setRangeType(e.target.value as DateRangeType)}
-                                        className="p-1.5 border rounded-md text-sm bg-indigo-50 font-semibold text-indigo-700"
+                                <div className="flex gap-2 mb-2">
+                                    <button 
+                                        onClick={() => setRangeType('rolling_window')} 
+                                        className={`flex-1 py-2 text-sm font-medium rounded-md border ${rangeType === 'rolling_window' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-300'}`}
                                     >
-                                        <option value="rolling_window">Last (Rolling)</option>
-                                        <option value="fixed_period">Specific (Fixed)</option>
-                                    </select>
-
-                                    <input 
-                                        type="number" 
-                                        min="1" 
-                                        max="100" 
-                                        value={rangeValue} 
-                                        onChange={e => setRangeValue(parseInt(e.target.value) || 1)}
-                                        className="w-16 p-1.5 border rounded-md text-center font-bold"
-                                    />
-
-                                    <select 
-                                        value={rangeUnit} 
-                                        onChange={(e) => setRangeUnit(e.target.value as DateRangeUnit)}
-                                        className="p-1.5 border rounded-md text-sm font-medium"
+                                        Rolling Window
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            setRangeType('fixed_period');
+                                            if (rangeOffsets.length === 0) setRangeOffsets([{value: 1, unit: rangeUnit}]);
+                                        }} 
+                                        className={`flex-1 py-2 text-sm font-medium rounded-md border ${rangeType === 'fixed_period' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-300'}`}
                                     >
-                                        <option value="day">{rangeValue === 1 ? 'Day' : 'Days'}</option>
-                                        <option value="week">{rangeValue === 1 ? 'Week' : 'Weeks'}</option>
-                                        <option value="month">{rangeValue === 1 ? 'Month' : 'Months'}</option>
-                                        <option value="quarter">{rangeValue === 1 ? 'Quarter' : 'Quarters'}</option>
-                                        <option value="year">{rangeValue === 1 ? 'Year' : 'Years'}</option>
-                                    </select>
-                                    
-                                    {rangeType === 'fixed_period' && <span className="text-sm font-medium text-slate-600">ago</span>}
+                                        Fixed Period
+                                    </button>
                                 </div>
+
+                                {rangeType === 'rolling_window' ? (
+                                    <div className="flex flex-col sm:flex-row gap-4 items-center bg-white p-3 rounded-md border border-slate-200">
+                                        <span className="text-sm font-medium text-slate-600">Show me the Last</span>
+                                        <input 
+                                            type="number" 
+                                            min="1" 
+                                            max="100" 
+                                            value={rangeValue} 
+                                            onChange={e => setRangeValue(parseInt(e.target.value) || 1)}
+                                            className="w-16 p-1.5 border rounded-md text-center font-bold"
+                                        />
+                                        <select 
+                                            value={rangeUnit} 
+                                            onChange={(e) => setRangeUnit(e.target.value as DateRangeUnit)}
+                                            className="p-1.5 border rounded-md text-sm font-medium"
+                                        >
+                                            <option value="day">{rangeValue === 1 ? 'Day' : 'Days'}</option>
+                                            <option value="week">{rangeValue === 1 ? 'Week' : 'Weeks'}</option>
+                                            <option value="month">{rangeValue === 1 ? 'Month' : 'Months'}</option>
+                                            <option value="quarter">{rangeValue === 1 ? 'Quarter' : 'Quarters'}</option>
+                                            <option value="year">{rangeValue === 1 ? 'Year' : 'Years'}</option>
+                                        </select>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3 bg-white p-3 rounded-md border border-slate-200">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-medium text-slate-600">Show data for the specific</span>
+                                            <select 
+                                                value={rangeUnit} 
+                                                onChange={(e) => setRangeUnit(e.target.value as DateRangeUnit)}
+                                                className="p-1.5 border rounded-md text-sm font-bold text-indigo-700 bg-indigo-50"
+                                            >
+                                                <option value="day">Day</option>
+                                                <option value="week">Week</option>
+                                                <option value="month">Month</option>
+                                                <option value="quarter">Quarter</option>
+                                                <option value="year">Year</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <div className="border-t pt-2">
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Happening:</label>
+                                            <div className="space-y-2">
+                                                {rangeOffsets.map((offset, idx) => (
+                                                    <div key={idx} className="flex items-center gap-2">
+                                                        <input 
+                                                            type="number" 
+                                                            min="1" 
+                                                            value={offset.value} 
+                                                            onChange={e => handleUpdateOffset(idx, 'value', parseInt(e.target.value) || 1)}
+                                                            className="w-16 p-1.5 border rounded-md text-center font-bold"
+                                                        />
+                                                        <select 
+                                                            value={offset.unit} 
+                                                            onChange={(e) => handleUpdateOffset(idx, 'unit', e.target.value as DateRangeUnit)}
+                                                            className="p-1.5 border rounded-md text-sm font-medium"
+                                                        >
+                                                            <option value="day">Day(s)</option>
+                                                            <option value="week">Week(s)</option>
+                                                            <option value="month">Month(s)</option>
+                                                            <option value="quarter">Quarter(s)</option>
+                                                            <option value="year">Year(s)</option>
+                                                        </select>
+                                                        <span className="text-sm text-slate-600">ago</span>
+                                                        <button 
+                                                            onClick={() => handleRemoveOffset(idx)}
+                                                            className="text-slate-400 hover:text-red-500 p-1"
+                                                            title="Remove offset"
+                                                        >
+                                                            <DeleteIcon className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                                <button 
+                                                    onClick={handleAddOffset}
+                                                    className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
+                                                >
+                                                    <AddIcon className="w-3 h-3" /> Add Offset
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                                 
-                                <p className="text-xs text-slate-500 italic text-center">{getRangeDescription()}</p>
+                                <p className="text-xs text-slate-500 italic text-center px-4">{getRangeDescription()}</p>
 
                                 <div className="flex justify-end gap-2">
                                     {editingRangeId && (
-                                        <button onClick={() => { setEditingRangeId(null); setRangeName(''); setRangeValue(1); }} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200 rounded">Cancel Edit</button>
+                                        <button onClick={resetRangeForm} className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200 rounded">Cancel Edit</button>
                                     )}
                                     <button onClick={handleSaveRange} className="px-4 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700">
                                         {editingRangeId ? 'Update Range' : 'Save Range'}
@@ -256,7 +360,10 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                     <ul className="space-y-2 max-h-40 overflow-y-auto">
                                         {savedDateRanges.map(range => (
                                             <li key={range.id} className="flex justify-between items-center p-2 bg-slate-50 border border-slate-100 rounded-md hover:border-indigo-200">
-                                                <span className="text-sm font-medium text-slate-700">{range.name}</span>
+                                                <div>
+                                                    <span className="text-sm font-medium text-slate-700 block">{range.name}</span>
+                                                    <span className="text-[10px] text-slate-500 capitalize">{range.type.replace('_', ' ')}</span>
+                                                </div>
                                                 <div className="flex gap-1">
                                                     <button onClick={() => handleEditRange(range)} className="p-1 text-slate-400 hover:text-indigo-600"><EditIcon className="w-4 h-4"/></button>
                                                     <button onClick={() => onDeleteDateRange(range.id)} className="p-1 text-slate-400 hover:text-red-500"><DeleteIcon className="w-4 h-4"/></button>

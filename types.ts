@@ -271,12 +271,18 @@ export type DateRangePreset =
 export type DateRangeUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
 export type DateRangeType = 'fixed_period' | 'rolling_window';
 
+export interface DateOffset {
+    unit: DateRangeUnit;
+    value: number;
+}
+
 export interface CustomDateRange {
     id: string;
     name: string;
     type: DateRangeType; // e.g. "rolling_window" (Last 3 months) vs "fixed_period" (The month 3 months ago)
-    unit: DateRangeUnit;
-    value: number; // e.g. 1, 3, 6
+    unit: DateRangeUnit; // Primary unit or Window Size for fixed period
+    value: number; // Primary value
+    offsets?: DateOffset[]; // Optional list of additional offsets for fixed periods
 }
 
 export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account';
