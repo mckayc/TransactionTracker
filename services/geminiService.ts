@@ -1,5 +1,4 @@
 
-
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage } from '../types';
 
@@ -187,7 +186,7 @@ export const extractTransactionsFromFiles = async (files: File[], accountId: str
     const contents = [{ parts: [{ text: getBasePrompt(transactionTypes) }, ...generativeParts] }];
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash', // Switched to flash for stability
         contents,
         config: {
             responseMimeType: 'application/json',
@@ -207,7 +206,7 @@ export const extractTransactionsFromText = async (text: string, accountId: strin
     const contents = [{ parts: [{ text: prompt }, { text: `\n\n--- User Pasted Data ---\n${text}` }] }];
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash',
         contents,
         config: {
             responseMimeType: 'application/json',
@@ -219,26 +218,51 @@ export const extractTransactionsFromText = async (text: string, accountId: strin
     return processApiResponse(response, accountId, transactionTypes, 'Pasted Text');
 };
 
+const sanitizeContextData = (contextData: any): string => {
+    // Create a simplified version of the data to avoid token limits and circular references
+    try {
+        const simplified = {
+            transactions_count: contextData.transactions?.length || 0,
+            recent_transactions: contextData.transactions?.slice(0, 100).map((t: any) => ({
+                date: t.date,
+                desc: t.description,
+                amt: t.amount,
+                cat: t.category
+            })) || [],
+            accounts: contextData.accounts?.map((a: any) => a.name) || [],
+            business_profile: contextData.businessProfile || {},
+            upcoming_tasks: contextData.tasks?.filter((t: any) => !t.isCompleted).map((t: any) => t.title) || []
+        };
+        return JSON.stringify(simplified, null, 2);
+    } catch (e) {
+        console.error("Failed to sanitize context data", e);
+        return "{}";
+    }
+};
+
 export const getAiFinancialAnalysis = async (question: string, contextData: object) => {
     const date = new Date().toLocaleDateString();
     const ai = getAiClient();
+    
+    const safeJson = sanitizeContextData(contextData);
+
     const prompt = `
         You are a helpful and friendly financial AI assistant for an app called FinParser.
         The current date is ${date}.
         The user has asked the following question: "${question}"
 
-        Here is the user's financial data in JSON format. Use this data to answer the user's question.
+        Here is a summary of the user's financial data (JSON). Use this data to answer the user's question.
         Do not mention that you are using JSON data, just answer the question naturally.
-        Format your response using Markdown. For example, use lists, bold text, etc., to make the answer clear and readable.
+        Format your response using Markdown.
 
         Context Data:
-        ${JSON.stringify(contextData, null, 2)}
+        ${safeJson}
     `;
 
     const contents = [{ parts: [{ text: prompt }] }];
 
     const responseStream = await ai.models.generateContentStream({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash', // Updated model
         contents,
     });
     
@@ -267,7 +291,7 @@ export const analyzeBusinessDocument = async (file: File, onProgress: (msg: stri
     const contents = [{ parts: [{ text: prompt }, ...parts] }];
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-2.5-flash',
         contents,
         config: {
             responseMimeType: 'application/json',

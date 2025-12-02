@@ -586,7 +586,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 visibleAmount: 0, 
                                 children: [], 
                                 isHidden, 
-                                type: 'group',
+                                type: 'group', 
                                 transactions: [] 
                             };
                             treeMap.set(def.parentId, parent);
@@ -775,38 +775,132 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         });
     };
 
-    const handleExport = async (type: 'png' | 'pdf') => {
-        if (!reportRef.current) return;
+    // --- Data Export Utilities ---
+    const getExportRows = () => {
+        const rows: { name: string, amount: number, depth: number, rawName: string }[] = [];
         
+        const traverse = (item: AggregationItem, depth: number) => {
+            rows.push({
+                name: "  ".repeat(depth) + item.name,
+                amount: item.visibleAmount,
+                depth,
+                rawName: item.name
+            });
+            // Sort by visible amount desc
+            const sortedChildren = [...item.children].sort((a,b) => b.visibleAmount - a.visibleAmount);
+            sortedChildren.forEach(child => traverse(child, depth + 1));
+        };
+
+        // Sort roots
+        const sortedRoots = [...activeData.rootItems].sort((a,b) => b.visibleAmount - a.visibleAmount);
+        sortedRoots.forEach(item => traverse(item, 0));
+        return rows;
+    };
+
+    const handleExportPDF = () => {
+        const doc = new jsPDF();
+        const rows = getExportRows();
+        
+        // Header
+        doc.setFontSize(18);
+        doc.text(config.name, 14, 20);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100);
+        doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 26);
+        doc.text(`Period: ${dateRange.label}`, 14, 31);
+        doc.text(`Total: ${formatCurrency(activeData.totalVisibleAmount)}`, 14, 36);
+        
+        // Content
+        let y = 45;
+        const pageHeight = doc.internal.pageSize.height;
+        const pageWidth = doc.internal.pageSize.width;
+        const margin = 14;
+        
+        doc.setTextColor(0);
+        
+        // Table Header
+        doc.setFillColor(240, 240, 240);
+        doc.rect(margin, y - 4, pageWidth - (margin * 2), 6, 'F');
+        doc.setFont("helvetica", "bold");
+        doc.text("Category / Item", margin + 2, y);
+        doc.text("Amount", pageWidth - margin - 2, y, { align: 'right' });
+        y += 8;
+        doc.setFont("helvetica", "normal");
+
+        rows.forEach(row => {
+            if (y > pageHeight - 20) {
+                doc.addPage();
+                y = 20;
+            }
+            
+            const x = margin + (row.depth * 4);
+            
+            // Bold top level items
+            if (row.depth === 0) doc.setFont("helvetica", "bold");
+            else doc.setFont("helvetica", "normal");
+            
+            doc.text(row.rawName, x, y);
+            
+            // Align Amount
+            if (row.depth === 0) doc.setFont("helvetica", "bold");
+            else doc.setFont("helvetica", "normal");
+            
+            doc.text(formatCurrency(row.amount), pageWidth - margin, y, { align: 'right' });
+            
+            // Add spacing after top-level groups
+            if (row.depth === 0 && y < pageHeight - 20) {
+                 y += 2;
+            }
+            
+            y += 6;
+        });
+        
+        doc.save(`${config.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.pdf`);
         setIsExportMenuOpen(false);
+    };
+
+    const handleExportCSV = () => {
+        const rows = getExportRows();
+        const csvRows = [["Name", "Level", "Amount"]];
         
+        rows.forEach(row => {
+            csvRows.push([
+                `"${row.rawName.replace(/"/g, '""')}"`,
+                row.depth.toString(),
+                row.amount.toFixed(2)
+            ]);
+        });
+        
+        const csvContent = "data:text/csv;charset=utf-8," 
+            + csvRows.map(e => e.join(",")).join("\n");
+            
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", `${config.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_data.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setIsExportMenuOpen(false);
+    };
+
+    const handleExportPNG = async () => {
+        if (!reportRef.current) return;
+        setIsExportMenuOpen(false);
         try {
-            // Capture canvas
             const canvas = await html2canvas(reportRef.current, {
                 backgroundColor: '#ffffff',
-                scale: 2 // Higher resolution
+                scale: 2
             } as any);
             const imgData = canvas.toDataURL('image/png');
-            
-            if (type === 'png') {
-                const link = document.createElement('a');
-                link.download = `${config.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.png`;
-                link.href = imgData;
-                link.click();
-            } else {
-                // PDF Logic
-                const pdf = new jsPDF({
-                    orientation: canvas.width > canvas.height ? 'l' : 'p',
-                    unit: 'px',
-                    format: [canvas.width, canvas.height] // Match page size to image size for clean "screenshot" pdf
-                });
-                
-                pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-                pdf.save(`${config.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.pdf`);
-            }
-        } catch (error) {
-            console.error("Export failed:", error);
-            alert("Failed to export report.");
+            const link = document.createElement('a');
+            link.download = `${config.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`;
+            link.href = imgData;
+            link.click();
+        } catch (e) {
+            console.error(e);
+            alert("Export failed");
         }
     };
 
@@ -849,18 +943,24 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 <DownloadIcon className="w-4 h-4" />
                             </button>
                             {isExportMenuOpen && (
-                                <div className="absolute right-0 top-full mt-2 w-40 bg-white rounded-lg shadow-lg border border-slate-200 z-50 overflow-hidden">
+                                <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-lg shadow-lg border border-slate-200 z-50 overflow-hidden">
                                     <button 
-                                        onClick={() => handleExport('png')}
+                                        onClick={handleExportPNG}
                                         className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600"
                                     >
-                                        Download PNG
+                                        Download Image (PNG)
                                     </button>
                                     <button 
-                                        onClick={() => handleExport('pdf')}
+                                        onClick={handleExportPDF}
                                         className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 border-t border-slate-100"
                                     >
-                                        Download PDF
+                                        Download Report (PDF)
+                                    </button>
+                                    <button 
+                                        onClick={handleExportCSV}
+                                        className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 border-t border-slate-100"
+                                    >
+                                        Download Data (CSV)
                                     </button>
                                 </div>
                             )}

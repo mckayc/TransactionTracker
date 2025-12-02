@@ -36,7 +36,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
     const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
     const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
-    const [selectedEffects, setSelectedEffects] = useState<Set<BalanceEffect>>(new Set(['expense']));
+    // Default to Expense AND Income so users see their paycheck
+    const [selectedEffects, setSelectedEffects] = useState<Set<BalanceEffect>>(new Set(['expense', 'income']));
     const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
     const [selectedPayees, setSelectedPayees] = useState<Set<string>>(new Set());
 
@@ -62,7 +63,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setSelectedUsers(new Set(initialConfig.filters.userIds));
                 setSelectedCategories(new Set(initialConfig.filters.categoryIds));
                 setSelectedTypes(new Set(initialConfig.filters.typeIds));
-                setSelectedEffects(new Set(initialConfig.filters.balanceEffects || ['expense']));
+                setSelectedEffects(new Set(initialConfig.filters.balanceEffects || ['expense', 'income']));
                 setSelectedTags(new Set(initialConfig.filters.tagIds));
                 setSelectedPayees(new Set(initialConfig.filters.payeeIds));
             } else {
@@ -76,7 +77,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setSelectedUsers(new Set());
                 setSelectedCategories(new Set());
                 setSelectedTypes(new Set());
-                setSelectedEffects(new Set(['expense']));
+                // Default to Expense AND Income
+                setSelectedEffects(new Set(['expense', 'income']));
                 setSelectedTags(new Set());
                 setSelectedPayees(new Set());
             }
@@ -513,6 +515,9 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                             </button>
                                         ))}
                                     </div>
+                                    {!selectedEffects.has('income') && (
+                                        <p className="text-[10px] text-amber-600 mt-1 italic">Note: Earnings/Income will be hidden.</p>
+                                    )}
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

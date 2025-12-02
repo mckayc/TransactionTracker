@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { getAiFinancialAnalysis } from '../services/geminiService';
-import { ChatBubbleIcon, CloseIcon, SendIcon } from './Icons';
+import { ChatBubbleIcon, CloseIcon, SendIcon, ExclamationTriangleIcon } from './Icons';
 
 interface ChatbotProps {
     contextData: object;
@@ -12,6 +12,7 @@ interface ChatbotProps {
 interface Message {
     role: 'user' | 'ai';
     content: string;
+    isError?: boolean;
 }
 
 const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
@@ -58,7 +59,11 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
             }
         } catch (error) {
             console.error("Chatbot error:", error);
-            const errorMessage: Message = { role: 'ai', content: "Sorry, I encountered an error. Please try again." };
+            const errorMessage: Message = { 
+                role: 'ai', 
+                content: "I'm having trouble analyzing your data. This often happens if the transaction history is too large for a single request, or if the API Key is invalid.", 
+                isError: true 
+            };
             setMessages(prev => [...prev, errorMessage]);
         } finally {
             setIsLoading(false);
@@ -82,9 +87,16 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
             <main className="flex-1 overflow-y-auto p-4 space-y-4">
                 {messages.map((msg, index) => (
                     <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-lg' : 'bg-slate-100 text-slate-800 rounded-bl-lg'}`}>
-                            <div className="prose prose-sm" dangerouslySetInnerHTML={{__html: msg.content.replace(/\n/g, '<br/>')}}/>
-                        </div>
+                        {msg.isError ? (
+                            <div className="max-w-[85%] p-3 rounded-2xl bg-red-50 border border-red-200 text-red-800 text-sm flex gap-2 items-start">
+                                <ExclamationTriangleIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                                <div>{msg.content}</div>
+                            </div>
+                        ) : (
+                            <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-lg' : 'bg-slate-100 text-slate-800 rounded-bl-lg'}`}>
+                                <div className="prose prose-sm" dangerouslySetInnerHTML={{__html: msg.content.replace(/\n/g, '<br/>')}}/>
+                            </div>
+                        )}
                     </div>
                 ))}
                     {isLoading && (
