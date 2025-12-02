@@ -41,6 +41,11 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ label, options, selectedIds, 
         onChange(new Set());
     };
 
+    const handleSelectAll = () => {
+        const allIds = new Set(options.map(o => o.id));
+        onChange(allIds);
+    };
+
     return (
         <div className={`relative ${className}`} ref={containerRef}>
             <button
@@ -58,7 +63,10 @@ const MultiSelect: React.FC<MultiSelectProps> = ({ label, options, selectedIds, 
                 <div className="absolute z-50 w-full min-w-[200px] mt-1 bg-white rounded-lg shadow-lg border border-slate-200 max-h-60 overflow-y-auto">
                     <div className="p-2 border-b border-slate-100 flex justify-between items-center bg-slate-50 sticky top-0">
                         <span className="text-xs font-bold text-slate-500 uppercase">Select Options</span>
-                        <button onClick={handleClear} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">Clear</button>
+                        <div className="flex gap-2">
+                            <button onClick={handleSelectAll} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">All</button>
+                            <button onClick={handleClear} className="text-xs text-slate-500 hover:text-slate-700 font-medium">Clear</button>
+                        </div>
                     </div>
                     <div className="p-1">
                         {options.map(option => (

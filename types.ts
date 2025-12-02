@@ -252,14 +252,28 @@ export interface AuditFinding {
 
 // --- Report Types ---
 
-export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'last3Months' | 'custom' | 'sameMonthLastYear' | 'sameMonth2YearsAgo' | 'lastMonthPriorYear';
+export type DateRangePreset = 
+    | 'thisMonth' 
+    | 'lastMonth' 
+    | 'thisYear' 
+    | 'lastYear' 
+    | 'last3Months' 
+    | 'last6Months'
+    | 'last12Months'
+    | 'custom' 
+    | 'sameMonthLastYear' 
+    | 'sameMonth2YearsAgo' 
+    | 'lastMonthPriorYear'
+    | 'specificMonth' // Static month (e.g. "2023-08")
+    | 'relativeMonth'; // Relative offset (e.g. "3 months ago")
+
 export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account';
 
 export interface ReportConfig {
     id: string;
     name: string;
     datePreset: DateRangePreset;
-    customStartDate?: string;
+    customStartDate?: string; // Used for Custom Start, Specific Month (YYYY-MM), or Relative Offset (string "3")
     customEndDate?: string;
     groupBy?: ReportGroupBy; // Dimension to group by (default: category)
     subGroupBy?: ReportGroupBy; // Secondary dimension to group by (e.g. Account -> Category)

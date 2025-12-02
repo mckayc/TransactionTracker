@@ -79,7 +79,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             id: initialConfig?.id || generateUUID(),
             name: name.trim() || 'New Report',
             datePreset,
-            customStartDate: datePreset === 'custom' ? customStartDate : undefined,
+            // customStartDate is used for Custom Date, Specific Month (YYYY-MM), or Relative Offset (string "N")
+            customStartDate: ['custom', 'specificMonth', 'relativeMonth'].includes(datePreset) ? customStartDate : undefined,
             customEndDate: datePreset === 'custom' ? customEndDate : undefined,
             groupBy,
             subGroupBy: subGroupBy || undefined,
@@ -167,20 +168,63 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                         <label className="block text-sm font-medium text-slate-700 mb-1">Date Range</label>
                         <select 
                             value={datePreset} 
-                            onChange={(e) => setDatePreset(e.target.value as DateRangePreset)}
+                            onChange={(e) => {
+                                const newVal = e.target.value as DateRangePreset;
+                                setDatePreset(newVal);
+                                // Set reasonable defaults for dynamic fields if empty
+                                if (newVal === 'relativeMonth' && !customStartDate) setCustomStartDate('1');
+                                if (newVal === 'specificMonth' && !customStartDate) {
+                                    const now = new Date();
+                                    setCustomStartDate(`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`);
+                                }
+                            }}
                             className="w-full p-2 border rounded-md bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
                         >
                             <option value="thisMonth">This Month</option>
                             <option value="lastMonth">Last Month</option>
-                            <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
-                            <option value="last3Months">Last 90 Days</option>
+                            <option value="relativeMonth">Relative Month (e.g. 3 Months Ago)</option>
+                            <option value="specificMonth">Specific Month (Pick a Month)</option>
+                            <option value="last3Months">Last 3 Months (Rolling)</option>
+                            <option value="last6Months">Last 6 Months (Rolling)</option>
+                            <option value="last12Months">Last 12 Months (Rolling)</option>
                             <option value="thisYear">This Year</option>
                             <option value="lastYear">Last Year</option>
+                            <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
                             <option value="sameMonthLastYear">Same Month Last Year</option>
                             <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
                             <option value="custom">Custom Range</option>
                         </select>
                     </div>
+
+                    {/* Dynamic Date Inputs based on Preset */}
+                    {datePreset === 'relativeMonth' && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Months Ago</label>
+                            <div className="flex items-center gap-2">
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    max="60"
+                                    value={customStartDate} 
+                                    onChange={e => setCustomStartDate(e.target.value)} 
+                                    className="w-20 p-2 border rounded-md" 
+                                />
+                                <span className="text-sm text-slate-600">months ago (Dynamic)</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {datePreset === 'specificMonth' && (
+                        <div>
+                            <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Select Month</label>
+                            <input 
+                                type="month" 
+                                value={customStartDate} 
+                                onChange={e => setCustomStartDate(e.target.value)} 
+                                className="w-full p-2 border rounded-md" 
+                            />
+                        </div>
+                    )}
 
                     {datePreset === 'custom' && (
                         <div className="grid grid-cols-2 gap-4">

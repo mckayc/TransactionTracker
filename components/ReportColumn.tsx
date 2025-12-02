@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, UsersIcon, TagIcon } from './Icons';
@@ -30,6 +29,8 @@ const stringToColor = (str: string) => {
     return `hsl(${hue}, 70%, 45%)`;
 };
 
+const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+
 const getDateRangeFromPreset = (preset: DateRangePreset, customStart?: string, customEnd?: string): { start: Date, end: Date, label: string } => {
     const now = new Date();
     let start = new Date();
@@ -53,6 +54,30 @@ const getDateRangeFromPreset = (preset: DateRangePreset, customStart?: string, c
             end = new Date(now.getFullYear(), now.getMonth(), 0);
             label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
             break;
+        case 'relativeMonth':
+            const offset = parseInt(customStart || '1', 10);
+            start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+            end = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0);
+            label = `${offset} Months Ago (${start.toLocaleString('default', { month: 'long' })})`;
+            if (offset === 1) label = `Last Month (${start.toLocaleString('default', { month: 'long' })})`;
+            break;
+        case 'specificMonth':
+            // Expects YYYY-MM
+            if (customStart) {
+                const parts = customStart.split('-');
+                if (parts.length === 2) {
+                    const year = parseInt(parts[0], 10);
+                    const month = parseInt(parts[1], 10) - 1; // 0-indexed
+                    start = new Date(year, month, 1);
+                    end = new Date(year, month + 1, 0);
+                    label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
+                } else {
+                    label = 'Invalid Date';
+                }
+            } else {
+                label = 'No Month Selected';
+            }
+            break;
         case 'sameMonthLastYear':
             start = new Date(now.getFullYear() - 1, now.getMonth(), 1);
             end = new Date(now.getFullYear() - 1, now.getMonth() + 1, 0);
@@ -74,10 +99,24 @@ const getDateRangeFromPreset = (preset: DateRangePreset, customStart?: string, c
             label = (now.getFullYear() - 1).toString();
             break;
         case 'last3Months':
+            // Rolling 3 full months + current? Or just 90 days?
+            // "Last 3 Months" usually implies relative rolling window
             end = new Date();
             start = new Date();
             start.setDate(now.getDate() - 90);
             label = 'Last 90 Days';
+            break;
+        case 'last6Months':
+            end = new Date();
+            start = new Date();
+            start.setMonth(now.getMonth() - 6);
+            label = 'Last 6 Months';
+            break;
+        case 'last12Months':
+            end = new Date();
+            start = new Date();
+            start.setFullYear(now.getFullYear() - 1);
+            label = 'Last 12 Months';
             break;
         case 'sameMonth2YearsAgo':
             start = new Date(now.getFullYear() - 2, now.getMonth(), 1);
@@ -95,10 +134,12 @@ const getDateRangeFromPreset = (preset: DateRangePreset, customStart?: string, c
 };
 
 const DonutChart: React.FC<{ data: { name: string; value: number; color: string }[] }> = ({ data }) => {
+    const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     const total = data.reduce((acc, item) => acc + item.value, 0);
-    let cumulativePercent = 0;
+    
+    if (total === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
 
-    if (total === 0) return <div className="h-40 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
+    let cumulativePercent = 0;
 
     const getCoordinatesForPercent = (percent: number) => {
         const x = Math.cos(2 * Math.PI * percent);
@@ -106,16 +147,17 @@ const DonutChart: React.FC<{ data: { name: string; value: number; color: string 
         return [x, y];
     };
 
+    const hoveredItem = hoveredIndex !== null ? data[hoveredIndex] : null;
+
     return (
-        <div className="flex justify-center py-4">
-            <svg viewBox="-1 -1 2 2" style={{ transform: 'rotate(-90deg)' }} className="h-40 w-40">
+        <div className="flex justify-center py-6 relative">
+            <svg viewBox="-1.1 -1.1 2.2 2.2" className="h-48 w-48" style={{ transform: 'rotate(-90deg)' }}>
                 {data.map((slice, i) => {
                     const startPercent = cumulativePercent;
                     const slicePercent = slice.value / total;
                     cumulativePercent += slicePercent;
                     const endPercent = cumulativePercent;
 
-                    // Handle full circle case
                     if (slicePercent > 0.999) {
                         return <circle key={i} cx="0" cy="0" r="1" fill={slice.color} />;
                     }
@@ -130,10 +172,47 @@ const DonutChart: React.FC<{ data: { name: string; value: number; color: string 
                         `L 0 0`,
                     ].join(' ');
 
-                    return <path key={i} d={pathData} fill={slice.color} stroke="white" strokeWidth="0.02" />;
+                    const isHovered = hoveredIndex === i;
+                    const isDimmed = hoveredIndex !== null && !isHovered;
+
+                    return (
+                        <path 
+                            key={i} 
+                            d={pathData} 
+                            fill={slice.color} 
+                            stroke="white" 
+                            strokeWidth="0.02"
+                            onMouseEnter={() => setHoveredIndex(i)}
+                            onMouseLeave={() => setHoveredIndex(null)}
+                            className="transition-all duration-300 ease-out cursor-pointer origin-center"
+                            style={{ 
+                                opacity: isDimmed ? 0.5 : 1,
+                                transform: isHovered ? 'scale(1.08)' : 'scale(1)',
+                            }}
+                        />
+                    );
                 })}
-                <circle cx="0" cy="0" r="0.6" fill="white" />
+                <circle cx="0" cy="0" r="0.65" fill="white" pointerEvents="none" />
             </svg>
+            
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
+                <div className="text-center animate-fade-in px-2">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5 truncate max-w-[120px] mx-auto">
+                        {hoveredItem ? hoveredItem.name : 'Total'}
+                    </p>
+                    <p className="text-xl font-bold text-slate-800 tracking-tight">
+                        {hoveredItem 
+                            ? formatCurrency(hoveredItem.value)
+                            : formatCurrency(total)
+                        }
+                    </p>
+                    {hoveredItem && (
+                        <p className="text-xs text-indigo-600 font-semibold bg-indigo-50 inline-block px-1.5 rounded-full mt-1">
+                            {((hoveredItem.value / total) * 100).toFixed(1)}%
+                        </p>
+                    )}
+                </div>
+            </div>
         </div>
     );
 };
@@ -150,26 +229,28 @@ interface AggregationItem {
     transactions?: Transaction[]; 
 }
 
-const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
-
 // --- Recursive Row Component ---
 const ReportRow: React.FC<{ 
     item: AggregationItem; 
     totalVisibleAmount: number; 
     onToggleVisibility: (id: string) => void;
     level?: number;
-}> = ({ item, totalVisibleAmount, onToggleVisibility, level = 0 }) => {
+    parentIsHidden?: boolean;
+}> = ({ item, totalVisibleAmount, onToggleVisibility, level = 0, parentIsHidden = false }) => {
     const [isCollapsed, setIsCollapsed] = useState(true);
     
+    // Effective hidden state (self or ancestor)
+    const isEffectiveHidden = item.isHidden || parentIsHidden;
+
     // Percent of total visible (if hidden, effectively 0 for visualization)
-    const percent = totalVisibleAmount !== 0 && !item.isHidden 
+    const percent = totalVisibleAmount !== 0 && !isEffectiveHidden 
         ? (item.amount / totalVisibleAmount) * 100 
         : 0;
 
     const color = item.type === 'payee' ? stringToColor(item.name) : '#6366f1'; 
 
     return (
-        <div className={`text-sm ${item.isHidden ? 'opacity-50 grayscale' : ''}`}>
+        <div className={`text-sm ${isEffectiveHidden ? 'opacity-50 grayscale' : ''}`}>
             {/* Row Content */}
             <div className={`flex items-center gap-2 p-2 hover:bg-slate-50 rounded-lg group transition-colors ${level > 0 ? 'ml-3 border-l-2 border-slate-100 pl-2' : ''}`}>
                 {item.children.length > 0 ? (
@@ -184,10 +265,12 @@ const ReportRow: React.FC<{
                             {item.type === 'payee' && <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }}></div>}
                             <span className={`font-medium truncate text-xs ${item.type === 'payee' ? 'text-slate-600' : 'text-slate-800'}`} title={item.name}>{item.name}</span>
                         </div>
-                        <span className="font-mono font-bold text-slate-800 text-xs flex-shrink-0">{formatCurrency(item.amount)}</span>
+                        <span className={`font-mono font-bold text-xs flex-shrink-0 ${isEffectiveHidden ? 'text-slate-400 line-through decoration-slate-400 decoration-2' : 'text-slate-800'}`}>
+                            {formatCurrency(item.amount)}
+                        </span>
                     </div>
                     {/* Bar only for top level or significant items */}
-                    {(level === 0 || percent > 5) && !item.isHidden && (
+                    {(level === 0 || percent > 5) && !isEffectiveHidden && (
                         <div className="w-full bg-slate-100 h-1 rounded-full mt-1 overflow-hidden">
                             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${percent}%`, backgroundColor: color }}></div>
                         </div>
@@ -195,7 +278,7 @@ const ReportRow: React.FC<{
                 </div>
 
                 <button 
-                    onClick={() => onToggleVisibility(item.id)}
+                    onClick={(e) => { e.stopPropagation(); onToggleVisibility(item.id); }}
                     className={`text-slate-300 hover:text-slate-500 transition-opacity flex-shrink-0 ${item.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
                     title={item.isHidden ? "Show in calculation" : "Hide from calculation"}
                 >
@@ -213,6 +296,7 @@ const ReportRow: React.FC<{
                             totalVisibleAmount={totalVisibleAmount} 
                             onToggleVisibility={onToggleVisibility} 
                             level={level + 1}
+                            parentIsHidden={isEffectiveHidden}
                         />
                     ))}
                 </div>
@@ -594,15 +678,29 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             <div className="grid grid-cols-2 gap-2">
                                 <select 
                                     value={config.datePreset} 
-                                    onChange={(e) => setConfig({ ...config, datePreset: e.target.value as DateRangePreset })}
+                                    onChange={(e) => {
+                                        const newVal = e.target.value as DateRangePreset;
+                                        setConfig(prev => ({
+                                            ...prev, 
+                                            datePreset: newVal,
+                                            // Initialize dynamic fields if needed
+                                            customStartDate: (newVal === 'relativeMonth' && !prev.customStartDate) ? '1' : 
+                                                             (newVal === 'specificMonth' && !prev.customStartDate) ? new Date().toISOString().slice(0, 7) : 
+                                                             prev.customStartDate
+                                        }));
+                                    }}
                                     className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
                                 >
                                     <option value="thisMonth">This Month</option>
                                     <option value="lastMonth">Last Month</option>
-                                    <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
+                                    <option value="relativeMonth">Relative (N Months Ago)</option>
+                                    <option value="specificMonth">Specific Month</option>
+                                    <option value="last3Months">Last 90 Days</option>
+                                    <option value="last6Months">Last 6 Months</option>
+                                    <option value="last12Months">Last 12 Months</option>
                                     <option value="thisYear">This Year</option>
                                     <option value="lastYear">Last Year</option>
-                                    <option value="last3Months">Last 90 Days</option>
+                                    <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
                                     <option value="sameMonthLastYear">Same Month Last Year</option>
                                     <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
                                     <option value="custom">Custom Range</option>
@@ -632,8 +730,35 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                     <option value="account">Account</option>
                                     <option value="payee">Payee</option>
                                     <option value="type">Transaction Type</option>
+                                    <option value="tag">Tag</option>
                                 </select>
                             </div>
+
+                            {/* Dynamic Inputs */}
+                            {config.datePreset === 'relativeMonth' && (
+                                <div className="flex items-center gap-2">
+                                    <input 
+                                        type="number" 
+                                        min="1" 
+                                        max="60"
+                                        className="text-xs p-1 border rounded w-16" 
+                                        value={config.customStartDate || ''} 
+                                        onChange={e => setConfig({...config, customStartDate: e.target.value})} 
+                                    />
+                                    <span className="text-[10px] text-slate-500">Months Ago</span>
+                                </div>
+                            )}
+
+                            {config.datePreset === 'specificMonth' && (
+                                <div>
+                                    <input 
+                                        type="month" 
+                                        className="text-xs p-1 border rounded w-full" 
+                                        value={config.customStartDate || ''} 
+                                        onChange={e => setConfig({...config, customStartDate: e.target.value})} 
+                                    />
+                                </div>
+                            )}
                             
                             {config.datePreset === 'custom' && (
                                 <div className="flex gap-1">
@@ -691,11 +816,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 <div className="text-center mb-6">
-                    <p className="text-3xl font-bold text-slate-800 tracking-tight">{formatCurrency(activeData.totalVisibleAmount)}</p>
-                    <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mt-1">Total</p>
+                    <DonutChart data={chartData} />
                 </div>
-
-                <DonutChart data={chartData} />
 
                 {/* Sort Bar */}
                 <div className="flex justify-end gap-2 mb-2 text-[10px] uppercase font-bold text-slate-400">

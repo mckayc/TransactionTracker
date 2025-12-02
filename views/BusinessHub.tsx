@@ -1,8 +1,6 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
-import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage } from '../types';
-import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon } from '../components/Icons';
+import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category } from '../types';
+import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon } from '../components/Icons';
 import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -11,6 +9,9 @@ interface BusinessHubProps {
     onUpdateProfile: (profile: BusinessProfile) => void;
     chatSessions: ChatSession[];
     onUpdateChatSessions: (sessions: ChatSession[]) => void;
+    transactions: Transaction[];
+    accounts: Account[];
+    categories: Category[];
 }
 
 const SetupGuideTab: React.FC<{ profile: BusinessProfile; onUpdateProfile: (p: BusinessProfile) => void }> = ({ profile, onUpdateProfile }) => {
@@ -164,7 +165,10 @@ const TaxAdvisorTab: React.FC<{
     profile: BusinessProfile; 
     sessions: ChatSession[]; 
     onUpdateSessions: (s: ChatSession[]) => void;
-}> = ({ profile, sessions, onUpdateSessions }) => {
+    transactions: Transaction[];
+    accounts: Account[];
+    categories: Category[];
+}> = ({ profile, sessions, onUpdateSessions, transactions, accounts, categories }) => {
     
     // Sort sessions by update time (most recent first)
     const sortedSessions = [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -208,6 +212,101 @@ const TaxAdvisorTab: React.FC<{
             const updated = sessions.filter(s => s.id !== sessionId);
             onUpdateSessions(updated);
             if (selectedSessionId === sessionId) setSelectedSessionId(null);
+        }
+    };
+
+    const handleRenameSession = (sessionId: string) => {
+        const newName = prompt("Rename chat session:", sessions.find(s => s.id === sessionId)?.title);
+        if (newName && newName.trim()) {
+            const updated = sessions.map(s => s.id === sessionId ? { ...s, title: newName.trim() } : s);
+            onUpdateSessions(updated);
+        }
+    };
+
+    const handleSyncData = async () => {
+        if (!activeSession) return;
+        
+        // Prepare summary data to inject
+        const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+        const accountMap = new Map(accounts.map(a => [a.id, a.name]));
+        
+        // Calculate totals
+        const income = transactions.reduce((sum, tx) => sum + (tx.typeId.includes('income') ? tx.amount : 0), 0);
+        const expense = transactions.reduce((sum, tx) => sum + (tx.typeId.includes('expense') ? tx.amount : 0), 0);
+        
+        // Recent 100 transactions for context
+        const recentTxs = transactions
+            .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 100)
+            .map(tx => ({
+                date: tx.date,
+                desc: tx.description,
+                amt: tx.amount,
+                cat: categoryMap.get(tx.categoryId) || 'Unknown',
+                acct: accountMap.get(tx.accountId || '') || 'Unknown'
+            }));
+
+        const dataPackage = {
+            summary: {
+                totalIncome: income,
+                totalExpense: expense,
+                netIncome: income - expense,
+                accountCount: accounts.length,
+                transactionCount: transactions.length
+            },
+            recentTransactions: recentTxs
+        };
+
+        const syncMessage = `
+**System Data Sync:**
+I am sharing my current financial data with you for analysis.
+- Total Income: $${income.toFixed(2)}
+- Total Expense: $${expense.toFixed(2)}
+- Accounts: ${accounts.map(a => a.name).join(', ')}
+
+Please use the provided JSON context of my last 100 transactions to answer my next questions.
+\`\`\`json
+${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
+\`\`\`
+        `;
+
+        const userMsg: ChatMessage = {
+            id: generateUUID(),
+            role: 'user',
+            content: syncMessage,
+            timestamp: new Date().toISOString()
+        };
+
+        const updatedSession = { 
+            ...activeSession, 
+            messages: [...activeSession.messages, userMsg],
+            updatedAt: new Date().toISOString()
+        };
+        
+        const otherSessions = sessions.filter(s => s.id !== activeSession.id);
+        onUpdateSessions([...otherSessions, updatedSession]);
+        
+        // Trigger AI response acknowledging receipt
+        setIsLoading(true);
+        try {
+             // We send a hidden system prompt or just let the AI respond to the data dump
+             const stream = await streamTaxAdvice(updatedSession.messages, profile);
+             let fullContent = '';
+             const aiMsgId = generateUUID();
+             const aiMsgPlaceholder: ChatMessage = { id: aiMsgId, role: 'ai', content: '', timestamp: new Date().toISOString() };
+             const sessionWithAi = { ...updatedSession, messages: [...updatedSession.messages, aiMsgPlaceholder] };
+             onUpdateSessions([...otherSessions, sessionWithAi]);
+
+             for await (const chunk of stream) {
+                fullContent += chunk.text;
+                const msgs = [...sessionWithAi.messages];
+                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullContent };
+                onUpdateSessions([...otherSessions, { ...sessionWithAi, messages: msgs }]);
+             }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -337,13 +436,25 @@ const TaxAdvisorTab: React.FC<{
                             </p>
                         </div>
                     </div>
-                    {/* Only show 'New Chat' button if we have history but no active session, or to switch */}
-                    <button 
-                        onClick={handleCreateSession}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 shadow-sm"
-                    >
-                        <AddIcon className="w-4 h-4"/> New Chat
-                    </button>
+                    <div className="flex gap-2">
+                        {activeSession && (
+                            <button 
+                                onClick={handleSyncData}
+                                disabled={isLoading}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-100 shadow-sm transition-colors"
+                                title="Send current financial data to AI context"
+                            >
+                                <CloudArrowUpIcon className="w-4 h-4" /> Sync Data
+                            </button>
+                        )}
+                        {/* Only show 'New Chat' button if we have history but no active session, or to switch */}
+                        <button 
+                            onClick={handleCreateSession}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 shadow-sm"
+                        >
+                            <AddIcon className="w-4 h-4"/> New Chat
+                        </button>
+                    </div>
                 </div>
 
                 {/* Main Content Area */}
@@ -361,16 +472,26 @@ const TaxAdvisorTab: React.FC<{
                                         onClick={() => setSelectedSessionId(session.id)}
                                         className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer text-sm mb-1 ${selectedSessionId === session.id ? 'bg-white shadow-sm text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-100'}`}
                                     >
-                                        <div className="flex items-center gap-2 truncate">
+                                        <div className="flex items-center gap-2 truncate flex-grow">
                                             <ChatBubbleIcon className="w-4 h-4 flex-shrink-0 opacity-50" />
                                             <span className="truncate">{session.title}</span>
                                         </div>
-                                        <button 
-                                            onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}
-                                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500"
-                                        >
-                                            <DeleteIcon className="w-3 h-3" />
-                                        </button>
+                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleRenameSession(session.id); }}
+                                                className="p-1 text-slate-400 hover:text-indigo-600"
+                                                title="Rename"
+                                            >
+                                                <EditIcon className="w-3 h-3" />
+                                            </button>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}
+                                                className="p-1 text-slate-400 hover:text-red-500"
+                                                title="Delete"
+                                            >
+                                                <DeleteIcon className="w-3 h-3" />
+                                            </button>
+                                        </div>
                                     </div>
                                 ))
                             )}
@@ -542,7 +663,7 @@ const CalendarTab: React.FC<{ profile: BusinessProfile }> = ({ profile }) => {
 }
 
 
-const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, chatSessions, onUpdateChatSessions }) => {
+const BusinessHub: React.FC<BusinessHubProps & { transactions: Transaction[], accounts: Account[], categories: Category[] }> = ({ profile, onUpdateProfile, chatSessions, onUpdateChatSessions, transactions, accounts, categories }) => {
     const [activeTab, setActiveTab] = useState<'guide' | 'calendar' | 'advisor'>('guide');
 
     return (
@@ -575,7 +696,16 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, cha
 
             <div className="min-h-[400px]">
                 {activeTab === 'guide' && <SetupGuideTab profile={profile} onUpdateProfile={onUpdateProfile} />}
-                {activeTab === 'advisor' && <TaxAdvisorTab profile={profile} sessions={chatSessions} onUpdateSessions={onUpdateChatSessions} />}
+                {activeTab === 'advisor' && (
+                    <TaxAdvisorTab 
+                        profile={profile} 
+                        sessions={chatSessions} 
+                        onUpdateSessions={onUpdateChatSessions} 
+                        transactions={transactions}
+                        accounts={accounts}
+                        categories={categories}
+                    />
+                )}
                 {activeTab === 'calendar' && <CalendarTab profile={profile} />}
             </div>
         </div>

@@ -1,5 +1,3 @@
-
-
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession } from './types';
@@ -714,7 +712,16 @@ const App: React.FC = () => {
       case 'tasks':
         return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
       case 'hub':
-        return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} chatSessions={chatSessions} onUpdateChatSessions={setChatSessions} />;
+        // Passed additional financial data for AI context syncing
+        return <BusinessHub 
+            profile={businessProfile} 
+            onUpdateProfile={setBusinessProfile} 
+            chatSessions={chatSessions} 
+            onUpdateChatSessions={setChatSessions}
+            transactions={transactions}
+            accounts={accounts}
+            categories={categories}
+        />;
       case 'documents':
         return <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
       default:
