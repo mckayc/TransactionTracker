@@ -13,10 +13,13 @@
     "@google/genai": "latest",
     "better-sqlite3": "^9.4.3",
     "express": "^4.19.2",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@types/html2canvas": "^1.4.1",
     "@types/node": "^20.0.0",
     "@types/react": "^18.2.66",
     "@types/react-dom": "^18.2.22",
