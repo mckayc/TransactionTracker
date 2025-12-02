@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange } from '../types';
 import ReportColumn from '../components/ReportColumn';
@@ -40,35 +39,38 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
     };
 
     const handleSaveReport = (config: ReportConfig) => {
-        // Check if updating existing
+        // Check if updating existing by ID match
         const existingIndex = savedReports.findIndex(r => r.id === config.id);
+        
         if (existingIndex >= 0) {
             if (confirm(`Overwrite existing report "${config.name}"?`)) {
                 const updated = [...savedReports];
                 updated[existingIndex] = { ...updated[existingIndex], name: config.name, config };
                 setSavedReports(updated);
             } else {
-                // Save as new
-                const newReport: SavedReport = {
-                    id: generateUUID(),
-                    name: config.name,
-                    config: { ...config, id: generateUUID() }
-                };
-                setSavedReports(prev => [...prev, newReport]);
+                // Save as copy with new ID if user declines overwrite? 
+                // Usually Cancel means cancel, but here we can force a new ID for "Save As New" behavior if we added UI for it.
+                // For now, we assume user wants to save this specific config state.
             }
         } else {
+            // Check if name exists but ID is different (rare case of manual dupes)
+            const nameMatch = savedReports.find(r => r.name === config.name);
+            if (nameMatch && !confirm(`A report named "${config.name}" already exists. Create a duplicate?`)) {
+                return;
+            }
+
             const newReport: SavedReport = {
-                id: generateUUID(),
+                id: config.id, // CRITICAL: Use the config ID as the SavedReport ID to enable future overwrites
                 name: config.name,
                 config
             };
             setSavedReports(prev => [...prev, newReport]);
         }
-        alert("Report saved successfully!");
+        // alert("Report saved successfully!"); // Removed alert for smoother flow
     };
 
     const handleLoadReport = (saved: SavedReport) => {
-        // Clone config to allow independent modification
+        // Clone config to allow independent modification, but keep ID to link back to saved report
         const config: ReportConfig = { ...saved.config, id: saved.id, name: saved.name }; 
         setActiveReports(prev => [...prev, config]);
         setIsSavedReportsOpen(false);
@@ -83,6 +85,23 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
     const openCreateModal = () => {
         setEditingConfig(undefined);
         setIsConfigModalOpen(true);
+    };
+
+    // Date Range Handlers (Lifted for reuse in ReportColumn)
+    const handleSaveDateRange = (range: CustomDateRange) => {
+        setSavedDateRanges(prev => {
+            const existing = prev.findIndex(r => r.id === range.id);
+            if (existing >= 0) {
+                const updated = [...prev];
+                updated[existing] = range;
+                return updated;
+            }
+            return [...prev, range];
+        });
+    };
+
+    const handleDeleteDateRange = (id: string) => {
+        setSavedDateRanges(prev => prev.filter(r => r.id !== id));
     };
 
     return (
@@ -160,6 +179,8 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                     payees={payees}
                                     onSaveReport={handleSaveReport}
                                     savedDateRanges={savedDateRanges}
+                                    onSaveDateRange={handleSaveDateRange}
+                                    onDeleteDateRange={handleDeleteDateRange}
                                 />
                             </div>
                         ))}
@@ -190,18 +211,8 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                 tags={tags}
                 payees={payees}
                 savedDateRanges={savedDateRanges}
-                onSaveDateRange={(range) => {
-                    setSavedDateRanges(prev => {
-                        const existing = prev.findIndex(r => r.id === range.id);
-                        if (existing >= 0) {
-                            const updated = [...prev];
-                            updated[existing] = range;
-                            return updated;
-                        }
-                        return [...prev, range];
-                    });
-                }}
-                onDeleteDateRange={(id) => setSavedDateRanges(prev => prev.filter(r => r.id !== id))}
+                onSaveDateRange={handleSaveDateRange}
+                onDeleteDateRange={handleDeleteDateRange}
             />
 
             {isSavedReportsOpen && (

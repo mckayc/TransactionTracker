@@ -1,11 +1,11 @@
 
-
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit } from '../types';
-import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon } from './Icons';
+import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
 import TransactionTable from './TransactionTable';
+import ReportConfigModal from './ReportConfigModal';
 
 interface ReportColumnProps {
     config: ReportConfig;
@@ -18,6 +18,8 @@ interface ReportColumnProps {
     payees: Payee[];
     onSaveReport: (config: ReportConfig) => void;
     savedDateRanges: CustomDateRange[];
+    onSaveDateRange: (range: CustomDateRange) => void;
+    onDeleteDateRange: (id: string) => void;
 }
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
@@ -376,12 +378,15 @@ const ReportRow: React.FC<{
 };
 
 
-const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, savedDateRanges }) => {
+const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, savedDateRanges, onSaveDateRange, onDeleteDateRange }) => {
     
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
     const [showFilters, setShowFilters] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
+    
+    // Modal State
+    const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
     
     // Inspection State
     const [inspectingItems, setInspectingItems] = useState<Transaction[] | null>(null);
@@ -581,18 +586,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
         // --- 4. Recursive Visibility Calculation ---
         // Calculate visibleAmount bottom-up. 
-        // Parent visibleAmount = (Parent Hidden ? 0 : Own Direct Amount) + Sum(Child visibleAmount)
-        // Note: For 'Category'/'Payee' trees, usually all txs are on leaves (subcategories), so Parent Own Amount is 0.
-        // But if grouping by something else, parent might have own transactions.
-        // Since we aggregated ALL transactions into `item.amount` earlier including children, we need to be careful.
-        // We stored `item.transactions` which are ALL txs (including children) in the tree logic above. 
-        // Wait, the tree logic: `parent.transactions = parent.transactions.concat(item.transactions)`.
-        // This means `parent.transactions` includes everything.
-        
-        // Let's rely on `item.children` to distinguish.
-        // If a node has children, its `amount` variable as calculated above includes children.
-        // But to calculate `visibleAmount` correctly recursively, we need to know the node's *direct* amount.
-        // Direct Amount = Total Amount - Sum(Children Total Amounts).
         
         const calculateVisibility = (node: AggregationItem): number => {
             const childrenTotal = node.children.reduce((sum, c) => sum + c.amount, 0);
@@ -695,6 +688,11 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         onSaveReport(config);
     };
 
+    const handleConfigUpdate = (newConfig: ReportConfig) => {
+        setConfig(newConfig);
+        setIsConfigModalOpen(false);
+    };
+
     const toggleEffect = (effect: BalanceEffect) => {
         setConfig(prev => {
             const current = new Set<BalanceEffect>(prev.filters.balanceEffects || (['expense'] as BalanceEffect[]));
@@ -753,7 +751,16 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             {config.subGroupBy ? ` → ${config.subGroupBy.charAt(0).toUpperCase() + config.subGroupBy.slice(1)}` : ''}
                         </p>
                     </div>
-                    <button onClick={handleSave} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-indigo-700 font-medium">Save</button>
+                    <div className="flex gap-1">
+                        <button 
+                            onClick={() => setIsConfigModalOpen(true)}
+                            className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-200 transition-colors"
+                            title="Configure Report Settings"
+                        >
+                            <SettingsIcon className="w-4 h-4" />
+                        </button>
+                        <button onClick={handleSave} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-indigo-700 font-medium">Save</button>
+                    </div>
                 </div>
                 
                 <div className="flex flex-col gap-2">
@@ -779,6 +786,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
                     {showFilters && (
                         <div className="space-y-2 pt-2 animate-slide-down border-t border-slate-200 mt-2">
+                            {/* Shortened filter list for inline use */}
                             <div className="grid grid-cols-2 gap-2">
                                 <select 
                                     value={config.datePreset} 
@@ -792,16 +800,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                     }}
                                     className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
                                 >
-                                    <optgroup label="Standard Ranges">
-                                        <option value="thisMonth">This Month</option>
-                                        <option value="lastMonth">Last Month</option>
-                                        <option value="thisYear">This Year</option>
-                                        <option value="lastYear">Last Year</option>
-                                    </optgroup>
-                                    <optgroup label="Custom Options">
-                                        <option value="specificMonth">Specific Month</option>
-                                        <option value="custom">Date Range</option>
-                                    </optgroup>
+                                    <option value="thisMonth">This Month</option>
+                                    <option value="lastMonth">Last Month</option>
+                                    <option value="thisYear">This Year</option>
+                                    <option value="lastYear">Last Year</option>
                                     {savedDateRanges.length > 0 && (
                                         <optgroup label="My Custom Ranges">
                                             {savedDateRanges.map(r => (
@@ -823,53 +825,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 </select>
                             </div>
                             
-                            <div>
-                                <label className="block text-[10px] font-medium text-slate-500 uppercase mb-1">Sub-Group By</label>
-                                <select 
-                                    value={config.subGroupBy || ''} 
-                                    onChange={(e) => setConfig({ ...config, subGroupBy: e.target.value as any })}
-                                    className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
-                                >
-                                    <option value="">-- None --</option>
-                                    <option value="category">Category</option>
-                                    <option value="account">Account</option>
-                                    <option value="payee">Payee</option>
-                                    <option value="type">Transaction Type</option>
-                                    <option value="tag">Tag</option>
-                                </select>
-                            </div>
-
-                            {config.datePreset === 'specificMonth' && (
-                                <div>
-                                    <input 
-                                        type="month" 
-                                        className="text-xs p-1 border rounded w-full" 
-                                        value={config.customStartDate || ''} 
-                                        onChange={e => setConfig({...config, customStartDate: e.target.value})} 
-                                    />
-                                </div>
-                            )}
-                            
-                            {config.datePreset === 'custom' && (
-                                <div className="flex gap-1">
-                                    <input type="date" className="text-xs p-1 border rounded w-1/2" value={config.customStartDate || ''} onChange={e => setConfig({...config, customStartDate: e.target.value})} />
-                                    <input type="date" className="text-xs p-1 border rounded w-1/2" value={config.customEndDate || ''} onChange={e => setConfig({...config, customEndDate: e.target.value})} />
-                                </div>
-                            )}
-                            <MultiSelect 
-                                label="Accounts" 
-                                options={accounts} 
-                                selectedIds={new Set(config.filters.accountIds)} 
-                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, accountIds: Array.from(ids) }})}
-                                className="text-xs"
-                            />
-                            <MultiSelect 
-                                label="Users" 
-                                options={users} 
-                                selectedIds={new Set(config.filters.userIds)} 
-                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, userIds: Array.from(ids) }})}
-                                className="text-xs"
-                            />
                             <MultiSelect 
                                 label="Categories" 
                                 options={categories} 
@@ -877,27 +832,13 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 onChange={(ids) => setConfig({...config, filters: { ...config.filters, categoryIds: Array.from(ids) }})}
                                 className="text-xs"
                             />
-                            <MultiSelect 
-                                label="Types" 
-                                options={transactionTypes} 
-                                selectedIds={new Set(config.filters.typeIds)} 
-                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, typeIds: Array.from(ids) }})}
-                                className="text-xs"
-                            />
-                            <MultiSelect 
-                                label="Tags" 
-                                options={tags} 
-                                selectedIds={new Set(config.filters.tagIds)} 
-                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, tagIds: Array.from(ids) }})}
-                                className="text-xs"
-                            />
-                            <MultiSelect 
-                                label="Payees" 
-                                options={payees} 
-                                selectedIds={new Set(config.filters.payeeIds)} 
-                                onChange={(ids) => setConfig({...config, filters: { ...config.filters, payeeIds: Array.from(ids) }})}
-                                className="text-xs"
-                            />
+                            
+                            <button 
+                                onClick={() => setIsConfigModalOpen(true)}
+                                className="w-full text-center text-xs text-indigo-600 hover:underline pt-1"
+                            >
+                                Advanced Filters & Settings...
+                            </button>
                         </div>
                     )}
                 </div>
@@ -956,6 +897,23 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     </div>
                 </div>
             )}
+
+            {/* Config Modal */}
+            <ReportConfigModal
+                isOpen={isConfigModalOpen}
+                onClose={() => setIsConfigModalOpen(false)}
+                onSave={handleConfigUpdate}
+                initialConfig={config}
+                accounts={accounts}
+                categories={categories}
+                users={users}
+                transactionTypes={transactionTypes}
+                tags={tags}
+                payees={payees}
+                savedDateRanges={savedDateRanges}
+                onSaveDateRange={onSaveDateRange}
+                onDeleteDateRange={onDeleteDateRange}
+            />
         </div>
     );
 };
