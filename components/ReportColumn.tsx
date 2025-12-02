@@ -816,7 +816,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 const chartCanvas = await html2canvas(chartContainerRef.current, {
                     backgroundColor: '#ffffff',
                     scale: 2
-                });
+                } as any); // Cast to any to avoid TS error about backgroundColor
                 chartImgData = chartCanvas.toDataURL('image/png');
             } catch (e) {
                 console.warn("Failed to capture chart for PDF", e);
