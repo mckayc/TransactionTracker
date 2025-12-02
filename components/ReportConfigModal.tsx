@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect } from 'react';
 import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset } from '../types';
 import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon } from './Icons';
@@ -88,6 +87,10 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     if (!isOpen) return null;
 
     const handleSave = () => {
+        // Smart Filter Logic: If the user selects ALL options in a list, 
+        // we treat it as "No Filter" (undefined). 
+        // This ensures items with null/undefined values (like "No Payee") are included.
+        
         const config: ReportConfig = {
             id: initialConfig?.id || generateUUID(),
             name: name.trim() || 'New Report',
@@ -98,13 +101,13 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             groupBy,
             subGroupBy: subGroupBy || undefined,
             filters: {
-                accountIds: selectedAccounts.size > 0 ? Array.from(selectedAccounts) : undefined,
-                userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : undefined,
-                categoryIds: selectedCategories.size > 0 ? Array.from(selectedCategories) : undefined,
-                typeIds: selectedTypes.size > 0 ? Array.from(selectedTypes) : undefined,
+                accountIds: (selectedAccounts.size > 0 && selectedAccounts.size < accounts.length) ? Array.from(selectedAccounts) : undefined,
+                userIds: (selectedUsers.size > 0 && selectedUsers.size < users.length) ? Array.from(selectedUsers) : undefined,
+                categoryIds: (selectedCategories.size > 0 && selectedCategories.size < categories.length) ? Array.from(selectedCategories) : undefined,
+                typeIds: (selectedTypes.size > 0 && selectedTypes.size < transactionTypes.length) ? Array.from(selectedTypes) : undefined,
                 balanceEffects: Array.from(selectedEffects),
-                tagIds: selectedTags.size > 0 ? Array.from(selectedTags) : undefined,
-                payeeIds: selectedPayees.size > 0 ? Array.from(selectedPayees) : undefined,
+                tagIds: (selectedTags.size > 0 && selectedTags.size < tags.length) ? Array.from(selectedTags) : undefined,
+                payeeIds: (selectedPayees.size > 0 && selectedPayees.size < payees.length) ? Array.from(selectedPayees) : undefined,
             },
             hiddenCategoryIds: initialConfig?.hiddenCategoryIds || [],
             hiddenIds: initialConfig?.hiddenIds || []

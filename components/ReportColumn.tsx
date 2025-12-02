@@ -1,11 +1,13 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit } from '../types';
-import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon } from './Icons';
+import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, DownloadIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
 import TransactionTable from './TransactionTable';
 import ReportConfigModal from './ReportConfigModal';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 interface ReportColumnProps {
     config: ReportConfig;
@@ -195,11 +197,42 @@ const calculateDateRange = (preset: DateRangePreset, customStart: string | undef
     return { start: resetTime(start), end: resetTime(end, true), label };
 };
 
-const DonutChart: React.FC<{ data: { name: string; value: number; color: string }[] }> = ({ data }) => {
+// Replaced chartData prop with items directly to support child inspection
+const DonutChart: React.FC<{ items: AggregationItem[] }> = ({ items }) => {
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
-    const total = data.reduce((acc, item) => acc + item.value, 0);
     
-    if (total === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
+    // Process items for chart: filter visible, take top 8, aggregate others
+    const totalVisible = items.reduce((acc, item) => acc + item.visibleAmount, 0);
+    
+    // Sort logic is handled by parent, but ensure we filter zero amounts
+    const chartData = useMemo(() => {
+        const visibleItems = items.filter(i => i.visibleAmount > 0);
+        
+        // Take top 8
+        const topItems = visibleItems.slice(0, 8).map((item, i) => ({
+            ...item,
+            color: COLORS[i % COLORS.length]
+        }));
+        
+        // Sum the rest as 'Other'
+        const otherAmount = visibleItems.slice(8).reduce((sum, item) => sum + item.visibleAmount, 0);
+        
+        if (otherAmount > 0) {
+            topItems.push({
+                id: 'other',
+                name: 'Other',
+                visibleAmount: otherAmount,
+                amount: otherAmount,
+                children: [],
+                isHidden: false,
+                type: 'group',
+                color: '#cbd5e1'
+            });
+        }
+        return topItems;
+    }, [items]);
+
+    if (totalVisible === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
 
     let cumulativePercent = 0;
 
@@ -209,15 +242,25 @@ const DonutChart: React.FC<{ data: { name: string; value: number; color: string 
         return [x, y];
     };
 
-    const hoveredItem = hoveredIndex !== null ? data[hoveredIndex] : null;
+    const hoveredItem = hoveredIndex !== null ? chartData[hoveredIndex] : null;
+    
+    // Determine children to show in center
+    const breakdown = useMemo(() => {
+        if (!hoveredItem || hoveredItem.children.length === 0) return [];
+        // Sort children by visibleAmount descending
+        return [...hoveredItem.children]
+            .filter(c => c.visibleAmount > 0)
+            .sort((a,b) => b.visibleAmount - a.visibleAmount)
+            .slice(0, 3);
+    }, [hoveredItem]);
 
     return (
         <div className="flex justify-center py-6 relative">
             {/* ViewBox enlarged to prevent cutoff on scale transform */}
             <svg viewBox="-1.25 -1.25 2.5 2.5" className="h-48 w-48" style={{ transform: 'rotate(-90deg)' }}>
-                {data.map((slice, i) => {
+                {chartData.map((slice, i) => {
                     const startPercent = cumulativePercent;
-                    const slicePercent = slice.value / total;
+                    const slicePercent = slice.visibleAmount / totalVisible;
                     cumulativePercent += slicePercent;
                     const endPercent = cumulativePercent;
 
@@ -259,20 +302,33 @@ const DonutChart: React.FC<{ data: { name: string; value: number; color: string 
             </svg>
             
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col">
-                <div className="text-center animate-fade-in px-2">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5 truncate max-w-[120px] mx-auto">
+                <div className="text-center animate-fade-in px-2 w-32">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5 truncate mx-auto">
                         {hoveredItem ? hoveredItem.name : 'Total'}
                     </p>
-                    <p className="text-xl font-bold text-slate-800 tracking-tight">
+                    <p className="text-xl font-bold text-slate-800 tracking-tight leading-none mb-1">
                         {hoveredItem 
-                            ? formatCurrency(hoveredItem.value)
-                            : formatCurrency(total)
+                            ? formatCurrency(hoveredItem.visibleAmount)
+                            : formatCurrency(totalVisible)
                         }
                     </p>
-                    {hoveredItem && (
-                        <p className="text-xs text-indigo-600 font-semibold bg-indigo-50 inline-block px-1.5 rounded-full mt-1">
-                            {((hoveredItem.value / total) * 100).toFixed(1)}%
-                        </p>
+                    
+                    {/* Hover Breakdown Logic */}
+                    {hoveredItem && breakdown.length > 0 ? (
+                        <div className="mt-1 border-t border-slate-100 pt-1">
+                            {breakdown.map((child, idx) => (
+                                <div key={idx} className="flex justify-between text-[9px] w-full gap-2">
+                                    <span className="truncate text-slate-500 max-w-[60px]">{child.name}</span>
+                                    <span className="font-medium text-slate-700">{formatCurrency(child.visibleAmount)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        hoveredItem && (
+                            <p className="text-xs text-indigo-600 font-semibold bg-indigo-50 inline-block px-1.5 rounded-full">
+                                {((hoveredItem.visibleAmount / totalVisible) * 100).toFixed(1)}%
+                            </p>
+                        )
                     )}
                 </div>
             </div>
@@ -291,6 +347,7 @@ interface AggregationItem {
     isHidden: boolean;
     type: 'group' | 'payee'; 
     transactions?: Transaction[]; 
+    color?: string; // added for chart data compatibility
 }
 
 // --- Recursive Row Component ---
@@ -391,6 +448,22 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     // Inspection State
     const [inspectingItems, setInspectingItems] = useState<Transaction[] | null>(null);
     const [inspectingTitle, setInspectingTitle] = useState('');
+
+    // Export Menu
+    const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    const reportRef = useRef<HTMLDivElement>(null);
+    const exportMenuRef = useRef<HTMLDivElement>(null);
+
+    // Close export menu when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (exportMenuRef.current && !exportMenuRef.current.contains(event.target as Node)) {
+                setIsExportMenuOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const dateRange = useMemo(() => 
         calculateDateRange(config.datePreset, config.customStartDate, config.customEndDate, savedDateRanges), 
@@ -702,28 +775,43 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         });
     };
 
-    // Prepare Chart Data (Top 8 Visible)
-    const chartData = activeData.rootItems
-        .filter(i => i.visibleAmount > 0) 
-        .slice(0, 8)
-        .map((cat, i) => ({
-            name: cat.name,
-            value: cat.visibleAmount,
-            color: COLORS[i % COLORS.length]
-        }));
-    
-    // Add "Other"
-    const otherAmount = activeData.rootItems
-        .filter(i => i.visibleAmount > 0)
-        .slice(8)
-        .reduce((sum, cat) => sum + cat.visibleAmount, 0);
-    
-    if (otherAmount > 0) {
-        chartData.push({ name: 'Other', value: otherAmount, color: '#cbd5e1' });
-    }
+    const handleExport = async (type: 'png' | 'pdf') => {
+        if (!reportRef.current) return;
+        
+        setIsExportMenuOpen(false);
+        
+        try {
+            // Capture canvas
+            const canvas = await html2canvas(reportRef.current, {
+                backgroundColor: '#ffffff',
+                scale: 2 // Higher resolution
+            });
+            const imgData = canvas.toDataURL('image/png');
+            
+            if (type === 'png') {
+                const link = document.createElement('a');
+                link.download = `${config.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.png`;
+                link.href = imgData;
+                link.click();
+            } else {
+                // PDF Logic
+                const pdf = new jsPDF({
+                    orientation: canvas.width > canvas.height ? 'l' : 'p',
+                    unit: 'px',
+                    format: [canvas.width, canvas.height] // Match page size to image size for clean "screenshot" pdf
+                });
+                
+                pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+                pdf.save(`${config.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.pdf`);
+            }
+        } catch (error) {
+            console.error("Export failed:", error);
+            alert("Failed to export report.");
+        }
+    };
 
     return (
-        <div className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-full overflow-hidden min-w-[320px] relative">
+        <div ref={reportRef} className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-full overflow-hidden min-w-[320px] relative">
             {/* Header */}
             <div className="p-4 border-b border-slate-100 bg-slate-50">
                 <div className="flex justify-between items-start mb-3">
@@ -751,7 +839,32 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             {config.subGroupBy ? ` → ${config.subGroupBy.charAt(0).toUpperCase() + config.subGroupBy.slice(1)}` : ''}
                         </p>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 items-center relative">
+                        <div className="relative" ref={exportMenuRef}>
+                            <button 
+                                onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                                className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-200 transition-colors"
+                                title="Export Report"
+                            >
+                                <DownloadIcon className="w-4 h-4" />
+                            </button>
+                            {isExportMenuOpen && (
+                                <div className="absolute right-0 top-full mt-2 w-40 bg-white rounded-lg shadow-lg border border-slate-200 z-50 overflow-hidden">
+                                    <button 
+                                        onClick={() => handleExport('png')}
+                                        className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600"
+                                    >
+                                        Download PNG
+                                    </button>
+                                    <button 
+                                        onClick={() => handleExport('pdf')}
+                                        className="w-full text-left px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 hover:text-indigo-600 border-t border-slate-100"
+                                    >
+                                        Download PDF
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                         <button 
                             onClick={() => setIsConfigModalOpen(true)}
                             className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-200 transition-colors"
@@ -759,7 +872,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         >
                             <SettingsIcon className="w-4 h-4" />
                         </button>
-                        <button onClick={handleSave} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-indigo-700 font-medium">Save</button>
+                        <button onClick={handleSave} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg shadow-sm hover:bg-indigo-700 font-medium ml-1">Save</button>
                     </div>
                 </div>
                 
@@ -847,7 +960,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 <div className="text-center mb-6">
-                    <DonutChart data={chartData} />
+                    {/* Pass the full items hierarchy to DonutChart */}
+                    <DonutChart items={activeData.rootItems} />
                 </div>
 
                 {/* Sort Bar */}
