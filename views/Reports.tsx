@@ -1,7 +1,7 @@
 
 
 import React, { useState } from 'react';
-import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account } from '../types';
+import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange } from '../types';
 import ReportColumn from '../components/ReportColumn';
 import ReportConfigModal from '../components/ReportConfigModal';
 import { AddIcon, DeleteIcon, EditIcon, ChartPieIcon, CloseIcon } from '../components/Icons';
@@ -17,9 +17,11 @@ interface ReportsProps {
   accounts: Account[];
   savedReports: SavedReport[];
   setSavedReports: React.Dispatch<React.SetStateAction<SavedReport[]>>;
+  savedDateRanges: CustomDateRange[];
+  setSavedDateRanges: React.Dispatch<React.SetStateAction<CustomDateRange[]>>;
 }
 
-const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users, tags, accounts, savedReports, setSavedReports }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users, tags, accounts, savedReports, setSavedReports, savedDateRanges, setSavedDateRanges }) => {
     
     // Active columns in the workspace
     const [activeReports, setActiveReports] = useState<ReportConfig[]>([]);
@@ -31,8 +33,6 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
 
     const handleCreateReport = (config: ReportConfig) => {
         setActiveReports(prev => [...prev, config]);
-        // Also verify if we need to update a saved report? 
-        // No, creating a report in workspace is temporary unless saved.
     };
 
     const handleCloseColumn = (index: number) => {
@@ -159,6 +159,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                     tags={tags}
                                     payees={payees}
                                     onSaveReport={handleSaveReport}
+                                    savedDateRanges={savedDateRanges}
                                 />
                             </div>
                         ))}
@@ -188,6 +189,19 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                 transactionTypes={transactionTypes}
                 tags={tags}
                 payees={payees}
+                savedDateRanges={savedDateRanges}
+                onSaveDateRange={(range) => {
+                    setSavedDateRanges(prev => {
+                        const existing = prev.findIndex(r => r.id === range.id);
+                        if (existing >= 0) {
+                            const updated = [...prev];
+                            updated[existing] = range;
+                            return updated;
+                        }
+                        return [...prev, range];
+                    });
+                }}
+                onDeleteDateRange={(id) => setSavedDateRanges(prev => prev.filter(r => r.id !== id))}
             />
 
             {isSavedReportsOpen && (
@@ -206,7 +220,8 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                         <div>
                                             <h3 className="font-bold text-slate-700">{report.name}</h3>
                                             <p className="text-xs text-slate-500">
-                                                {report.config.datePreset === 'custom' ? 'Custom Range' : report.config.datePreset}
+                                                {savedDateRanges.find(r => r.id === report.config.datePreset)?.name || 
+                                                 (report.config.datePreset === 'custom' ? 'Custom Range' : report.config.datePreset)}
                                             </p>
                                         </div>
                                         <div className="flex gap-2">

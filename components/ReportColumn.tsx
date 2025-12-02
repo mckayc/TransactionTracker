@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy } from '../types';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
@@ -16,6 +16,7 @@ interface ReportColumnProps {
     tags: Tag[];
     payees: Payee[];
     onSaveReport: (config: ReportConfig) => void;
+    savedDateRanges: CustomDateRange[];
 }
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
@@ -32,7 +33,7 @@ const stringToColor = (str: string) => {
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 
-const getDateRangeFromPreset = (preset: DateRangePreset, customStart?: string, customEnd?: string): { start: Date, end: Date, label: string } => {
+const calculateDateRange = (preset: DateRangePreset, customStart: string | undefined, customEnd: string | undefined, savedRanges: CustomDateRange[]): { start: Date, end: Date, label: string } => {
     const now = new Date();
     let start = new Date();
     let end = new Date();
@@ -44,91 +45,133 @@ const getDateRangeFromPreset = (preset: DateRangePreset, customStart?: string, c
         return d;
     };
 
-    switch (preset) {
-        case 'thisMonth':
-            start = new Date(now.getFullYear(), now.getMonth(), 1);
-            end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-            label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
-            break;
-        case 'lastMonth':
-            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            end = new Date(now.getFullYear(), now.getMonth(), 0);
-            label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
-            break;
-        case 'relativeMonth':
-            const offset = parseInt(customStart || '1', 10);
-            start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
-            end = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0);
-            label = `${offset} Months Ago (${start.toLocaleString('default', { month: 'long' })})`;
-            if (offset === 1) label = `Last Month (${start.toLocaleString('default', { month: 'long' })})`;
-            break;
-        case 'specificMonth':
-            // Expects YYYY-MM
-            if (customStart) {
-                const parts = customStart.split('-');
-                if (parts.length === 2) {
-                    const year = parseInt(parts[0], 10);
-                    const month = parseInt(parts[1], 10) - 1; // 0-indexed
-                    start = new Date(year, month, 1);
-                    end = new Date(year, month + 1, 0);
-                    label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
-                } else {
-                    label = 'Invalid Date';
+    // Check if preset matches a saved custom range ID
+    const customRange = savedRanges.find(r => r.id === preset);
+
+    if (customRange) {
+        label = customRange.name;
+        const val = customRange.value;
+        const unit = customRange.unit;
+        
+        if (customRange.type === 'fixed_period') {
+            // "The month 3 months ago"
+            if (unit === 'day') {
+                start = new Date(now);
+                start.setDate(now.getDate() - val);
+                end = new Date(start);
+            } else if (unit === 'week') {
+                // Fixed week X weeks ago? Usually implies a specific 7-day window
+                // Let's define it as "The week starting X weeks ago Sunday"
+                const currentDay = now.getDay();
+                const diff = now.getDate() - currentDay - (val * 7); // Start of that week
+                start = new Date(now.setDate(diff));
+                end = new Date(start);
+                end.setDate(start.getDate() + 6);
+            } else if (unit === 'month') {
+                start = new Date(now.getFullYear(), now.getMonth() - val, 1);
+                end = new Date(now.getFullYear(), now.getMonth() - val + 1, 0);
+            } else if (unit === 'quarter') {
+                const currentQuarter = Math.floor(now.getMonth() / 3);
+                // Shift quarters back
+                let targetQ = currentQuarter - val;
+                let targetYear = now.getFullYear();
+                while (targetQ < 0) {
+                    targetQ += 4;
+                    targetYear -= 1;
                 }
-            } else {
-                label = 'No Month Selected';
+                const startMonth = targetQ * 3;
+                start = new Date(targetYear, startMonth, 1);
+                end = new Date(targetYear, startMonth + 3, 0);
+            } else if (unit === 'year') {
+                start = new Date(now.getFullYear() - val, 0, 1);
+                end = new Date(now.getFullYear() - val, 11, 31);
             }
-            break;
-        case 'sameMonthLastYear':
-            start = new Date(now.getFullYear() - 1, now.getMonth(), 1);
-            end = new Date(now.getFullYear() - 1, now.getMonth() + 1, 0);
-            label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
-            break;
-        case 'lastMonthPriorYear':
-            start = new Date(now.getFullYear() - 1, now.getMonth() - 1, 1);
-            end = new Date(now.getFullYear() - 1, now.getMonth(), 0);
-            label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
-            break;
-        case 'thisYear':
-            start = new Date(now.getFullYear(), 0, 1);
-            end = new Date(now.getFullYear(), 11, 31);
-            label = now.getFullYear().toString();
-            break;
-        case 'lastYear':
-            start = new Date(now.getFullYear() - 1, 0, 1);
-            end = new Date(now.getFullYear() - 1, 11, 31);
-            label = (now.getFullYear() - 1).toString();
-            break;
-        case 'last3Months':
-            // Rolling 3 full months + current? Or just 90 days?
-            // "Last 3 Months" usually implies relative rolling window
-            end = new Date();
+        } else {
+            // Rolling Window ("Last 3 months")
+            end = new Date(); // Ends today
             start = new Date();
-            start.setDate(now.getDate() - 90);
-            label = 'Last 90 Days';
-            break;
-        case 'last6Months':
-            end = new Date();
-            start = new Date();
-            start.setMonth(now.getMonth() - 6);
-            label = 'Last 6 Months';
-            break;
-        case 'last12Months':
-            end = new Date();
-            start = new Date();
-            start.setFullYear(now.getFullYear() - 1);
-            label = 'Last 12 Months';
-            break;
-        case 'sameMonth2YearsAgo':
-            start = new Date(now.getFullYear() - 2, now.getMonth(), 1);
-            end = new Date(now.getFullYear() - 2, now.getMonth() + 1, 0);
-            label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
-            break;
-        case 'custom':
-            start = customStart ? new Date(customStart) : new Date();
-            end = customEnd ? new Date(customEnd) : new Date();
-            label = `${formatDate(start)} - ${formatDate(end)}`;
-            break;
+            
+            if (unit === 'day') {
+                start.setDate(now.getDate() - val);
+            } else if (unit === 'week') {
+                start.setDate(now.getDate() - (val * 7));
+            } else if (unit === 'month') {
+                start.setMonth(now.getMonth() - val);
+            } else if (unit === 'quarter') {
+                // 1 Quarter = 3 months for rolling window calculation
+                start.setMonth(now.getMonth() - (val * 3));
+            } else if (unit === 'year') {
+                start.setFullYear(now.getFullYear() - val);
+            }
+        }
+    } else {
+        // Fallback to legacy presets or standard ones not yet migrated
+        switch (preset) {
+            case 'thisMonth':
+                start = new Date(now.getFullYear(), now.getMonth(), 1);
+                end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
+                break;
+            case 'lastMonth':
+                start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                end = new Date(now.getFullYear(), now.getMonth(), 0);
+                label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
+                break;
+            case 'thisYear':
+                start = new Date(now.getFullYear(), 0, 1);
+                end = new Date(now.getFullYear(), 11, 31);
+                label = now.getFullYear().toString();
+                break;
+            case 'lastYear':
+                start = new Date(now.getFullYear() - 1, 0, 1);
+                end = new Date(now.getFullYear() - 1, 11, 31);
+                label = (now.getFullYear() - 1).toString();
+                break;
+            case 'custom':
+                start = customStart ? new Date(customStart) : new Date();
+                end = customEnd ? new Date(customEnd) : new Date();
+                label = `${formatDate(start)} - ${formatDate(end)}`;
+                break;
+            // Legacy handling for old presets if they exist in DB
+            case 'last3Months':
+                end = new Date();
+                start = new Date();
+                start.setDate(now.getDate() - 90);
+                label = 'Last 90 Days';
+                break;
+            case 'last6Months':
+                end = new Date();
+                start = new Date();
+                start.setMonth(now.getMonth() - 6);
+                label = 'Last 6 Months';
+                break;
+            case 'last12Months':
+                end = new Date();
+                start = new Date();
+                start.setFullYear(now.getFullYear() - 1);
+                label = 'Last 12 Months';
+                break;
+            default:
+                // Specific month fallback (YYYY-MM)
+                if (preset === 'specificMonth' && customStart) {
+                     const parts = customStart.split('-');
+                    if (parts.length === 2) {
+                        const year = parseInt(parts[0], 10);
+                        const month = parseInt(parts[1], 10) - 1;
+                        start = new Date(year, month, 1);
+                        end = new Date(year, month + 1, 0);
+                        label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
+                    }
+                } else if (preset === 'relativeMonth' && customStart) {
+                    const offset = parseInt(customStart, 10);
+                    start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+                    end = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0);
+                    label = `${offset} Months Ago`;
+                } else {
+                    label = 'Custom Range';
+                }
+                break;
+        }
     }
 
     return { start: resetTime(start), end: resetTime(end, true), label };
@@ -222,12 +265,13 @@ const DonutChart: React.FC<{ data: { name: string; value: number; color: string 
 interface AggregationItem {
     id: string;
     name: string;
+    // raw sum of everything (hidden or not)
     amount: number;
+    // dynamic sum of visible children + self (if visible)
+    visibleAmount: number;
     children: AggregationItem[];
-    // For visual display only
     isHidden: boolean;
     type: 'group' | 'payee'; 
-    // Temp storage for multi-pass aggregation
     transactions?: Transaction[]; 
 }
 
@@ -238,22 +282,19 @@ const ReportRow: React.FC<{
     onToggleVisibility: (id: string) => void;
     onInspect: (item: AggregationItem) => void;
     level?: number;
-    parentIsHidden?: boolean;
-}> = ({ item, totalVisibleAmount, onToggleVisibility, onInspect, level = 0, parentIsHidden = false }) => {
+}> = ({ item, totalVisibleAmount, onToggleVisibility, onInspect, level = 0 }) => {
     const [isCollapsed, setIsCollapsed] = useState(true);
     
-    // Effective hidden state (self or ancestor)
-    const isEffectiveHidden = item.isHidden || parentIsHidden;
-
-    // Percent of total visible (if hidden, effectively 0 for visualization)
-    const percent = totalVisibleAmount !== 0 && !isEffectiveHidden 
-        ? (item.amount / totalVisibleAmount) * 100 
+    // Percent of total visible
+    const percent = totalVisibleAmount !== 0 && item.visibleAmount > 0
+        ? (item.visibleAmount / totalVisibleAmount) * 100 
         : 0;
 
     const color = item.type === 'payee' ? stringToColor(item.name) : '#6366f1'; 
+    const isZeroAndHidden = item.visibleAmount === 0 && item.isHidden;
 
     return (
-        <div className={`text-sm ${isEffectiveHidden ? 'opacity-50' : ''}`}>
+        <div className={`text-sm ${item.isHidden ? 'opacity-60' : ''}`}>
             {/* Row Content */}
             <div className={`flex items-center gap-2 p-2 hover:bg-slate-50 rounded-lg group transition-colors ${level > 0 ? 'ml-3 border-l-2 border-slate-100 pl-2' : ''}`}>
                 {item.children.length > 0 ? (
@@ -268,13 +309,13 @@ const ReportRow: React.FC<{
                             {item.type === 'payee' && <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }}></div>}
                             <span className={`font-medium truncate text-xs ${item.type === 'payee' ? 'text-slate-600' : 'text-slate-800'}`} title={item.name}>{item.name}</span>
                         </div>
-                        {/* If hidden, apply 'invisible' class to reserve space but show nothing */}
-                        <span className={`font-mono font-bold text-xs flex-shrink-0 ${isEffectiveHidden ? 'invisible' : 'text-slate-800'}`}>
-                            {formatCurrency(item.amount)}
+                        {/* Only show amount if visible > 0 */}
+                        <span className={`font-mono font-bold text-xs flex-shrink-0 ${isZeroAndHidden ? 'invisible' : 'text-slate-800'}`}>
+                            {formatCurrency(item.visibleAmount)}
                         </span>
                     </div>
-                    {/* Bar only for top level or significant items */}
-                    {(level === 0 || percent > 5) && !isEffectiveHidden && (
+                    {/* Bar only if item is visible (or has visible children) */}
+                    {(level === 0 || percent > 5) && !isZeroAndHidden && (
                         <div className="w-full bg-slate-100 h-1 rounded-full mt-1 overflow-hidden">
                             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${percent}%`, backgroundColor: color }}></div>
                         </div>
@@ -310,7 +351,6 @@ const ReportRow: React.FC<{
                             onToggleVisibility={onToggleVisibility} 
                             onInspect={onInspect}
                             level={level + 1}
-                            parentIsHidden={isEffectiveHidden}
                         />
                     ))}
                 </div>
@@ -320,9 +360,8 @@ const ReportRow: React.FC<{
 };
 
 
-const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport }) => {
+const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, savedDateRanges }) => {
     
-    // Internal state allows modifying the report on the fly without affecting the saved version until explicit save
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
     const [showFilters, setShowFilters] = useState(false);
@@ -332,7 +371,9 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     const [inspectingItems, setInspectingItems] = useState<Transaction[] | null>(null);
     const [inspectingTitle, setInspectingTitle] = useState('');
 
-    const dateRange = useMemo(() => getDateRangeFromPreset(config.datePreset, config.customStartDate, config.customEndDate), [config.datePreset, config.customStartDate, config.customEndDate]);
+    const dateRange = useMemo(() => 
+        calculateDateRange(config.datePreset, config.customStartDate, config.customEndDate, savedDateRanges), 
+    [config.datePreset, config.customStartDate, config.customEndDate, savedDateRanges]);
 
     // Helper to extract keys for a transaction based on dimension
     const getKeys = (tx: Transaction, dimension: ReportGroupBy): { id: string, name: string, type: 'group' | 'payee' }[] => {
@@ -399,13 +440,14 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 const keys = getKeys(tx, dimension);
                 keys.forEach(({id, name, type}) => {
                     if (!map.has(id)) {
-                        // Check visibility
-                        const isHidden = (config.hiddenIds && config.hiddenIds.includes(id)) || 
-                                         (config.hiddenCategoryIds && config.hiddenCategoryIds.includes(id)) || false;
-                        map.set(id, { id, name, amount: 0, children: [], isHidden, type, transactions: [] });
+                        // Check visibility based on ID blacklist
+                        // Migration: combine hiddenIds and hiddenCategoryIds
+                        const allHidden = new Set([...(config.hiddenIds || []), ...(config.hiddenCategoryIds || [])]);
+                        const isHidden = allHidden.has(id);
+                        map.set(id, { id, name, amount: 0, visibleAmount: 0, children: [], isHidden, type, transactions: [] });
                     }
                     const item = map.get(id)!;
-                    item.amount += tx.amount;
+                    item.amount += tx.amount; // Total sum of EVERYTHING (for structure)
                     item.transactions?.push(tx);
                 });
             });
@@ -422,7 +464,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             primaryItems.forEach(item => {
                 if (item.transactions && item.transactions.length > 0) {
                     item.children = buildGroups(item.transactions, config.subGroupBy!);
-                    // Note: We keep item.transactions for inspection purposes
                 }
             });
         } 
@@ -433,33 +474,31 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 const treeMap = new Map<string, AggregationItem>();
                 const roots: AggregationItem[] = [];
                 const catNameMap = new Map(categories.map(c => [c.id, c]));
+                const allHidden = new Set([...(config.hiddenIds || []), ...(config.hiddenCategoryIds || [])]);
 
-                // First pass: put all current items in map
                 primaryItems.forEach(item => treeMap.set(item.id, item));
 
-                // Second pass: assign parents
                 primaryItems.forEach(item => {
                     const def = catNameMap.get(item.id);
                     if (def?.parentId) {
                         let parent = treeMap.get(def.parentId);
                         if (!parent) {
-                            // Create virtual parent
                             const parentDef = catNameMap.get(def.parentId);
-                            const isHidden = (config.hiddenIds && config.hiddenIds.includes(def.parentId)) || false;
+                            const isHidden = allHidden.has(def.parentId);
                             parent = { 
                                 id: def.parentId, 
                                 name: parentDef?.name || 'Unknown Parent', 
-                                amount: 0, 
+                                amount: 0,
+                                visibleAmount: 0, 
                                 children: [], 
                                 isHidden, 
                                 type: 'group',
-                                transactions: [] // Virtual parents might not have direct transactions unless aggregated later
+                                transactions: [] 
                             };
                             treeMap.set(def.parentId, parent);
                             roots.push(parent); 
                         }
                         
-                        // Check if item is already added to prevent dupes
                         if (!parent.children.find(c => c.id === item.id)) {
                             parent.children.push(item);
                             parent.amount += item.amount;
@@ -467,21 +506,19 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 parent.transactions = (parent.transactions || []).concat(item.transactions);
                             }
                         }
-                        // Remove item from roots if it was there
                         const rootIdx = roots.findIndex(r => r.id === item.id);
                         if (rootIdx > -1) roots.splice(rootIdx, 1);
                     } else {
                         if (!roots.find(r => r.id === item.id)) roots.push(item);
                     }
                 });
-                
-                // Replace primary list with tree roots
                 primaryItems.splice(0, primaryItems.length, ...roots);
             } else if (primaryGroupBy === 'payee') {
-                // Reconstruct Payee Tree (similar logic)
+                // Reconstruct Payee Tree
                 const treeMap = new Map<string, AggregationItem>();
                 const roots: AggregationItem[] = [];
                 const payeeNameMap = new Map(payees.map(p => [p.id, p]));
+                const allHidden = new Set([...(config.hiddenIds || []), ...(config.hiddenCategoryIds || [])]);
 
                 primaryItems.forEach(item => treeMap.set(item.id, item));
 
@@ -495,11 +532,12 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         let parent = treeMap.get(def.parentId);
                         if (!parent) {
                             const parentDef = payeeNameMap.get(def.parentId);
-                            const isHidden = (config.hiddenIds && config.hiddenIds.includes(def.parentId)) || false;
+                            const isHidden = allHidden.has(def.parentId);
                             parent = {
                                 id: def.parentId,
                                 name: parentDef?.name || 'Unknown Parent',
                                 amount: 0,
+                                visibleAmount: 0,
                                 children: [],
                                 isHidden,
                                 type: 'payee',
@@ -525,9 +563,44 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             }
         }
 
-        // --- 4. Sorting & Total Calculation ---
+        // --- 4. Recursive Visibility Calculation ---
+        // Calculate visibleAmount bottom-up. 
+        // Parent visibleAmount = (Parent Hidden ? 0 : Own Direct Amount) + Sum(Child visibleAmount)
+        // Note: For 'Category'/'Payee' trees, usually all txs are on leaves (subcategories), so Parent Own Amount is 0.
+        // But if grouping by something else, parent might have own transactions.
+        // Since we aggregated ALL transactions into `item.amount` earlier including children, we need to be careful.
+        // We stored `item.transactions` which are ALL txs (including children) in the tree logic above. 
+        // Wait, the tree logic: `parent.transactions = parent.transactions.concat(item.transactions)`.
+        // This means `parent.transactions` includes everything.
+        
+        // Let's rely on `item.children` to distinguish.
+        // If a node has children, its `amount` variable as calculated above includes children.
+        // But to calculate `visibleAmount` correctly recursively, we need to know the node's *direct* amount.
+        // Direct Amount = Total Amount - Sum(Children Total Amounts).
+        
+        const calculateVisibility = (node: AggregationItem): number => {
+            const childrenTotal = node.children.reduce((sum, c) => sum + c.amount, 0);
+            const directAmount = node.amount - childrenTotal;
+            
+            // Calculate visible sum of children
+            const childrenVisibleSum = node.children.reduce((sum, c) => sum + calculateVisibility(c), 0);
+            
+            // Calculate own visible amount
+            // If the node itself is hidden, its direct transactions are hidden.
+            const ownVisible = node.isHidden ? 0 : directAmount;
+            
+            // Total Visible for this node = Own Visible + Visible Children
+            // The constraint "parent shows total of only visible children" is satisfied here.
+            node.visibleAmount = ownVisible + childrenVisibleSum;
+            
+            return node.visibleAmount;
+        };
+
+        primaryItems.forEach(root => calculateVisibility(root));
+
+        // --- 5. Sorting ---
         const sortFn = (a: AggregationItem, b: AggregationItem) => {
-            if (sortBy === 'amount') return b.amount - a.amount;
+            if (sortBy === 'amount') return b.visibleAmount - a.visibleAmount;
             return a.name.localeCompare(b.name);
         };
 
@@ -539,39 +612,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         };
         sortRecursive(primaryItems);
 
-        // Safe Total Calculation
-        let totalVisibleAmount = filtered.filter(tx => {
-            // Check Primary
-            const pKeys = getKeys(tx, primaryGroupBy);
-            if (pKeys.length === 1) {
-                if (config.hiddenIds?.includes(pKeys[0].id)) return false;
-                
-                // Check parent visibility if using default hierarchy
-                if (!config.subGroupBy && primaryGroupBy === 'category') {
-                    const def = categories.find(c => c.id === pKeys[0].id);
-                    if (def?.parentId && config.hiddenIds?.includes(def.parentId)) return false;
-                }
-                if (!config.subGroupBy && primaryGroupBy === 'payee') {
-                    const def = payees.find(p => p.id === pKeys[0].id);
-                    if (def?.parentId && config.hiddenIds?.includes(def.parentId)) return false;
-                }
-            }
-
-            // Check Secondary
-            if (config.subGroupBy) {
-                const sKeys = getKeys(tx, config.subGroupBy);
-                if (sKeys.length === 1) {
-                    if (config.hiddenIds?.includes(sKeys[0].id)) return false;
-                }
-            }
-
-            return true;
-        }).reduce((sum, tx) => sum + tx.amount, 0);
-
-        // Edge case: If grouping by Tag (many-to-many), total amount is inflated.
-        if (primaryGroupBy === 'tag') {
-            totalVisibleAmount = primaryItems.filter(i => !i.isHidden).reduce((sum, i) => sum + i.amount, 0);
-        }
+        const totalVisibleAmount = primaryItems.reduce((sum, i) => sum + i.visibleAmount, 0);
 
         return { rootItems: primaryItems, totalVisibleAmount };
 
@@ -579,21 +620,47 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
     // --- Handlers ---
 
+    // Helper to get all descendant IDs for bulk toggling
+    const getAllDescendants = (id: string): string[] => {
+        const results: string[] = [];
+        const findChildren = (parentId: string, items: any[]) => {
+            const children = items.filter(i => i.parentId === parentId);
+            children.forEach(c => {
+                results.push(c.id);
+                findChildren(c.id, items);
+            });
+        };
+        // We only support this for Category and Payee groupings
+        if (config.groupBy === 'category') findChildren(id, categories);
+        else if (config.groupBy === 'payee') findChildren(id, payees);
+        
+        return results;
+    };
+
     const toggleVisibility = (id: string) => {
         setConfig(prev => {
             const hidden = new Set(prev.hiddenIds || []);
-            // Migrate legacy hiddenCategoryIds if present
+            // Migrate legacy
             if (prev.groupBy === 'category' || !prev.groupBy) {
                 prev.hiddenCategoryIds?.forEach(hid => hidden.add(hid));
             }
-            
-            if (hidden.has(id)) hidden.delete(id);
-            else hidden.add(id);
+
+            const isCurrentlyHidden = hidden.has(id);
+            const descendants = getAllDescendants(id);
+            const idsToToggle = [id, ...descendants];
+
+            if (isCurrentlyHidden) {
+                // Show: Remove all from hidden
+                idsToToggle.forEach(i => hidden.delete(i));
+            } else {
+                // Hide: Add all to hidden
+                idsToToggle.forEach(i => hidden.add(i));
+            }
             
             return { 
                 ...prev, 
                 hiddenIds: Array.from(hidden),
-                hiddenCategoryIds: [] // Clear legacy to avoid sync issues, use hiddenIds forward
+                hiddenCategoryIds: [] 
             };
         });
     };
@@ -622,19 +689,19 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
     // Prepare Chart Data (Top 8 Visible)
     const chartData = activeData.rootItems
-        .filter(i => !i.isHidden) // Don't show hidden in chart
+        .filter(i => i.visibleAmount > 0) 
         .slice(0, 8)
         .map((cat, i) => ({
             name: cat.name,
-            value: cat.amount,
+            value: cat.visibleAmount,
             color: COLORS[i % COLORS.length]
         }));
     
     // Add "Other"
     const otherAmount = activeData.rootItems
-        .filter(i => !i.isHidden)
+        .filter(i => i.visibleAmount > 0)
         .slice(8)
-        .reduce((sum, cat) => sum + cat.amount, 0);
+        .reduce((sum, cat) => sum + cat.visibleAmount, 0);
     
     if (otherAmount > 0) {
         chartData.push({ name: 'Other', value: otherAmount, color: '#cbd5e1' });
@@ -703,27 +770,28 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                         setConfig(prev => ({
                                             ...prev, 
                                             datePreset: newVal,
-                                            // Initialize dynamic fields if needed
-                                            customStartDate: (newVal === 'relativeMonth' && !prev.customStartDate) ? '1' : 
-                                                             (newVal === 'specificMonth' && !prev.customStartDate) ? new Date().toISOString().slice(0, 7) : 
-                                                             prev.customStartDate
+                                            customStartDate: (newVal === 'specificMonth' && !prev.customStartDate) ? new Date().toISOString().slice(0, 7) : prev.customStartDate
                                         }));
                                     }}
                                     className="text-xs p-1.5 border rounded w-full font-medium text-slate-700"
                                 >
-                                    <option value="thisMonth">This Month</option>
-                                    <option value="lastMonth">Last Month</option>
-                                    <option value="relativeMonth">Relative (N Months Ago)</option>
-                                    <option value="specificMonth">Specific Month</option>
-                                    <option value="last3Months">Last 90 Days</option>
-                                    <option value="last6Months">Last 6 Months</option>
-                                    <option value="last12Months">Last 12 Months</option>
-                                    <option value="thisYear">This Year</option>
-                                    <option value="lastYear">Last Year</option>
-                                    <option value="lastMonthPriorYear">Last Month (Prior Year)</option>
-                                    <option value="sameMonthLastYear">Same Month Last Year</option>
-                                    <option value="sameMonth2YearsAgo">Same Month 2 Years Ago</option>
-                                    <option value="custom">Custom Range</option>
+                                    <optgroup label="Standard Ranges">
+                                        <option value="thisMonth">This Month</option>
+                                        <option value="lastMonth">Last Month</option>
+                                        <option value="thisYear">This Year</option>
+                                        <option value="lastYear">Last Year</option>
+                                    </optgroup>
+                                    <optgroup label="Custom Options">
+                                        <option value="specificMonth">Specific Month</option>
+                                        <option value="custom">Date Range</option>
+                                    </optgroup>
+                                    {savedDateRanges.length > 0 && (
+                                        <optgroup label="My Custom Ranges">
+                                            {savedDateRanges.map(r => (
+                                                <option key={r.id} value={r.id}>{r.name}</option>
+                                            ))}
+                                        </optgroup>
+                                    )}
                                 </select>
                                 <select 
                                     value={config.groupBy || 'category'} 
@@ -753,21 +821,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                     <option value="tag">Tag</option>
                                 </select>
                             </div>
-
-                            {/* Dynamic Inputs */}
-                            {config.datePreset === 'relativeMonth' && (
-                                <div className="flex items-center gap-2">
-                                    <input 
-                                        type="number" 
-                                        min="1" 
-                                        max="60"
-                                        className="text-xs p-1 border rounded w-16" 
-                                        value={config.customStartDate || ''} 
-                                        onChange={e => setConfig({...config, customStartDate: e.target.value})} 
-                                    />
-                                    <span className="text-[10px] text-slate-500">Months Ago</span>
-                                </div>
-                            )}
 
                             {config.datePreset === 'specificMonth' && (
                                 <div>

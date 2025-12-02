@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -85,6 +85,7 @@ const App: React.FC = () => {
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [savedDateRanges, setSavedDateRanges] = useState<CustomDateRange[]>([]);
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -173,6 +174,7 @@ const App: React.FC = () => {
       setDocumentFolders(safeLoad<DocumentFolder[]>('documentFolders', []));
       setSavedReports(safeLoad<SavedReport[]>('savedReports', []));
       setChatSessions(safeLoad<ChatSession[]>('chatSessions', []));
+      setSavedDateRanges(safeLoad<CustomDateRange[]>('savedDateRanges', []));
 
       // Handle Account Types and Accounts
       let finalAccountTypes = safeLoad<AccountType[]>('accountTypes', []);
@@ -251,7 +253,7 @@ const App: React.FC = () => {
                       transactions, accounts, accountTypes, categories, tags, payees, 
                       reconciliationRules, templates, scheduledEvents, users, 
                       transactionTypes, businessProfile, documentFolders, savedReports,
-                      chatSessions
+                      chatSessions, savedDateRanges
                   };
                   const jsonString = JSON.stringify(exportData, null, 2);
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
@@ -440,6 +442,12 @@ const App: React.FC = () => {
     const handler = setTimeout(() => api.save('chatSessions', chatSessions), 500);
     return () => clearTimeout(handler);
   }, [chatSessions, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('savedDateRanges', savedDateRanges), 500);
+    return () => clearTimeout(handler);
+  }, [savedDateRanges, isLoading]);
 
 
   // Handlers
@@ -694,7 +702,7 @@ const App: React.FC = () => {
         // Added onAddTransaction for Donation modal support
         return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports':
-        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} />;
+        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} savedDateRanges={savedDateRanges} setSavedDateRanges={setSavedDateRanges} />;
       case 'accounts':
         return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
       case 'users':

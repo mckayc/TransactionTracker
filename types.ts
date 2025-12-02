@@ -265,7 +265,19 @@ export type DateRangePreset =
     | 'sameMonth2YearsAgo' 
     | 'lastMonthPriorYear'
     | 'specificMonth' // Static month (e.g. "2023-08")
-    | 'relativeMonth'; // Relative offset (e.g. "3 months ago")
+    | 'relativeMonth' // Relative offset (e.g. "3 months ago")
+    | string; // Allow custom IDs
+
+export type DateRangeUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
+export type DateRangeType = 'fixed_period' | 'rolling_window';
+
+export interface CustomDateRange {
+    id: string;
+    name: string;
+    type: DateRangeType; // e.g. "rolling_window" (Last 3 months) vs "fixed_period" (The month 3 months ago)
+    unit: DateRangeUnit;
+    value: number; // e.g. 1, 3, 6
+}
 
 export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account';
 
