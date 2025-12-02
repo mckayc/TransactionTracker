@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy } from '../types';
-import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, UsersIcon, TagIcon } from './Icons';
+import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
+import TransactionTable from './TransactionTable';
 
 interface ReportColumnProps {
     config: ReportConfig;
@@ -151,7 +152,8 @@ const DonutChart: React.FC<{ data: { name: string; value: number; color: string 
 
     return (
         <div className="flex justify-center py-6 relative">
-            <svg viewBox="-1.1 -1.1 2.2 2.2" className="h-48 w-48" style={{ transform: 'rotate(-90deg)' }}>
+            {/* ViewBox enlarged to prevent cutoff on scale transform */}
+            <svg viewBox="-1.25 -1.25 2.5 2.5" className="h-48 w-48" style={{ transform: 'rotate(-90deg)' }}>
                 {data.map((slice, i) => {
                     const startPercent = cumulativePercent;
                     const slicePercent = slice.value / total;
@@ -234,9 +236,10 @@ const ReportRow: React.FC<{
     item: AggregationItem; 
     totalVisibleAmount: number; 
     onToggleVisibility: (id: string) => void;
+    onInspect: (item: AggregationItem) => void;
     level?: number;
     parentIsHidden?: boolean;
-}> = ({ item, totalVisibleAmount, onToggleVisibility, level = 0, parentIsHidden = false }) => {
+}> = ({ item, totalVisibleAmount, onToggleVisibility, onInspect, level = 0, parentIsHidden = false }) => {
     const [isCollapsed, setIsCollapsed] = useState(true);
     
     // Effective hidden state (self or ancestor)
@@ -250,7 +253,7 @@ const ReportRow: React.FC<{
     const color = item.type === 'payee' ? stringToColor(item.name) : '#6366f1'; 
 
     return (
-        <div className={`text-sm ${isEffectiveHidden ? 'opacity-50 grayscale' : ''}`}>
+        <div className={`text-sm ${isEffectiveHidden ? 'opacity-50' : ''}`}>
             {/* Row Content */}
             <div className={`flex items-center gap-2 p-2 hover:bg-slate-50 rounded-lg group transition-colors ${level > 0 ? 'ml-3 border-l-2 border-slate-100 pl-2' : ''}`}>
                 {item.children.length > 0 ? (
@@ -265,7 +268,8 @@ const ReportRow: React.FC<{
                             {item.type === 'payee' && <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }}></div>}
                             <span className={`font-medium truncate text-xs ${item.type === 'payee' ? 'text-slate-600' : 'text-slate-800'}`} title={item.name}>{item.name}</span>
                         </div>
-                        <span className={`font-mono font-bold text-xs flex-shrink-0 ${isEffectiveHidden ? 'text-slate-400 line-through decoration-slate-400 decoration-2' : 'text-slate-800'}`}>
+                        {/* If hidden, apply 'invisible' class to reserve space but show nothing */}
+                        <span className={`font-mono font-bold text-xs flex-shrink-0 ${isEffectiveHidden ? 'invisible' : 'text-slate-800'}`}>
                             {formatCurrency(item.amount)}
                         </span>
                     </div>
@@ -277,13 +281,22 @@ const ReportRow: React.FC<{
                     )}
                 </div>
 
-                <button 
-                    onClick={(e) => { e.stopPropagation(); onToggleVisibility(item.id); }}
-                    className={`text-slate-300 hover:text-slate-500 transition-opacity flex-shrink-0 ${item.isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                    title={item.isHidden ? "Show in calculation" : "Hide from calculation"}
-                >
-                    {item.isHidden ? <EyeSlashIcon className="w-3 h-3 text-slate-400" /> : <EyeIcon className="w-3 h-3" />}
-                </button>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onInspect(item); }}
+                        className="text-slate-300 hover:text-indigo-600 p-1 rounded hover:bg-indigo-50"
+                        title="View Transactions"
+                    >
+                        <TableIcon className="w-3 h-3" />
+                    </button>
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onToggleVisibility(item.id); }}
+                        className={`text-slate-300 hover:text-slate-500 p-1 rounded hover:bg-slate-100 ${item.isHidden ? 'opacity-100 text-slate-500' : ''}`}
+                        title={item.isHidden ? "Show in calculation" : "Hide from calculation"}
+                    >
+                        {item.isHidden ? <EyeSlashIcon className="w-3 h-3" /> : <EyeIcon className="w-3 h-3" />}
+                    </button>
+                </div>
             </div>
 
             {/* Recursive Children */}
@@ -295,6 +308,7 @@ const ReportRow: React.FC<{
                             item={sub} 
                             totalVisibleAmount={totalVisibleAmount} 
                             onToggleVisibility={onToggleVisibility} 
+                            onInspect={onInspect}
                             level={level + 1}
                             parentIsHidden={isEffectiveHidden}
                         />
@@ -313,6 +327,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
     const [showFilters, setShowFilters] = useState(false);
     const [isEditingName, setIsEditingName] = useState(false);
+    
+    // Inspection State
+    const [inspectingItems, setInspectingItems] = useState<Transaction[] | null>(null);
+    const [inspectingTitle, setInspectingTitle] = useState('');
 
     const dateRange = useMemo(() => getDateRangeFromPreset(config.datePreset, config.customStartDate, config.customEndDate), [config.datePreset, config.customStartDate, config.customEndDate]);
 
@@ -404,8 +422,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             primaryItems.forEach(item => {
                 if (item.transactions && item.transactions.length > 0) {
                     item.children = buildGroups(item.transactions, config.subGroupBy!);
-                    // Clear txs to free memory
-                    delete item.transactions;
+                    // Note: We keep item.transactions for inspection purposes
                 }
             });
         } 
@@ -426,25 +443,29 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     if (def?.parentId) {
                         let parent = treeMap.get(def.parentId);
                         if (!parent) {
-                            // Create virtual parent if it has transactions but wasn't in list (shouldn't happen with current logic) or if we just need a container
+                            // Create virtual parent
                             const parentDef = catNameMap.get(def.parentId);
                             const isHidden = (config.hiddenIds && config.hiddenIds.includes(def.parentId)) || false;
                             parent = { 
                                 id: def.parentId, 
                                 name: parentDef?.name || 'Unknown Parent', 
-                                amount: 0, // Sum will be calculated from children
+                                amount: 0, 
                                 children: [], 
                                 isHidden, 
-                                type: 'group' 
+                                type: 'group',
+                                transactions: [] // Virtual parents might not have direct transactions unless aggregated later
                             };
                             treeMap.set(def.parentId, parent);
-                            roots.push(parent); // Newly created parent is a root candidate
+                            roots.push(parent); 
                         }
                         
                         // Check if item is already added to prevent dupes
                         if (!parent.children.find(c => c.id === item.id)) {
                             parent.children.push(item);
                             parent.amount += item.amount;
+                            if (item.transactions) {
+                                parent.transactions = (parent.transactions || []).concat(item.transactions);
+                            }
                         }
                         // Remove item from roots if it was there
                         const rootIdx = roots.findIndex(r => r.id === item.id);
@@ -481,7 +502,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 amount: 0,
                                 children: [],
                                 isHidden,
-                                type: 'payee'
+                                type: 'payee',
+                                transactions: []
                             };
                             treeMap.set(def.parentId, parent);
                             roots.push(parent);
@@ -489,6 +511,9 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         if (!parent.children.find(c => c.id === item.id)) {
                             parent.children.push(item);
                             parent.amount += item.amount;
+                            if (item.transactions) {
+                                parent.transactions = (parent.transactions || []).concat(item.transactions);
+                            }
                         }
                         const rootIdx = roots.findIndex(r => r.id === item.id);
                         if (rootIdx > -1) roots.splice(rootIdx, 1);
@@ -514,23 +539,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         };
         sortRecursive(primaryItems);
 
-        // Safe Total Calculation: Re-sum from transactions to handle complex hiding logic correctly
-        // (Iterating hierarchy is cleaner but prone to double counting if logic drifts)
-        // We will sum the *visible* root items and their visible descendants?
-        // Easier: Use the original filter pass, but add a visibility check function.
-        
+        // Safe Total Calculation
         let totalVisibleAmount = filtered.filter(tx => {
-            // Check visibility against config.hiddenIds
-            // This is complex because a transaction might be hidden because its Category is hidden, 
-            // OR because its Account is hidden (if grouped by Account).
-            
-            // Simplified check: If the primary group key for this tx is hidden, exclude it.
-            // If subGroup is on, if secondary key is hidden, exclude it.
-            
             // Check Primary
             const pKeys = getKeys(tx, primaryGroupBy);
-            // If any of the keys (for tags) are hidden, we might exclude? 
-            // For standard 1-to-1 dims:
             if (pKeys.length === 1) {
                 if (config.hiddenIds?.includes(pKeys[0].id)) return false;
                 
@@ -557,7 +569,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         }).reduce((sum, tx) => sum + tx.amount, 0);
 
         // Edge case: If grouping by Tag (many-to-many), total amount is inflated.
-        // We should sum the amounts of the visible root items instead.
         if (primaryGroupBy === 'tag') {
             totalVisibleAmount = primaryItems.filter(i => !i.isHidden).reduce((sum, i) => sum + i.amount, 0);
         }
@@ -585,6 +596,15 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 hiddenCategoryIds: [] // Clear legacy to avoid sync issues, use hiddenIds forward
             };
         });
+    };
+
+    const handleInspect = (item: AggregationItem) => {
+        if (item.transactions && item.transactions.length > 0) {
+            setInspectingItems(item.transactions);
+            setInspectingTitle(`${item.name} Transactions`);
+        } else {
+            alert("No transactions directly linked to this item.");
+        }
     };
 
     const handleSave = () => {
@@ -621,7 +641,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     }
 
     return (
-        <div className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-full overflow-hidden min-w-[320px]">
+        <div className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-full overflow-hidden min-w-[320px] relative">
             {/* Header */}
             <div className="p-4 border-b border-slate-100 bg-slate-50">
                 <div className="flex justify-between items-start mb-3">
@@ -834,10 +854,38 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             item={item} 
                             totalVisibleAmount={activeData.totalVisibleAmount} 
                             onToggleVisibility={toggleVisibility}
+                            onInspect={handleInspect}
                         />
                     ))}
                 </div>
             </div>
+
+            {/* Inspection Modal */}
+            {inspectingItems && (
+                <div className="fixed inset-0 z-50 flex justify-center items-center p-4 bg-black bg-opacity-50" onClick={() => setInspectingItems(null)}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
+                            <h3 className="font-bold text-lg text-slate-800">{inspectingTitle}</h3>
+                            <button onClick={() => setInspectingItems(null)} className="p-1 rounded-full hover:bg-slate-200">
+                                <CloseIcon className="w-5 h-5 text-slate-500" />
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                            <TransactionTable 
+                                transactions={inspectingItems} 
+                                accounts={accounts} 
+                                categories={categories}
+                                tags={tags}
+                                transactionTypes={transactionTypes}
+                                payees={payees}
+                                users={users}
+                                onUpdateTransaction={() => {}} 
+                                onDeleteTransaction={() => {}}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
