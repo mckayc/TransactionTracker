@@ -198,7 +198,7 @@ const calculateDateRange = (preset: DateRangePreset, customStart: string | undef
 };
 
 // Replaced chartData prop with items directly to support child inspection
-const DonutChart: React.FC<{ items: AggregationItem[] }> = ({ items }) => {
+const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<HTMLDivElement> }> = ({ items, forwardedRef }) => {
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     
     // Process items for chart: filter visible, take top 8, aggregate others
@@ -232,7 +232,7 @@ const DonutChart: React.FC<{ items: AggregationItem[] }> = ({ items }) => {
         return topItems;
     }, [items]);
 
-    if (totalVisible === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
+    if (totalVisible === 0) return <div ref={forwardedRef} className="h-48 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
 
     let cumulativePercent = 0;
 
@@ -255,7 +255,7 @@ const DonutChart: React.FC<{ items: AggregationItem[] }> = ({ items }) => {
     }, [hoveredItem]);
 
     return (
-        <div className="flex justify-center py-6 relative">
+        <div ref={forwardedRef} className="flex justify-center py-6 relative bg-white">
             {/* ViewBox enlarged to prevent cutoff on scale transform */}
             <svg viewBox="-1.25 -1.25 2.5 2.5" className="h-48 w-48" style={{ transform: 'rotate(-90deg)' }}>
                 {chartData.map((slice, i) => {
@@ -453,6 +453,9 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
     const reportRef = useRef<HTMLDivElement>(null);
     const exportMenuRef = useRef<HTMLDivElement>(null);
+    
+    // Reference to chart for PDF capture
+    const chartContainerRef = useRef<HTMLDivElement>(null);
 
     // Close export menu when clicking outside
     useEffect(() => {
@@ -519,6 +522,9 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             if (config.filters.payeeIds && config.filters.payeeIds.length > 0) {
                 if (!config.filters.payeeIds.includes(tx.payeeId || '')) return false;
             }
+            
+            // Special Logic: If grouping by Payee, exclude transactions without a Payee to avoid "No Payee" noise
+            if (config.groupBy === 'payee' && !tx.payeeId) return false;
             
             const type = transactionTypes.find(t => t.id === tx.typeId);
             if (!type || !allowedEffects.has(type.balanceEffect)) return false; 
@@ -797,10 +803,26 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         return rows;
     };
 
-    const handleExportPDF = () => {
+    const handleExportPDF = async () => {
+        setIsExportMenuOpen(false);
         const doc = new jsPDF();
         const rows = getExportRows();
         
+        // Capture Chart
+        let chartImgData: string | null = null;
+        if (chartContainerRef.current) {
+            try {
+                // Ensure white background for the capture
+                const chartCanvas = await html2canvas(chartContainerRef.current, {
+                    backgroundColor: '#ffffff',
+                    scale: 2
+                });
+                chartImgData = chartCanvas.toDataURL('image/png');
+            } catch (e) {
+                console.warn("Failed to capture chart for PDF", e);
+            }
+        }
+
         // Header
         doc.setFontSize(18);
         doc.text(config.name, 14, 20);
@@ -811,15 +833,28 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         doc.text(`Period: ${dateRange.label}`, 14, 31);
         doc.text(`Total: ${formatCurrency(activeData.totalVisibleAmount)}`, 14, 36);
         
-        // Content
         let y = 45;
         const pageHeight = doc.internal.pageSize.height;
         const pageWidth = doc.internal.pageSize.width;
         const margin = 14;
         
+        // Inject Chart if available
+        if (chartImgData) {
+            // Keep aspect ratio roughly square-ish, center it
+            const chartSize = 80; 
+            const x = (pageWidth - chartSize) / 2;
+            doc.addImage(chartImgData, 'PNG', x, y, chartSize, chartSize);
+            y += chartSize + 10;
+        }
+
         doc.setTextColor(0);
         
         // Table Header
+        if (y > pageHeight - 20) {
+            doc.addPage();
+            y = 20;
+        }
+
         doc.setFillColor(240, 240, 240);
         doc.rect(margin, y - 4, pageWidth - (margin * 2), 6, 'F');
         doc.setFont("helvetica", "bold");
@@ -857,7 +892,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         });
         
         doc.save(`${config.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_report.pdf`);
-        setIsExportMenuOpen(false);
     };
 
     const handleExportCSV = () => {
@@ -1061,7 +1095,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                 <div className="text-center mb-6">
                     {/* Pass the full items hierarchy to DonutChart */}
-                    <DonutChart items={activeData.rootItems} />
+                    <DonutChart items={activeData.rootItems} forwardedRef={chartContainerRef} />
                 </div>
 
                 {/* Sort Bar */}
