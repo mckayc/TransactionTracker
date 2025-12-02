@@ -1,6 +1,8 @@
 
+
 import React, { useState, useCallback, useEffect } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport } from './types';
+import ReactDOM from 'react-dom/client';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -84,6 +86,7 @@ const App: React.FC = () => {
   const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>([]);
   const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -171,6 +174,7 @@ const App: React.FC = () => {
       setBusinessDocuments(safeLoad<BusinessDocument[]>('businessDocuments', []));
       setDocumentFolders(safeLoad<DocumentFolder[]>('documentFolders', []));
       setSavedReports(safeLoad<SavedReport[]>('savedReports', []));
+      setChatSessions(safeLoad<ChatSession[]>('chatSessions', []));
 
       // Handle Account Types and Accounts
       let finalAccountTypes = safeLoad<AccountType[]>('accountTypes', []);
@@ -248,7 +252,8 @@ const App: React.FC = () => {
                       version: '0.0.10-auto',
                       transactions, accounts, accountTypes, categories, tags, payees, 
                       reconciliationRules, templates, scheduledEvents, users, 
-                      transactionTypes, businessProfile, documentFolders, savedReports
+                      transactionTypes, businessProfile, documentFolders, savedReports,
+                      chatSessions
                   };
                   const jsonString = JSON.stringify(exportData, null, 2);
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
@@ -431,6 +436,12 @@ const App: React.FC = () => {
     const handler = setTimeout(() => api.save('savedReports', savedReports), 500);
     return () => clearTimeout(handler);
   }, [savedReports, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('chatSessions', chatSessions), 500);
+    return () => clearTimeout(handler);
+  }, [chatSessions, isLoading]);
 
 
   // Handlers
@@ -703,7 +714,7 @@ const App: React.FC = () => {
       case 'tasks':
         return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
       case 'hub':
-        return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} />;
+        return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} chatSessions={chatSessions} onUpdateChatSessions={setChatSessions} />;
       case 'documents':
         return <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
       default:

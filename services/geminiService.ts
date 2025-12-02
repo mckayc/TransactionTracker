@@ -1,6 +1,7 @@
 
+
 import { GoogleGenAI, Type } from '@google/genai';
-import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category } from '../types';
+import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage } from '../types';
 
 declare const pdfjsLib: any;
 
@@ -286,6 +287,47 @@ export const analyzeBusinessDocument = async (file: File, onProgress: (msg: stri
     return json;
 };
 
+export const streamTaxAdvice = async (history: ChatMessage[], profile: BusinessProfile) => {
+    const ai = getAiClient();
+    
+    const systemPrompt = `
+        You are an expert US Tax Consultant and Business Advisor.
+        Your goal is to help a small business owner maximize their tax returns, ensure compliance, and organize their finances.
+        
+        **Business Context:**
+        - Legal Name: ${profile.info.llcName || 'Not Set'}
+        - Business Type: ${profile.info.businessType || 'Not Set'}
+        - State of Formation: ${profile.info.stateOfFormation || 'Not Set'}
+        - Industry: ${profile.info.industry || 'Not Set'}
+        - Tax Filing Status: ${profile.tax.filingStatus || 'Not Set'}
+        - Tax Year End: ${profile.tax.taxYearEnd || 'Not Set'}
+
+        **Instructions:**
+        - Use the Business Context above to tailor your advice.
+        - If the business type or state implies specific forms (e.g. Schedule C for Sole Props, Form 1065 for Partnership), mention them.
+        - Be concise, professional, and encouraging.
+        - Use Markdown for formatting (bolding key terms, lists).
+        - Disclaimer: Always remind the user that you are an AI and they should consult a certified professional for final decisions.
+    `;
+
+    const contents = [
+        { role: 'user', parts: [{ text: systemPrompt }] },
+        { role: 'model', parts: [{ text: "Understood. I have reviewed your business profile and am ready to act as your tax advisor." }] },
+        ...history.map(msg => ({
+            role: msg.role === 'ai' ? 'model' : 'user',
+            parts: [{ text: msg.content }]
+        }))
+    ];
+
+    const responseStream = await ai.models.generateContentStream({
+        model: 'gemini-2.5-flash',
+        contents: contents as any, 
+    });
+
+    return responseStream;
+};
+
+// Legacy single-turn (keep for backward compatibility if needed)
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
     const ai = getAiClient();
     const result = await ai.models.generateContent({

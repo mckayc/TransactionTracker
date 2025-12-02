@@ -1,12 +1,16 @@
 
-import React, { useState } from 'react';
-import type { BusinessProfile, BusinessInfo, TaxInfo } from '../types';
-import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon } from '../components/Icons';
-import { askAiAdvisor, getIndustryDeductions, hasApiKey } from '../services/geminiService';
+
+import React, { useState, useEffect, useRef } from 'react';
+import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage } from '../types';
+import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon } from '../components/Icons';
+import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
+import { generateUUID } from '../utils';
 
 interface BusinessHubProps {
     profile: BusinessProfile;
     onUpdateProfile: (profile: BusinessProfile) => void;
+    chatSessions: ChatSession[];
+    onUpdateChatSessions: (sessions: ChatSession[]) => void;
 }
 
 const SetupGuideTab: React.FC<{ profile: BusinessProfile; onUpdateProfile: (p: BusinessProfile) => void }> = ({ profile, onUpdateProfile }) => {
@@ -156,35 +160,127 @@ const SetupGuideTab: React.FC<{ profile: BusinessProfile; onUpdateProfile: (p: B
     );
 }
 
-const TaxAdvisorTab: React.FC<{ profile: BusinessProfile }> = ({ profile }) => {
-    const [question, setQuestion] = useState('');
-    const [answer, setAnswer] = useState('');
-    const [loading, setLoading] = useState(false);
+const TaxAdvisorTab: React.FC<{ 
+    profile: BusinessProfile; 
+    sessions: ChatSession[]; 
+    onUpdateSessions: (s: ChatSession[]) => void;
+}> = ({ profile, sessions, onUpdateSessions }) => {
+    
+    // Sort sessions by update time (most recent first)
+    const sortedSessions = [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    
+    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+    const [input, setInput] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const [deductions, setDeductions] = useState<string[]>([]);
     const [loadingDeductions, setLoadingDeductions] = useState(false);
+    
+    const messagesEndRef = useRef<HTMLDivElement>(null);
     const apiKeyAvailable = hasApiKey();
 
-    const handleAsk = async () => {
-        if (!question.trim()) return;
-        setLoading(true);
+    const activeSession = selectedSessionId ? sessions.find(s => s.id === selectedSessionId) : null;
+
+    useEffect(() => {
+        if (activeSession) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [activeSession?.messages.length, selectedSessionId]);
+
+    const handleCreateSession = () => {
+        const newSession: ChatSession = {
+            id: generateUUID(),
+            title: `Consultation ${new Date().toLocaleDateString()}`,
+            messages: [{
+                id: generateUUID(),
+                role: 'ai',
+                content: `Hello! I am your AI Tax Advisor. I see you are operating as a **${profile.info.businessType || 'business'}** in **${profile.info.stateOfFormation || 'your state'}**. How can I help you today?`,
+                timestamp: new Date().toISOString()
+            }],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        onUpdateSessions([...sessions, newSession]);
+        setSelectedSessionId(newSession.id);
+    };
+
+    const handleDeleteSession = (sessionId: string) => {
+        if (confirm("Delete this chat history?")) {
+            const updated = sessions.filter(s => s.id !== sessionId);
+            onUpdateSessions(updated);
+            if (selectedSessionId === sessionId) setSelectedSessionId(null);
+        }
+    };
+
+    const handleSendMessage = async () => {
+        if (!input.trim() || !activeSession || isLoading) return;
+
+        const userMsg: ChatMessage = {
+            id: generateUUID(),
+            role: 'user',
+            content: input,
+            timestamp: new Date().toISOString()
+        };
+
+        // Optimistic update
+        const updatedSession = { 
+            ...activeSession, 
+            messages: [...activeSession.messages, userMsg],
+            updatedAt: new Date().toISOString()
+        };
+        
+        // Update state immediately
+        const otherSessions = sessions.filter(s => s.id !== activeSession.id);
+        onUpdateSessions([...otherSessions, updatedSession]);
+        
+        setInput('');
+        setIsLoading(true);
+
         try {
-            const prompt = `
-                You are an expert US tax accountant for small businesses.
-                User Profile:
-                - Entity: ${profile.info.businessType || 'Unknown'}
-                - State: ${profile.info.stateOfFormation || 'Unknown'}
-                - Industry: ${profile.info.industry || 'Unknown'}
+            // Prepare streaming response placeholder
+            const aiMsgId = generateUUID();
+            const aiMsgPlaceholder: ChatMessage = {
+                id: aiMsgId,
+                role: 'ai',
+                content: '',
+                timestamp: new Date().toISOString()
+            };
+            
+            // Add placeholder
+            const sessionWithAi = {
+                ...updatedSession,
+                messages: [...updatedSession.messages, aiMsgPlaceholder]
+            };
+            onUpdateSessions([...otherSessions, sessionWithAi]);
 
-                User Question: ${question}
+            // Call API with history context
+            const stream = await streamTaxAdvice(updatedSession.messages, profile);
+            
+            let fullContent = '';
+            
+            for await (const chunk of stream) {
+                const chunkText = chunk.text;
+                fullContent += chunkText;
+                
+                // Update specific message in state
+                const currentSession = sessionWithAi; // In a real app we'd use functional update, here simplify
+                const msgs = [...currentSession.messages];
+                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullContent };
+                
+                onUpdateSessions([...otherSessions, { ...currentSession, messages: msgs }]);
+            }
 
-                Provide a clear, concise answer emphasizing tax maximization and compliance. Use Markdown for formatting.
-            `;
-            const result = await askAiAdvisor(prompt);
-            setAnswer(result);
-        } catch (e) {
-            setAnswer('Error connecting to AI tax advisor. Please check your API key and internet connection.');
+        } catch (error) {
+            console.error("Chat error", error);
+            // Append error message
+             const errorMsg: ChatMessage = {
+                id: generateUUID(),
+                role: 'ai',
+                content: "I apologize, but I encountered an error connecting to the service. Please try again.",
+                timestamp: new Date().toISOString()
+            };
+            onUpdateSessions([...otherSessions, { ...updatedSession, messages: [...updatedSession.messages, errorMsg] }]);
         } finally {
-            setLoading(false);
+            setIsLoading(false);
         }
     };
 
@@ -225,57 +321,131 @@ const TaxAdvisorTab: React.FC<{ profile: BusinessProfile }> = ({ profile }) => {
     }
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
-            {/* Chat Section */}
-            <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col min-h-[500px]">
-                <div className="flex items-center gap-3 border-b pb-4 mb-4">
-                    <div className="bg-indigo-100 p-2 rounded-lg">
-                        <CurrencyDollarIcon className="w-6 h-6 text-indigo-600" />
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-bold text-slate-800">Tax Q&A Advisor</h2>
-                        <p className="text-xs text-slate-500">Ask about maximized returns, filing status, or compliance.</p>
-                    </div>
-                </div>
-
-                <div className="flex-grow overflow-y-auto mb-4 space-y-4 bg-slate-50 p-4 rounded-lg">
-                    {answer ? (
-                        <div className="prose prose-sm max-w-none text-slate-800" dangerouslySetInnerHTML={{ __html: answer.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-                    ) : (
-                        <div className="text-center text-slate-400 mt-10">
-                            <SparklesIcon className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                            <p>Ask me anything about your business taxes!</p>
-                            <p className="text-xs mt-2">e.g., "Can I deduct my home internet?", "When are my estimated taxes due?"</p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start h-[700px]">
+            {/* Left Col: Chat Area */}
+            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden">
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 border-b bg-slate-50">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-indigo-100 p-2 rounded-lg">
+                            <CurrencyDollarIcon className="w-5 h-5 text-indigo-600" />
                         </div>
-                    )}
-                     {loading && (
-                        <div className="flex justify-center py-4">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
+                        <div>
+                            <h2 className="font-bold text-slate-800">Tax Advisor</h2>
+                            <p className="text-xs text-slate-500">
+                                {activeSession ? activeSession.title : 'Select a conversation'}
+                            </p>
                         </div>
-                    )}
-                </div>
-
-                <div className="flex gap-2">
-                    <input 
-                        type="text" 
-                        value={question} 
-                        onChange={(e) => setQuestion(e.target.value)} 
-                        onKeyDown={(e) => e.key === 'Enter' && handleAsk()}
-                        placeholder="Type your tax question..." 
-                        className="flex-grow p-3 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                    />
+                    </div>
+                    {/* Only show 'New Chat' button if we have history but no active session, or to switch */}
                     <button 
-                        onClick={handleAsk} 
-                        disabled={loading || !question.trim()}
-                        className="bg-indigo-600 text-white p-3 rounded-lg hover:bg-indigo-700 disabled:bg-slate-300 transition-colors"
+                        onClick={handleCreateSession}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 shadow-sm"
                     >
-                        <SendIcon className="w-5 h-5" />
+                        <AddIcon className="w-4 h-4"/> New Chat
                     </button>
+                </div>
+
+                {/* Main Content Area */}
+                <div className="flex-1 flex overflow-hidden">
+                    {/* Sidebar List (Visible on desktop) */}
+                    <div className="w-64 border-r border-slate-100 bg-slate-50 flex-col overflow-y-auto hidden md:flex">
+                        <div className="p-3">
+                            <p className="text-xs font-bold text-slate-400 uppercase mb-2 px-2">History</p>
+                            {sortedSessions.length === 0 ? (
+                                <p className="text-sm text-slate-400 px-2 italic">No past chats.</p>
+                            ) : (
+                                sortedSessions.map(session => (
+                                    <div 
+                                        key={session.id}
+                                        onClick={() => setSelectedSessionId(session.id)}
+                                        className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer text-sm mb-1 ${selectedSessionId === session.id ? 'bg-white shadow-sm text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-100'}`}
+                                    >
+                                        <div className="flex items-center gap-2 truncate">
+                                            <ChatBubbleIcon className="w-4 h-4 flex-shrink-0 opacity-50" />
+                                            <span className="truncate">{session.title}</span>
+                                        </div>
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}
+                                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500"
+                                        >
+                                            <DeleteIcon className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Chat Messages Area */}
+                    <div className="flex-1 flex flex-col bg-white relative">
+                        {!activeSession ? (
+                            <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+                                <SparklesIcon className="w-12 h-12 text-indigo-200 mb-4" />
+                                <h3 className="text-lg font-bold text-slate-700">Expert Tax Guidance</h3>
+                                <p className="text-slate-500 max-w-sm mt-2 mb-6">
+                                    I can help you understand tax obligations for your {profile.info.businessType}, find deductions, and plan for quarterly payments.
+                                </p>
+                                <button onClick={handleCreateSession} className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg transition-transform hover:-translate-y-1">
+                                    Start Consultation
+                                </button>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                                    {activeSession.messages.map((msg) => (
+                                        <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                            <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
+                                                <div className="prose prose-sm prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
+                                                <p className={`text-[10px] mt-1 text-right ${msg.role === 'user' ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                                    {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {isLoading && (
+                                        <div className="flex justify-start">
+                                            <div className="bg-slate-100 p-3 rounded-2xl rounded-bl-none">
+                                                <div className="flex gap-1">
+                                                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
+                                                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-100"></span>
+                                                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-200"></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div ref={messagesEndRef} />
+                                </div>
+
+                                {/* Input Area */}
+                                <div className="p-4 border-t border-slate-100 bg-white">
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="text" 
+                                            value={input} 
+                                            onChange={(e) => setInput(e.target.value)} 
+                                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                            placeholder="Ask a follow-up question..." 
+                                            className="flex-grow p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-slate-50 focus:bg-white transition-colors"
+                                            disabled={isLoading}
+                                        />
+                                        <button 
+                                            onClick={handleSendMessage} 
+                                            disabled={isLoading || !input.trim()}
+                                            className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 transition-colors shadow-sm"
+                                        >
+                                            <SendIcon className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
             {/* Sidebar Section */}
-            <div className="space-y-6">
+            <div className="space-y-6 lg:h-full lg:overflow-y-auto">
                 {/* Deductions Scout */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                     <div className="flex items-center gap-2 mb-4">
@@ -287,7 +457,7 @@ const TaxAdvisorTab: React.FC<{ profile: BusinessProfile }> = ({ profile }) => {
                     </p>
                     
                     {deductions.length > 0 ? (
-                         <ul className="space-y-2 mb-4">
+                         <ul className="space-y-2 mb-4 max-h-60 overflow-y-auto custom-scrollbar">
                             {deductions.map((d, i) => (
                                 <li key={i} className="flex items-start gap-2 text-sm text-slate-700 bg-green-50 p-2 rounded-md border border-green-100">
                                     <CheckCircleIcon className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
@@ -372,7 +542,7 @@ const CalendarTab: React.FC<{ profile: BusinessProfile }> = ({ profile }) => {
 }
 
 
-const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile }) => {
+const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, chatSessions, onUpdateChatSessions }) => {
     const [activeTab, setActiveTab] = useState<'guide' | 'calendar' | 'advisor'>('guide');
 
     return (
@@ -405,7 +575,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile }) =
 
             <div className="min-h-[400px]">
                 {activeTab === 'guide' && <SetupGuideTab profile={profile} onUpdateProfile={onUpdateProfile} />}
-                {activeTab === 'advisor' && <TaxAdvisorTab profile={profile} />}
+                {activeTab === 'advisor' && <TaxAdvisorTab profile={profile} sessions={chatSessions} onUpdateSessions={onUpdateChatSessions} />}
                 {activeTab === 'calendar' && <CalendarTab profile={profile} />}
             </div>
         </div>

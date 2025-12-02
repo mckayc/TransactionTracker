@@ -114,6 +114,21 @@ export interface BusinessProfile {
   completedSteps: string[]; // IDs of completed wizard steps
 }
 
+export interface ChatMessage {
+    id: string;
+    role: 'user' | 'ai';
+    content: string;
+    timestamp: string;
+}
+
+export interface ChatSession {
+    id: string;
+    title: string;
+    messages: ChatMessage[];
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface BackupConfig {
     frequency: 'daily' | 'weekly' | 'monthly' | 'never';
     retentionCount: number;
