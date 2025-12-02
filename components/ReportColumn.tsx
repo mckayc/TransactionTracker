@@ -785,7 +785,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             const canvas = await html2canvas(reportRef.current, {
                 backgroundColor: '#ffffff',
                 scale: 2 // Higher resolution
-            });
+            } as any);
             const imgData = canvas.toDataURL('image/png');
             
             if (type === 'png') {
