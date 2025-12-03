@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag } from '../types';
 import TransactionTable from '../components/TransactionTable';
@@ -179,12 +178,13 @@ interface AllTransactionsProps {
   onSaveRule: (rule: ReconciliationRule) => void;
   onSaveCategory: (category: Category) => void;
   onSavePayee: (payee: Payee) => void;
+  onSaveTag: (tag: Tag) => void;
   onAddTransactionType: (type: TransactionType) => void;
 }
 
 type DateMode = 'month' | 'quarter' | 'year' | 'all' | 'custom';
 
-const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, tags, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onAddTransactionType }) => {
+const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, tags, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType }) => {
   // State for immediate input values
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -1033,6 +1033,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             transaction={transactionForRule}
             onSaveCategory={onSaveCategory}
             onSavePayee={onSavePayee}
+            onSaveTag={onSaveTag}
             onAddTransactionType={onAddTransactionType}
         />
       )}

@@ -458,6 +458,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                         <option value="lastMonth">Last Month</option>
                                         <option value="thisYear">This Year</option>
                                         <option value="lastYear">Last Year</option>
+                                        <option value="allTime">All Time</option>
                                     </optgroup>
                                     <optgroup label="Custom Options">
                                         <option value="specificMonth">Specific Month</option>

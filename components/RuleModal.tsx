@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleCondition, Tag } from '../types';
 import { CloseIcon } from './Icons';
@@ -17,10 +16,11 @@ interface RuleModalProps {
     transaction: Transaction | null;
     onSaveCategory?: (category: Category) => void;
     onSavePayee?: (payee: Payee) => void;
+    onSaveTag?: (tag: Tag) => void;
     onAddTransactionType?: (type: TransactionType) => void;
 }
 
-const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, payees, transaction, onSaveCategory, onSavePayee, onAddTransactionType }) => {
+const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, payees, transaction, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType }) => {
     
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
@@ -112,6 +112,19 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
             const newType = { id: generateUUID(), name: name.trim(), balanceEffect: 'expense' as const, isDefault: false };
             onAddTransactionType(newType);
             setSetTransactionTypeId(newType.id);
+        }
+    };
+
+    const handleCreateTag = () => {
+        const name = prompt("Enter new Tag name:");
+        if (name && name.trim() && onSaveTag) {
+            const newTag = { 
+                id: generateUUID(), 
+                name: name.trim(), 
+                color: 'bg-slate-100 text-slate-800' // Default color
+            };
+            onSaveTag(newTag);
+            setAssignTagIds(prev => new Set(prev).add(newTag.id));
         }
     };
 
@@ -226,7 +239,16 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                                             {tag.name}
                                         </button>
                                     ))}
-                                    {tags.length === 0 && <span className="text-sm text-slate-400 italic">No tags available. Create them in the Tags page.</span>}
+                                    {onSaveTag && (
+                                        <button
+                                            type="button"
+                                            onClick={handleCreateTag}
+                                            className="px-2 py-1 rounded-full text-xs border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 bg-white transition-colors"
+                                            title="Create new tag"
+                                        >
+                                            + New
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>

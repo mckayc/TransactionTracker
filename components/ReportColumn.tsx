@@ -147,6 +147,11 @@ const calculateDateRange = (preset: DateRangePreset, customStart: string | undef
                 end = new Date(now.getFullYear() - 1, 11, 31);
                 label = (now.getFullYear() - 1).toString();
                 break;
+            case 'allTime':
+                start = new Date(0); // Epoch start (1970-01-01)
+                end = new Date();
+                label = 'All Time';
+                break;
             case 'custom':
                 start = customStart ? new Date(customStart) : new Date();
                 end = customEnd ? new Date(customEnd) : new Date();

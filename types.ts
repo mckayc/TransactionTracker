@@ -257,6 +257,7 @@ export type DateRangePreset =
     | 'lastMonth' 
     | 'thisYear' 
     | 'lastYear' 
+    | 'allTime'
     | 'last3Months' 
     | 'last6Months'
     | 'last12Months'

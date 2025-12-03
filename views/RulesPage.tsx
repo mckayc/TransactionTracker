@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon } from '../components/Icons';
@@ -19,6 +18,7 @@ interface RulesPageProps {
     onUpdateTransactions: (transactions: Transaction[]) => void;
     onSaveCategory: (category: Category) => void;
     onSavePayee: (payee: Payee) => void;
+    onSaveTag: (tag: Tag) => void;
     onAddTransactionType: (type: TransactionType) => void;
 }
 
@@ -130,8 +130,9 @@ const RuleEditorModal: React.FC<{
     payees: Payee[];
     onSaveCategory: (category: Category) => void;
     onSavePayee: (payee: Payee) => void;
+    onSaveTag: (tag: Tag) => void;
     onAddTransactionType: (type: TransactionType) => void;
-}> = ({ isOpen, selectedRule, onSave, onClose, accounts, transactionTypes, categories, tags, payees, onSaveCategory, onSavePayee, onAddTransactionType }) => {
+}> = ({ isOpen, selectedRule, onSave, onClose, accounts, transactionTypes, categories, tags, payees, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType }) => {
     
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
@@ -225,6 +226,19 @@ const RuleEditorModal: React.FC<{
             const newType = { id: generateUUID(), name: name.trim(), balanceEffect: 'expense' as const, isDefault: false };
             onAddTransactionType(newType);
             setSetTransactionTypeId(newType.id);
+        }
+    };
+
+    const handleCreateTag = () => {
+        const name = prompt("Enter new Tag name:");
+        if (name && name.trim()) {
+            const newTag = { 
+                id: generateUUID(), 
+                name: name.trim(), 
+                color: 'bg-slate-100 text-slate-800' // Default color
+            };
+            onSaveTag(newTag);
+            setAssignTagIds(prev => new Set(prev).add(newTag.id));
         }
     };
 
@@ -330,7 +344,14 @@ const RuleEditorModal: React.FC<{
                                             {tag.name}
                                         </button>
                                     ))}
-                                    {tags.length === 0 && <span className="text-sm text-slate-400 italic">No tags available.</span>}
+                                    <button
+                                        type="button"
+                                        onClick={handleCreateTag}
+                                        className="px-2 py-1 rounded-full text-xs border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 bg-white transition-colors"
+                                        title="Create new tag"
+                                    >
+                                        + New
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -347,7 +368,7 @@ const RuleEditorModal: React.FC<{
 };
 
 // --- Main Page Component ---
-const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onAddTransactionType }) => {
+const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType }) => {
     const [selectedRule, setSelectedRule] = useState<ReconciliationRule | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [ruleToRun, setRuleToRun] = useState<ReconciliationRule | null>(null);
@@ -470,6 +491,7 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                 payees={payees} 
                 onSaveCategory={onSaveCategory}
                 onSavePayee={onSavePayee}
+                onSaveTag={onSaveTag}
                 onAddTransactionType={onAddTransactionType}
             />
 

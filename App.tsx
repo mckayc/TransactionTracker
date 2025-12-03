@@ -696,7 +696,7 @@ const App: React.FC = () => {
       case 'dashboard':
         return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
       case 'transactions':
-        return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
+        return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} />;
       case 'calendar':
         // Modified to pass handleSaveTask to support full editing from calendar
         // Added onAddTransaction for Donation modal support
@@ -714,7 +714,7 @@ const App: React.FC = () => {
       case 'tags':
         return <TagsPage tags={tags} onSaveTag={handleSaveTag} onDeleteTag={handleDeleteTag} />;
       case 'rules':
-        return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onAddTransactionType={handleAddTransactionType} />;
+        return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} />;
       case 'settings':
         return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} tags={tags} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} users={users} businessProfile={businessProfile} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
       case 'tasks':
