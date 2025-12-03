@@ -182,7 +182,7 @@ interface AllTransactionsProps {
   onAddTransactionType: (type: TransactionType) => void;
 }
 
-type DateMode = 'month' | 'year' | 'custom';
+type DateMode = 'month' | 'quarter' | 'year' | 'all' | 'custom';
 
 const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, tags, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onAddTransactionType }) => {
   // State for immediate input values
@@ -235,19 +235,33 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
           const lastDay = new Date(year, month + 1, 0);
           setStartDate(firstDay.toISOString().split('T')[0]);
           setEndDate(lastDay.toISOString().split('T')[0]);
+      } else if (dateMode === 'quarter') {
+          const quarter = Math.floor(month / 3);
+          const firstDay = new Date(year, quarter * 3, 1);
+          const lastDay = new Date(year, (quarter + 1) * 3, 0);
+          setStartDate(firstDay.toISOString().split('T')[0]);
+          setEndDate(lastDay.toISOString().split('T')[0]);
       } else if (dateMode === 'year') {
           const firstDay = new Date(year, 0, 1);
           const lastDay = new Date(year, 11, 31);
           setStartDate(firstDay.toISOString().split('T')[0]);
           setEndDate(lastDay.toISOString().split('T')[0]);
+      } else if (dateMode === 'all') {
+          setStartDate('');
+          setEndDate('');
       }
       // 'custom' mode handled by direct input state changes
   }, [dateMode, dateCursor]);
 
   const handleDateNavigate = (direction: 'prev' | 'next') => {
       const newCursor = new Date(dateCursor);
+      // Normalize to 1st of month to avoid day overflow issues (e.g. Jan 31 + 1 month -> Mar 3)
+      newCursor.setDate(1); 
+
       if (dateMode === 'month') {
           newCursor.setMonth(newCursor.getMonth() + (direction === 'next' ? 1 : -1));
+      } else if (dateMode === 'quarter') {
+          newCursor.setMonth(newCursor.getMonth() + (direction === 'next' ? 3 : -3));
       } else if (dateMode === 'year') {
           newCursor.setFullYear(newCursor.getFullYear() + (direction === 'next' ? 1 : -1));
       }
@@ -258,8 +272,15 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       if (dateMode === 'month') {
           return dateCursor.toLocaleString('default', { month: 'long', year: 'numeric' });
       }
+      if (dateMode === 'quarter') {
+          const q = Math.floor(dateCursor.getMonth() / 3) + 1;
+          return `Q${q} ${dateCursor.getFullYear()}`;
+      }
       if (dateMode === 'year') {
           return dateCursor.getFullYear().toString();
+      }
+      if (dateMode === 'all') {
+          return 'Lifetime';
       }
       return 'Custom Range';
   }, [dateMode, dateCursor]);
@@ -831,7 +852,9 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                                     className="bg-transparent border-none text-xs font-semibold focus:ring-0 cursor-pointer py-1 pl-2 pr-6"
                                 >
                                     <option value="month">Month</option>
+                                    <option value="quarter">Quarter</option>
                                     <option value="year">Year</option>
+                                    <option value="all">Lifetime</option>
                                     <option value="custom">Custom</option>
                                 </select>
                             </div>
@@ -844,15 +867,19 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                                 </div>
                             ) : (
                                 <div className="flex items-center bg-white border border-slate-300 rounded-lg overflow-hidden">
-                                    <button onClick={() => handleDateNavigate('prev')} className="p-1.5 hover:bg-slate-100 text-slate-500">
-                                        <ChevronLeftIcon className="w-4 h-4" />
-                                    </button>
-                                    <span className="px-3 text-sm font-medium text-slate-700 min-w-[120px] text-center">
+                                    {dateMode !== 'all' && (
+                                        <button onClick={() => handleDateNavigate('prev')} className="p-1.5 hover:bg-slate-100 text-slate-500">
+                                            <ChevronLeftIcon className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                    <span className={`px-3 text-sm font-medium text-slate-700 min-w-[120px] text-center ${dateMode === 'all' ? 'py-1.5' : ''}`}>
                                         {dateLabel}
                                     </span>
-                                    <button onClick={() => handleDateNavigate('next')} className="p-1.5 hover:bg-slate-100 text-slate-500">
-                                        <ChevronRightIcon className="w-4 h-4" />
-                                    </button>
+                                    {dateMode !== 'all' && (
+                                        <button onClick={() => handleDateNavigate('next')} className="p-1.5 hover:bg-slate-100 text-slate-500">
+                                            <ChevronRightIcon className="w-4 h-4" />
+                                        </button>
+                                    )}
                                 </div>
                             )}
 
