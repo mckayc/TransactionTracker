@@ -202,11 +202,11 @@ const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
     
     // Process items for chart: filter visible, take top 8, aggregate others
-    const totalVisible = items.reduce((acc, item) => acc + item.visibleAmount, 0);
+    const totalVisible = items.reduce((acc, item) => acc + (item.visibleAmount || 0), 0);
     
     // Sort logic is handled by parent, but ensure we filter zero amounts
     const chartData = useMemo(() => {
-        const visibleItems = items.filter(i => i.visibleAmount > 0);
+        const visibleItems = items.filter(i => (i.visibleAmount || 0) > 0);
         
         // Take top 8
         const topItems = visibleItems.slice(0, 8).map((item, i) => ({
@@ -215,7 +215,7 @@ const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<
         }));
         
         // Sum the rest as 'Other'
-        const otherAmount = visibleItems.slice(8).reduce((sum, item) => sum + item.visibleAmount, 0);
+        const otherAmount = visibleItems.slice(8).reduce((sum, item) => sum + (item.visibleAmount || 0), 0);
         
         if (otherAmount > 0) {
             topItems.push({
@@ -232,7 +232,7 @@ const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<
         return topItems;
     }, [items]);
 
-    if (totalVisible === 0) return <div ref={forwardedRef} className="h-48 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
+    if (totalVisible <= 0.001) return <div ref={forwardedRef} className="h-48 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
 
     let cumulativePercent = 0;
 
@@ -242,15 +242,16 @@ const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<
         return [x, y];
     };
 
-    const hoveredItem = hoveredIndex !== null ? chartData[hoveredIndex] : null;
+    // Safe access to hovered item
+    const hoveredItem = (hoveredIndex !== null && chartData[hoveredIndex]) ? chartData[hoveredIndex] : null;
     
     // Determine children to show in center
     const breakdown = useMemo(() => {
-        if (!hoveredItem || hoveredItem.children.length === 0) return [];
+        if (!hoveredItem || !hoveredItem.children || hoveredItem.children.length === 0) return [];
         // Sort children by visibleAmount descending
         return [...hoveredItem.children]
-            .filter(c => c.visibleAmount > 0)
-            .sort((a,b) => b.visibleAmount - a.visibleAmount)
+            .filter(c => (c.visibleAmount || 0) > 0)
+            .sort((a,b) => (b.visibleAmount || 0) - (a.visibleAmount || 0))
             .slice(0, 3);
     }, [hoveredItem]);
 
@@ -261,6 +262,10 @@ const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<
                 {chartData.map((slice, i) => {
                     const startPercent = cumulativePercent;
                     const slicePercent = slice.visibleAmount / totalVisible;
+                    
+                    // Safety check for invalid math
+                    if (!Number.isFinite(slicePercent) || slicePercent < 0) return null;
+
                     cumulativePercent += slicePercent;
                     const endPercent = cumulativePercent;
 
@@ -361,9 +366,12 @@ const ReportRow: React.FC<{
     const [isCollapsed, setIsCollapsed] = useState(true);
     
     // Percent of total visible
-    const percent = totalVisibleAmount !== 0 && item.visibleAmount > 0
-        ? (item.visibleAmount / totalVisibleAmount) * 100 
-        : 0;
+    let percent = 0;
+    if (totalVisibleAmount > 0 && item.visibleAmount > 0) {
+        percent = (item.visibleAmount / totalVisibleAmount) * 100;
+    }
+    // Safety clamp
+    if (!Number.isFinite(percent)) percent = 0;
 
     const color = item.type === 'payee' ? stringToColor(item.name) : '#6366f1'; 
     const isZeroAndHidden = item.visibleAmount === 0 && item.isHidden;
@@ -541,7 +549,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 keys.forEach(({id, name, type}) => {
                     if (!map.has(id)) {
                         // Check visibility based on ID blacklist
-                        // Migration: combine hiddenIds and hiddenCategoryIds
+                        // Migration: combine hiddenIds and hiddenCategoryIds with safe fallbacks
                         const allHidden = new Set([...(config.hiddenIds || []), ...(config.hiddenCategoryIds || [])]);
                         const isHidden = allHidden.has(id);
                         map.set(id, { id, name, amount: 0, visibleAmount: 0, children: [], isHidden, type, transactions: [] });
@@ -701,7 +709,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         };
         sortRecursive(primaryItems);
 
-        const totalVisibleAmount = primaryItems.reduce((sum, i) => sum + i.visibleAmount, 0);
+        const totalVisibleAmount = primaryItems.reduce((sum, i) => sum + (i.visibleAmount || 0), 0);
 
         return { rootItems: primaryItems, totalVisibleAmount };
 
@@ -788,17 +796,17 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         const traverse = (item: AggregationItem, depth: number) => {
             rows.push({
                 name: "  ".repeat(depth) + item.name,
-                amount: item.visibleAmount,
+                amount: item.visibleAmount || 0,
                 depth,
                 rawName: item.name
             });
             // Sort by visible amount desc
-            const sortedChildren = [...item.children].sort((a,b) => b.visibleAmount - a.visibleAmount);
+            const sortedChildren = [...item.children].sort((a,b) => (b.visibleAmount || 0) - (a.visibleAmount || 0));
             sortedChildren.forEach(child => traverse(child, depth + 1));
         };
 
         // Sort roots
-        const sortedRoots = [...activeData.rootItems].sort((a,b) => b.visibleAmount - a.visibleAmount);
+        const sortedRoots = [...activeData.rootItems].sort((a,b) => (b.visibleAmount || 0) - (a.visibleAmount || 0));
         sortedRoots.forEach(item => traverse(item, 0));
         return rows;
     };
