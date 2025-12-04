@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit } from '../types';
-import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, DownloadIcon } from './Icons';
+import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import MultiSelect from './MultiSelect';
 import TransactionTable from './TransactionTable';
@@ -202,6 +202,150 @@ const calculateDateRange = (preset: DateRangePreset, customStart: string | undef
     return { start: resetTime(start), end: resetTime(end, true), label };
 };
 
+const DiagnosticsOverlay: React.FC<{
+    transactions: Transaction[];
+    config: ReportConfig;
+    dateRange: { start: Date; end: Date };
+    onClose: () => void;
+    transactionTypes: TransactionType[];
+    payees: Payee[];
+    categories: Category[];
+    accounts: Account[];
+}> = ({ transactions, config, dateRange, onClose, transactionTypes, payees, categories, accounts }) => {
+    
+    // Perform Analysis
+    const analysis = useMemo(() => {
+        let totalInPeriod = 0;
+        const droppedBy = {
+            isParent: 0,
+            account: 0,
+            user: 0,
+            category: 0,
+            type: 0,
+            tag: 0,
+            payee: 0,
+            effect: 0,
+            unknownType: 0
+        };
+        const warnings: string[] = [];
+        const allowedEffects = new Set(config.filters.balanceEffects || ['expense']); 
+
+        transactions.forEach(tx => {
+            const txDate = new Date(tx.date);
+            if (txDate < dateRange.start || txDate > dateRange.end) return;
+            
+            totalInPeriod++;
+
+            if (tx.isParent) { droppedBy.isParent++; return; }
+
+            if (config.filters.accountIds && config.filters.accountIds.length > 0 && !config.filters.accountIds.includes(tx.accountId || '')) {
+                droppedBy.account++; return;
+            }
+            if (config.filters.userIds && config.filters.userIds.length > 0 && !config.filters.userIds.includes(tx.userId || '')) {
+                droppedBy.user++; return;
+            }
+            if (config.filters.categoryIds && config.filters.categoryIds.length > 0 && !config.filters.categoryIds.includes(tx.categoryId)) {
+                droppedBy.category++; return;
+            }
+            if (config.filters.typeIds && config.filters.typeIds.length > 0 && !config.filters.typeIds.includes(tx.typeId)) {
+                droppedBy.type++; return;
+            }
+            if (config.filters.tagIds && config.filters.tagIds.length > 0) {
+                if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) {
+                    droppedBy.tag++; return;
+                }
+            }
+            if (config.filters.payeeIds && config.filters.payeeIds.length > 0) {
+                if (!config.filters.payeeIds.includes(tx.payeeId || '')) {
+                    droppedBy.payee++; return;
+                }
+            }
+            // Explicit GroupBy Check
+            if (config.groupBy === 'payee' && !tx.payeeId) {
+                droppedBy.payee++; return;
+            }
+
+            const type = transactionTypes.find(t => t.id === tx.typeId);
+            if (!type) {
+                droppedBy.unknownType++; return;
+            }
+            
+            if (!allowedEffects.has(type.balanceEffect)) {
+                // Smart Check: Did the user explicitly ask for this Payee/Category but it got hidden here?
+                if (config.filters.payeeIds && config.filters.payeeIds.includes(tx.payeeId || '')) {
+                    const payeeName = payees.find(p => p.id === tx.payeeId)?.name || 'Unknown';
+                    const warn = `Hidden by Balance Impact (${type.balanceEffect}): Transaction for '${payeeName}'`;
+                    if (!warnings.includes(warn)) warnings.push(warn);
+                }
+                if (config.filters.categoryIds && config.filters.categoryIds.includes(tx.categoryId)) {
+                    const catName = categories.find(c => c.id === tx.categoryId)?.name || 'Unknown';
+                    const warn = `Hidden by Balance Impact (${type.balanceEffect}): Transaction in '${catName}'`;
+                    if (!warnings.includes(warn)) warnings.push(warn);
+                }
+                
+                droppedBy.effect++; 
+                return; 
+            }
+        });
+
+        return { totalInPeriod, droppedBy, warnings };
+    }, [transactions, config, dateRange, transactionTypes, payees, categories]);
+
+    return (
+        <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 flex flex-col p-6 animate-fade-in overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    <InfoIcon className="w-5 h-5 text-indigo-600" />
+                    Report Diagnostics
+                </h3>
+                <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-200">
+                    <CloseIcon className="w-5 h-5" />
+                </button>
+            </div>
+            
+            <div className="space-y-4 text-sm text-slate-700">
+                <div className="bg-slate-100 p-3 rounded-lg border border-slate-200">
+                    <div className="flex justify-between font-bold">
+                        <span>Total Transactions in Period:</span>
+                        <span>{analysis.totalInPeriod}</span>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1">
+                        {formatDate(dateRange.start)} to {formatDate(dateRange.end)}
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <p className="font-semibold text-slate-600 uppercase text-xs">Excluded By Filters</p>
+                    <ul className="space-y-1 pl-2">
+                        <li className="flex justify-between"><span>Account Filter:</span> <span className="font-mono">{analysis.droppedBy.account}</span></li>
+                        <li className="flex justify-between"><span>User Filter:</span> <span className="font-mono">{analysis.droppedBy.user}</span></li>
+                        <li className="flex justify-between"><span>Category Filter:</span> <span className="font-mono">{analysis.droppedBy.category}</span></li>
+                        <li className="flex justify-between"><span>Payee Filter:</span> <span className="font-mono">{analysis.droppedBy.payee}</span></li>
+                        <li className="flex justify-between"><span>Transaction Type:</span> <span className="font-mono">{analysis.droppedBy.type}</span></li>
+                        <li className="flex justify-between"><span>Balance Impact (e.g. Transfers):</span> <span className="font-mono font-bold text-amber-600">{analysis.droppedBy.effect}</span></li>
+                        <li className="flex justify-between"><span>Is Split Parent:</span> <span className="font-mono">{analysis.droppedBy.isParent}</span></li>
+                        {analysis.droppedBy.unknownType > 0 && <li className="flex justify-between text-red-600"><span>Unknown Type ID:</span> <span className="font-mono">{analysis.droppedBy.unknownType}</span></li>}
+                    </ul>
+                </div>
+
+                {analysis.warnings.length > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg">
+                        <p className="text-xs font-bold text-amber-800 flex items-center gap-1 mb-2">
+                            <ExclamationTriangleIcon className="w-3 h-3" /> Potential Issues Found
+                        </p>
+                        <ul className="list-disc list-inside space-y-1">
+                            {analysis.warnings.slice(0, 5).map((w, i) => (
+                                <li key={i} className="text-xs text-amber-700">{w}</li>
+                            ))}
+                            {analysis.warnings.length > 5 && <li className="text-xs text-amber-700 italic">...and {analysis.warnings.length - 5} more</li>}
+                        </ul>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 // Replaced chartData prop with items directly to support child inspection
 const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<HTMLDivElement> }> = ({ items, forwardedRef }) => {
     const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -237,15 +381,11 @@ const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<
         return topItems;
     }, [items]);
 
-    // Safe access to hovered item
-    // IMPORTANT: Access this before conditional returns to avoid hook rule violations
-    const hoveredItem = (hoveredIndex !== null && chartData[hoveredIndex]) ? chartData[hoveredIndex] : null;
+    // Ensure chartData exists before attempting to access it
+    const hoveredItem = (hoveredIndex !== null && chartData.length > hoveredIndex) ? chartData[hoveredIndex] : null;
     
-    // Determine children to show in center
-    // IMPORTANT: This useMemo MUST run unconditionally before any early return
     const breakdown = useMemo(() => {
         if (!hoveredItem || !hoveredItem.children || hoveredItem.children.length === 0) return [];
-        // Sort children by visibleAmount descending
         return [...hoveredItem.children]
             .filter(c => (c.visibleAmount || 0) > 0)
             .sort((a,b) => (b.visibleAmount || 0) - (a.visibleAmount || 0))
@@ -462,6 +602,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     
     // Modal State
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+    const [showDiagnostics, setShowDiagnostics] = useState(false);
     
     // Inspection State
     const [inspectingItems, setInspectingItems] = useState<Transaction[] | null>(null);
@@ -1018,6 +1159,13 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             )}
                         </div>
                         <button 
+                            onClick={() => setShowDiagnostics(true)}
+                            className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-200 transition-colors"
+                            title="Diagnostics & Troubleshooting"
+                        >
+                            <InfoIcon className="w-4 h-4" />
+                        </button>
+                        <button 
                             onClick={() => setIsConfigModalOpen(true)}
                             className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-slate-200 transition-colors"
                             title="Configure Report Settings"
@@ -1110,7 +1258,20 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar relative">
+                {showDiagnostics && (
+                    <DiagnosticsOverlay 
+                        transactions={transactions}
+                        config={config}
+                        dateRange={dateRange}
+                        onClose={() => setShowDiagnostics(false)}
+                        transactionTypes={transactionTypes}
+                        payees={payees}
+                        categories={categories}
+                        accounts={accounts}
+                    />
+                )}
+                
                 <div className="text-center mb-6">
                     {/* Pass the full items hierarchy to DonutChart */}
                     <DonutChart items={activeData.rootItems} forwardedRef={chartContainerRef} />
