@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange } from '../types';
 import ReportColumn from '../components/ReportColumn';
 import ReportConfigModal from '../components/ReportConfigModal';
@@ -51,24 +51,23 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
         const existingIndex = savedReports.findIndex(r => r.id === config.id);
         
         if (existingIndex >= 0) {
-            // Update existing
-            if (window.confirm(`Overwrite existing report "${savedReports[existingIndex].name}"?`)) {
-                const updated = [...savedReports];
-                updated[existingIndex] = { ...updated[existingIndex], name: config.name, config };
-                setSavedReports(updated);
-            }
+            // Update existing (Implicit save if ID matches, no confirmation needed for minor tweaks usually, but we keep confirm for safety if name changed)
+            const existing = savedReports[existingIndex];
+            // If just updating config on an existing saved report, just do it.
+            const updated = [...savedReports];
+            updated[existingIndex] = { ...existing, name: config.name, config };
+            setSavedReports(updated);
         } else {
-            // 2. ID mismatch, but check if Name exists (Collision / Overwrite Intent)
+            // 2. ID mismatch, check name collision
             const nameMatchIndex = savedReports.findIndex(r => r.name === config.name);
             
             if (nameMatchIndex >= 0) {
                 if (window.confirm(`A report named "${config.name}" already exists. Overwrite it?`)) {
                     const updated = [...savedReports];
-                    // We update the existing slot with the NEW config (and potentially new ID if it was regenerated)
+                    // We update the existing slot with the NEW config
                     updated[nameMatchIndex] = { 
                         ...updated[nameMatchIndex], 
-                        id: config.id, 
-                        config 
+                        config: { ...config, id: updated[nameMatchIndex].id } // Keep original ID
                     };
                     setSavedReports(updated);
                     return;
@@ -86,7 +85,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
     };
 
     const handleLoadReport = (saved: SavedReport) => {
-        // Clone config but strictly enforce ID match to allow saving back to the same slot
+        // We load the EXACT ID so that edits can be saved back to it
         const config: ReportConfig = { 
             ...saved.config, 
             id: saved.id, 
@@ -107,7 +106,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
         setIsConfigModalOpen(true);
     };
 
-    // Date Range Handlers (Lifted for reuse in ReportColumn)
+    // Date Range Handlers
     const handleSaveDateRange = (range: CustomDateRange) => {
         setSavedDateRanges(prev => {
             const existing = prev.findIndex(r => r.id === range.id);
@@ -202,6 +201,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                     savedDateRanges={savedDateRanges}
                                     onSaveDateRange={handleSaveDateRange}
                                     onDeleteDateRange={handleDeleteDateRange}
+                                    savedReports={savedReports}
                                 />
                             </div>
                         ))}

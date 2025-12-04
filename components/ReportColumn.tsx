@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit } from '../types';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import TransactionTable from './TransactionTable';
@@ -20,6 +20,7 @@ interface ReportColumnProps {
     savedDateRanges: CustomDateRange[];
     onSaveDateRange: (range: CustomDateRange) => void;
     onDeleteDateRange: (id: string) => void;
+    savedReports?: SavedReport[];
 }
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
@@ -183,12 +184,14 @@ const DonutChart: React.FC<{ data: { label: string; value: number; color: string
     let accumulatedAngle = 0;
     const radius = 40;
     const circumference = 2 * Math.PI * radius;
+    const [hoveredSlice, setHoveredSlice] = useState<{ label: string; value: number; color: string } | null>(null);
 
     return (
-        <div className="relative w-48 h-48 mx-auto">
+        <div className="relative w-48 h-48 mx-auto group">
             <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full">
                 {data.map((slice, i) => {
                     const percentage = total > 0 ? slice.value / total : 0;
+                    if (percentage === 0) return null;
                     const strokeDasharray = `${percentage * circumference} ${circumference}`;
                     const strokeDashoffset = -accumulatedAngle * circumference;
                     accumulatedAngle += percentage;
@@ -201,17 +204,28 @@ const DonutChart: React.FC<{ data: { label: string; value: number; color: string
                             r={radius}
                             fill="transparent"
                             stroke={slice.color}
-                            strokeWidth="20"
+                            strokeWidth="16" // Slightly thinner for elegance
                             strokeDasharray={strokeDasharray}
                             strokeDashoffset={strokeDashoffset}
-                            className="transition-all duration-300 hover:opacity-80"
+                            className={`transition-all duration-300 cursor-pointer ${hoveredSlice?.label === slice.label ? 'opacity-100 stroke-[18]' : 'opacity-90 hover:opacity-100 hover:stroke-[18]'}`}
+                            onMouseEnter={() => setHoveredSlice(slice)}
+                            onMouseLeave={() => setHoveredSlice(null)}
                         />
                     );
                 })}
             </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-xs text-slate-500 font-medium uppercase">Total</span>
-                <span className="text-lg font-bold text-slate-800">{formatCurrency(total)}</span>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-all duration-300">
+                <span className="text-xs text-slate-500 font-medium uppercase mb-1">
+                    {hoveredSlice ? hoveredSlice.label : 'Total'}
+                </span>
+                <span className={`text-lg font-bold ${hoveredSlice ? '' : 'text-slate-800'}`} style={{ color: hoveredSlice ? hoveredSlice.color : undefined }}>
+                    {formatCurrency(hoveredSlice ? hoveredSlice.value : total)}
+                </span>
+                {hoveredSlice && total > 0 && (
+                    <span className="text-xs text-slate-400 font-medium">
+                        {((hoveredSlice.value / total) * 100).toFixed(1)}%
+                    </span>
+                )}
             </div>
         </div>
     );
@@ -245,20 +259,25 @@ const ReportRow: React.FC<{
     return (
         <div className="select-none">
             <div 
-                className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${isHidden ? 'opacity-50 grayscale bg-slate-50' : 'hover:bg-slate-50'}`}
-                style={{ paddingLeft: `${(depth * 16) + 8}px` }}
+                className={`relative flex items-center gap-2 p-2 pr-3 rounded-lg cursor-pointer transition-colors group ${isHidden ? 'opacity-50 grayscale bg-slate-50' : 'hover:bg-slate-50'}`}
+                style={{ paddingLeft: `${(depth * 12) + 8}px` }}
                 onClick={() => onClick(item)}
             >
-                {hasChildren ? (
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onToggleExpand(item.id); }}
-                        className="p-0.5 rounded hover:bg-slate-200 text-slate-500"
-                    >
-                        {isExpanded ? <ChevronDownIcon className="w-3 h-3"/> : <ChevronRightIcon className="w-3 h-3"/>}
-                    </button>
-                ) : (
-                    <div className="w-4 h-4" /> // Spacer
+                {/* Guideline for children */}
+                {depth > 0 && (
+                    <div className="absolute left-0 top-0 bottom-0 border-l border-slate-200" style={{ left: `${(depth * 12) - 4}px` }}></div>
                 )}
+
+                <div className="flex-shrink-0 w-5 flex justify-center">
+                    {hasChildren ? (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onToggleExpand(item.id); }}
+                            className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
+                        >
+                            {isExpanded ? <ChevronDownIcon className="w-3.5 h-3.5"/> : <ChevronRightIcon className="w-3.5 h-3.5"/>}
+                        </button>
+                    ) : null}
+                </div>
                 
                 <div 
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0" 
@@ -270,38 +289,42 @@ const ReportRow: React.FC<{
                         <span className={`text-sm font-medium truncate ${isHidden ? 'text-slate-500 line-through' : 'text-slate-700'}`}>
                             {item.label}
                         </span>
-                        <span className="text-sm font-bold text-slate-900">
-                            {isHidden ? '-' : formatCurrency(item.value)}
+                        <span className={`text-sm font-bold ${isHidden ? 'text-slate-400' : 'text-slate-900'}`}>
+                            {formatCurrency(item.value)}
                         </span>
                     </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
-                        <div 
-                            className="h-full rounded-full transition-all duration-500"
-                            style={{ 
-                                width: `${percentage}%`, 
-                                backgroundColor: isHidden ? '#cbd5e1' : item.color 
-                            }}
-                        />
-                    </div>
+                    {/* Progress Bar only for top-level or significant items */}
+                    {!isHidden && percentage > 2 && (
+                        <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
+                            <div 
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{ 
+                                    width: `${percentage}%`, 
+                                    backgroundColor: item.color 
+                                }}
+                            />
+                        </div>
+                    )}
                 </div>
                 
                 <button 
                     onClick={(e) => onToggleHidden(e, item.id)}
-                    className="p-1 text-slate-300 hover:text-slate-500 transition-colors"
+                    className="p-1.5 text-slate-300 hover:text-slate-600 rounded hover:bg-slate-200 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    title={isHidden ? "Show" : "Hide"}
                 >
-                    {isHidden ? <EyeSlashIcon className="w-3 h-3"/> : <EyeIcon className="w-3 h-3"/>}
+                    {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5"/> : <EyeIcon className="w-3.5 h-3.5"/>}
                 </button>
             </div>
             
             {isExpanded && item.children.length > 0 && (
-                <div className="mt-1">
+                <div className="mt-0.5">
                     {item.children.sort((a,b) => b.value - a.value).map(child => (
                         <ReportRow
                             key={child.id}
                             item={child}
-                            total={total}
+                            total={total} // Parent value is effectively the total for its children if we want % relative to parent? No, standard pie is % of whole.
                             onClick={onClick}
-                            isHidden={isHidden}
+                            isHidden={isHidden} // If parent is hidden, children visual style inherits, but logic is separate
                             onToggleHidden={onToggleHidden}
                             expandedIds={expandedIds}
                             onToggleExpand={onToggleExpand}
@@ -314,7 +337,7 @@ const ReportRow: React.FC<{
     );
 };
 
-const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, onUpdateReport, savedDateRanges, onSaveDateRange, onDeleteDateRange }) => {
+const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, onUpdateReport, savedDateRanges, onSaveDateRange, onDeleteDateRange, savedReports }) => {
     
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
@@ -403,17 +426,18 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 }
 
                 const node = getNode(key, label, parentId);
-                node.ownValue += tx.amount; // Start with own value
+                // Only add to ownValue if not hidden
+                if (!hiddenIds.has(key)) {
+                    node.ownValue += tx.amount; 
+                }
                 node.transactions.push(tx);
             });
 
-            // 2. Build tree structure by ensuring parents exist and linking
-            // Convert map values to array to iterate safely while adding new parent nodes to map
+            // 2. Build tree structure
             const currentNodes = Array.from(nodeMap.values());
             
             currentNodes.forEach(node => {
                 if (node.parentId) {
-                    // Ensure parent exists in map
                     if (!nodeMap.has(node.parentId)) {
                         let parentLabel = 'Unknown Parent';
                         let grandParentId: string | undefined = undefined;
@@ -425,12 +449,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             const p = payees.find(py => py.id === node.parentId);
                             if (p) { parentLabel = p.name; grandParentId = p.parentId; }
                         }
-                        
                         getNode(node.parentId, parentLabel, grandParentId);
                     }
                     
                     const parent = nodeMap.get(node.parentId)!;
-                    // Check if already added to avoid dupes if re-processing
                     if (!parent.children.find(c => c.id === node.id)) {
                         parent.children.push(node);
                     }
@@ -440,18 +462,36 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             // 3. Identify roots
             const roots = Array.from(nodeMap.values()).filter(n => !n.parentId || !nodeMap.has(n.parentId));
 
-            // 4. Calculate total values recursively (bottom-up aggregation)
+            // 4. Calculate total values recursively
             const aggregateValues = (node: ItemNode): number => {
-                let sum = node.ownValue;
+                let sum = node.ownValue; // Only includes direct txs if not hidden (handled above)
+                
+                // If parent is explicitly hidden, exclude its entire branch from totals
+                // BUT user requirement: "make sure children have the ability to toggle"
+                // So if Parent is hidden, but Child is NOT hidden, should Child count?
+                // Standard behavior: Parent Hidden -> Branch Hidden. 
+                // Let's adopt strict granular behavior: If node ID is in hiddenIds, its own value is 0.
+                // Aggregation simply sums visible descendants.
+                
                 for (const child of node.children) {
-                    sum += aggregateValues(child);
-                    // Also aggregate transactions for viewing purposes
+                    sum += aggregateValues(child); // Recursion
                     node.transactions = [...node.transactions, ...child.transactions];
                 }
-                node.value = sum;
-                return sum;
+                
+                // Final check: if this specific node is hidden, its value contributes 0 to its parent
+                // (Though we want to display the potential value in UI, for the chart 'value' implies visible value)
+                if (hiddenIds.has(node.id)) {
+                    node.value = 0; 
+                    return 0;
+                } else {
+                    node.value = sum;
+                    return sum;
+                }
             };
 
+            // We need a separate pass for display values (showing what *could* be there) vs chart values
+            // For simplicity, we'll let `value` be the chart-ready value.
+            
             roots.forEach(aggregateValues);
             rootNodes = roots;
 
@@ -472,6 +512,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         const tagKey = tagId;
                         const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
                         if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
+                        
+                        if (hiddenIds.has(tagKey)) return; // Skip if hidden
 
                         if (!nodes.has(tagKey)) {
                             nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, ownValue: 0, color: '', transactions: [], children: [] });
@@ -483,6 +525,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     });
                     return;
                 }
+
+                if (hiddenIds.has(key)) return; // Skip if hidden
 
                 if (!nodes.has(key)) {
                     nodes.set(key, { id: key, label, value: 0, ownValue: 0, color: '', transactions: [], children: [] });
@@ -508,8 +552,12 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         rootNodes.sort((a, b) => sortBy === 'amount' ? b.value - a.value : a.label.localeCompare(b.label));
 
         // Totals
-        const visibleItems = rootNodes.filter(r => !hiddenIds.has(r.id));
-        const totalValue = visibleItems.reduce((sum, item) => sum + item.value, 0);
+        // For flat lists, filtering happens during creation. For trees, aggregation handles it.
+        // We just sum root nodes now.
+        const totalValue = rootNodes.reduce((sum, item) => sum + item.value, 0);
+        
+        // Visible items for chart are those with > 0 value
+        const visibleItems = rootNodes.filter(r => r.value > 0);
 
         return { items: rootNodes, totalValue, visibleItems };
 
@@ -518,6 +566,11 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     const handleConfigUpdate = (newConfig: ReportConfig) => {
         setConfig(newConfig);
         onUpdateReport(newConfig);
+        
+        // Auto-save check: If this report exists in SavedReports (by ID), update it there too.
+        if (savedReports && savedReports.some(r => r.id === newConfig.id)) {
+            onSaveReport(newConfig);
+        }
     };
 
     const toggleHidden = (e: React.MouseEvent, id: string) => {
@@ -531,8 +584,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             hiddenIds: Array.from(currentHidden),
             hiddenCategoryIds: Array.from(currentHidden) 
         };
-        setConfig(newConfig);
-        onUpdateReport(newConfig);
+        handleConfigUpdate(newConfig);
     };
 
     const toggleExpand = (id: string) => {

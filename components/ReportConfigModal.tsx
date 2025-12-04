@@ -135,7 +135,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         const isAllPayees = selectedPayees.size === payees.length;
 
         const config: ReportConfig = {
-            id: initialConfig?.id || generateUUID(), // Preserve ID if editing
+            id: initialConfig?.id || generateUUID(), // Preserve ID if editing to allow overwriting
             name: name.trim() || 'New Report',
             datePreset,
             customStartDate: ['custom', 'specificMonth', 'relativeMonth'].includes(datePreset) ? customStartDate : undefined,
