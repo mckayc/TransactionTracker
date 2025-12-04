@@ -225,6 +225,7 @@ interface ItemNode {
     transactions: Transaction[];
     children: ItemNode[];
     parentId?: string;
+    ownValue: number; // Value of direct transactions only
 }
 
 const ReportRow: React.FC<{ 
@@ -300,7 +301,7 @@ const ReportRow: React.FC<{
                             item={child}
                             total={total}
                             onClick={onClick}
-                            isHidden={isHidden} // Inherit hidden state purely visual, or check specific? Usually check specific.
+                            isHidden={isHidden}
                             onToggleHidden={onToggleHidden}
                             expandedIds={expandedIds}
                             onToggleExpand={onToggleExpand}
@@ -362,110 +363,152 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         });
 
         const isHierarchical = config.groupBy === 'category' || config.groupBy === 'payee';
-        
-        // 2. Aggregate Data
-        const nodes = new Map<string, ItemNode>();
         const hiddenIds = new Set(config.hiddenIds || config.hiddenCategoryIds || []);
-
-        filtered.forEach(tx => {
-            let key = '';
-            let label = 'Unknown';
-            let parentId: string | undefined = undefined;
-
-            if (config.groupBy === 'category') {
-                key = tx.categoryId;
-                const cat = categories.find(c => c.id === key);
-                label = cat?.name || 'Uncategorized';
-                parentId = cat?.parentId;
-            } else if (config.groupBy === 'payee') {
-                key = tx.payeeId || 'no-payee';
-                const payee = payees.find(p => p.id === key);
-                label = payee?.name || 'No Payee';
-                parentId = payee?.parentId;
-            } else if (config.groupBy === 'account') {
-                key = tx.accountId || 'no-account';
-                label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
-            } else if (config.groupBy === 'type') {
-                key = tx.typeId;
-                label = transactionTypes.find(t => t.id === key)?.name || 'Unknown Type';
-            } else if (config.groupBy === 'tag') {
-                const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
-                txTags.forEach(tagId => {
-                    const tagKey = tagId;
-                    const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
-                    if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
-
-                    if (!nodes.has(tagKey)) {
-                        nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, color: COLORS[nodes.size % COLORS.length], transactions: [], children: [] });
-                    }
-                    const node = nodes.get(tagKey)!;
-                    node.value += tx.amount;
-                    node.transactions.push(tx);
-                });
-                return;
-            }
-
-            if (!nodes.has(key)) {
-                nodes.set(key, { id: key, label, value: 0, color: '', transactions: [], children: [], parentId });
-            }
-            const node = nodes.get(key)!;
-            node.value += tx.amount;
-            node.transactions.push(tx);
-        });
-
-        // 3. Build Tree (if hierarchical)
+        
         let rootNodes: ItemNode[] = [];
 
         if (isHierarchical) {
-            // Populate Parents first if they don't exist (because they had no transactions)
-            if (config.groupBy === 'category') {
-                categories.forEach(c => {
-                    if (!c.parentId && !nodes.has(c.id)) {
-                        // Only add empty parents if they have children with data (handled in tree build) or we want to show everything?
-                        // Let's just ensure all nodes exist so we can link children.
-                    }
-                });
+            const nodeMap = new Map<string, ItemNode>();
+            
+            const getNode = (id: string, label: string, parentId?: string): ItemNode => {
+                if (!nodeMap.has(id)) {
+                    nodeMap.set(id, { 
+                        id, 
+                        label, 
+                        value: 0, 
+                        ownValue: 0,
+                        color: '', 
+                        transactions: [], 
+                        children: [], 
+                        parentId 
+                    });
+                }
+                return nodeMap.get(id)!;
             }
 
-            const allNodes = Array.from(nodes.values());
-            
-            // Map for quick lookup
-            const nodeMap = new Map<string, ItemNode>(allNodes.map(n => [n.id, n]));
+            // 1. Map transactions to nodes
+            filtered.forEach(tx => {
+                let key = '', label = 'Unknown', parentId: string | undefined = undefined;
+                
+                if (config.groupBy === 'category') {
+                    key = tx.categoryId;
+                    const cat = categories.find(c => c.id === key);
+                    label = cat?.name || 'Uncategorized';
+                    parentId = cat?.parentId;
+                } else if (config.groupBy === 'payee') {
+                    key = tx.payeeId || 'no-payee';
+                    const p = payees.find(py => py.id === key);
+                    label = p?.name || 'No Payee';
+                    parentId = p?.parentId;
+                }
 
-            allNodes.forEach(node => {
-                if (node.parentId && nodeMap.has(node.parentId)) {
+                const node = getNode(key, label, parentId);
+                node.ownValue += tx.amount; // Start with own value
+                node.transactions.push(tx);
+            });
+
+            // 2. Build tree structure by ensuring parents exist and linking
+            // Convert map values to array to iterate safely while adding new parent nodes to map
+            const currentNodes = Array.from(nodeMap.values());
+            
+            currentNodes.forEach(node => {
+                if (node.parentId) {
+                    // Ensure parent exists in map
+                    if (!nodeMap.has(node.parentId)) {
+                        let parentLabel = 'Unknown Parent';
+                        let grandParentId: string | undefined = undefined;
+                        
+                        if (config.groupBy === 'category') {
+                            const p = categories.find(c => c.id === node.parentId);
+                            if (p) { parentLabel = p.name; grandParentId = p.parentId; }
+                        } else {
+                            const p = payees.find(py => py.id === node.parentId);
+                            if (p) { parentLabel = p.name; grandParentId = p.parentId; }
+                        }
+                        
+                        getNode(node.parentId, parentLabel, grandParentId);
+                    }
+                    
                     const parent = nodeMap.get(node.parentId)!;
-                    parent.children.push(node);
-                    // Add child value to parent value?
-                    // Usually financial reports roll up.
-                    parent.value += node.value;
-                    parent.transactions = [...parent.transactions, ...node.transactions];
-                } else {
-                    rootNodes.push(node);
+                    // Check if already added to avoid dupes if re-processing
+                    if (!parent.children.find(c => c.id === node.id)) {
+                        parent.children.push(node);
+                    }
                 }
             });
-            
-            // If parent didn't exist in map but child did, child becomes root in this context (orphan)
-            // Or we should have pre-filled parents. For now, simple logic: if parent not found in active transactions set, treat as root.
-            
+
+            // 3. Identify roots
+            const roots = Array.from(nodeMap.values()).filter(n => !n.parentId || !nodeMap.has(n.parentId));
+
+            // 4. Calculate total values recursively (bottom-up aggregation)
+            const aggregateValues = (node: ItemNode): number => {
+                let sum = node.ownValue;
+                for (const child of node.children) {
+                    sum += aggregateValues(child);
+                    // Also aggregate transactions for viewing purposes
+                    node.transactions = [...node.transactions, ...child.transactions];
+                }
+                node.value = sum;
+                return sum;
+            };
+
+            roots.forEach(aggregateValues);
+            rootNodes = roots;
+
         } else {
+            // Flat Aggregation
+            const nodes = new Map<string, ItemNode>();
+            filtered.forEach(tx => {
+                let key = '', label = 'Unknown';
+                if (config.groupBy === 'account') {
+                    key = tx.accountId || 'no-account';
+                    label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
+                } else if (config.groupBy === 'type') {
+                    key = tx.typeId;
+                    label = transactionTypes.find(t => t.id === key)?.name || 'Unknown Type';
+                } else if (config.groupBy === 'tag') {
+                    const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
+                    txTags.forEach(tagId => {
+                        const tagKey = tagId;
+                        const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
+                        if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
+
+                        if (!nodes.has(tagKey)) {
+                            nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, ownValue: 0, color: '', transactions: [], children: [] });
+                        }
+                        const node = nodes.get(tagKey)!;
+                        node.value += tx.amount;
+                        node.ownValue += tx.amount;
+                        node.transactions.push(tx);
+                    });
+                    return;
+                }
+
+                if (!nodes.has(key)) {
+                    nodes.set(key, { id: key, label, value: 0, ownValue: 0, color: '', transactions: [], children: [] });
+                }
+                const node = nodes.get(key)!;
+                node.value += tx.amount;
+                node.ownValue += tx.amount;
+                node.transactions.push(tx);
+            });
             rootNodes = Array.from(nodes.values());
         }
 
-        // 4. Color Assignment & Sorting
+        // Color Assignment & Sorting
         rootNodes.forEach((node, i) => {
             node.color = COLORS[i % COLORS.length];
-            // Assign child colors? Maybe shades or just grey in list
-            node.children.forEach((child, j) => {
-                child.color = node.color; // Same family
-            });
+            const assignChildColor = (n: ItemNode, c: string) => {
+                n.color = c;
+                n.children.forEach(child => assignChildColor(child, c));
+            }
+            assignChildColor(node, node.color);
         });
 
         rootNodes.sort((a, b) => sortBy === 'amount' ? b.value - a.value : a.label.localeCompare(b.label));
 
-        // 5. Totals
+        // Totals
         const visibleItems = rootNodes.filter(r => !hiddenIds.has(r.id));
-        // Note: value includes children now
         const totalValue = visibleItems.reduce((sum, item) => sum + item.value, 0);
 
         return { items: rootNodes, totalValue, visibleItems };
@@ -539,7 +582,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     <button 
                         onClick={() => onSaveReport(config)}
                         className="p-1.5 text-slate-400 hover:text-green-600 rounded hover:bg-white transition-colors"
-                        title="Save Changes to Database"
+                        title="Save Changes to Saved Reports List"
                     >
                         <DownloadIcon className="w-4 h-4" />
                     </button>

@@ -47,7 +47,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
     };
 
     const handleSaveReport = (config: ReportConfig) => {
-        // Find existing report by ID
+        // 1. Try to find existing report by ID
         const existingIndex = savedReports.findIndex(r => r.id === config.id);
         
         if (existingIndex >= 0) {
@@ -58,13 +58,24 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                 setSavedReports(updated);
             }
         } else {
-            // Check for name collision if ID didn't match (e.g. manual copy)
-            const nameMatch = savedReports.find(r => r.name === config.name);
-            if (nameMatch && !window.confirm(`A report named "${config.name}" already exists. Create a duplicate?`)) {
-                return;
+            // 2. ID mismatch, but check if Name exists (Collision / Overwrite Intent)
+            const nameMatchIndex = savedReports.findIndex(r => r.name === config.name);
+            
+            if (nameMatchIndex >= 0) {
+                if (window.confirm(`A report named "${config.name}" already exists. Overwrite it?`)) {
+                    const updated = [...savedReports];
+                    // We update the existing slot with the NEW config (and potentially new ID if it was regenerated)
+                    updated[nameMatchIndex] = { 
+                        ...updated[nameMatchIndex], 
+                        id: config.id, 
+                        config 
+                    };
+                    setSavedReports(updated);
+                    return;
+                }
             }
 
-            // Create new
+            // 3. Create new
             const newReport: SavedReport = {
                 id: config.id,
                 name: config.name,
