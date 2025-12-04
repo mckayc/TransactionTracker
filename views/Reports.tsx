@@ -213,6 +213,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                 savedDateRanges={savedDateRanges}
                 onSaveDateRange={handleSaveDateRange}
                 onDeleteDateRange={handleDeleteDateRange}
+                transactions={transactions}
             />
 
             {isSavedReportsOpen && (
