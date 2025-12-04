@@ -237,20 +237,12 @@ const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<
         return topItems;
     }, [items]);
 
-    if (totalVisible <= 0.001) return <div ref={forwardedRef} className="h-48 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
-
-    let cumulativePercent = 0;
-
-    const getCoordinatesForPercent = (percent: number) => {
-        const x = Math.cos(2 * Math.PI * percent);
-        const y = Math.sin(2 * Math.PI * percent);
-        return [x, y];
-    };
-
     // Safe access to hovered item
+    // IMPORTANT: Access this before conditional returns to avoid hook rule violations
     const hoveredItem = (hoveredIndex !== null && chartData[hoveredIndex]) ? chartData[hoveredIndex] : null;
     
     // Determine children to show in center
+    // IMPORTANT: This useMemo MUST run unconditionally before any early return
     const breakdown = useMemo(() => {
         if (!hoveredItem || !hoveredItem.children || hoveredItem.children.length === 0) return [];
         // Sort children by visibleAmount descending
@@ -259,6 +251,19 @@ const DonutChart: React.FC<{ items: AggregationItem[], forwardedRef?: React.Ref<
             .sort((a,b) => (b.visibleAmount || 0) - (a.visibleAmount || 0))
             .slice(0, 3);
     }, [hoveredItem]);
+
+    // Now we can safely return early if no data
+    if (totalVisible <= 0.001) {
+        return <div ref={forwardedRef} className="h-48 flex items-center justify-center text-slate-400 text-sm">No Data</div>;
+    }
+
+    let cumulativePercent = 0;
+
+    const getCoordinatesForPercent = (percent: number) => {
+        const x = Math.cos(2 * Math.PI * percent);
+        const y = Math.sin(2 * Math.PI * percent);
+        return [x, y];
+    };
 
     return (
         <div ref={forwardedRef} className="flex justify-center py-6 relative bg-white">
