@@ -1,79 +1,64 @@
 
-import React from 'react';
+import { 
+    Upload, Download, Save, CheckCircle, AlertTriangle, LayoutDashboard, 
+    Table, Calendar, CreditCard, Settings, ListTodo, ClipboardList, Repeat, 
+    Menu, X, ArrowUpDown, Pencil, StickyNote, Trash2, Plus, PieChart, 
+    MessageSquare, Send, Link, Sparkles, Users, Tag, Copy, BadgeCheck, 
+    Play, Wand2, FileText, Lightbulb, CloudUpload, DollarSign, Bot, 
+    Search, Wrench, Info, Eye, EyeOff, Folder, GripVertical, 
+    ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Heart, Printer, 
+    ShieldCheck, Scissors, UsersRound
+} from 'lucide-react';
 
-// Helper to render monochrome emojis that inherit text color
-// The style `color: transparent; text-shadow: 0 0 0 currentColor;` forces the emoji to be flat and take the text color.
-const EmojiIcon = ({ symbol, className = "", ...props }: { symbol: string; className?: string } & React.HTMLAttributes<HTMLSpanElement>) => {
-    // Filter out SVG-specific props that might be passed from legacy code
-    const { strokeWidth, fill, stroke, ...spanProps } = props as any;
-    
-    return (
-        <span 
-            className={`inline-flex items-center justify-center select-none ${className}`} 
-            style={{ 
-                color: 'transparent', 
-                textShadow: '0 0 0 currentColor', 
-                fontSize: '1.2em', 
-                lineHeight: 1 
-            }}
-            role="img"
-            aria-hidden="true"
-            {...spanProps}
-        >
-            {symbol}
-        </span>
-    );
-};
-
-export const UploadIcon = (props: any) => <EmojiIcon symbol="📤" {...props} />;
-export const DownloadIcon = (props: any) => <EmojiIcon symbol="📥" {...props} />;
-export const SaveIcon = (props: any) => <EmojiIcon symbol="💾" {...props} />;
-export const CheckCircleIcon = (props: any) => <EmojiIcon symbol="✅" {...props} />;
-export const ExclamationTriangleIcon = (props: any) => <EmojiIcon symbol="⚠️" {...props} />;
-export const DashboardIcon = (props: any) => <EmojiIcon symbol="📊" {...props} />;
-export const TableIcon = (props: any) => <EmojiIcon symbol="📋" {...props} />;
-export const CalendarIcon = (props: any) => <EmojiIcon symbol="📅" {...props} />;
-export const CreditCardIcon = (props: any) => <EmojiIcon symbol="💳" {...props} />;
-export const SettingsIcon = (props: any) => <EmojiIcon symbol="⚙️" {...props} />;
-export const TasksIcon = (props: any) => <EmojiIcon symbol="☑️" {...props} />;
-export const ChecklistIcon = (props: any) => <EmojiIcon symbol="📝" {...props} />;
-export const RepeatIcon = (props: any) => <EmojiIcon symbol="🔄" {...props} />;
-export const MenuIcon = (props: any) => <EmojiIcon symbol="☰" {...props} />;
-export const CloseIcon = (props: any) => <EmojiIcon symbol="✖️" {...props} />;
-export const SortIcon = (props: any) => <EmojiIcon symbol="⇅" {...props} />;
-export const EditIcon = (props: any) => <EmojiIcon symbol="✏️" {...props} />;
-export const NotesIcon = (props: any) => <EmojiIcon symbol="🗒️" {...props} />;
-export const DeleteIcon = (props: any) => <EmojiIcon symbol="🗑️" {...props} />;
-export const AddIcon = (props: any) => <EmojiIcon symbol="➕" {...props} />;
-export const ChartPieIcon = (props: any) => <EmojiIcon symbol="🍩" {...props} />; // Donut for Chart
-export const ChatBubbleIcon = (props: any) => <EmojiIcon symbol="💬" {...props} />;
-export const SendIcon = (props: any) => <EmojiIcon symbol="🚀" {...props} />;
-export const LinkIcon = (props: any) => <EmojiIcon symbol="🔗" {...props} />;
-export const SparklesIcon = (props: any) => <EmojiIcon symbol="✨" {...props} />;
-export const UsersIcon = (props: any) => <EmojiIcon symbol="👥" {...props} />;
-export const UserGroupIcon = (props: any) => <EmojiIcon symbol="👨‍👩‍👧‍👦" {...props} />;
-export const TagIcon = (props: any) => <EmojiIcon symbol="🏷️" {...props} />;
-export const DuplicateIcon = (props: any) => <EmojiIcon symbol="❐" {...props} />;
-export const CheckBadgeIcon = (props: any) => <EmojiIcon symbol="🎖️" {...props} />;
-export const PlayIcon = (props: any) => <EmojiIcon symbol="▶️" {...props} />;
-export const WizardIcon = (props: any) => <EmojiIcon symbol="🪄" {...props} />;
-export const DocumentIcon = (props: any) => <EmojiIcon symbol="📄" {...props} />;
-export const LightBulbIcon = (props: any) => <EmojiIcon symbol="💡" {...props} />;
-export const CloudArrowUpIcon = (props: any) => <EmojiIcon symbol="☁️" {...props} />;
-export const CurrencyDollarIcon = (props: any) => <EmojiIcon symbol="💲" {...props} />;
-export const RobotIcon = (props: any) => <EmojiIcon symbol="🤖" {...props} />;
-export const SearchCircleIcon = (props: any) => <EmojiIcon symbol="🔍" {...props} />;
-export const WrenchIcon = (props: any) => <EmojiIcon symbol="🔧" {...props} />;
-export const InfoIcon = (props: any) => <EmojiIcon symbol="ℹ️" {...props} />;
-export const EyeIcon = (props: any) => <EmojiIcon symbol="👁️" {...props} />;
-export const EyeSlashIcon = (props: any) => <EmojiIcon symbol="🙈" {...props} />;
-export const FolderIcon = (props: any) => <EmojiIcon symbol="📁" {...props} />;
-export const DragHandleIcon = (props: any) => <EmojiIcon symbol="⠿" {...props} />;
-export const ChevronRightIcon = (props: any) => <EmojiIcon symbol="›" style={{ fontWeight: 'bold' }} {...props} />;
-export const ChevronLeftIcon = (props: any) => <EmojiIcon symbol="‹" style={{ fontWeight: 'bold' }} {...props} />;
-export const ChevronDownIcon = (props: any) => <EmojiIcon symbol="⌄" style={{ fontWeight: 'bold', position: 'relative', top: '-0.2em' }} {...props} />;
-export const ExternalLinkIcon = (props: any) => <EmojiIcon symbol="↗" {...props} />;
-export const HeartIcon = (props: any) => <EmojiIcon symbol="♥️" {...props} />;
-export const PrinterIcon = (props: any) => <EmojiIcon symbol="🖨️" {...props} />;
-export const ShieldCheckIcon = (props: any) => <EmojiIcon symbol="🛡️" {...props} />;
-export const SplitIcon = (props: any) => <EmojiIcon symbol="✂️" {...props} />;
+export const UploadIcon = Upload;
+export const DownloadIcon = Download;
+export const SaveIcon = Save;
+export const CheckCircleIcon = CheckCircle;
+export const ExclamationTriangleIcon = AlertTriangle;
+export const DashboardIcon = LayoutDashboard;
+export const TableIcon = Table;
+export const CalendarIcon = Calendar;
+export const CreditCardIcon = CreditCard;
+export const SettingsIcon = Settings;
+export const TasksIcon = ListTodo;
+export const ChecklistIcon = ClipboardList;
+export const RepeatIcon = Repeat;
+export const MenuIcon = Menu;
+export const CloseIcon = X;
+export const SortIcon = ArrowUpDown;
+export const EditIcon = Pencil;
+export const NotesIcon = StickyNote;
+export const DeleteIcon = Trash2;
+export const AddIcon = Plus;
+export const ChartPieIcon = PieChart;
+export const ChatBubbleIcon = MessageSquare;
+export const SendIcon = Send;
+export const LinkIcon = Link;
+export const SparklesIcon = Sparkles;
+export const UsersIcon = Users;
+export const UserGroupIcon = UsersRound;
+export const TagIcon = Tag;
+export const DuplicateIcon = Copy;
+export const CheckBadgeIcon = BadgeCheck;
+export const PlayIcon = Play;
+export const WizardIcon = Wand2;
+export const DocumentIcon = FileText;
+export const LightBulbIcon = Lightbulb;
+export const CloudArrowUpIcon = CloudUpload;
+export const CurrencyDollarIcon = DollarSign;
+export const RobotIcon = Bot;
+export const SearchCircleIcon = Search;
+export const WrenchIcon = Wrench;
+export const InfoIcon = Info;
+export const EyeIcon = Eye;
+export const EyeSlashIcon = EyeOff;
+export const FolderIcon = Folder;
+export const DragHandleIcon = GripVertical;
+export const ChevronRightIcon = ChevronRight;
+export const ChevronLeftIcon = ChevronLeft;
+export const ChevronDownIcon = ChevronDown;
+export const ExternalLinkIcon = ExternalLink;
+export const HeartIcon = Heart;
+export const PrinterIcon = Printer;
+export const ShieldCheckIcon = ShieldCheck;
+export const SplitIcon = Scissors;

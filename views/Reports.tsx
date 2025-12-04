@@ -235,7 +235,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                         </div>
                     </div>
                 ) : (
-                    <div className="h-full flex gap-4 px-4 pb-4 min-w-full w-max">
+                    <div className="h-full flex gap-4 px-4 pt-6 pb-4 min-w-full w-max">
                         {activeReports.map((config, index) => (
                             <div 
                                 key={config.id} // Stable ID for DnD
