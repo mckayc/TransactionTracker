@@ -247,12 +247,13 @@ const DonutChart: React.FC<{ data: { label: string; value: number; color: string
 interface ItemNode {
     id: string;
     label: string;
-    value: number;
+    value: number; // Display Value (0 if hidden)
+    sortValue: number; // Sort Value (includes value even if hidden)
     color: string;
     transactions: Transaction[];
     children: ItemNode[];
     parentId?: string;
-    ownValue: number; // Value of direct transactions only
+    ownValue: number; // Direct value of this node
 }
 
 const ReportRow: React.FC<{ 
@@ -302,8 +303,8 @@ const ReportRow: React.FC<{
                         <span className={`text-sm font-medium truncate ${isHidden ? 'text-slate-500 line-through' : 'text-slate-700'}`}>
                             {item.label}
                         </span>
-                        <span className={`text-sm font-bold ${isHidden ? 'text-slate-400' : 'text-slate-900'}`}>
-                            {formatCurrency(item.value)}
+                        <span className={`text-sm font-bold ${isHidden ? 'text-slate-300' : 'text-slate-900'}`}>
+                            {isHidden ? '---' : formatCurrency(item.value)}
                         </span>
                     </div>
                     {/* Progress Bar only for top-level or significant items */}
@@ -322,16 +323,20 @@ const ReportRow: React.FC<{
                 
                 <button 
                     onClick={(e) => onToggleHidden(e, item.id)}
-                    className="p-1.5 text-slate-300 hover:text-slate-600 rounded hover:bg-slate-200 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    className={`p-1.5 rounded transition-colors ${
+                        isHidden 
+                        ? 'text-slate-500 bg-slate-200 opacity-100' 
+                        : 'text-slate-300 hover:text-slate-600 hover:bg-slate-100 opacity-0 group-hover:opacity-100 focus:opacity-100'
+                    }`}
                     title={isHidden ? "Show" : "Hide"}
                 >
-                    {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5"/> : <EyeIcon className="w-3.5 h-3.5"/>}
+                    {isHidden ? <EyeSlashIcon className="w-4 h-4"/> : <EyeIcon className="w-4 h-4"/>}
                 </button>
             </div>
             
             {isExpanded && item.children.length > 0 && (
                 <div className="mt-0.5">
-                    {item.children.sort((a,b) => b.value - a.value).map(child => (
+                    {item.children.sort((a,b) => b.sortValue - a.sortValue).map(child => (
                         <ReportRow
                             key={child.id}
                             item={child}
@@ -412,6 +417,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         id, 
                         label, 
                         value: 0, 
+                        sortValue: 0,
                         ownValue: 0,
                         color: '', 
                         transactions: [], 
@@ -439,10 +445,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 }
 
                 const node = getNode(key, label, parentId);
-                // Only add to ownValue if not hidden
-                if (!hiddenIds.has(key)) {
-                    node.ownValue += tx.amount; 
-                }
+                node.ownValue += tx.amount; 
                 node.transactions.push(tx);
             });
 
@@ -476,21 +479,28 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             const roots = Array.from(nodeMap.values()).filter(n => !n.parentId || !nodeMap.has(n.parentId));
 
             // 4. Calculate total values recursively
-            const aggregateValues = (node: ItemNode): number => {
-                let sum = node.ownValue; // Only includes direct txs if not hidden
+            const aggregateValues = (node: ItemNode): { visible: number, total: number } => {
+                let visibleSum = 0;
+                let totalSum = node.ownValue;
+
+                const isNodeHidden = hiddenIds.has(node.id);
+
+                if (!isNodeHidden) {
+                    visibleSum = node.ownValue;
+                }
                 
                 for (const child of node.children) {
-                    sum += aggregateValues(child);
+                    const childSums = aggregateValues(child);
+                    if (!isNodeHidden) {
+                        visibleSum += childSums.visible;
+                    }
+                    totalSum += childSums.total;
                     node.transactions = [...node.transactions, ...child.transactions];
                 }
                 
-                if (hiddenIds.has(node.id)) {
-                    node.value = 0; 
-                    return 0;
-                } else {
-                    node.value = sum;
-                    return sum;
-                }
+                node.value = visibleSum;
+                node.sortValue = totalSum;
+                return { visible: visibleSum, total: totalSum };
             };
             
             roots.forEach(aggregateValues);
@@ -514,34 +524,33 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
                         if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
                         
-                        if (hiddenIds.has(tagKey)) return;
-
                         if (!nodes.has(tagKey)) {
-                            nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, ownValue: 0, color: '', transactions: [], children: [] });
+                            nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, sortValue: 0, ownValue: 0, color: '', transactions: [], children: [] });
                         }
                         const node = nodes.get(tagKey)!;
-                        node.value += tx.amount;
                         node.ownValue += tx.amount;
                         node.transactions.push(tx);
                     });
                     return;
                 }
 
-                if (hiddenIds.has(key)) return;
-
                 if (!nodes.has(key)) {
-                    nodes.set(key, { id: key, label, value: 0, ownValue: 0, color: '', transactions: [], children: [] });
+                    nodes.set(key, { id: key, label, value: 0, sortValue: 0, ownValue: 0, color: '', transactions: [], children: [] });
                 }
                 const node = nodes.get(key)!;
-                node.value += tx.amount;
                 node.ownValue += tx.amount;
                 node.transactions.push(tx);
             });
+            
             rootNodes = Array.from(nodes.values());
+            rootNodes.forEach(node => {
+                node.sortValue = node.ownValue;
+                node.value = hiddenIds.has(node.id) ? 0 : node.ownValue;
+            });
         }
 
-        // Sort roots first so colors align with magnitude
-        rootNodes.sort((a, b) => sortBy === 'amount' ? b.value - a.value : a.label.localeCompare(b.label));
+        // Sort roots first so colors align with magnitude, using sortValue (includes hidden amounts) to maintain order
+        rootNodes.sort((a, b) => sortBy === 'amount' ? b.sortValue - a.sortValue : a.label.localeCompare(b.label));
 
         // Color Assignment with Hierarchical Shading
         rootNodes.forEach((node, i) => {
@@ -553,12 +562,11 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 if(n.children && n.children.length > 0) {
                     // Sort children by value so largest gets darker shade if we varied by index?
                     // Actually, let's keep it simple: lighter shades for all children
-                    n.children.sort((a,b) => b.value - a.value);
+                    // Sort children for color consistency using sortValue too
+                    n.children.sort((a,b) => b.sortValue - a.sortValue);
                     
                     n.children.forEach((child, idx) => {
                         // Lighten each child. To distinguish siblings, we can shift slightly based on index
-                        // Or just make all children of this node lighter than the node.
-                        // Let's make siblings slightly distinct.
                         // 15% lighter base + small variance per index
                         const lightness = 15 + (Math.min(idx, 5) * 5); 
                         child.color = lightenColor(base, lightness);
@@ -569,8 +577,9 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             processChildren(node, baseColor);
         });
 
-        // Calculate Totals
+        // Calculate Totals - only visible value
         const totalValue = rootNodes.reduce((sum, item) => sum + item.value, 0);
+        // Only show slices that have visible value in the chart
         const visibleItems = rootNodes.filter(r => r.value > 0);
 
         return { items: rootNodes, totalValue, visibleItems };
