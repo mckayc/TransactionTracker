@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport } from '../types';
-import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
+import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import TransactionTable from './TransactionTable';
 import ReportConfigModal from './ReportConfigModal';
@@ -24,6 +24,16 @@ interface ReportColumnProps {
 }
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
+
+// Helper to generate lighter shades of a hex color
+const lightenColor = (color: string, percent: number) => {
+    const num = parseInt(color.replace("#", ""), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = (num >> 16) + amt;
+    const B = ((num >> 8) & 0x00FF) + amt;
+    const G = (num & 0x0000FF) + amt;
+    return "#" + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 + (B<255?B<1?0:B:255)*0x100 + (G<255?G<1?0:G:255)).toString(16).slice(1);
+};
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 
@@ -188,13 +198,15 @@ const DonutChart: React.FC<{ data: { label: string; value: number; color: string
 
     return (
         <div className="relative w-48 h-48 mx-auto group">
-            <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full">
+            <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full overflow-visible">
                 {data.map((slice, i) => {
                     const percentage = total > 0 ? slice.value / total : 0;
                     if (percentage === 0) return null;
                     const strokeDasharray = `${percentage * circumference} ${circumference}`;
                     const strokeDashoffset = -accumulatedAngle * circumference;
                     accumulatedAngle += percentage;
+                    
+                    const isHovered = hoveredSlice?.label === slice.label;
 
                     return (
                         <circle
@@ -204,17 +216,18 @@ const DonutChart: React.FC<{ data: { label: string; value: number; color: string
                             r={radius}
                             fill="transparent"
                             stroke={slice.color}
-                            strokeWidth="16" // Slightly thinner for elegance
+                            strokeWidth={isHovered ? "18" : "14"}
                             strokeDasharray={strokeDasharray}
                             strokeDashoffset={strokeDashoffset}
-                            className={`transition-all duration-300 cursor-pointer ${hoveredSlice?.label === slice.label ? 'opacity-100 stroke-[18]' : 'opacity-90 hover:opacity-100 hover:stroke-[18]'}`}
+                            style={{ transformOrigin: '50px 50px' }}
+                            className={`transition-all duration-300 cursor-pointer ${isHovered ? 'opacity-100 scale-105 drop-shadow-md z-10' : 'opacity-90 hover:opacity-100 hover:scale-105'}`}
                             onMouseEnter={() => setHoveredSlice(slice)}
                             onMouseLeave={() => setHoveredSlice(null)}
                         />
                     );
                 })}
             </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-all duration-300">
+            <div className={`absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-all duration-300 ${hoveredSlice ? 'scale-110' : ''}`}>
                 <span className="text-xs text-slate-500 font-medium uppercase mb-1">
                     {hoveredSlice ? hoveredSlice.label : 'Total'}
                 </span>
@@ -322,9 +335,9 @@ const ReportRow: React.FC<{
                         <ReportRow
                             key={child.id}
                             item={child}
-                            total={total} // Parent value is effectively the total for its children if we want % relative to parent? No, standard pie is % of whole.
+                            total={total}
                             onClick={onClick}
-                            isHidden={isHidden} // If parent is hidden, children visual style inherits, but logic is separate
+                            isHidden={isHidden}
                             onToggleHidden={onToggleHidden}
                             expandedIds={expandedIds}
                             onToggleExpand={onToggleExpand}
@@ -464,22 +477,13 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
             // 4. Calculate total values recursively
             const aggregateValues = (node: ItemNode): number => {
-                let sum = node.ownValue; // Only includes direct txs if not hidden (handled above)
-                
-                // If parent is explicitly hidden, exclude its entire branch from totals
-                // BUT user requirement: "make sure children have the ability to toggle"
-                // So if Parent is hidden, but Child is NOT hidden, should Child count?
-                // Standard behavior: Parent Hidden -> Branch Hidden. 
-                // Let's adopt strict granular behavior: If node ID is in hiddenIds, its own value is 0.
-                // Aggregation simply sums visible descendants.
+                let sum = node.ownValue; // Only includes direct txs if not hidden
                 
                 for (const child of node.children) {
-                    sum += aggregateValues(child); // Recursion
+                    sum += aggregateValues(child);
                     node.transactions = [...node.transactions, ...child.transactions];
                 }
                 
-                // Final check: if this specific node is hidden, its value contributes 0 to its parent
-                // (Though we want to display the potential value in UI, for the chart 'value' implies visible value)
                 if (hiddenIds.has(node.id)) {
                     node.value = 0; 
                     return 0;
@@ -488,9 +492,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     return sum;
                 }
             };
-
-            // We need a separate pass for display values (showing what *could* be there) vs chart values
-            // For simplicity, we'll let `value` be the chart-ready value.
             
             roots.forEach(aggregateValues);
             rootNodes = roots;
@@ -513,7 +514,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
                         if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
                         
-                        if (hiddenIds.has(tagKey)) return; // Skip if hidden
+                        if (hiddenIds.has(tagKey)) return;
 
                         if (!nodes.has(tagKey)) {
                             nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, ownValue: 0, color: '', transactions: [], children: [] });
@@ -526,7 +527,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     return;
                 }
 
-                if (hiddenIds.has(key)) return; // Skip if hidden
+                if (hiddenIds.has(key)) return;
 
                 if (!nodes.has(key)) {
                     nodes.set(key, { id: key, label, value: 0, ownValue: 0, color: '', transactions: [], children: [] });
@@ -539,24 +540,37 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             rootNodes = Array.from(nodes.values());
         }
 
-        // Color Assignment & Sorting
-        rootNodes.forEach((node, i) => {
-            node.color = COLORS[i % COLORS.length];
-            const assignChildColor = (n: ItemNode, c: string) => {
-                n.color = c;
-                n.children.forEach(child => assignChildColor(child, c));
-            }
-            assignChildColor(node, node.color);
-        });
-
+        // Sort roots first so colors align with magnitude
         rootNodes.sort((a, b) => sortBy === 'amount' ? b.value - a.value : a.label.localeCompare(b.label));
 
-        // Totals
-        // For flat lists, filtering happens during creation. For trees, aggregation handles it.
-        // We just sum root nodes now.
+        // Color Assignment with Hierarchical Shading
+        rootNodes.forEach((node, i) => {
+            const baseColor = COLORS[i % COLORS.length];
+            node.color = baseColor;
+            
+            // Assign colors to children creating a lightness gradient
+            const processChildren = (n: ItemNode, base: string) => {
+                if(n.children && n.children.length > 0) {
+                    // Sort children by value so largest gets darker shade if we varied by index?
+                    // Actually, let's keep it simple: lighter shades for all children
+                    n.children.sort((a,b) => b.value - a.value);
+                    
+                    n.children.forEach((child, idx) => {
+                        // Lighten each child. To distinguish siblings, we can shift slightly based on index
+                        // Or just make all children of this node lighter than the node.
+                        // Let's make siblings slightly distinct.
+                        // 15% lighter base + small variance per index
+                        const lightness = 15 + (Math.min(idx, 5) * 5); 
+                        child.color = lightenColor(base, lightness);
+                        processChildren(child, base); // Pass base color down to keep family resemblance
+                    });
+                }
+            };
+            processChildren(node, baseColor);
+        });
+
+        // Calculate Totals
         const totalValue = rootNodes.reduce((sum, item) => sum + item.value, 0);
-        
-        // Visible items for chart are those with > 0 value
         const visibleItems = rootNodes.filter(r => r.value > 0);
 
         return { items: rootNodes, totalValue, visibleItems };
@@ -567,7 +581,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         setConfig(newConfig);
         onUpdateReport(newConfig);
         
-        // Auto-save check: If this report exists in SavedReports (by ID), update it there too.
         if (savedReports && savedReports.some(r => r.id === newConfig.id)) {
             onSaveReport(newConfig);
         }
@@ -627,16 +640,16 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     <button 
                         onClick={() => setIsConfigModalOpen(true)}
                         className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-white transition-colors"
-                        title="Configure Report"
+                        title="Edit Report"
                     >
-                        <SettingsIcon className="w-4 h-4" />
+                        <EditIcon className="w-4 h-4" />
                     </button>
                     <button 
                         onClick={() => onSaveReport(config)}
                         className="p-1.5 text-slate-400 hover:text-green-600 rounded hover:bg-white transition-colors"
                         title="Save Changes to Saved Reports List"
                     >
-                        <DownloadIcon className="w-4 h-4" />
+                        <SaveIcon className="w-4 h-4" />
                     </button>
                 </div>
             </div>

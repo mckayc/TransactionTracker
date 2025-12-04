@@ -13,6 +13,12 @@ export const DownloadIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
+export const SaveIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
+    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 21a1.5 1.5 0 001.5-1.5V6.75a1.5 1.5 0 00-.44-1.06l-4.5-4.5A1.5 1.5 0 0014.94 1.5H4.5a1.5 1.5 0 00-1.5 1.5v18a1.5 1.5 0 001.5 1.5h15zM6 20.25h12v-6H6v6zm2.25-15h7.5v4.5h-7.5V5.25z" />
+  </svg>
+);
+
 export const CheckCircleIcon = (props: React.SVGProps<SVGSVGElement>) => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" {...props}>
     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

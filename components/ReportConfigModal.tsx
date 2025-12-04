@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset, Transaction } from '../types';
-import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon } from './Icons';
+import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon, SaveIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
 import { calculateDateRange } from './ReportColumn';
@@ -126,7 +126,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
 
     if (!isOpen) return null;
 
-    const handleSave = () => {
+    const handleSave = (asNew: boolean = false) => {
         const isAllAccounts = selectedAccounts.size === accounts.length;
         const isAllCategories = selectedCategories.size === categories.length;
         const isAllUsers = selectedUsers.size === users.length;
@@ -134,8 +134,11 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         const isAllTags = selectedTags.size === tags.length;
         const isAllPayees = selectedPayees.size === payees.length;
 
+        // If saving as new, generate new ID. Else use existing or generate one if new.
+        const id = asNew ? generateUUID() : (initialConfig?.id || generateUUID());
+
         const config: ReportConfig = {
-            id: initialConfig?.id || generateUUID(), // Preserve ID if editing to allow overwriting
+            id: id, 
             name: name.trim() || 'New Report',
             datePreset,
             customStartDate: ['custom', 'specificMonth', 'relativeMonth'].includes(datePreset) ? customStartDate : undefined,
@@ -151,8 +154,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 tagIds: isAllTags ? undefined : Array.from(selectedTags),
                 payeeIds: isAllPayees ? undefined : Array.from(selectedPayees),
             },
-            hiddenCategoryIds: initialConfig?.hiddenCategoryIds || [],
-            hiddenIds: initialConfig?.hiddenIds || []
+            hiddenCategoryIds: asNew ? [] : (initialConfig?.hiddenCategoryIds || []),
+            hiddenIds: asNew ? [] : (initialConfig?.hiddenIds || [])
         };
         onSave(config);
         onClose();
@@ -256,7 +259,14 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                     {!isManagingRanges && (
                         <>
                             <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100">Cancel</button>
-                            <button onClick={handleSave} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm">Apply Configuration</button>
+                            {initialConfig ? (
+                                <>
+                                    <button onClick={() => handleSave(true)} className="px-4 py-2 text-sm font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 shadow-sm">Save as New</button>
+                                    <button onClick={() => handleSave(false)} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm">Save</button>
+                                </>
+                            ) : (
+                                <button onClick={() => handleSave(false)} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm">Create Report</button>
+                            )}
                         </>
                     )}
                 </div>
