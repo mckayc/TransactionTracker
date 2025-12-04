@@ -4,7 +4,7 @@ import {
     Table, Calendar, CreditCard, Settings, ListTodo, ClipboardList, Repeat, 
     Menu, X, ArrowUpDown, Pencil, StickyNote, Trash2, Plus, PieChart, 
     MessageSquare, Send, Link, Sparkles, Users, Tag, Copy, BadgeCheck, 
-    Play, Wand2, FileText, Lightbulb, CloudUpload, DollarSign, Bot, 
+    Play, Wand2, FileText, Lightbulb, UploadCloud, DollarSign, Bot, 
     Search, Wrench, Info, Eye, EyeOff, Folder, GripVertical, 
     ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Heart, Printer, 
     ShieldCheck, Scissors, UsersRound
@@ -44,7 +44,7 @@ export const PlayIcon = Play;
 export const WizardIcon = Wand2;
 export const DocumentIcon = FileText;
 export const LightBulbIcon = Lightbulb;
-export const CloudArrowUpIcon = CloudUpload;
+export const CloudArrowUpIcon = UploadCloud;
 export const CurrencyDollarIcon = DollarSign;
 export const RobotIcon = Bot;
 export const SearchCircleIcon = Search;
