@@ -228,8 +228,19 @@ const DiagnosticsOverlay: React.FC<{
             effect: 0,
             unknownType: 0
         };
+        const droppedDetails: Record<string, Map<string, number>> = {
+            payeeFilter: new Map(),
+            category: new Map(),
+            effect: new Map()
+        };
+
         const warnings: string[] = [];
         const allowedEffects = new Set(config.filters.balanceEffects || ['expense']); 
+
+        const trackDrop = (type: keyof typeof droppedDetails, name: string) => {
+            const current = droppedDetails[type].get(name) || 0;
+            droppedDetails[type].set(name, current + 1);
+        };
 
         transactions.forEach(tx => {
             const txDate = new Date(tx.date);
@@ -246,7 +257,10 @@ const DiagnosticsOverlay: React.FC<{
                 droppedBy.user++; return;
             }
             if (config.filters.categoryIds && config.filters.categoryIds.length > 0 && !config.filters.categoryIds.includes(tx.categoryId)) {
-                droppedBy.category++; return;
+                droppedBy.category++; 
+                const catName = categories.find(c => c.id === tx.categoryId)?.name || 'Unknown';
+                trackDrop('category', catName);
+                return;
             }
             if (config.filters.typeIds && config.filters.typeIds.length > 0 && !config.filters.typeIds.includes(tx.typeId)) {
                 droppedBy.type++; return;
@@ -260,7 +274,10 @@ const DiagnosticsOverlay: React.FC<{
             // 1. Payee Filter Check
             if (config.filters.payeeIds && config.filters.payeeIds.length > 0) {
                 if (!config.filters.payeeIds.includes(tx.payeeId || '')) {
-                    droppedBy.payeeFilter++; return;
+                    droppedBy.payeeFilter++; 
+                    const payeeName = payees.find(p => p.id === tx.payeeId)?.name || 'Unknown';
+                    trackDrop('payeeFilter', payeeName);
+                    return;
                 }
             }
             
@@ -275,9 +292,11 @@ const DiagnosticsOverlay: React.FC<{
             }
             
             if (!allowedEffects.has(type.balanceEffect)) {
+                const payeeName = payees.find(p => p.id === tx.payeeId)?.name || 'Unknown';
+                trackDrop('effect', payeeName);
+                
                 // Smart Check: Did the user explicitly ask for this Payee/Category but it got hidden here?
                 if (config.filters.payeeIds && config.filters.payeeIds.includes(tx.payeeId || '')) {
-                    const payeeName = payees.find(p => p.id === tx.payeeId)?.name || 'Unknown';
                     const warn = `Hidden by Balance Impact (${type.balanceEffect}): Transaction for '${payeeName}'`;
                     if (!warnings.includes(warn)) warnings.push(warn);
                 }
@@ -292,12 +311,28 @@ const DiagnosticsOverlay: React.FC<{
             }
         });
 
-        return { totalInPeriod, droppedBy, warnings };
+        return { totalInPeriod, droppedBy, warnings, droppedDetails };
     }, [transactions, config, dateRange, transactionTypes, payees, categories]);
 
     const getFilterStats = (selectedIds: string[] | undefined, totalAvailable: number) => {
        if (!selectedIds || selectedIds.length === 0) return null;
        return `(Includes ${selectedIds.length} of ${totalAvailable})`;
+    };
+
+    const getDroppedList = (type: keyof typeof analysis.droppedDetails) => {
+        const map = analysis.droppedDetails[type];
+        if (map.size === 0) return null;
+        
+        // Sort by count desc
+        const sorted = Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+        const top = sorted.slice(0, 5).map(([name, count]) => `${name} (${count})`).join(', ');
+        const remaining = sorted.length > 5 ? `, +${sorted.length - 5} more` : '';
+        
+        return (
+            <div className="text-[10px] text-slate-500 italic mt-0.5 ml-1 pl-2 border-l-2 border-slate-200">
+                Excludes: {top}{remaining}
+            </div>
+        );
     };
 
     return (
@@ -325,12 +360,20 @@ const DiagnosticsOverlay: React.FC<{
 
                 <div className="space-y-2">
                     <p className="font-semibold text-slate-600 uppercase text-xs">Excluded By Filters</p>
-                    <ul className="space-y-1 pl-2">
+                    <ul className="space-y-2 pl-2">
                         <li className="flex justify-between"><span>Account Filter {getFilterStats(config.filters.accountIds, accounts.length)}:</span> <span className="font-mono">{analysis.droppedBy.account}</span></li>
                         <li className="flex justify-between"><span>User Filter {getFilterStats(config.filters.userIds, 2)}:</span> <span className="font-mono">{analysis.droppedBy.user}</span></li>
-                        <li className="flex justify-between"><span>Category Filter {getFilterStats(config.filters.categoryIds, categories.length)}:</span> <span className="font-mono">{analysis.droppedBy.category}</span></li>
                         
-                        <li className="flex justify-between"><span>Payee Filter {getFilterStats(config.filters.payeeIds, payees.length)}:</span> <span className="font-mono">{analysis.droppedBy.payeeFilter}</span></li>
+                        <li>
+                            <div className="flex justify-between"><span>Category Filter {getFilterStats(config.filters.categoryIds, categories.length)}:</span> <span className="font-mono">{analysis.droppedBy.category}</span></div>
+                            {analysis.droppedBy.category > 0 && getDroppedList('category')}
+                        </li>
+                        
+                        <li>
+                            <div className="flex justify-between"><span>Payee Filter {getFilterStats(config.filters.payeeIds, payees.length)}:</span> <span className="font-mono">{analysis.droppedBy.payeeFilter}</span></div>
+                            {analysis.droppedBy.payeeFilter > 0 && getDroppedList('payeeFilter')}
+                        </li>
+
                         {analysis.droppedBy.noPayee > 0 && (
                             <li className="flex justify-between text-amber-700 bg-amber-50 px-1 rounded">
                                 <span className="flex items-center gap-1"><ExclamationTriangleIcon className="w-3 h-3"/> No Payee Assigned:</span> 
@@ -339,7 +382,12 @@ const DiagnosticsOverlay: React.FC<{
                         )}
 
                         <li className="flex justify-between"><span>Transaction Type {getFilterStats(config.filters.typeIds, transactionTypes.length)}:</span> <span className="font-mono">{analysis.droppedBy.type}</span></li>
-                        <li className="flex justify-between"><span>Balance Impact (e.g. Transfers):</span> <span className="font-mono font-bold text-amber-600">{analysis.droppedBy.effect}</span></li>
+                        
+                        <li>
+                            <div className="flex justify-between"><span>Balance Impact (e.g. Transfers):</span> <span className="font-mono font-bold text-amber-600">{analysis.droppedBy.effect}</span></div>
+                            {analysis.droppedBy.effect > 0 && getDroppedList('effect')}
+                        </li>
+
                         <li className="flex justify-between"><span>Is Split Parent:</span> <span className="font-mono">{analysis.droppedBy.isParent}</span></li>
                         {analysis.droppedBy.unknownType > 0 && <li className="flex justify-between text-red-600"><span>Unknown Type ID:</span> <span className="font-mono">{analysis.droppedBy.unknownType}</span></li>}
                     </ul>
