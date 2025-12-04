@@ -223,7 +223,8 @@ const DiagnosticsOverlay: React.FC<{
             category: 0,
             type: 0,
             tag: 0,
-            payee: 0,
+            payeeFilter: 0,
+            noPayee: 0,
             effect: 0,
             unknownType: 0
         };
@@ -255,14 +256,17 @@ const DiagnosticsOverlay: React.FC<{
                     droppedBy.tag++; return;
                 }
             }
+            
+            // 1. Payee Filter Check
             if (config.filters.payeeIds && config.filters.payeeIds.length > 0) {
                 if (!config.filters.payeeIds.includes(tx.payeeId || '')) {
-                    droppedBy.payee++; return;
+                    droppedBy.payeeFilter++; return;
                 }
             }
-            // Explicit GroupBy Check
+            
+            // 2. Missing Payee Check (Only if grouping by Payee)
             if (config.groupBy === 'payee' && !tx.payeeId) {
-                droppedBy.payee++; return;
+                droppedBy.noPayee++; return;
             }
 
             const type = transactionTypes.find(t => t.id === tx.typeId);
@@ -291,6 +295,11 @@ const DiagnosticsOverlay: React.FC<{
         return { totalInPeriod, droppedBy, warnings };
     }, [transactions, config, dateRange, transactionTypes, payees, categories]);
 
+    const getFilterStats = (selectedIds: string[] | undefined, totalAvailable: number) => {
+       if (!selectedIds || selectedIds.length === 0) return null;
+       return `(Includes ${selectedIds.length} of ${totalAvailable})`;
+    };
+
     return (
         <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 flex flex-col p-6 animate-fade-in overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
@@ -317,11 +326,19 @@ const DiagnosticsOverlay: React.FC<{
                 <div className="space-y-2">
                     <p className="font-semibold text-slate-600 uppercase text-xs">Excluded By Filters</p>
                     <ul className="space-y-1 pl-2">
-                        <li className="flex justify-between"><span>Account Filter:</span> <span className="font-mono">{analysis.droppedBy.account}</span></li>
-                        <li className="flex justify-between"><span>User Filter:</span> <span className="font-mono">{analysis.droppedBy.user}</span></li>
-                        <li className="flex justify-between"><span>Category Filter:</span> <span className="font-mono">{analysis.droppedBy.category}</span></li>
-                        <li className="flex justify-between"><span>Payee Filter:</span> <span className="font-mono">{analysis.droppedBy.payee}</span></li>
-                        <li className="flex justify-between"><span>Transaction Type:</span> <span className="font-mono">{analysis.droppedBy.type}</span></li>
+                        <li className="flex justify-between"><span>Account Filter {getFilterStats(config.filters.accountIds, accounts.length)}:</span> <span className="font-mono">{analysis.droppedBy.account}</span></li>
+                        <li className="flex justify-between"><span>User Filter {getFilterStats(config.filters.userIds, 2)}:</span> <span className="font-mono">{analysis.droppedBy.user}</span></li>
+                        <li className="flex justify-between"><span>Category Filter {getFilterStats(config.filters.categoryIds, categories.length)}:</span> <span className="font-mono">{analysis.droppedBy.category}</span></li>
+                        
+                        <li className="flex justify-between"><span>Payee Filter {getFilterStats(config.filters.payeeIds, payees.length)}:</span> <span className="font-mono">{analysis.droppedBy.payeeFilter}</span></li>
+                        {analysis.droppedBy.noPayee > 0 && (
+                            <li className="flex justify-between text-amber-700 bg-amber-50 px-1 rounded">
+                                <span className="flex items-center gap-1"><ExclamationTriangleIcon className="w-3 h-3"/> No Payee Assigned:</span> 
+                                <span className="font-mono font-bold">{analysis.droppedBy.noPayee}</span>
+                            </li>
+                        )}
+
+                        <li className="flex justify-between"><span>Transaction Type {getFilterStats(config.filters.typeIds, transactionTypes.length)}:</span> <span className="font-mono">{analysis.droppedBy.type}</span></li>
                         <li className="flex justify-between"><span>Balance Impact (e.g. Transfers):</span> <span className="font-mono font-bold text-amber-600">{analysis.droppedBy.effect}</span></li>
                         <li className="flex justify-between"><span>Is Split Parent:</span> <span className="font-mono">{analysis.droppedBy.isParent}</span></li>
                         {analysis.droppedBy.unknownType > 0 && <li className="flex justify-between text-red-600"><span>Unknown Type ID:</span> <span className="font-mono">{analysis.droppedBy.unknownType}</span></li>}
