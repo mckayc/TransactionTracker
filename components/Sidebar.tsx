@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction } from '../types';
@@ -47,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
                 <svg className="h-8 w-8 text-indigo-400 flex-shrink-0" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.75A.75.75 0 013 4.5h.75m0 0A.75.75 0 014.5 6v.75m0 0v-.75A.75.75 0 014.5 4.5h.75m0 0A.75.75 0 016 6v.75m0 0v-.75A.75.75 0 016 4.5h.75m0 0A.75.75 0 017.5 6v.75m0 0v-.75A.75.75 0 017.5 4.5h.75m0 0A.75.75 0 019 6v.75m0 0v-.75A.75.75 0 019 4.5h.75m0 0a.75.75 0 01.75.75v.75m0 0v-.75a.75.75 0 01.75-.75H15M21.75 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                {!isCollapsed && <h1 className="text-xl font-bold text-white truncate">FinParser</h1>}
+                {!isCollapsed && <h1 className="text-xl font-bold text-white truncate">Transaction Tracker</h1>}
             </div>
             {onToggleCollapse && !isCollapsed && (
                 <button onClick={onToggleCollapse} className="text-slate-400 hover:text-white p-1 rounded-md hover:bg-slate-700 transition-colors">

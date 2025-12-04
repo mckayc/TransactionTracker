@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category } from '../types';
 import { findMatchingTransactions } from '../services/ruleService';
@@ -24,8 +25,8 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
 
     const matchingPairs = useMemo(() => {
         if (!isOpen) return [];
-        return findMatchingTransactions(transactions, rule);
-    }, [isOpen, transactions, rule]);
+        return findMatchingTransactions(transactions, rule, accounts);
+    }, [isOpen, transactions, rule, accounts]);
 
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 

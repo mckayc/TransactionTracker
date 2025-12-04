@@ -1,7 +1,7 @@
 
-import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition } from '../types';
+import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
-const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition): boolean => {
+const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
     let txValue: any;
     
     // Defensive check for partial/legacy objects
@@ -29,17 +29,25 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
             default: return false;
         }
     } else if (condition.field === 'accountId') {
-        txValue = tx.accountId;
-        const condValue = String(condition.value);
-        switch (condition.operator) {
-            case 'equals': return txValue === condValue;
-            default: return false;
+        const txAccountId = tx.accountId || '';
+        
+        if (condition.operator === 'equals') {
+            return txAccountId === String(condition.value);
+        } else {
+            // Name-based matching
+            const account = accounts.find(a => a.id === txAccountId);
+            const accountName = (account?.name || '').toLowerCase();
+            const condValue = String(condition.value || '').toLowerCase();
+            
+            if (condition.operator === 'contains') return accountName.includes(condValue);
+            if (condition.operator === 'does_not_contain') return !accountName.includes(condValue);
+            return false;
         }
     }
     return false;
 };
 
-const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule): boolean => {
+const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule, accounts: Account[]): boolean => {
     // 1. Check for modern condition structure (Linear Evaluation)
     if (rule.conditions && rule.conditions.length > 0) {
         
@@ -49,20 +57,15 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule)
         
         if (validConditions.length === 0) return true;
 
-        let result = evaluateCondition(tx, validConditions[0]);
+        let result = evaluateCondition(tx, validConditions[0], accounts);
 
         // Iterate through the rest, applying the logic defined in the PREVIOUS condition
-        // Example: [Cond A, logic: OR], [Cond B, logic: AND], [Cond C]
-        // Loop 1: result = Eval(A). Next logic is OR.
-        // Loop 2: result = result OR Eval(B). Next logic is AND.
-        // Loop 3: result = result AND Eval(C).
-        
         for (let i = 0; i < validConditions.length - 1; i++) {
             const currentCond = validConditions[i];
             const nextCond = validConditions[i + 1];
             const logic = currentCond.nextLogic || 'AND'; // Default to AND if missing
 
-            const nextResult = evaluateCondition(tx, nextCond);
+            const nextResult = evaluateCondition(tx, nextCond, accounts);
 
             if (logic === 'AND') {
                 result = result && nextResult;
@@ -100,6 +103,7 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule)
 export const applyRulesToTransactions = (
   rawTransactions: RawTransaction[],
   rules: ReconciliationRule[],
+  accounts: Account[] = []
 ): (RawTransaction & { categoryId?: string })[] => {
   if (!rules || rules.length === 0) {
     return rawTransactions;
@@ -110,7 +114,7 @@ export const applyRulesToTransactions = (
     
     // Find the first rule that matches this transaction
     for (const rule of rules) {
-      if (matchesRule(modifiedTx, rule)) {
+      if (matchesRule(modifiedTx, rule, accounts)) {
         // A rule matches, apply actions
         if (rule.setCategoryId) {
           modifiedTx.categoryId = rule.setCategoryId;
@@ -146,11 +150,12 @@ export const applyRulesToTransactions = (
 export const findMatchingTransactions = (
   transactions: Transaction[],
   rule: ReconciliationRule,
+  accounts: Account[] = []
 ): { original: Transaction; updated: Transaction }[] => {
   const matchedPairs: { original: Transaction; updated: Transaction }[] = [];
 
   transactions.forEach(tx => {
-    if (matchesRule(tx, rule)) {
+    if (matchesRule(tx, rule, accounts)) {
       const updatedTx = { ...tx };
       let changed = false;
 

@@ -48,7 +48,6 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     const [rangeType, setRangeType] = useState<DateRangeType>('rolling_window');
     const [rangeValue, setRangeValue] = useState(1);
     const [rangeUnit, setRangeUnit] = useState<DateRangeUnit>('month');
-    const [rangeOffsets, setRangeOffsets] = useState<DateOffset[]>([]);
     const [editingRangeId, setEditingRangeId] = useState<string | null>(null);
 
     // Initialization
@@ -167,14 +166,36 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         if (newSet.has(effect)) newSet.delete(effect); else newSet.add(effect);
         setSelectedEffects(newSet);
     };
+
     const handleSaveRange = () => {
         if (!rangeName.trim()) { alert("Range name is required"); return; }
-        const newRange: CustomDateRange = { id: editingRangeId || generateUUID(), name: rangeName.trim(), type: rangeType, unit: rangeUnit, value: rangeValue, offsets: rangeType === 'fixed_period' ? rangeOffsets : undefined };
+        const newRange: CustomDateRange = { 
+            id: editingRangeId || generateUUID(), 
+            name: rangeName.trim(), 
+            type: rangeType, 
+            unit: rangeUnit, 
+            value: rangeValue, 
+            offsets: undefined // We only need simple offsets for now based on the prompt
+        };
         onSaveDateRange(newRange);
-        setEditingRangeId(null); setRangeName(''); setRangeType('rolling_window'); setRangeValue(1); setRangeUnit('month'); setRangeOffsets([]);
-        if (!editingRangeId) { setDatePreset(newRange.id); setIsManagingRanges(false); }
+        handleClearRangeForm();
     };
-    const handleUpdateOffset = (index: number, field: keyof DateOffset, value: any) => { setRangeOffsets(prev => { const updated = [...prev]; updated[index] = { ...updated[index], [field]: value }; return updated; }); };
+
+    const handleEditRange = (range: CustomDateRange) => {
+        setEditingRangeId(range.id);
+        setRangeName(range.name);
+        setRangeType(range.type);
+        setRangeUnit(range.unit);
+        setRangeValue(range.value);
+    };
+
+    const handleClearRangeForm = () => {
+        setEditingRangeId(null); 
+        setRangeName(''); 
+        setRangeType('rolling_window'); 
+        setRangeValue(1); 
+        setRangeUnit('month');
+    };
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
@@ -195,27 +216,100 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                             // Range Manager UI
                             <div className="space-y-6">
                                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
-                                    <h3 className="font-bold text-slate-700">{editingRangeId ? 'Edit Range' : 'Create New Range'}</h3>
-                                    <input type="text" value={rangeName} onChange={e => setRangeName(e.target.value)} placeholder="Range Name" className="w-full p-2 border rounded-md" />
-                                    {/* Simplified UI for brevity in this snippet */}
-                                    <div className="flex justify-end gap-2"><button onClick={handleSaveRange} className="px-4 py-1.5 bg-indigo-600 text-white rounded-md">Save</button></div>
+                                    <div className="flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-700">{editingRangeId ? 'Edit Range' : 'Create New Range'}</h3>
+                                        {editingRangeId && <button onClick={handleClearRangeForm} className="text-xs text-indigo-600 hover:underline">Cancel Edit</button>}
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Range Name</label>
+                                        <input type="text" value={rangeName} onChange={e => setRangeName(e.target.value)} placeholder="e.g. Last 3 Months" className="w-full p-2 border rounded-md text-sm" />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Type</label>
+                                        <div className="flex gap-2">
+                                            <button 
+                                                onClick={() => setRangeType('rolling_window')} 
+                                                className={`flex-1 py-2 text-xs font-medium border rounded-md transition-colors ${rangeType === 'rolling_window' ? 'bg-indigo-100 border-indigo-500 text-indigo-700' : 'bg-white border-slate-300 text-slate-600'}`}
+                                            >
+                                                Rolling Window
+                                            </button>
+                                            <button 
+                                                onClick={() => setRangeType('fixed_period')} 
+                                                className={`flex-1 py-2 text-xs font-medium border rounded-md transition-colors ${rangeType === 'fixed_period' ? 'bg-indigo-100 border-indigo-500 text-indigo-700' : 'bg-white border-slate-300 text-slate-600'}`}
+                                            >
+                                                Relative Period
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-1">
+                                            {rangeType === 'rolling_window' ? 'Current date minus X units (e.g. Last 30 Days)' : 'A specific period relative to now (e.g. 2 Months Ago)'}
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Quantity</label>
+                                            <input type="number" min="1" value={rangeValue} onChange={e => setRangeValue(parseInt(e.target.value) || 1)} className="w-full p-2 border rounded-md text-sm" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Unit</label>
+                                            <select value={rangeUnit} onChange={e => setRangeUnit(e.target.value as DateRangeUnit)} className="w-full p-2 border rounded-md text-sm">
+                                                <option value="day">Day(s)</option>
+                                                <option value="week">Week(s)</option>
+                                                <option value="month">Month(s)</option>
+                                                <option value="quarter">Quarter(s)</option>
+                                                <option value="year">Year(s)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <button onClick={handleSaveRange} className="w-full py-2 bg-indigo-600 text-white rounded-md font-medium hover:bg-indigo-700 transition-colors">
+                                        {editingRangeId ? 'Update Range' : 'Create Range'}
+                                    </button>
                                 </div>
-                                <div className="pt-4 border-t"><button onClick={() => setIsManagingRanges(false)} className="text-sm text-indigo-600 hover:underline">Back</button></div>
+
+                                <div>
+                                    <h4 className="font-bold text-slate-600 mb-2 text-sm uppercase">My Custom Ranges</h4>
+                                    {savedDateRanges.length === 0 ? (
+                                        <p className="text-sm text-slate-400 italic">No custom ranges created yet.</p>
+                                    ) : (
+                                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                                            {savedDateRanges.map(range => (
+                                                <div key={range.id} className="flex items-center justify-between p-2 bg-white border rounded-md hover:border-indigo-300 group">
+                                                    <div className="cursor-pointer flex-grow" onClick={() => handleEditRange(range)}>
+                                                        <span className="text-sm font-medium text-slate-700">{range.name}</span>
+                                                        <span className="text-xs text-slate-400 block">
+                                                            {range.type === 'rolling_window' ? 'Last' : ''} {range.value} {range.unit}(s) {range.type === 'fixed_period' ? 'ago' : ''}
+                                                        </span>
+                                                    </div>
+                                                    <button onClick={() => onDeleteDateRange(range.id)} className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100">
+                                                        <DeleteIcon className="w-4 h-4"/>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="pt-4 border-t"><button onClick={() => setIsManagingRanges(false)} className="text-sm text-indigo-600 hover:underline flex items-center gap-1">&larr; Back to Report Config</button></div>
                             </div>
                         ) : (
                             // Standard Config UI
                             <>
                                 <div><label className="block text-sm font-bold text-slate-700 mb-1">Report Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 border rounded-md" /></div>
                                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-                                    <div className="flex justify-between mb-1"><label className="block text-sm font-bold text-slate-700">Date Range</label><button onClick={() => setIsManagingRanges(true)} className="text-xs text-indigo-600 font-bold hover:underline"><AddIcon className="w-3 h-3"/> Custom</button></div>
+                                    <div className="flex justify-between mb-1"><label className="block text-sm font-bold text-slate-700">Date Range</label><button onClick={() => setIsManagingRanges(true)} className="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1"><EditIcon className="w-3 h-3"/> Manage Custom</button></div>
                                     <select value={datePreset} onChange={e => setDatePreset(e.target.value as DateRangePreset)} className="w-full p-2 border rounded-md bg-white">
                                         <option value="thisMonth">This Month</option>
                                         <option value="lastMonth">Last Month</option>
                                         <option value="thisYear">This Year</option>
                                         <option value="lastYear">Last Year</option>
                                         <option value="allTime">All Time</option>
-                                        <option value="custom">Custom Picker</option>
+                                        <option disabled>──────────</option>
                                         {savedDateRanges.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                        <option disabled>──────────</option>
+                                        <option value="custom">Manual Picker...</option>
                                     </select>
                                     {datePreset === 'custom' && (
                                         <div className="grid grid-cols-2 gap-2 mt-2">
@@ -252,6 +346,12 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                 <tbody>{previewData.transactions.slice(0, 50).map(tx => <tr key={tx.id}><td className="px-3 py-2 text-xs">{tx.date}</td><td className="px-3 py-2 text-xs truncate max-w-[200px]">{tx.description}</td><td className="px-3 py-2 text-xs text-right font-mono">${tx.amount.toFixed(2)}</td></tr>)}</tbody>
                             </table>
                         </div>
+                        {isManagingRanges && (
+                            <div className="mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-lg text-sm text-indigo-800">
+                                <p className="font-bold mb-1">Previewing: {rangeName || 'New Range'}</p>
+                                <p>{previewData.dateLabel}</p>
+                            </div>
+                        )}
                     </div>
                 </div>
 

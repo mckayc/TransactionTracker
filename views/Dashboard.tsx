@@ -125,7 +125,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
     handleProgress('Applying automation rules...');
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
-    const transactionsWithRules = applyRulesToTransactions(rawWithUser, rules);
+    
+    // Pass accounts to support "Account Name" based rules
+    const transactionsWithRules = applyRulesToTransactions(rawWithUser, rules, accounts);
 
     const existingCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
     const newCategories: Category[] = [];
@@ -153,7 +155,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setRawTransactionsToVerify(transactionsWithCategoryIds);
     setAppState('verifying_import');
 
-  }, [rules, categories]);
+  }, [rules, categories, accounts]);
 
   const handleFileUpload = useCallback(async (files: File[], accountId: string) => {
     setAppState('processing');

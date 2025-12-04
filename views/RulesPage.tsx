@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon } from '../components/Icons';
@@ -42,7 +43,10 @@ const RuleCard: React.FC<{
             let text = "";
             if (first.field === 'description') text = `Desc ${first.operator === 'contains' ? 'has' : first.operator} "${first.value}"`;
             else if (first.field === 'amount') text = `Amt ${first.operator === 'equals' ? '=' : first.operator} ${first.value}`;
-            else if (first.field === 'accountId') text = `Acct is ...`;
+            else if (first.field === 'accountId') {
+                if (first.operator === 'equals') text = 'Acct Is (Exact Match)';
+                else text = `Acct Name ${first.operator === 'contains' ? 'contains' : first.operator} "${first.value}"`;
+            }
             
             if (rule.conditions.length > 1) {
                 return `${text} +${rule.conditions.length - 1}`;

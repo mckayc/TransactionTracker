@@ -136,11 +136,15 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
                                 </>
                             )}
                             {condition.field === 'accountId' && (
-                                <option value="equals">Is</option>
+                                <>
+                                    <option value="equals">Is (Exact Match)</option>
+                                    <option value="contains">Name Contains</option>
+                                    <option value="does_not_contain">Name Does Not Contain</option>
+                                </>
                             )}
                         </select>
 
-                        {condition.field === 'accountId' ? (
+                        {condition.field === 'accountId' && condition.operator === 'equals' ? (
                             <select 
                                 value={condition.value} 
                                 onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
