@@ -167,7 +167,13 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ payees, onSavePayee, onDeletePa
     const [selectedPayee, setSelectedPayee] = useState<Payee | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     
-    const usedPayeeIds = useMemo(() => new Set(transactions.map(t => t.payeeId)), [transactions]);
+    const usedPayeeIds = useMemo(() => {
+        const ids = new Set<string>();
+        transactions.forEach(t => {
+            if (t.payeeId) ids.add(t.payeeId);
+        });
+        return ids;
+    }, [transactions]);
 
     // Get only root payees to start the recursive rendering
     const rootPayees = useMemo(() => 
