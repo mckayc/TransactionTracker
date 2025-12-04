@@ -683,6 +683,10 @@ const App: React.FC = () => {
       setDocumentFolders(prev => prev.filter(f => f.id !== folderId));
   };
 
+  const handleAddSavedReport = (report: SavedReport) => {
+      setSavedReports(prev => [...prev, report]);
+  };
+
   if (isLoading) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-slate-100">
@@ -696,7 +700,7 @@ const App: React.FC = () => {
       case 'dashboard':
         return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
       case 'transactions':
-        return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} />;
+        return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onSaveReport={handleAddSavedReport} />;
       case 'calendar':
         // Modified to pass handleSaveTask to support full editing from calendar
         // Added onAddTransaction for Donation modal support

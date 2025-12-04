@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag } from '../types';
+import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag, SavedReport, ReportConfig } from '../types';
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import RuleModal from '../components/RuleModal';
@@ -11,7 +10,7 @@ import TransactionAuditor from '../components/TransactionAuditor';
 import VerifyModal from '../components/VerifyModal';
 import DonationModal from '../components/DonationModal';
 import SplitTransactionModal from '../components/SplitTransactionModal';
-import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, PrinterIcon, DownloadIcon, ShieldCheckIcon, HeartIcon } from '../components/Icons';
+import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, PrinterIcon, DownloadIcon, ShieldCheckIcon, HeartIcon, ChartPieIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
 import MultiSelect from '../components/MultiSelect';
@@ -181,11 +180,12 @@ interface AllTransactionsProps {
   onSavePayee: (payee: Payee) => void;
   onSaveTag: (tag: Tag) => void;
   onAddTransactionType: (type: TransactionType) => void;
+  onSaveReport: (report: SavedReport) => void;
 }
 
 type DateMode = 'month' | 'quarter' | 'year' | 'all' | 'custom';
 
-const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, tags, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType }) => {
+const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, accounts, categories, tags, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onSaveReport }) => {
   // State for immediate input values
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -678,6 +678,31 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       setIsExportMenuOpen(false);
   }
 
+  const handleSaveView = () => {
+      const name = prompt("Save this view as a report named:", "Transaction View");
+      if (!name) return;
+
+      const config: ReportConfig = {
+          id: generateUUID(),
+          name,
+          datePreset: dateMode === 'all' ? 'allTime' : 'custom',
+          customStartDate: dateMode === 'all' ? undefined : startDate,
+          customEndDate: dateMode === 'all' ? undefined : endDate,
+          groupBy: 'category', // Default grouping for reports
+          filters: {
+              accountIds: selectedAccounts.size > 0 ? Array.from(selectedAccounts) : undefined,
+              userIds: selectedUsers.size > 0 ? Array.from(selectedUsers) : undefined,
+              categoryIds: selectedCategories.size > 0 ? Array.from(selectedCategories) : undefined,
+              typeIds: selectedTypes.size > 0 ? Array.from(selectedTypes) : undefined,
+              payeeIds: selectedPayees.size > 0 ? Array.from(selectedPayees) : undefined,
+          },
+          hiddenCategoryIds: [],
+          hiddenIds: []
+      };
+
+      onSaveReport({ id: config.id, name: config.name, config });
+  };
+
   const accountMap = useMemo(() => new Map(accounts.map(acc => [acc.id, acc.name])), [accounts]);
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
   const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
@@ -793,6 +818,11 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                             </div>
                         )}
                     </div>
+                    
+                    <button onClick={handleSaveView} className="flex items-center gap-2 px-3 py-2 text-slate-600 font-medium bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all" title="Save current view as a report">
+                        <ChartPieIcon className="w-4 h-4" />
+                        <span className="hidden sm:inline">Save View</span>
+                    </button>
                     
                     <button 
                         onClick={() => setIsDonationModalOpen(true)}
