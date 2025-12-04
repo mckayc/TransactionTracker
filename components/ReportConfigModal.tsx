@@ -20,7 +20,7 @@ interface ReportConfigModalProps {
     savedDateRanges: CustomDateRange[];
     onSaveDateRange: (range: CustomDateRange) => void;
     onDeleteDateRange: (id: string) => void;
-    transactions: Transaction[]; // New prop for live preview
+    transactions: Transaction[];
 }
 
 const ReportConfigModal: React.FC<ReportConfigModalProps> = ({ 
@@ -55,7 +55,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             if (initialConfig) {
-                // Editing existing report: Load strict state
+                // Editing existing report
                 setName(initialConfig.name);
                 setDatePreset(initialConfig.datePreset);
                 setCustomStartDate(initialConfig.customStartDate || '');
@@ -81,11 +81,11 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setGroupBy('category');
                 setSubGroupBy('');
                 
+                // CRITICAL: Initialize filters with ALL items by default
                 setSelectedAccounts(new Set(accounts.map(a => a.id)));
                 setSelectedUsers(new Set(users.map(u => u.id)));
                 setSelectedCategories(new Set(categories.map(c => c.id)));
                 setSelectedTypes(new Set(transactionTypes.map(t => t.id)));
-                // Effects are special; usually people want Expenses by default, but let's do expense+income to be safe
                 setSelectedEffects(new Set(['expense', 'income']));
                 setSelectedTags(new Set(tags.map(t => t.id)));
                 setSelectedPayees(new Set(payees.map(p => p.id)));
@@ -98,7 +98,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     const previewData = useMemo(() => {
         if (!isOpen) return { transactions: [], total: 0, count: 0, dateLabel: '' };
 
-        const { start, end, label } = calculateDateRange(datePreset, customStartDate, customEndDate, savedDateRanges);
+        const { start, end } = calculateDateRange(datePreset, customStartDate, customEndDate, savedDateRanges);
         
         // Adjust end date to include the full day
         const filterEnd = new Date(end);
@@ -110,29 +110,26 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             const txDate = new Date(tx.date);
             if (txDate < start || txDate > filterEnd) return false;
 
-            if (!selectedEffects.has('income') && !selectedEffects.has('expense') && !selectedEffects.has('transfer') && !selectedEffects.has('investment')) return false;
-            
+            // Balance Effect Filter
             const type = transactionTypes.find(t => t.id === tx.typeId);
             if (!type || !selectedEffects.has(type.balanceEffect)) return false;
 
-            // Strict Filter Matching (if set is empty, nothing matches in this logic, but sets are initialized full)
+            // Standard Filters - Only filter if the set is NOT empty (should be populated by default)
+            // If the set is empty, it technically means "Nothing Selected" -> show nothing.
+            // But if we initialize with all, this logic holds.
             if (selectedAccounts.size > 0 && !selectedAccounts.has(tx.accountId || '')) return false;
             if (selectedUsers.size > 0 && !selectedUsers.has(tx.userId || '')) return false;
-            
-            // Allow category matching if set has items
             if (selectedCategories.size > 0 && !selectedCategories.has(tx.categoryId)) return false;
-            
             if (selectedTypes.size > 0 && !selectedTypes.has(tx.typeId)) return false;
             
-            // Tags: If transaction has tags, check if at least one is selected. If no tags on tx, include if "No Tags" logic handled? 
-            // Simplified: If filter is active (not all selected), only show txs with those tags.
-            // If all selected, show everything.
-            if (selectedTags.size < tags.length) {
-                 if (!tx.tagIds || !tx.tagIds.some(tId => selectedTags.has(tId))) return false;
-            }
-
             if (selectedPayees.size > 0 && selectedPayees.size < payees.length) {
                 if (!selectedPayees.has(tx.payeeId || '')) return false;
+            }
+            
+            // Tag Logic: If tags are selected, tx MUST have one of them? Or just filter out ones that don't?
+            // "Show transactions that have at least one of the selected tags"
+            if (selectedTags.size < tags.length) {
+                 if (!tx.tagIds || !tx.tagIds.some(tId => selectedTags.has(tId))) return false;
             }
 
             return true;
@@ -143,7 +140,12 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
 
         const total = filtered.reduce((sum, tx) => sum + tx.amount, 0);
 
-        return { transactions: filtered, total, count: filtered.length, dateLabel: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}` };
+        return { 
+            transactions: filtered, 
+            total, 
+            count: filtered.length, 
+            dateLabel: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}` 
+        };
 
     }, [isOpen, transactions, datePreset, customStartDate, customEndDate, savedDateRanges, selectedAccounts, selectedCategories, selectedTypes, selectedUsers, selectedTags, selectedPayees, selectedEffects]);
 
@@ -151,6 +153,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
 
     const handleSave = () => {
         // Smart Save: If all items are selected, save as undefined (dynamic all)
+        // This ensures if new categories are added later, they are included automatically in "All Categories" reports
         const isAllAccounts = selectedAccounts.size === accounts.length;
         const isAllCategories = selectedCategories.size === categories.length;
         const isAllUsers = selectedUsers.size === users.length;
@@ -189,7 +192,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         setSelectedEffects(newSet);
     };
 
-    // ... (Date Range Management Handlers unchanged) ...
+    // Range Management Handlers
     const handleSaveRange = () => {
         if (!rangeName.trim()) { alert("Range name is required"); return; }
         const newRange: CustomDateRange = {
@@ -249,7 +252,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                     <div className="w-1/3 min-w-[350px] border-r border-slate-200 overflow-y-auto p-6 bg-white flex flex-col gap-6">
                         
                         {isManagingRanges ? (
-                            // ... Existing Date Range Manager UI ...
+                            // ... Existing Date Range Manager UI (unchanged logic) ...
                             <div className="space-y-6">
                                 <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
                                     <h3 className="font-bold text-slate-700">{editingRangeId ? 'Edit Range' : 'Create New Range'}</h3>

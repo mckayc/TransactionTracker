@@ -3,11 +3,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
 import { formatDate } from '../dateUtils';
-import MultiSelect from './MultiSelect';
 import TransactionTable from './TransactionTable';
 import ReportConfigModal from './ReportConfigModal';
-import html2canvas from 'html2canvas';
-import { jsPDF } from 'jspdf';
 
 interface ReportColumnProps {
     config: ReportConfig;
@@ -202,74 +199,325 @@ export const calculateDateRange = (preset: DateRangePreset, customStart: string 
     return { start: resetTime(start), end: resetTime(end, true), label };
 };
 
-const DiagnosticsOverlay: React.FC<{
-    transactions: Transaction[];
-    config: ReportConfig;
-    dateRange: { start: Date; end: Date };
-    onClose: () => void;
-    transactionTypes: TransactionType[];
-    payees: Payee[];
-    categories: Category[];
-    accounts: Account[];
-}> = ({ transactions, config, dateRange, onClose, transactionTypes, payees, categories, accounts }) => {
-    // ... existing diagnostics logic (omitted for brevity, no changes needed inside) ...
-    // Note: Reusing existing logic but keeping the file cleaner for the prompt response
-    return null; // Placeholder as actual implementation is unchanged but needed for compilation if I were compiling
+const DonutChart: React.FC<{ data: { label: string; value: number; color: string }[]; total: number }> = ({ data, total }) => {
+    let accumulatedAngle = 0;
+    const radius = 40;
+    const circumference = 2 * Math.PI * radius;
+
+    return (
+        <div className="relative w-48 h-48 mx-auto">
+            <svg viewBox="0 0 100 100" className="transform -rotate-90 w-full h-full">
+                {data.map((slice, i) => {
+                    const percentage = slice.value / total;
+                    const strokeDasharray = `${percentage * circumference} ${circumference}`;
+                    const strokeDashoffset = -accumulatedAngle * circumference;
+                    accumulatedAngle += percentage;
+
+                    return (
+                        <circle
+                            key={i}
+                            cx="50"
+                            cy="50"
+                            r={radius}
+                            fill="transparent"
+                            stroke={slice.color}
+                            strokeWidth="20"
+                            strokeDasharray={strokeDasharray}
+                            strokeDashoffset={strokeDashoffset}
+                            className="transition-all duration-300 hover:opacity-80"
+                        />
+                    );
+                })}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-xs text-slate-500 font-medium uppercase">Total</span>
+                <span className="text-lg font-bold text-slate-800">{formatCurrency(total)}</span>
+            </div>
+        </div>
+    );
 };
 
-// ... DonutChart and ReportRow components unchanged ...
-// NOTE: For brevity in the diff, assuming DonutChart and ReportRow exist as before. 
-// I'm re-implementing the ReportColumn component export primarily to export calculateDateRange.
-
-import { DonutChart, ReportRow } from './ReportColumnComponents'; // Pseudo-import to represent existing components
+const ReportRow: React.FC<{ 
+    item: { label: string; value: number; color: string; id: string }; 
+    total: number; 
+    onClick: () => void;
+    isHidden: boolean;
+    onToggleHidden: (e: React.MouseEvent) => void;
+}> = ({ item, total, onClick, isHidden, onToggleHidden }) => {
+    const percentage = total > 0 ? (item.value / total) * 100 : 0;
+    
+    return (
+        <div 
+            className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors ${isHidden ? 'opacity-50 grayscale bg-slate-50' : 'hover:bg-slate-50'}`}
+            onClick={onClick}
+        >
+            <div 
+                className="w-3 h-3 rounded-full flex-shrink-0" 
+                style={{ backgroundColor: isHidden ? '#cbd5e1' : item.color }} 
+            />
+            <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-center mb-1">
+                    <span className={`text-sm font-medium truncate ${isHidden ? 'text-slate-500 line-through' : 'text-slate-700'}`}>
+                        {item.label}
+                    </span>
+                    <span className="text-sm font-bold text-slate-900">
+                        {formatCurrency(item.value)}
+                    </span>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                    <div 
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{ 
+                            width: `${percentage}%`, 
+                            backgroundColor: isHidden ? '#cbd5e1' : item.color 
+                        }}
+                    />
+                </div>
+            </div>
+            <button 
+                onClick={onToggleHidden}
+                className="p-1 text-slate-300 hover:text-slate-500 transition-colors"
+            >
+                {isHidden ? <EyeSlashIcon className="w-4 h-4"/> : <EyeIcon className="w-4 h-4"/>}
+            </button>
+        </div>
+    );
+};
 
 const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, savedDateRanges, onSaveDateRange, onDeleteDateRange }) => {
     
-    // ... existing state ...
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
-    const [showFilters, setShowFilters] = useState(false);
-    const [isEditingName, setIsEditingName] = useState(false);
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-    const [showDiagnostics, setShowDiagnostics] = useState(false);
     const [inspectingItems, setInspectingItems] = useState<Transaction[] | null>(null);
     const [inspectingTitle, setInspectingTitle] = useState('');
-    const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    
     const reportRef = useRef<HTMLDivElement>(null);
-    const exportMenuRef = useRef<HTMLDivElement>(null);
-    const chartContainerRef = useRef<HTMLDivElement>(null);
 
-    // ... existing useEffects ...
+    // Sync local state when prop changes (for saved report loading)
+    useEffect(() => {
+        setConfig(initialConfig);
+    }, [initialConfig]);
 
     const dateRange = useMemo(() => 
         calculateDateRange(config.datePreset, config.customStartDate, config.customEndDate, savedDateRanges), 
     [config.datePreset, config.customStartDate, config.customEndDate, savedDateRanges]);
 
-    // ... existing getKeys and activeData logic ...
-    // Logic remains identical to previous version, ensuring filtering consistency.
-    // I will include the critical change regarding passing transactions to ReportConfigModal below.
+    const activeData = useMemo(() => {
+        const { start, end } = dateRange;
+        const filterEnd = new Date(end);
+        filterEnd.setHours(23, 59, 59, 999);
 
-    // ... handlers ...
+        // Filter Transactions
+        const filtered = transactions.filter(tx => {
+            if (tx.isParent) return false;
+            
+            const txDate = new Date(tx.date);
+            if (txDate < start || txDate > filterEnd) return false;
+
+            // Type/Balance Effect Filter
+            // If specific types are selected, strict match
+            if (config.filters.typeIds && config.filters.typeIds.length > 0) {
+                if (!config.filters.typeIds.includes(tx.typeId)) return false;
+            } else {
+                // Fallback to balance effects
+                const type = transactionTypes.find(t => t.id === tx.typeId);
+                const effect = type?.balanceEffect || 'expense';
+                if (config.filters.balanceEffects && !config.filters.balanceEffects.includes(effect)) return false;
+            }
+
+            if (config.filters.accountIds && !config.filters.accountIds.includes(tx.accountId || '')) return false;
+            if (config.filters.categoryIds && !config.filters.categoryIds.includes(tx.categoryId)) return false;
+            if (config.filters.userIds && !config.filters.userIds.includes(tx.userId || '')) return false;
+            if (config.filters.payeeIds && !config.filters.payeeIds.includes(tx.payeeId || '')) return false;
+            
+            if (config.filters.tagIds && config.filters.tagIds.length > 0) {
+                if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) return false;
+            }
+
+            return true;
+        });
+
+        // Grouping
+        const groups = new Map<string, { label: string, value: number, transactions: Transaction[], id: string }>();
+        const hiddenIds = new Set(config.hiddenIds || config.hiddenCategoryIds || []);
+
+        filtered.forEach(tx => {
+            let key = '';
+            let label = 'Unknown';
+
+            if (config.groupBy === 'category') {
+                key = tx.categoryId;
+                label = categories.find(c => c.id === key)?.name || 'Uncategorized';
+            } else if (config.groupBy === 'payee') {
+                key = tx.payeeId || 'no-payee';
+                label = payees.find(p => p.id === key)?.name || 'No Payee';
+            } else if (config.groupBy === 'account') {
+                key = tx.accountId || 'no-account';
+                label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
+            } else if (config.groupBy === 'type') {
+                key = tx.typeId;
+                label = transactionTypes.find(t => t.id === key)?.name || 'Unknown Type';
+            } else if (config.groupBy === 'tag') {
+                // Tags are many-to-many. Split tx amount? or duplicate?
+                // Standard approach: if grouping by tag, duplicate tx for each tag
+                const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
+                txTags.forEach(tagId => {
+                    const tagKey = tagId;
+                    const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
+                    if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return; // Skip unwanted tags
+
+                    if (!groups.has(tagKey)) groups.set(tagKey, { label: tagLabel, value: 0, transactions: [], id: tagKey });
+                    const group = groups.get(tagKey)!;
+                    group.value += tx.amount;
+                    group.transactions.push(tx);
+                });
+                return; // handled
+            }
+
+            if (!groups.has(key)) groups.set(key, { label, value: 0, transactions: [], id: key });
+            const group = groups.get(key)!;
+            group.value += tx.amount;
+            group.transactions.push(tx);
+        });
+
+        const result = Array.from(groups.values()).map((g, i) => ({
+            ...g,
+            color: COLORS[i % COLORS.length] // Assign stable colors based on index/order
+        }));
+
+        // Sort
+        result.sort((a, b) => sortBy === 'amount' ? b.value - a.value : a.label.localeCompare(b.label));
+
+        // Separate visible and hidden for calculation
+        const visibleItems = result.filter(r => !hiddenIds.has(r.id));
+        const totalValue = visibleItems.reduce((sum, item) => sum + item.value, 0);
+
+        return { items: result, totalValue, visibleItems };
+
+    }, [transactions, config, dateRange, transactionTypes, categories, accounts, payees, tags, sortBy]);
 
     const handleConfigUpdate = (newConfig: ReportConfig) => {
         setConfig(newConfig);
         onSaveReport(newConfig);
     };
 
+    const toggleHidden = (id: string) => {
+        const currentHidden = new Set(config.hiddenIds || config.hiddenCategoryIds || []);
+        if (currentHidden.has(id)) currentHidden.delete(id);
+        else currentHidden.add(id);
+        
+        const newConfig = { 
+            ...config, 
+            hiddenIds: Array.from(currentHidden),
+            hiddenCategoryIds: Array.from(currentHidden) // Sync legacy field
+        };
+        setConfig(newConfig);
+        onSaveReport(newConfig);
+    };
+
+    const handleInspect = (item: typeof activeData.items[0]) => {
+        setInspectingTitle(`${item.label} Transactions`);
+        setInspectingItems(item.transactions);
+    };
+
     return (
         <div ref={reportRef} className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-full overflow-hidden min-w-[320px] relative">
-            {/* ... Header and Content ... */}
             
+            {/* Header */}
+            <div className="p-4 border-b border-slate-100 flex justify-between items-start bg-slate-50 flex-shrink-0">
+                <div className="min-w-0 flex-1">
+                    <h3 className="font-bold text-slate-800 text-lg truncate" title={config.name}>{config.name}</h3>
+                    <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
+                        <span className="truncate">{dateRange.label}</span>
+                        {config.filters.balanceEffects?.length === 1 && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-medium capitalize">
+                                {config.filters.balanceEffects[0]}
+                            </span>
+                        )}
+                    </div>
+                </div>
+                <div className="flex items-center gap-1">
+                    <button 
+                        onClick={() => setSortBy(prev => prev === 'amount' ? 'name' : 'amount')}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-white transition-colors"
+                        title={`Sort by ${sortBy === 'amount' ? 'Name' : 'Amount'}`}
+                    >
+                        <SortIcon className="w-4 h-4" />
+                    </button>
+                    <button 
+                        onClick={() => setIsConfigModalOpen(true)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-white transition-colors"
+                        title="Configure Report"
+                    >
+                        <SettingsIcon className="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+
             {/* Content Body */}
             <div className="flex-1 overflow-y-auto p-4 custom-scrollbar relative">
-                 {/* ... Chart and Rows ... */}
-                 {/* Re-using existing rendering logic */}
+                 {activeData.items.length === 0 ? (
+                     <div className="h-full flex flex-col items-center justify-center text-slate-400">
+                         <ExclamationTriangleIcon className="w-10 h-10 mb-2 opacity-50" />
+                         <p className="text-sm">No matching data.</p>
+                     </div>
+                 ) : (
+                     <div className="space-y-6">
+                         {/* Chart Section */}
+                         <div className="py-2">
+                             <DonutChart 
+                                data={activeData.visibleItems.map(i => ({ label: i.label, value: i.value, color: i.color }))}
+                                total={activeData.totalValue}
+                             />
+                         </div>
+
+                         {/* List Section */}
+                         <div className="space-y-1">
+                             {activeData.items.map(item => {
+                                 const isHidden = (config.hiddenIds || config.hiddenCategoryIds || []).includes(item.id);
+                                 return (
+                                     <ReportRow 
+                                        key={item.id}
+                                        item={item}
+                                        total={activeData.totalValue}
+                                        onClick={() => handleInspect(item)}
+                                        isHidden={isHidden}
+                                        onToggleHidden={(e) => { e.stopPropagation(); toggleHidden(item.id); }}
+                                     />
+                                 );
+                             })}
+                         </div>
+                     </div>
+                 )}
             </div>
 
             {/* Inspection Modal */}
             {inspectingItems && (
                 <div className="fixed inset-0 z-50 flex justify-center items-center p-4 bg-black bg-opacity-50" onClick={() => setInspectingItems(null)}>
-                    {/* ... Table View ... */}
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center p-4 border-b">
+                            <h3 className="font-bold text-lg text-slate-800">{inspectingTitle}</h3>
+                            <button onClick={() => setInspectingItems(null)} className="p-1 rounded-full hover:bg-slate-100"><CloseIcon className="w-6 h-6"/></button>
+                        </div>
+                        <div className="flex-1 overflow-auto">
+                            <TransactionTable 
+                                transactions={inspectingItems}
+                                accounts={accounts}
+                                categories={categories}
+                                tags={tags}
+                                transactionTypes={transactionTypes}
+                                payees={payees}
+                                users={users}
+                                onUpdateTransaction={() => {}} 
+                                onDeleteTransaction={() => {}}
+                                visibleColumns={new Set(['date', 'description', 'amount', 'account'])}
+                            />
+                        </div>
+                        <div className="p-4 border-t bg-slate-50 flex justify-end">
+                            <button onClick={() => setInspectingItems(null)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Close</button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -288,7 +536,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 savedDateRanges={savedDateRanges}
                 onSaveDateRange={onSaveDateRange}
                 onDeleteDateRange={onDeleteDateRange}
-                // NEW: Pass all transactions for live preview
                 transactions={transactions} 
             />
         </div>
