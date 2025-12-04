@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange } from '../types';
 import ReportColumn from '../components/ReportColumn';
@@ -36,6 +35,14 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
 
     const handleCloseColumn = (index: number) => {
         setActiveReports(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleUpdateActiveReport = (index: number, config: ReportConfig) => {
+        setActiveReports(prev => {
+            const newReports = [...prev];
+            newReports[index] = config;
+            return newReports;
+        });
     };
 
     const handleSaveReport = (config: ReportConfig) => {
@@ -178,6 +185,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                     tags={tags}
                                     payees={payees}
                                     onSaveReport={handleSaveReport}
+                                    onUpdateReport={(newConfig) => handleUpdateActiveReport(index, newConfig)}
                                     savedDateRanges={savedDateRanges}
                                     onSaveDateRange={handleSaveDateRange}
                                     onDeleteDateRange={handleDeleteDateRange}

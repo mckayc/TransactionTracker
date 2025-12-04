@@ -205,12 +205,17 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       const saved = localStorage.getItem('filter_users');
       return saved ? new Set(JSON.parse(saved)) : new Set();
   });
+  const [selectedPayees, setSelectedPayees] = useState<Set<string>>(() => {
+      const saved = localStorage.getItem('filter_payees');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+  });
 
   // Save filters on change
   useEffect(() => { localStorage.setItem('filter_categories', JSON.stringify(Array.from(selectedCategories))); }, [selectedCategories]);
   useEffect(() => { localStorage.setItem('filter_types', JSON.stringify(Array.from(selectedTypes))); }, [selectedTypes]);
   useEffect(() => { localStorage.setItem('filter_accounts', JSON.stringify(Array.from(selectedAccounts))); }, [selectedAccounts]);
   useEffect(() => { localStorage.setItem('filter_users', JSON.stringify(Array.from(selectedUsers))); }, [selectedUsers]);
+  useEffect(() => { localStorage.setItem('filter_payees', JSON.stringify(Array.from(selectedPayees))); }, [selectedPayees]);
 
   // Date Logic - Default to Previous Month (Not Persisted to ensure default view)
   const [dateMode, setDateMode] = useState<DateMode>('month');
@@ -360,10 +365,11 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       if (selectedTypes.size > 0 && !selectedTypes.has(tx.typeId)) return false;
       if (selectedAccounts.size > 0 && !selectedAccounts.has(tx.accountId || '')) return false;
       if (selectedUsers.size > 0 && !selectedUsers.has(tx.userId || '')) return false;
+      if (selectedPayees.size > 0 && !selectedPayees.has(tx.payeeId || '')) return false;
       
       return true;
     });
-  }, [transactions, debouncedSearchTerm, selectedCategories, selectedTypes, selectedAccounts, selectedUsers, startDate, endDate]);
+  }, [transactions, debouncedSearchTerm, selectedCategories, selectedTypes, selectedAccounts, selectedUsers, selectedPayees, startDate, endDate]);
   
   // Calculate Summaries based on Filtered Data
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
@@ -394,6 +400,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
     setSelectedTypes(new Set());
     setSelectedAccounts(new Set());
     setSelectedUsers(new Set());
+    setSelectedPayees(new Set());
     // Reset date to month mode previous month
     const d = new Date();
     d.setMonth(d.getMonth() - 1);
@@ -742,7 +749,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                     >
                         <SortIcon className="w-4 h-4"/>
                         <span>Filters</span>
-                        {(selectedCategories.size > 0 || selectedTypes.size > 0 || selectedAccounts.size > 0 || selectedUsers.size > 0) && (
+                        {(selectedCategories.size > 0 || selectedTypes.size > 0 || selectedAccounts.size > 0 || selectedUsers.size > 0 || selectedPayees.size > 0) && (
                             <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
                         )}
                     </button>
@@ -816,7 +823,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             {showFilters && (
                 <div className="mt-4 pt-4 border-t border-slate-100 animate-slide-down print:hidden">
                     <div className="flex flex-col lg:flex-row gap-4">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 flex-grow relative z-20">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 flex-grow relative z-20">
                             <MultiSelect 
                                 label="Categories" 
                                 options={categories} 
@@ -840,6 +847,12 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                                 options={users} 
                                 selectedIds={selectedUsers} 
                                 onChange={setSelectedUsers} 
+                            />
+                            <MultiSelect 
+                                label="Payees" 
+                                options={payees} 
+                                selectedIds={selectedPayees} 
+                                onChange={setSelectedPayees} 
                             />
                         </div>
                         

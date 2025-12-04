@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
@@ -16,6 +15,7 @@ interface ReportColumnProps {
     tags: Tag[];
     payees: Payee[];
     onSaveReport: (config: ReportConfig) => void;
+    onUpdateReport: (config: ReportConfig) => void;
     savedDateRanges: CustomDateRange[];
     onSaveDateRange: (range: CustomDateRange) => void;
     onDeleteDateRange: (id: string) => void;
@@ -261,7 +261,7 @@ const ReportRow: React.FC<{
                         {item.label}
                     </span>
                     <span className="text-sm font-bold text-slate-900">
-                        {formatCurrency(item.value)}
+                        {isHidden ? '-' : formatCurrency(item.value)}
                     </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
@@ -284,7 +284,7 @@ const ReportRow: React.FC<{
     );
 };
 
-const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, savedDateRanges, onSaveDateRange, onDeleteDateRange }) => {
+const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, onUpdateReport, savedDateRanges, onSaveDateRange, onDeleteDateRange }) => {
     
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
@@ -399,7 +399,11 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
     const handleConfigUpdate = (newConfig: ReportConfig) => {
         setConfig(newConfig);
-        onSaveReport(newConfig);
+        onUpdateReport(newConfig);
+        // Explicitly calling save from modal implies persisting changes, 
+        // but for now let's just update active view to be consistent with user request to avoid prompts.
+        // If we want to save, the parent should handle it or we need a separate explicit save button.
+        // For "Edit Config", usually users expect it to apply to the view.
     };
 
     const toggleHidden = (id: string) => {
@@ -413,7 +417,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             hiddenCategoryIds: Array.from(currentHidden) // Sync legacy field
         };
         setConfig(newConfig);
-        onSaveReport(newConfig);
+        onUpdateReport(newConfig); // Just update active state, do not trigger DB save
     };
 
     const handleInspect = (item: typeof activeData.items[0]) => {
@@ -451,6 +455,13 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         title="Configure Report"
                     >
                         <SettingsIcon className="w-4 h-4" />
+                    </button>
+                    <button 
+                        onClick={() => onSaveReport(config)}
+                        className="p-1.5 text-slate-400 hover:text-green-600 rounded hover:bg-white transition-colors"
+                        title="Save Changes to Database"
+                    >
+                        <DownloadIcon className="w-4 h-4" />
                     </button>
                 </div>
             </div>
