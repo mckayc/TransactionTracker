@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
@@ -329,7 +330,13 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             if (config.filters.accountIds && !config.filters.accountIds.includes(tx.accountId || '')) return false;
             if (config.filters.categoryIds && !config.filters.categoryIds.includes(tx.categoryId)) return false;
             if (config.filters.userIds && !config.filters.userIds.includes(tx.userId || '')) return false;
-            if (config.filters.payeeIds && !config.filters.payeeIds.includes(tx.payeeId || '')) return false;
+            
+            // Fix: Payee Filter Logic
+            // If specific payees are selected (and not ALL selected, represented by undefined/empty in some logics, but strict array here)
+            // Note: ReportConfigModal now saves undefined if ALL are selected. So if it is an array, we check inclusion.
+            if (config.filters.payeeIds && config.filters.payeeIds.length > 0) {
+                 if (!config.filters.payeeIds.includes(tx.payeeId || '')) return false;
+            }
             
             if (config.filters.tagIds && config.filters.tagIds.length > 0) {
                 if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) return false;
@@ -400,10 +407,6 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     const handleConfigUpdate = (newConfig: ReportConfig) => {
         setConfig(newConfig);
         onUpdateReport(newConfig);
-        // Explicitly calling save from modal implies persisting changes, 
-        // but for now let's just update active view to be consistent with user request to avoid prompts.
-        // If we want to save, the parent should handle it or we need a separate explicit save button.
-        // For "Edit Config", usually users expect it to apply to the view.
     };
 
     const toggleHidden = (id: string) => {
