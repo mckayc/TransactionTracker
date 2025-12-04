@@ -47,39 +47,40 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
     };
 
     const handleSaveReport = (config: ReportConfig) => {
-        // Check if updating existing by ID match
+        // Find existing report by ID
         const existingIndex = savedReports.findIndex(r => r.id === config.id);
         
         if (existingIndex >= 0) {
-            if (confirm(`Overwrite existing report "${config.name}"?`)) {
+            // Update existing
+            if (window.confirm(`Overwrite existing report "${savedReports[existingIndex].name}"?`)) {
                 const updated = [...savedReports];
                 updated[existingIndex] = { ...updated[existingIndex], name: config.name, config };
                 setSavedReports(updated);
-            } else {
-                // Save as copy with new ID if user declines overwrite? 
-                // Usually Cancel means cancel, but here we can force a new ID for "Save As New" behavior if we added UI for it.
-                // For now, we assume user wants to save this specific config state.
             }
         } else {
-            // Check if name exists but ID is different (rare case of manual dupes)
+            // Check for name collision if ID didn't match (e.g. manual copy)
             const nameMatch = savedReports.find(r => r.name === config.name);
-            if (nameMatch && !confirm(`A report named "${config.name}" already exists. Create a duplicate?`)) {
+            if (nameMatch && !window.confirm(`A report named "${config.name}" already exists. Create a duplicate?`)) {
                 return;
             }
 
+            // Create new
             const newReport: SavedReport = {
-                id: config.id, // CRITICAL: Use the config ID as the SavedReport ID to enable future overwrites
+                id: config.id,
                 name: config.name,
                 config
             };
             setSavedReports(prev => [...prev, newReport]);
         }
-        // alert("Report saved successfully!"); // Removed alert for smoother flow
     };
 
     const handleLoadReport = (saved: SavedReport) => {
-        // Clone config to allow independent modification, but keep ID to link back to saved report
-        const config: ReportConfig = { ...saved.config, id: saved.id, name: saved.name }; 
+        // Clone config but strictly enforce ID match to allow saving back to the same slot
+        const config: ReportConfig = { 
+            ...saved.config, 
+            id: saved.id, 
+            name: saved.name 
+        }; 
         setActiveReports(prev => [...prev, config]);
         setIsSavedReportsOpen(false);
     };
