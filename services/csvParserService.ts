@@ -142,7 +142,7 @@ export const readStringAsCSV = (text: string): CsvData => {
     let bestHeaderIndex = -1;
     let maxScore = 0;
 
-    // Scan first 50 lines
+    // Scan first 50 lines to find the most likely header row
     for(let i=0; i<Math.min(lines.length, 50); i++) {
         const line = lines[i].toLowerCase().trim();
         if (line.length === 0) continue;
@@ -165,15 +165,29 @@ export const readStringAsCSV = (text: string): CsvData => {
     }
     if (bestHeaderIndex === -1) bestHeaderIndex = 0;
 
-    // --- Delimiter Detection ---
     const headerLine = lines[bestHeaderIndex];
-    const tabCount = (headerLine.match(/\t/g) || []).length;
-    const commaCount = (headerLine.match(/,/g) || []).length;
-    // Prefer tabs if there are any, otherwise commas
-    const delimiter = tabCount > 0 && tabCount >= commaCount ? '\t' : ',';
 
-    // Parse Headers
-    const headers = parseCSVLine(headerLine, delimiter);
+    // --- Delimiter Detection Strategy: Trial ---
+    // Try parsing with both delimiters and see which one yields more columns.
+    const tabParts = parseCSVLine(headerLine, '\t');
+    const commaParts = parseCSVLine(headerLine, ',');
+    
+    let delimiter = ',';
+    let headers = commaParts;
+
+    // If Tab split resulted in more columns, or equal but > 1, prefer Tab (common for Amazon reports)
+    if (tabParts.length > commaParts.length) {
+        delimiter = '\t';
+        headers = tabParts;
+    } else if (tabParts.length === commaParts.length && tabParts.length > 1) {
+        // If ambiguous, check if the file extension or content hints (optional, but defaulting to comma is usually safer unless we are sure)
+        // However, Amazon reports are often .txt which are TSV.
+        // If both separate successfully, we stick with comma unless we detect tabs in the raw string.
+        if (headerLine.includes('\t')) {
+            delimiter = '\t';
+            headers = tabParts;
+        }
+    }
 
     // Parse Rows
     const rows: string[][] = [];
@@ -184,7 +198,7 @@ export const readStringAsCSV = (text: string): CsvData => {
         const values = parseCSVLine(line, delimiter);
         
         // Basic consistency check: Ignore rows that have significantly fewer columns than header
-        // (Allows for some variance, e.g. empty trailing cols)
+        // (Allows for some variance, e.g. empty trailing cols, but filters out total lines or footers)
         if (values.length >= Math.max(1, headers.length - 2)) { 
             rows.push(values);
         }
@@ -329,7 +343,11 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
     // Use the robust parser logic for generic CSVs too
     for(let i=0; i<Math.min(lines.length, 20); i++) {
         const lineLower = lines[i].toLowerCase();
-        const parts = parseCSVLine(lineLower);
+        
+        // Auto-detect delimiter per line for robustness in mixed files (rare but possible)
+        // or just default to comma if unspecified.
+        const delimiter = lineLower.includes('\t') && !lineLower.includes(',') ? '\t' : ',';
+        const parts = parseCSVLine(lineLower, delimiter);
         
         const dateIdx = parts.findIndex(p => p.includes('date') || p === 'dt');
         const descIdx = parts.findIndex(p => p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction'));
@@ -352,11 +370,15 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
     const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
     const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
 
+    // Detect delimiter from header line
+    const headerLine = lines[headerIndex];
+    const delimiter = headerLine.includes('\t') && (headerLine.match(/\t/g) || []).length > (headerLine.match(/,/g) || []).length ? '\t' : ',';
+
     for(let i=headerIndex + 1; i<lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
         
-        const parts = parseCSVLine(line);
+        const parts = parseCSVLine(line, delimiter);
         
         if (parts.length < 2) continue;
 
