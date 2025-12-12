@@ -1,41 +1,48 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import type { AmazonMetric, AmazonReportType } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon } from '../../components/Icons';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, CloseIcon, DeleteIcon, SearchCircleIcon, CalendarIcon, SortIcon } from '../../components/Icons';
 import { parseAmazonReport } from '../../services/csvParserService';
+import AmazonTable from '../../components/AmazonTable';
+import AmazonVerifyModal from '../../components/AmazonVerifyModal';
 
 interface AmazonIntegrationProps {
     metrics: AmazonMetric[];
     onAddMetrics: (metrics: AmazonMetric[]) => void;
+    onDeleteMetrics: (ids: string[]) => void;
+    onUpdateMetric: (metric: AmazonMetric) => void;
 }
 
 // Helper for currency
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US').format(val);
 
-const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMetrics }) => {
+const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics, onUpdateMetric }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
+    const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+    const [pendingMetrics, setPendingMetrics] = useState<AmazonMetric[]>([]);
+    
+    // Filter State
+    const [searchTerm, setSearchTerm] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [showFilters, setShowFilters] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Title Sync Logic:
-    // 1. Build a map of ASIN -> Title from Onsite/Offsite records (which have titles)
-    // 2. If title is unknown (CC records), look it up.
+    // Title Sync Logic (same as before)
     const enrichedMetrics = useMemo(() => {
         const titleMap = new Map<string, string>();
-        
-        // Pass 1: Gather Titles
         metrics.forEach(m => {
             if (m.asin && m.title && !m.title.startsWith('Unknown Product') && m.reportType !== 'creator_connections') {
-                // If map doesn't have it, or this title is longer (usually better), store it
                 const existing = titleMap.get(m.asin);
                 if (!existing || m.title.length > existing.length) {
                     titleMap.set(m.asin, m.title);
                 }
             }
         });
-
-        // Pass 2: Enrich
         return metrics.map(m => {
             if (titleMap.has(m.asin) && (m.title.startsWith('Unknown Product') || m.reportType === 'creator_connections')) {
                 return { ...m, title: titleMap.get(m.asin)! };
@@ -43,6 +50,15 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             return m;
         });
     }, [metrics]);
+
+    const filteredMetrics = useMemo(() => {
+        return enrichedMetrics.filter(m => {
+            if (searchTerm && !m.title.toLowerCase().includes(searchTerm.toLowerCase()) && !m.asin.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+            if (startDate && new Date(m.date) < new Date(startDate)) return false;
+            if (endDate && new Date(m.date) > new Date(endDate)) return false;
+            return true;
+        });
+    }, [enrichedMetrics, searchTerm, startDate, endDate]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -52,9 +68,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         try {
             const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
             if (newMetrics.length > 0) {
-                onAddMetrics(newMetrics);
-                alert(`Successfully imported ${newMetrics.length} records.`);
-                setActiveTab('dashboard');
+                setPendingMetrics(newMetrics);
+                setVerifyModalOpen(true);
             } else {
                 alert("No valid records found in file.");
             }
@@ -67,6 +82,40 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         }
     };
 
+    const handleConfirmImport = (finalMetrics: AmazonMetric[]) => {
+        onAddMetrics(finalMetrics);
+        setVerifyModalOpen(false);
+        setPendingMetrics([]);
+        setActiveTab('dashboard'); // Switch to dashboard to see results
+        alert(`Successfully imported ${finalMetrics.length} records.`);
+    };
+
+    // Bulk Actions
+    const handleToggleSelection = (id: string) => {
+        const newSet = new Set(selectedIds);
+        if (newSet.has(id)) newSet.delete(id);
+        else newSet.add(id);
+        setSelectedIds(newSet);
+    };
+
+    const handleToggleSelectAll = () => {
+        if (selectedIds.size === filteredMetrics.length) setSelectedIds(new Set());
+        else setSelectedIds(new Set(filteredMetrics.map(m => m.id)));
+    };
+
+    const handleBulkSelection = (ids: string[], selected: boolean) => {
+        const newSet = new Set(selectedIds);
+        ids.forEach(id => selected ? newSet.add(id) : newSet.delete(id));
+        setSelectedIds(newSet);
+    };
+
+    const handleBulkDelete = () => {
+        if (window.confirm(`Are you sure you want to delete ${selectedIds.size} records?`)) {
+            onDeleteMetrics(Array.from(selectedIds));
+            setSelectedIds(new Set());
+        }
+    };
+
     // --- aggregations ---
     const summary = useMemo(() => {
         const result = {
@@ -74,22 +123,20 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             totalClicks: 0,
             totalOrdered: 0,
             avgConversion: 0,
-            byType: {
-                onsite: 0,
-                offsite: 0,
-                creator_connections: 0,
-                unknown: 0 // Added to satisfy TS index signature
-            }
+            byType: { onsite: 0, offsite: 0, creator_connections: 0, unknown: 0 }
         };
 
-        enrichedMetrics.forEach(m => {
+        // Summary uses ALL metrics, or FILTERED metrics? Usually specific to view context.
+        // Let's use filteredMetrics for dashboard to allow date range analysis.
+        const source = activeTab === 'dashboard' ? filteredMetrics : enrichedMetrics;
+
+        source.forEach(m => {
             result.totalRevenue += m.revenue;
             result.totalClicks += m.clicks;
             result.totalOrdered += m.orderedItems;
             
-            // Safe assignment
             if (m.reportType in result.byType) {
-                result.byType[m.reportType] += m.revenue;
+                result.byType[m.reportType as AmazonReportType] += m.revenue;
             } else {
                 result.byType.unknown += m.revenue;
             }
@@ -97,12 +144,13 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
         result.avgConversion = result.totalClicks > 0 ? (result.totalOrdered / result.totalClicks) * 100 : 0;
         return result;
-    }, [enrichedMetrics]);
+    }, [filteredMetrics, enrichedMetrics, activeTab]);
 
     const topProducts = useMemo(() => {
         const productMap = new Map<string, { title: string, revenue: number, clicks: number, ordered: number }>();
+        const source = activeTab === 'dashboard' ? filteredMetrics : enrichedMetrics;
         
-        enrichedMetrics.forEach(m => {
+        source.forEach(m => {
             if (!productMap.has(m.asin)) {
                 productMap.set(m.asin, { title: m.title, revenue: 0, clicks: 0, ordered: 0 });
             }
@@ -116,11 +164,11 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             .map(([asin, data]) => ({ asin, ...data }))
             .sort((a, b) => b.revenue - a.revenue)
             .slice(0, 10);
-    }, [enrichedMetrics]);
+    }, [filteredMetrics, enrichedMetrics, activeTab]);
 
     return (
         <div className="space-y-6 h-full flex flex-col">
-            <div className="flex justify-between items-center flex-shrink-0">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                         <BoxIcon className="w-8 h-8 text-orange-500" />
@@ -129,26 +177,35 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <p className="text-slate-500">Track clicks, commissions, and top performing ASINs.</p>
                 </div>
                 <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200">
-                    <button 
-                        onClick={() => setActiveTab('dashboard')} 
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <BarChartIcon className="w-4 h-4"/> Dashboard
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('data')} 
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'data' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <TableIcon className="w-4 h-4"/> Data
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('upload')} 
-                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'upload' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <CloudArrowUpIcon className="w-4 h-4"/> Upload
-                    </button>
+                    <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><BarChartIcon className="w-4 h-4"/> Dashboard</button>
+                    <button onClick={() => setActiveTab('data')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'data' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><TableIcon className="w-4 h-4"/> Data</button>
+                    <button onClick={() => setActiveTab('upload')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'upload' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><CloudArrowUpIcon className="w-4 h-4"/> Upload</button>
                 </div>
             </div>
+
+            {/* Filter Bar (Shared for Dashboard and Data) */}
+            {activeTab !== 'upload' && (
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0">
+                    <div className="relative flex-grow">
+                        <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <input 
+                            type="text" 
+                            placeholder="Search Products or ASINs..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                        />
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2 border rounded-lg text-sm" />
+                        <span className="text-slate-400">-</span>
+                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2 border rounded-lg text-sm" />
+                        {(searchTerm || startDate || endDate) && (
+                            <button onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); }} className="text-xs text-red-500 hover:underline px-2">Clear</button>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <div className="flex-1 overflow-y-auto min-h-0 bg-slate-50 -mx-4 px-4 pt-4">
                 
@@ -157,7 +214,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                                <p className="text-xs font-bold text-slate-400 uppercase">Total Earnings</p>
+                                <p className="text-xs font-bold text-slate-400 uppercase">Total Revenue</p>
                                 <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(summary.totalRevenue)}</p>
                             </div>
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
@@ -200,7 +257,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Product</th>
                                         <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Clicks</th>
                                         <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Ordered</th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Earnings</th>
+                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
@@ -216,7 +273,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         </tr>
                                     ))}
                                     {topProducts.length === 0 && (
-                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400">No data available.</td></tr>
+                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400">No data available for current selection.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -226,44 +283,31 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
                 {/* DATA TAB */}
                 {activeTab === 'data' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <table className="min-w-full divide-y divide-slate-200">
-                            <thead className="bg-slate-50">
-                                <tr>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">ASIN / Title</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Clicks</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Earnings</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200">
-                                {enrichedMetrics.slice(0, 100).map((m) => (
-                                    <tr key={m.id} className="hover:bg-slate-50">
-                                        <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.date}</td>
-                                        <td className="px-4 py-2 text-sm">
-                                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
-                                                m.reportType === 'onsite' ? 'bg-blue-100 text-blue-700' : 
-                                                m.reportType === 'offsite' ? 'bg-green-100 text-green-700' : 
-                                                'bg-purple-100 text-purple-700'
-                                            }`}>
-                                                {m.reportType.replace('_', ' ')}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-2 text-sm text-slate-800">
-                                            <div className="line-clamp-1" title={m.title}>{m.title}</div>
-                                            <span className="text-xs text-slate-400 font-mono mr-2">{m.asin}</span>
-                                            {m.campaignTitle && <span className="text-xs text-purple-600 bg-purple-50 px-1 rounded">{m.campaignTitle}</span>}
-                                        </td>
-                                        <td className="px-4 py-2 text-right text-sm text-slate-600">{m.clicks}</td>
-                                        <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.revenue)}</td>
-                                    </tr>
-                                ))}
-                                {enrichedMetrics.length === 0 && (
-                                    <tr><td colSpan={5} className="p-8 text-center text-slate-400">No data imported yet.</td></tr>
-                                )}
-                            </tbody>
-                        </table>
+                    <div className="flex flex-col h-full space-y-4">
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 min-h-0 flex flex-col overflow-hidden relative">
+                            <AmazonTable 
+                                metrics={filteredMetrics} 
+                                onUpdateMetric={onUpdateMetric}
+                                onDeleteMetric={(id) => onDeleteMetrics([id])}
+                                selectedIds={selectedIds}
+                                onToggleSelection={handleToggleSelection}
+                                onToggleSelectAll={handleToggleSelectAll}
+                                onBulkSelection={handleBulkSelection}
+                            />
+                        </div>
+                        {selectedIds.size > 0 && (
+                            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 animate-slide-up print:hidden">
+                                <div className="flex items-center gap-3 border-r border-slate-700 pr-4">
+                                    <span className="font-medium text-sm">{selectedIds.size} selected</span>
+                                    <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-white transition-colors p-1 rounded-full hover:bg-slate-800">
+                                        <CloseIcon className="w-4 h-4" />
+                                    </button>
+                                </div>
+                                <button onClick={handleBulkDelete} className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-500 rounded-full transition-colors shadow-sm">
+                                    <DeleteIcon className="w-4 h-4"/> Delete
+                                </button>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -294,6 +338,13 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     </div>
                 )}
             </div>
+
+            <AmazonVerifyModal
+                isOpen={verifyModalOpen}
+                onClose={() => setVerifyModalOpen(false)}
+                onConfirm={handleConfirmImport}
+                initialMetrics={pendingMetrics}
+            />
         </div>
     );
 };

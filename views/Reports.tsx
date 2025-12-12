@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange } from '../types';
+import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange, AmazonMetric } from '../types';
 import ReportColumn from '../components/ReportColumn';
 import ReportConfigModal from '../components/ReportConfigModal';
 import { AddIcon, DeleteIcon, EditIcon, ChartPieIcon, CloseIcon, DocumentIcon, FolderIcon, CheckCircleIcon, SettingsIcon, DragHandleIcon } from '../components/Icons';
@@ -8,6 +8,7 @@ import { generateUUID } from '../utils';
 
 interface ReportsProps {
   transactions: Transaction[];
+  amazonMetrics: AmazonMetric[];
   transactionTypes: TransactionType[];
   categories: Category[];
   payees: Payee[];
@@ -20,7 +21,7 @@ interface ReportsProps {
   setSavedDateRanges: React.Dispatch<React.SetStateAction<CustomDateRange[]>>;
 }
 
-const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users, tags, accounts, savedReports, setSavedReports, savedDateRanges, setSavedDateRanges }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, amazonMetrics, transactionTypes, categories, payees, users, tags, accounts, savedReports, setSavedReports, savedDateRanges, setSavedDateRanges }) => {
     
     // Active columns in the workspace
     const [activeReports, setActiveReports] = useState<ReportConfig[]>([]);
@@ -71,7 +72,6 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                 if (window.confirm(`A report named "${config.name}" already exists. Overwrite it?`)) {
                     const updated = [...savedReports];
                     // We update the existing slot with the NEW config but keep the old ID to maintain consistency
-                    // Actually, if we overwrite, we usually want to keep the old ID.
                     const oldId = updated[nameMatchIndex].id;
                     updated[nameMatchIndex] = { 
                         id: oldId,
@@ -271,6 +271,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                 <ReportColumn
                                     config={config}
                                     transactions={transactions}
+                                    amazonMetrics={amazonMetrics}
                                     categories={categories}
                                     transactionTypes={transactionTypes}
                                     accounts={accounts}
@@ -394,6 +395,10 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                                 )}
                                                 
                                                 <div className="text-xs text-slate-500 mt-1 flex items-center gap-2 cursor-pointer" onClick={() => handleLoadReport(report)}>
+                                                    <span className={`bg-slate-100 px-2 py-0.5 rounded capitalize ${report.config.dataSource === 'amazon' ? 'text-orange-700 bg-orange-100' : ''}`}>
+                                                        {report.config.dataSource === 'amazon' ? 'Amazon' : 'Transaction'}
+                                                    </span>
+                                                    <span>•</span>
                                                     <span className="bg-slate-100 px-2 py-0.5 rounded capitalize">{report.config.groupBy}</span>
                                                     <span>•</span>
                                                     <span>

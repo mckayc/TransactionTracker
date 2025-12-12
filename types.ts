@@ -251,6 +251,33 @@ export interface AuditFinding {
   };
 }
 
+// --- Integrations ---
+
+export type AmazonReportType = 'onsite' | 'offsite' | 'creator_connections' | 'unknown';
+
+export interface AmazonMetric {
+    id: string;
+    date: string; // YYYY-MM-DD
+    asin: string;
+    title: string;
+    clicks: number;
+    orderedItems: number;
+    shippedItems: number;
+    revenue: number; // Earnings/Commission Income
+    conversionRate: number;
+    trackingId: string;
+    category?: string;
+    reportType: AmazonReportType;
+    campaignTitle?: string; // For Creator Connections
+}
+
+export interface IntegrationConfig {
+    id: string;
+    name: string;
+    description: string;
+    isEnabled: boolean;
+}
+
 // --- Report Types ---
 
 export type DateRangePreset = 
@@ -287,16 +314,29 @@ export interface CustomDateRange {
     offsets?: DateOffset[]; // Optional list of additional offsets for fixed periods
 }
 
-export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account';
+export type ReportGroupBy = 
+    | 'category' 
+    | 'payee' 
+    | 'tag' 
+    | 'type' 
+    | 'account'
+    // Amazon Specific
+    | 'reportType' // Onsite vs Offsite
+    | 'title'; // Product Title
+
+export type ReportDataSource = 'transactions' | 'amazon';
 
 export interface ReportConfig {
     id: string;
     name: string;
+    dataSource?: ReportDataSource; // Defaults to 'transactions' if undefined
     datePreset: DateRangePreset;
-    customStartDate?: string; // Used for Custom Start, Specific Month (YYYY-MM), or Relative Offset (string "3")
+    customStartDate?: string; 
     customEndDate?: string;
-    groupBy?: ReportGroupBy; // Dimension to group by (default: category)
-    subGroupBy?: ReportGroupBy; // Secondary dimension to group by (e.g. Account -> Category)
+    groupBy?: ReportGroupBy; 
+    subGroupBy?: ReportGroupBy; 
+    
+    // Transaction Filters
     filters: {
         accountIds?: string[];
         userIds?: string[];
@@ -306,39 +346,19 @@ export interface ReportConfig {
         tagIds?: string[];
         payeeIds?: string[];
     };
-    hiddenCategoryIds?: string[]; // Legacy: IDs of categories hidden via the eye icon
-    hiddenIds?: string[]; // New: Universal hidden IDs for any group type (replaces hiddenCategoryIds logic)
+
+    // Amazon Specific Filters
+    amazonFilters?: {
+        reportTypes?: AmazonReportType[];
+        asins?: string[];
+    };
+
+    hiddenCategoryIds?: string[]; // Legacy
+    hiddenIds?: string[]; 
 }
 
 export interface SavedReport {
     id: string;
     name: string;
     config: ReportConfig;
-}
-
-// --- Integrations ---
-
-export type AmazonReportType = 'onsite' | 'offsite' | 'creator_connections' | 'unknown';
-
-export interface AmazonMetric {
-    id: string;
-    date: string; // YYYY-MM-DD
-    asin: string;
-    title: string;
-    clicks: number;
-    orderedItems: number;
-    shippedItems: number;
-    revenue: number; // Earnings/Commission Income
-    conversionRate: number;
-    trackingId: string;
-    category?: string;
-    reportType: AmazonReportType;
-    campaignTitle?: string; // For Creator Connections
-}
-
-export interface IntegrationConfig {
-    id: string;
-    name: string;
-    description: string;
-    isEnabled: boolean;
 }
