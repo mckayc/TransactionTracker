@@ -31,7 +31,7 @@ const VerifyModal: React.FC<VerifyModalProps> = ({ isOpen, onClose, currentTrans
         try {
             // 1. Parse pasted text
             // We pass a dummy account ID because we are just comparing values, not importing yet
-            const parsedTransactions = await parseTransactionsFromText(pastedText, 'dummy-account', transactionTypes, (msg) => {});
+            const parsedTransactions = await parseTransactionsFromText(pastedText, 'dummy-account', transactionTypes, (msg: string) => {});
             
             // 2. Perform comparison
             const matchedPairs: { appTx: Transaction; stmtTx: RawTransaction }[] = [];
@@ -39,7 +39,7 @@ const VerifyModal: React.FC<VerifyModalProps> = ({ isOpen, onClose, currentTrans
             const appTxMatchedSet = new Set<string>();
 
             // For every parsed transaction, try to find a match in currentTransactions
-            parsedTransactions.forEach(stmtTx => {
+            parsedTransactions.forEach((stmtTx: RawTransaction) => {
                 const stmtDate = new Date(stmtTx.date).getTime();
                 const stmtAmount = stmtTx.amount;
 

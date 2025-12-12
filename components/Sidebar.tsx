@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon } from './Icons';
 
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents';
+type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'integrations' | 'integration-amazon';
 
 interface SidebarProps {
   currentView: View;
@@ -25,6 +26,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
     { id: 'tasks', label: 'Tasks', icon: TasksIcon },
     { id: 'reports', label: 'Reports', icon: ChartPieIcon },
     { id: 'hub', label: 'Business Hub', icon: WizardIcon },
+    { id: 'integrations', label: 'Integrations', icon: PuzzleIcon },
   ];
 
   const managementNavItems = [
@@ -68,7 +70,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
                 onClick={() => onNavigate(item.id as View)}
                 title={isCollapsed ? item.label : ''}
                 className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'space-x-3 px-3 py-2'} rounded-md text-sm font-medium transition-colors ${
-                  currentView === item.id
+                  currentView === item.id || (item.id === 'integrations' && currentView.startsWith('integration-'))
                     ? 'bg-slate-900 text-white'
                     : 'hover:bg-slate-700'
                 }`}
