@@ -77,7 +77,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             byType: {
                 onsite: 0,
                 offsite: 0,
-                creator_connections: 0
+                creator_connections: 0,
+                unknown: 0 // Added to satisfy TS index signature
             }
         };
 
@@ -85,8 +86,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             result.totalRevenue += m.revenue;
             result.totalClicks += m.clicks;
             result.totalOrdered += m.orderedItems;
+            
+            // Safe assignment
             if (m.reportType in result.byType) {
-                result.byType[m.reportType as AmazonReportType] += m.revenue;
+                result.byType[m.reportType] += m.revenue;
+            } else {
+                result.byType.unknown += m.revenue;
             }
         });
 
