@@ -1,5 +1,7 @@
 
-import type { RawTransaction, TransactionType, AmazonMetric, AmazonReportType } from '../types';
+
+
+import type { RawTransaction, TransactionType, AmazonMetric, AmazonReportType, YouTubeMetric } from '../types';
 import { generateUUID } from '../utils';
 
 declare const pdfjsLib: any;
@@ -64,7 +66,7 @@ const parseDate = (dateStr: string): Date | null => {
         if (!isNaN(date.getTime())) return date;
     }
 
-    // Standard JS Date parsing for other formats (e.g. "Dec 31, 2024")
+    // Standard JS Date parsing for other formats (e.g. "Dec 31, 2024", "Apr 1, 2023")
     const hasDateStructure = /[a-zA-Z]{3,}\s+\d{1,2},?\s+\d{4}/.test(dateStr) || /\d{1,2}\s+[a-zA-Z]{3,}\s+\d{4}/.test(dateStr);
     if (hasDateStructure) {
         const date = new Date(dateStr);
@@ -116,11 +118,13 @@ const parseCSVLine = (line: string, delimiter = ','): string[] => {
 export const readStringAsCSV = (text: string): CsvData => {
     const lines = text.split('\n');
     
+    // Updated keywords to detect YouTube as well
     const keywords = [
         'asin', 'date', 'product title', 'title', 'name', 
         'ordered items', 'shipped items', 'clicks', 'conversion',
         'revenue', 'earnings', 'fees', 'commission', 'bonus', 
-        'tracking id', 'tag', 'category'
+        'tracking id', 'tag', 'category', 'video title', 'content', 
+        'watch time', 'subscribers', 'impressions'
     ];
 
     let bestHeaderIndex = -1;
@@ -142,7 +146,12 @@ export const readStringAsCSV = (text: string): CsvData => {
     }
 
     if (bestHeaderIndex === -1) {
-        bestHeaderIndex = lines.findIndex(l => l.toLowerCase().includes('asin'));
+        // Fallback checks
+        if (lines.findIndex(l => l.toLowerCase().includes('asin')) > -1) {
+             bestHeaderIndex = lines.findIndex(l => l.toLowerCase().includes('asin'));
+        } else if (lines.findIndex(l => l.toLowerCase().includes('video title')) > -1) {
+             bestHeaderIndex = lines.findIndex(l => l.toLowerCase().includes('video title'));
+        }
     }
     if (bestHeaderIndex === -1) bestHeaderIndex = 0;
 
@@ -290,6 +299,84 @@ export const processAmazonData = (
     return metrics;
 };
 
+// --- YouTube Logic ---
+
+export interface YouTubeMapping {
+    content: number;
+    title: number;
+    date: number;
+    duration: number;
+    views: number;
+    watchTime: number;
+    subscribers: number;
+    revenue: number;
+    impressions: number;
+    ctr: number;
+}
+
+export const autoMapYouTubeColumns = (headers: string[]): YouTubeMapping => {
+    const h = headers.map(h => h.toLowerCase().trim());
+    const find = (...search: string[]) => h.findIndex(hdr => search.some(s => hdr === s || hdr.includes(s)));
+
+    return {
+        content: find('content', 'video id', 'video'),
+        title: find('video title', 'title'),
+        date: find('video publish time', 'publish time', 'date'),
+        duration: find('duration'),
+        views: find('views'),
+        watchTime: find('watch time'),
+        subscribers: find('subscribers'),
+        revenue: find('estimated revenue', 'revenue', 'your estimated revenue'),
+        impressions: find('impressions'),
+        ctr: find('impressions click-through rate', 'click-through rate', 'ctr')
+    };
+};
+
+export const processYouTubeData = (data: CsvData, mapping: YouTubeMapping): YouTubeMetric[] => {
+    const metrics: YouTubeMetric[] = [];
+
+    data.rows.forEach(values => {
+        // Validation: YouTube report often has a 'Total' row at top or bottom. We skip it.
+        const contentId = mapping.content > -1 ? values[mapping.content] : '';
+        if (!contentId || contentId.toLowerCase().includes('total')) return;
+
+        const dateRaw = mapping.date > -1 ? values[mapping.date] : '';
+        const parsedDate = parseDate(dateRaw);
+        
+        // If no date, we can't chart it properly, but might display it.
+        // For dashboard purposes, we default to today if missing or keep it for the record.
+        // However, YouTube 'Content' reports usually have the Publish Date.
+        const dateStr = parsedDate ? formatDate(parsedDate) : '';
+
+        const parseNum = (idx: number | undefined) => {
+            if (idx === undefined || idx === -1) return 0;
+            const valStr = values[idx];
+            if (!valStr) return 0;
+            const val = valStr.replace(/[$,%\s]/g, '');
+            return parseFloat(val) || 0;
+        }
+
+        const metric: YouTubeMetric = {
+            id: generateUUID(), // Unique ID for our system
+            videoId: contentId,
+            title: mapping.title > -1 ? values[mapping.title] : 'Unknown Video',
+            publishDate: dateStr,
+            duration: parseNum(mapping.duration),
+            views: parseNum(mapping.views),
+            watchTimeHours: parseNum(mapping.watchTime),
+            subscribers: parseNum(mapping.subscribers),
+            revenue: parseNum(mapping.revenue),
+            impressions: parseNum(mapping.impressions),
+            ctr: parseNum(mapping.ctr)
+        };
+
+        metrics.push(metric);
+    });
+
+    return metrics;
+};
+
+// Legacy exports
 export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
     onProgress('Reading CSV...');
     const rawData = await readCSVRaw(file);
