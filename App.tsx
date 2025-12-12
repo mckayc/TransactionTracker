@@ -1,6 +1,7 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -16,6 +17,8 @@ import TagsPage from './views/TagsPage';
 import UsersPage from './views/UsersPage';
 import BusinessHub from './views/BusinessHub';
 import DocumentsPage from './views/DocumentsPage';
+import IntegrationsPage from './views/IntegrationsPage';
+import AmazonIntegration from './views/integrations/AmazonIntegration';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
 import { MenuIcon, CloseIcon } from './components/Icons';
@@ -24,7 +27,7 @@ import { generateUUID } from './utils';
 import { api } from './services/apiService';
 import { saveFile, deleteFile } from './services/storageService';
 
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents';
+type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'integrations' | 'integration-amazon';
 
 const DEFAULT_CATEGORIES: Category[] = [
     "Groceries", "Dining", "Shopping", "Travel", "Entertainment", "Utilities", "Health", "Services", "Transportation", "Income", "Other"
@@ -86,6 +89,7 @@ const App: React.FC = () => {
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [savedDateRanges, setSavedDateRanges] = useState<CustomDateRange[]>([]);
+  const [amazonMetrics, setAmazonMetrics] = useState<AmazonMetric[]>([]);
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -175,6 +179,7 @@ const App: React.FC = () => {
       setSavedReports(safeLoad<SavedReport[]>('savedReports', []));
       setChatSessions(safeLoad<ChatSession[]>('chatSessions', []));
       setSavedDateRanges(safeLoad<CustomDateRange[]>('savedDateRanges', []));
+      setAmazonMetrics(safeLoad<AmazonMetric[]>('amazonMetrics', []));
 
       // Handle Account Types and Accounts
       let finalAccountTypes = safeLoad<AccountType[]>('accountTypes', []);
@@ -208,7 +213,7 @@ const App: React.FC = () => {
       const viewParam = params.get('view');
       const taskId = params.get('taskId');
       
-      if (viewParam && ['dashboard', 'transactions', 'calendar', 'accounts', 'reports', 'settings', 'tasks', 'rules', 'payees', 'categories', 'tags', 'users', 'hub', 'documents'].includes(viewParam)) {
+      if (viewParam && ['dashboard', 'transactions', 'calendar', 'accounts', 'reports', 'settings', 'tasks', 'rules', 'payees', 'categories', 'tags', 'users', 'hub', 'documents', 'integrations', 'integration-amazon'].includes(viewParam)) {
           setCurrentView(viewParam as View);
       } else if (taskId) {
           // If taskId is present but no view, default to calendar context
@@ -253,7 +258,7 @@ const App: React.FC = () => {
                       transactions, accounts, accountTypes, categories, tags, payees, 
                       reconciliationRules, templates, scheduledEvents, users, 
                       transactionTypes, businessProfile, documentFolders, savedReports,
-                      chatSessions, savedDateRanges
+                      chatSessions, savedDateRanges, amazonMetrics
                   };
                   const jsonString = JSON.stringify(exportData, null, 2);
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
@@ -448,6 +453,12 @@ const App: React.FC = () => {
     const handler = setTimeout(() => api.save('savedDateRanges', savedDateRanges), 500);
     return () => clearTimeout(handler);
   }, [savedDateRanges, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('amazonMetrics', amazonMetrics), 500);
+    return () => clearTimeout(handler);
+  }, [amazonMetrics, isLoading]);
 
 
   // Handlers
@@ -687,6 +698,18 @@ const App: React.FC = () => {
       setSavedReports(prev => [...prev, report]);
   };
 
+  const handleAddAmazonMetrics = (newMetrics: AmazonMetric[]) => {
+      // deduplicate based on ID if needed, but for now just append new ones
+      // Since IDs are generated on parse, we should check distinct by date+asin?
+      // For simplicity, let's just append for now or filter duplicates
+      const existingIds = new Set(amazonMetrics.map(m => `${m.date}-${m.asin}`));
+      const filtered = newMetrics.filter(m => !existingIds.has(`${m.date}-${m.asin}`));
+      
+      if(filtered.length > 0) {
+          setAmazonMetrics(prev => [...prev, ...filtered].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      }
+  };
+
   if (isLoading) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-slate-100">
@@ -736,6 +759,10 @@ const App: React.FC = () => {
         />;
       case 'documents':
         return <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
+      case 'integrations':
+        return <IntegrationsPage onNavigate={setCurrentView} />;
+      case 'integration-amazon':
+        return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} />;
       default:
         return null;
     }

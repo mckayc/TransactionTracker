@@ -138,6 +138,7 @@ export interface BackupConfig {
 export interface SystemSettings {
     apiKey?: string;
     backupConfig?: BackupConfig;
+    enabledIntegrations?: string[]; // IDs of enabled integrations
 }
 
 
@@ -313,4 +314,27 @@ export interface SavedReport {
     id: string;
     name: string;
     config: ReportConfig;
+}
+
+// --- Integrations ---
+
+export interface AmazonMetric {
+    id: string;
+    date: string; // YYYY-MM-DD
+    asin: string;
+    title: string;
+    clicks: number;
+    orderedItems: number;
+    shippedItems: number;
+    revenue: number; // Earnings
+    conversionRate: number;
+    trackingId: string;
+    category?: string;
+}
+
+export interface IntegrationConfig {
+    id: string;
+    name: string;
+    description: string;
+    isEnabled: boolean;
 }

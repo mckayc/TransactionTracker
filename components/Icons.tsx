@@ -1,4 +1,5 @@
 
+
 import { 
     Upload, Download, Save, CheckCircle, AlertTriangle, LayoutDashboard, 
     Table, Calendar, CreditCard, Settings, ListTodo, ClipboardList, Repeat, 
@@ -7,7 +8,7 @@ import {
     Play, Wand2, FileText, Lightbulb, UploadCloud, DollarSign, Bot, 
     Search, Wrench, Info, Eye, EyeOff, Folder, GripVertical, 
     ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Heart, Printer, 
-    ShieldCheck, Scissors, UsersRound
+    ShieldCheck, Scissors, UsersRound, Puzzle, Box, BarChart3, ArrowRight
 } from 'lucide-react';
 
 export const UploadIcon = Upload;
@@ -62,3 +63,7 @@ export const HeartIcon = Heart;
 export const PrinterIcon = Printer;
 export const ShieldCheckIcon = ShieldCheck;
 export const SplitIcon = Scissors;
+export const PuzzleIcon = Puzzle;
+export const BoxIcon = Box;
+export const BarChartIcon = BarChart3;
+export const ArrowRightIcon = ArrowRight;
