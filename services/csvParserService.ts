@@ -33,15 +33,18 @@ const readFileAsText = (file: File): Promise<string> => {
 const parseDate = (dateStr: string): Date | null => {
     if (!dateStr || dateStr.length < 5) return null;
 
+    // Sanitize: "2024-12-31 0:00:00" -> "2024-12-31"
+    const cleanStr = dateStr.trim().split(/\s+|T/)[0];
+
     // Try YYYY-MM-DD
-    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) {
-        const date = new Date(dateStr + 'T00:00:00'); 
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(cleanStr)) {
+        const date = new Date(cleanStr + 'T00:00:00'); 
         if (!isNaN(date.getTime())) return date;
     }
     
     // Try MM-DD-YYYY or MM-DD-YY
-    if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(dateStr)) {
-        const parts = dateStr.split('-');
+    if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(cleanStr)) {
+        const parts = cleanStr.split('-');
         let year = parseInt(parts[2], 10);
         if (year < 100) { 
             year += year < 70 ? 2000 : 1900;
@@ -51,8 +54,8 @@ const parseDate = (dateStr: string): Date | null => {
     }
 
     // Try MM/DD/YY or MM/DD/YYYY
-    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(dateStr)) {
-        const parts = dateStr.split('/');
+    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(cleanStr)) {
+        const parts = cleanStr.split('/');
         let year = parseInt(parts[2], 10);
         if (year < 100) { 
             year += year < 70 ? 2000 : 1900;
@@ -61,6 +64,7 @@ const parseDate = (dateStr: string): Date | null => {
         if (!isNaN(date.getTime())) return date;
     }
 
+    // Standard JS Date parsing for other formats (e.g. "Dec 31, 2024")
     const hasDateStructure = /[a-zA-Z]{3,}\s+\d{1,2},?\s+\d{4}/.test(dateStr) || /\d{1,2}\s+[a-zA-Z]{3,}\s+\d{4}/.test(dateStr);
     if (hasDateStructure) {
         const date = new Date(dateStr);
@@ -109,10 +113,10 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
     }
 
     if (headerIndex === -1) {
-        throw new Error("Invalid Amazon Report format. Could not find header row with 'ASIN' and 'Earnings/Commission'.");
+        throw new Error("Invalid Amazon Report format. Could not find header row with 'ASIN' and 'Earnings/Commission/Ad Fees'.");
     }
 
-    // Handle potential quotes in header
+    // Handle potential quotes in header and split by common delimiters
     const header = lines[headerIndex].split(/[,;\t]/).map(h => h.trim().replace(/"/g, '').toLowerCase());
     
     const colMap = {
@@ -158,10 +162,10 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         if (values.length <= maxIndex && values.length < header.length - 2) continue;
 
         const dateRaw = colMap.date > -1 ? values[colMap.date] : '';
-        // If date is missing, skip row (usually summary footer)
+        // If date is missing, skip row (usually summary footer), unless it's CC which sometimes has odd formats
         if (!dateRaw && !isCreatorConnections) continue; 
 
-        const parsedDate = parseDate(dateRaw) || new Date(); // Fallback to today if parsing fails (rare)
+        const parsedDate = parseDate(dateRaw) || new Date(); 
         const dateStr = formatDate(parsedDate);
         
         const asin = colMap.asin > -1 ? values[colMap.asin] : 'Unknown';
