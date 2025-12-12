@@ -293,7 +293,6 @@ export const processAmazonData = (
 export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
     onProgress('Reading CSV...');
     const rawData = await readCSVRaw(file);
-    
     const mapping = autoMapAmazonColumns(rawData.headers);
 
     if (mapping.asin === -1) throw new Error("Could not find ASIN column.");

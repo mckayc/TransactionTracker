@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import type { AmazonMetric, AmazonReportType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, CloseIcon, DeleteIcon, SearchCircleIcon, CalendarIcon, SortIcon, ClipboardIcon } from '../../components/Icons';
-import { parseAmazonReport, processAmazonData, readStringAsCSV, autoMapAmazonColumns } from '../../services/csvParserService';
+import { parseAmazonReport, processAmazonData, readStringAsCSV, autoMapAmazonColumns, readCSVRaw } from '../../services/csvParserService';
 import AmazonTable from '../../components/AmazonTable';
 
 interface AmazonIntegrationProps {
@@ -67,6 +67,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
         setIsUploading(true);
         try {
+            // Direct Auto Import logic
             const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
             if (newMetrics.length > 0) {
                 onAddMetrics(newMetrics);
@@ -87,6 +88,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const handlePasteProcess = () => {
         if (!pastedText.trim()) return;
         try {
+            // Direct Auto Import logic
             const data = readStringAsCSV(pastedText);
             if (data.rows.length === 0) {
                 alert("Could not parse data from text.");
