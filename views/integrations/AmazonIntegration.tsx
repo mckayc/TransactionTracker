@@ -4,7 +4,6 @@ import type { AmazonMetric, AmazonReportType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, CloseIcon, DeleteIcon, SearchCircleIcon, CalendarIcon, SortIcon } from '../../components/Icons';
 import { parseAmazonReport } from '../../services/csvParserService';
 import AmazonTable from '../../components/AmazonTable';
-import AmazonVerifyModal from '../../components/AmazonVerifyModal';
 
 interface AmazonIntegrationProps {
     metrics: AmazonMetric[];
@@ -20,8 +19,6 @@ const formatNumber = (val: number) => new Intl.NumberFormat('en-US').format(val)
 const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics, onUpdateMetric }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
-    const [verifyModalOpen, setVerifyModalOpen] = useState(false);
-    const [pendingMetrics, setPendingMetrics] = useState<AmazonMetric[]>([]);
     
     // Filter State
     const [searchTerm, setSearchTerm] = useState('');
@@ -75,11 +72,14 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             const duplicateCount = newMetrics.length - uniqueMetrics.length;
 
             if (uniqueMetrics.length > 0) {
-                setPendingMetrics(uniqueMetrics);
-                setVerifyModalOpen(true);
+                onAddMetrics(uniqueMetrics);
+                setActiveTab('dashboard'); // Switch to dashboard to see results
+                
+                let message = `Successfully imported ${uniqueMetrics.length} records.`;
                 if (duplicateCount > 0) {
-                    console.log(`Skipped ${duplicateCount} duplicate records automatically.`);
+                    message += ` Skipped ${duplicateCount} duplicates.`;
                 }
+                alert(message);
             } else {
                 if (duplicateCount > 0) {
                     alert(`All ${newMetrics.length} records in this file already exist in your database.`);
@@ -94,14 +94,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
-    };
-
-    const handleConfirmImport = (finalMetrics: AmazonMetric[]) => {
-        onAddMetrics(finalMetrics);
-        setVerifyModalOpen(false);
-        setPendingMetrics([]);
-        setActiveTab('dashboard'); // Switch to dashboard to see results
-        alert(`Successfully imported ${finalMetrics.length} records.`);
     };
 
     // Bulk Actions
@@ -374,13 +366,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     </div>
                 )}
             </div>
-
-            <AmazonVerifyModal
-                isOpen={verifyModalOpen}
-                onClose={() => setVerifyModalOpen(false)}
-                onConfirm={handleConfirmImport}
-                initialMetrics={pendingMetrics}
-            />
         </div>
     );
 };
