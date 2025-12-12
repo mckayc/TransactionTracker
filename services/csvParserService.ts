@@ -86,6 +86,44 @@ export interface CsvData {
     rows: string[][];
 }
 
+/**
+ * Robust CSV Line Parser
+ * Handles:
+ * - Delimiters inside quotes ("Product, Name")
+ * - Escaped quotes ("Product ""Super"" Name")
+ * - Empty fields
+ */
+const parseCSVLine = (line: string, delimiter = ','): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+        
+        if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+                // Escaped quote: "" becomes " inside a quoted field
+                current += '"';
+                i++; // Skip the next quote
+            } else {
+                // Toggle quote state
+                inQuotes = !inQuotes;
+            }
+        } else if (char === delimiter && !inQuotes) {
+            // Found delimiter outside quotes: End of field
+            result.push(current.trim()); // Trim whitespace around unquoted delimiters
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    // Push the last field
+    result.push(current.trim());
+    return result;
+};
+
 export const readCSVRaw = async (file: File): Promise<CsvData> => {
     const text = await readFileAsText(file);
     const lines = text.split('\n');
@@ -110,19 +148,21 @@ export const readCSVRaw = async (file: File): Promise<CsvData> => {
 
     if (headerIndex === -1) return { headers: [], rows: [] };
 
-    // Helper to split CSV line handling quotes
-    const splitLine = (line: string) => {
-        if (line.includes('\t')) return line.split('\t').map(v => v.trim().replace(/^"|"$/g, ''));
-        return line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/^"|"$/g, ''));
-    };
+    // Detect Delimiter (Comma or Tab)
+    const headerLine = lines[headerIndex];
+    const delimiter = headerLine.includes('\t') ? '\t' : ',';
 
-    headers = splitLine(lines[headerIndex]);
+    // Parse Headers
+    headers = parseCSVLine(headerLine, delimiter);
 
+    // Parse Rows
     for(let i = headerIndex + 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        const values = splitLine(line);
-        // Basic consistency check
+        
+        const values = parseCSVLine(line, delimiter);
+        
+        // Basic consistency check: Ignore extremely short rows that might be artifacts
         if (values.length > 1) { 
             rows.push(values);
         }
@@ -260,7 +300,8 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
     
     for(let i=0; i<Math.min(lines.length, 20); i++) {
         const lineLower = lines[i].toLowerCase();
-        const parts = lineLower.split(/[,;\t]/).map(p => p.trim().replace(/"/g, ''));
+        // Use the robust parser for headers too
+        const parts = parseCSVLine(lineLower);
         
         const dateIdx = parts.findIndex(p => p.includes('date') || p === 'dt');
         const descIdx = parts.findIndex(p => p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction'));
@@ -287,7 +328,8 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
         const line = lines[i].trim();
         if (!line) continue;
         
-        const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(p => p.trim().replace(/^"|"$/g, ''));
+        // Use the robust parser for data rows
+        const parts = parseCSVLine(line);
         
         if (parts.length < 2) continue;
 

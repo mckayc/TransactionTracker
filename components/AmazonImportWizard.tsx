@@ -94,7 +94,7 @@ const AmazonImportWizard: React.FC<AmazonImportWizardProps> = ({ isOpen, onClose
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[95vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 
                 {/* Header */}
-                <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl">
+                <div className="p-6 border-b border-slate-200 flex justify-between items-center bg-slate-50 rounded-t-xl flex-shrink-0">
                     <div className="flex items-center gap-3">
                         <div className="bg-orange-100 p-2 rounded-lg text-orange-600">
                             <BoxIcon className="w-6 h-6" />
@@ -108,7 +108,7 @@ const AmazonImportWizard: React.FC<AmazonImportWizardProps> = ({ isOpen, onClose
                 </div>
 
                 {/* Configuration Area */}
-                <div className="p-6 border-b border-slate-200 bg-white grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="p-6 border-b border-slate-200 bg-white grid grid-cols-1 md:grid-cols-2 gap-6 flex-shrink-0">
                     <div>
                         <label className="block text-sm font-bold text-slate-700 mb-2">Report Source</label>
                         <select 
@@ -135,36 +135,28 @@ const AmazonImportWizard: React.FC<AmazonImportWizardProps> = ({ isOpen, onClose
                 {/* Mapping Table */}
                 <div className="flex-1 overflow-auto bg-slate-50 p-6">
                     <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-slate-200">
+                        <div className="overflow-x-auto w-full">
+                            <table className="min-w-full divide-y divide-slate-200 table-fixed">
                                 <thead className="bg-slate-100">
                                     <tr>
                                         {csvData.headers.map((header, idx) => {
-                                            // Find which field maps to this index (reverse lookup for UI)
                                             const mappedFieldKey = Object.keys(mapping).find(key => mapping[key as keyof ColumnMapping] === idx) as keyof ColumnMapping | undefined;
                                             
                                             return (
-                                                <th key={idx} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider min-w-[150px]">
-                                                    <div className="mb-2 truncate" title={header}>{header}</div>
+                                                <th key={idx} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider min-w-[180px] w-[200px]">
+                                                    <div className="mb-2 truncate font-bold text-slate-700" title={header}>{header}</div>
                                                     <select 
                                                         className={`w-full p-1 text-xs border rounded ${mappedFieldKey ? 'border-indigo-500 bg-indigo-50 font-bold text-indigo-700' : 'border-slate-300'}`}
                                                         value={mappedFieldKey || -1}
                                                         onChange={(e) => {
-                                                            // If selecting a field, map it to this index
-                                                            // If selecting "Ignore", we handle it by not setting state here directly but finding the key
                                                             const field = e.target.value as keyof ColumnMapping | '-1';
-                                                            
-                                                            // First, clear this index from any other field
                                                             const newMapping = { ...mapping };
                                                             Object.keys(newMapping).forEach(k => {
                                                                 if (newMapping[k as keyof ColumnMapping] === idx) {
                                                                     newMapping[k as keyof ColumnMapping] = -1;
                                                                 }
                                                             });
-
-                                                            if (field !== '-1') {
-                                                                newMapping[field] = idx;
-                                                            }
+                                                            if (field !== '-1') newMapping[field] = idx;
                                                             setMapping(newMapping);
                                                         }}
                                                     >
@@ -182,7 +174,7 @@ const AmazonImportWizard: React.FC<AmazonImportWizardProps> = ({ isOpen, onClose
                                     {previewRows.map((row, rowIndex) => (
                                         <tr key={rowIndex} className="hover:bg-slate-50">
                                             {row.map((cell, cellIndex) => (
-                                                <td key={cellIndex} className="px-4 py-2 whitespace-nowrap text-xs text-slate-600 truncate max-w-[200px]" title={cell}>
+                                                <td key={cellIndex} className="px-4 py-2 text-xs text-slate-600 truncate block h-full" title={cell}>
                                                     {cell}
                                                 </td>
                                             ))}
@@ -195,7 +187,7 @@ const AmazonImportWizard: React.FC<AmazonImportWizardProps> = ({ isOpen, onClose
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 border-t border-slate-200 bg-white rounded-b-xl flex justify-between items-center">
+                <div className="p-6 border-t border-slate-200 bg-white rounded-b-xl flex justify-between items-center flex-shrink-0">
                     <div className="text-sm text-slate-500">
                         * Required fields must be mapped.
                     </div>
