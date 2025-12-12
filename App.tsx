@@ -434,10 +434,10 @@ const App: React.FC = () => {
   };
 
   const handleAddAmazonMetrics = (newMetrics: AmazonMetric[]) => {
-      const existingIds = new Set(amazonMetrics.map(m => `${m.date}-${m.asin}`));
-      const filtered = newMetrics.filter(m => !existingIds.has(`${m.date}-${m.asin}`));
-      if(filtered.length > 0) {
-          setAmazonMetrics(prev => [...prev, ...filtered].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      // Deduplication logic removed to allow all records to be imported for debugging
+      // Previously we filtered by Date + ASIN which was too strict.
+      if(newMetrics.length > 0) {
+          setAmazonMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       }
   };
 

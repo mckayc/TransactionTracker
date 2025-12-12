@@ -66,31 +66,15 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         try {
             const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
             
-            // Refined Deduplication: 
-            // Include Tracking ID and Revenue in the key to prevent merging separate campaigns/tracking IDs for same ASIN/Date
-            // This fixes the issue of missing rows when multiple events occur for same ASIN/Day
-            const generateKey = (m: AmazonMetric) => `${m.date}|${m.asin}|${m.reportType}|${m.trackingId}|${m.revenue.toFixed(2)}`;
+            // Deduplication REMOVED per user request
             
-            const existingKeys = new Set(metrics.map(generateKey));
-            
-            const uniqueMetrics = newMetrics.filter(m => !existingKeys.has(generateKey(m)));
-            const duplicateCount = newMetrics.length - uniqueMetrics.length;
-
-            if (uniqueMetrics.length > 0) {
-                onAddMetrics(uniqueMetrics);
+            if (newMetrics.length > 0) {
+                onAddMetrics(newMetrics);
                 setActiveTab('dashboard'); // Switch to dashboard to see results
                 
-                let message = `Successfully imported ${uniqueMetrics.length} records.`;
-                if (duplicateCount > 0) {
-                    message += ` Skipped ${duplicateCount} duplicates.`;
-                }
-                alert(message);
+                alert(`Successfully imported ${newMetrics.length} records.`);
             } else {
-                if (duplicateCount > 0) {
-                    alert(`All ${newMetrics.length} records in this file already exist in your database.`);
-                } else {
-                    alert("No valid records found in file. Please check the CSV format.");
-                }
+                alert("No valid records found in file. Please check the CSV format.");
             }
         } catch (error) {
             console.error(error);
