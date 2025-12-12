@@ -1,3 +1,4 @@
+
 import type { RawTransaction, TransactionType, AmazonMetric, AmazonReportType } from '../types';
 import { generateUUID } from '../utils';
 
@@ -196,6 +197,26 @@ export interface ColumnMapping {
     campaignTitle?: number;
 }
 
+export const autoMapAmazonColumns = (headers: string[]): ColumnMapping => {
+    const h = headers.map(h => h.toLowerCase().trim());
+    
+    const find = (...search: string[]) => h.findIndex(hdr => search.some(s => hdr === s || hdr.includes(s)));
+    const findExact = (...search: string[]) => h.findIndex(hdr => search.includes(hdr));
+
+    return {
+        date: findExact('date', 'date shipped'),
+        asin: findExact('asin'),
+        title: find('product title', 'title', 'item name', 'name'),
+        clicks: find('clicks'),
+        ordered: find('ordered items', 'items ordered'),
+        shipped: find('shipped items', 'items shipped'),
+        revenue: find('ad fees', 'advertising fees', 'commission income', 'earnings', 'bounties', 'amount'),
+        tracking: find('tracking id'),
+        category: find('category', 'product group'),
+        campaignTitle: find('campaign title')
+    };
+};
+
 export const processAmazonData = (
     data: CsvData, 
     mapping: ColumnMapping, 
@@ -273,23 +294,7 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
     onProgress('Reading CSV...');
     const rawData = await readCSVRaw(file);
     
-    const h = rawData.headers.map(h => h.toLowerCase());
-    
-    const find = (...search: string[]) => h.findIndex(hdr => search.some(s => hdr === s || hdr.includes(s)));
-    const findExact = (...search: string[]) => h.findIndex(hdr => search.includes(hdr));
-
-    const mapping: ColumnMapping = {
-        date: findExact('date', 'date shipped'),
-        asin: findExact('asin'),
-        title: find('product title', 'title', 'item name', 'name'),
-        clicks: find('clicks'),
-        ordered: find('ordered items', 'items ordered'),
-        shipped: find('shipped items', 'items shipped'),
-        revenue: find('ad fees', 'advertising fees', 'commission income', 'earnings'),
-        tracking: find('tracking id'),
-        category: find('category', 'product group'),
-        campaignTitle: find('campaign title')
-    };
+    const mapping = autoMapAmazonColumns(rawData.headers);
 
     if (mapping.asin === -1) throw new Error("Could not find ASIN column.");
     
