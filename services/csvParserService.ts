@@ -6,20 +6,11 @@ declare const pdfjsLib: any;
 
 const cleanDescription = (string: string): string => {
   // Cleans up common noise from transaction descriptions for better readability.
-  // "COSTCO WHSE #0733 " -> "COSTCO WHSE #0733"
-  // "'AMAZON PRIME'," -> "AMAZON PRIME"
   let cleaned = string.trim();
-  // Collapse multiple spaces into one
   cleaned = cleaned.replace(/\s+/g, ' ');
-  // Remove one or more quotes from the start and end
   cleaned = cleaned.replace(/^["']+|["']+$/g, '');
-  // Remove one or more trailing commas or periods
   cleaned = cleaned.replace(/[,.]+$/, '');
-  
-  // Clean up common bank statement noise prefixes
   cleaned = cleaned.replace(/^(Pos Debit|Debit Purchase|Recurring Payment|Preauthorized Debit|Checkcard|Visa Purchase) - /i, '');
-  
-  // Trim again in case the removals left whitespace at the ends
   return cleaned.trim();
 };
 
@@ -40,11 +31,11 @@ const readFileAsText = (file: File): Promise<string> => {
 };
 
 const parseDate = (dateStr: string): Date | null => {
-    if (!dateStr || dateStr.length < 5) return null; // Avoid tiny strings
+    if (!dateStr || dateStr.length < 5) return null;
 
     // Try YYYY-MM-DD
     if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) {
-        const date = new Date(dateStr + 'T00:00:00'); // Add time to avoid timezone issues
+        const date = new Date(dateStr + 'T00:00:00'); 
         if (!isNaN(date.getTime())) return date;
     }
     
@@ -52,7 +43,7 @@ const parseDate = (dateStr: string): Date | null => {
     if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(dateStr)) {
         const parts = dateStr.split('-');
         let year = parseInt(parts[2], 10);
-        if (year < 100) { // Handle 2-digit year
+        if (year < 100) { 
             year += year < 70 ? 2000 : 1900;
         }
         const date = new Date(year, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
@@ -63,17 +54,14 @@ const parseDate = (dateStr: string): Date | null => {
     if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(dateStr)) {
         const parts = dateStr.split('/');
         let year = parseInt(parts[2], 10);
-        if (year < 100) { // Handle 2-digit year
+        if (year < 100) { 
             year += year < 70 ? 2000 : 1900;
         }
         const date = new Date(year, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
         if (!isNaN(date.getTime())) return date;
     }
 
-    // Fallback for textual dates like "Nov 6, 2025" or "02-Nov-2024"
-    // We add a strict check to ensure it contains a month name or looks date-like
-    const hasDateStructure = /[a-zA-Z]{3,}\s+\d{1,2},?\s+\d{4}/.test(dateStr) || /\d{1,2}\s+[a-zA-Z]{3,}\s+\d{4}/.test(dateStr) || /\d{1,2}-[a-zA-Z]{3}-\d{4}/.test(dateStr);
-    
+    const hasDateStructure = /[a-zA-Z]{3,}\s+\d{1,2},?\s+\d{4}/.test(dateStr) || /\d{1,2}\s+[a-zA-Z]{3,}\s+\d{4}/.test(dateStr);
     if (hasDateStructure) {
         const date = new Date(dateStr);
         if (!isNaN(date.getTime()) && date.getFullYear() > 1990 && date.getFullYear() < 2050) return date;
@@ -98,43 +86,51 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
     if (lines.length < 2) return [];
 
     // Header Detection
-    // 1. Creator Connections often has "Campaign Title"
-    // 2. Standard Associates has "Tracking ID"
-    // Find header line
     let headerIndex = -1;
     let isCreatorConnections = false;
 
-    for (let i = 0; i < Math.min(lines.length, 10); i++) {
-        const lower = lines[i].toLowerCase();
-        if (lower.includes('campaign title')) {
+    // Scan first 20 lines for a valid header row
+    for(let i=0; i<Math.min(lines.length, 20); i++) {
+        const line = lines[i].toLowerCase();
+        // Check for ASIN + Income keyword
+        if (line.includes('asin') && (
+            line.includes('earnings') || 
+            line.includes('commission income') || 
+            line.includes('ad fees') || 
+            line.includes('bounties') ||
+            line.includes('advertising fees')
+        )) {
             headerIndex = i;
-            isCreatorConnections = true;
-            break;
-        }
-        if (lower.includes('tracking id') && lower.includes('asin')) {
-            headerIndex = i;
+            if (line.includes('campaign title') || line.includes('commission income')) {
+                isCreatorConnections = true;
+            }
             break;
         }
     }
 
     if (headerIndex === -1) {
-        throw new Error("Invalid Amazon Report format. Could not find recognizable header.");
+        throw new Error("Invalid Amazon Report format. Could not find header row with 'ASIN' and 'Earnings/Commission'.");
     }
 
+    // Handle potential quotes in header
     const header = lines[headerIndex].split(/[,;\t]/).map(h => h.trim().replace(/"/g, '').toLowerCase());
     
-    // Map Columns based on known schemas
     const colMap = {
         date: header.findIndex(h => h === 'date' || h === 'date shipped'),
         asin: header.findIndex(h => h === 'asin'),
-        title: header.findIndex(h => h === 'product title' || h === 'title' || h === 'name'),
+        title: header.findIndex(h => h === 'product title' || h === 'title' || h === 'item name' || h === 'name'),
         clicks: header.findIndex(h => h === 'clicks'),
-        ordered: header.findIndex(h => h === 'ordered items' || h === 'items shipped'), // Sometimes Items Shipped is the main metric in CC
-        shipped: header.findIndex(h => h === 'shipped items'),
-        // Earnings/Revenue logic varies. 
-        // In Standard: "Ad Fees($)" or "Earnings" is income. "Revenue($)" or "Price" * "Items" is Sales Amount.
-        // In CC: "Commission Income" is income. "Revenue" is sales.
-        income: header.findIndex(h => h.includes('earnings') || h.includes('ad fees') || h.includes('commission income') || h.includes('bounties')),
+        ordered: header.findIndex(h => h === 'ordered items' || h === 'items ordered'),
+        shipped: header.findIndex(h => h === 'shipped items' || h === 'items shipped'),
+        // Unified Revenue/Earnings column detection
+        income: header.findIndex(h => 
+            h.includes('earnings') || 
+            h === 'ad fees($)' || 
+            h === 'advertising fees($)' ||
+            h === 'commission income($)' || 
+            h.includes('commission income') ||
+            h.includes('total earnings')
+        ),
         conversion: header.findIndex(h => h.includes('conversion')),
         tracking: header.findIndex(h => h.includes('tracking id')),
         category: header.findIndex(h => h === 'category' || h === 'product group'),
@@ -145,38 +141,39 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
          throw new Error("Missing ASIN column.");
     }
 
-    // Process rows
     for (let i = headerIndex + 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
 
-        // Handle CSV split respecting quotes
-        // Simple splitter for tab/comma
+        // Split respecting CSV quotes
         let values: string[] = [];
         if (line.includes('\t')) {
              values = line.split('\t').map(v => v.trim().replace(/"/g, ''));
         } else {
-             // CSV regex
              values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
         }
-        
-        if (values.length < 3) continue; // Skip malformed lines
 
-        // Date Parsing
+        // Basic validation: row should have enough columns relative to where our mapped columns are
+        const maxIndex = Math.max(...Object.values(colMap));
+        if (values.length <= maxIndex && values.length < header.length - 2) continue;
+
         const dateRaw = colMap.date > -1 ? values[colMap.date] : '';
-        const parsedDate = parseDate(dateRaw) || new Date();
+        // If date is missing, skip row (usually summary footer)
+        if (!dateRaw && !isCreatorConnections) continue; 
+
+        const parsedDate = parseDate(dateRaw) || new Date(); // Fallback to today if parsing fails (rare)
         const dateStr = formatDate(parsedDate);
         
-        // Skip summary rows (often missing ASIN or date)
-        if ((!values[colMap.asin] || values[colMap.asin].length < 2) && !isCreatorConnections) continue;
+        const asin = colMap.asin > -1 ? values[colMap.asin] : 'Unknown';
+        // Skip rows without ASIN
+        if (!asin || asin.length < 5) continue;
 
         const parseNum = (idx: number) => {
             if (idx === -1) return 0;
-            const val = values[idx]?.replace(/[$,%]/g, '');
+            const val = values[idx]?.replace(/[$,%]/g, '') || '0';
             return parseFloat(val) || 0;
         }
 
-        const asin = colMap.asin > -1 ? values[colMap.asin] : 'Unknown';
         const trackingId = colMap.tracking > -1 ? values[colMap.tracking] : 'creator-connections';
         const campaignTitle = colMap.campaignTitle > -1 ? values[colMap.campaignTitle] : undefined;
 
@@ -190,15 +187,20 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
             reportType = 'offsite';
         }
 
+        // Creator Connections often puts title in Campaign Title if product title is generic
+        let title = colMap.title > -1 ? values[colMap.title] : '';
+        if ((!title || title === 'Unknown') && campaignTitle) title = campaignTitle;
+        if (!title) title = `Product ${asin}`;
+
         const metric: AmazonMetric = {
             id: generateUUID(),
             date: dateStr,
             asin: asin,
-            title: colMap.title > -1 ? values[colMap.title] : (campaignTitle || `Unknown Product (${asin})`),
+            title: title,
             clicks: parseNum(colMap.clicks),
-            orderedItems: parseNum(colMap.ordered), // CC uses 'Shipped Items' column for quantity often
+            orderedItems: parseNum(colMap.ordered),
             shippedItems: parseNum(colMap.shipped),
-            revenue: parseNum(colMap.income), // This maps to our unified "Revenue/Earnings" field
+            revenue: parseNum(colMap.income),
             conversionRate: parseNum(colMap.conversion),
             trackingId: trackingId,
             category: colMap.category > -1 ? values[colMap.category] : undefined,

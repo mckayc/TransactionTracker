@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import type { AmazonMetric } from '../types';
-import { SortIcon, ChevronLeftIcon, ChevronRightIcon } from './Icons';
+import { SortIcon, ChevronLeftIcon, ChevronRightIcon, ExternalLinkIcon } from './Icons';
 
 interface AmazonTableProps {
     metrics: AmazonMetric[];
@@ -146,8 +146,16 @@ const AmazonTable: React.FC<AmazonTableProps> = ({
                                     </td>
                                     <td className="px-3 py-2 text-sm text-slate-800">
                                         <div className="line-clamp-1 font-medium" title={m.title}>{m.title}</div>
-                                        <div className="flex gap-2 text-xs text-slate-400 font-mono mt-0.5">
-                                            <span>{m.asin}</span>
+                                        <div className="flex gap-2 text-xs text-slate-400 font-mono mt-0.5 items-center">
+                                            <a 
+                                                href={`https://www.amazon.com/dp/${m.asin}`} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="text-indigo-600 hover:underline flex items-center gap-0.5 hover:text-indigo-800"
+                                                onClick={e => e.stopPropagation()}
+                                            >
+                                                {m.asin} <ExternalLinkIcon className="w-3 h-3" />
+                                            </a>
                                             {m.campaignTitle && <span className="text-purple-600 bg-purple-50 px-1 rounded">{m.campaignTitle}</span>}
                                         </div>
                                     </td>

@@ -27,7 +27,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [searchTerm, setSearchTerm] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [showFilters, setShowFilters] = useState(false);
+    const [selectedReportType, setSelectedReportType] = useState<AmazonReportType | 'all'>('all');
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -56,9 +56,10 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             if (searchTerm && !m.title.toLowerCase().includes(searchTerm.toLowerCase()) && !m.asin.toLowerCase().includes(searchTerm.toLowerCase())) return false;
             if (startDate && new Date(m.date) < new Date(startDate)) return false;
             if (endDate && new Date(m.date) > new Date(endDate)) return false;
+            if (selectedReportType !== 'all' && m.reportType !== selectedReportType) return false;
             return true;
         });
-    }, [enrichedMetrics, searchTerm, startDate, endDate]);
+    }, [enrichedMetrics, searchTerm, startDate, endDate, selectedReportType]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -67,11 +68,24 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         setIsUploading(true);
         try {
             const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
-            if (newMetrics.length > 0) {
-                setPendingMetrics(newMetrics);
+            
+            // Deduplication: Check if Date+ASIN+Type already exists
+            const existingKeys = new Set(metrics.map(m => `${m.date}|${m.asin}|${m.reportType}`));
+            const uniqueMetrics = newMetrics.filter(m => !existingKeys.has(`${m.date}|${m.asin}|${m.reportType}`));
+            const duplicateCount = newMetrics.length - uniqueMetrics.length;
+
+            if (uniqueMetrics.length > 0) {
+                setPendingMetrics(uniqueMetrics);
                 setVerifyModalOpen(true);
+                if (duplicateCount > 0) {
+                    console.log(`Skipped ${duplicateCount} duplicate records automatically.`);
+                }
             } else {
-                alert("No valid records found in file.");
+                if (duplicateCount > 0) {
+                    alert(`All ${newMetrics.length} records in this file already exist in your database.`);
+                } else {
+                    alert("No valid records found in file. Please check the CSV format.");
+                }
             }
         } catch (error) {
             console.error(error);
@@ -185,8 +199,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
             {/* Filter Bar (Shared for Dashboard and Data) */}
             {activeTab !== 'upload' && (
-                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0">
-                    <div className="relative flex-grow">
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0 items-center">
+                    <div className="relative flex-grow w-full sm:w-auto">
                         <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                         <input 
                             type="text" 
@@ -196,12 +210,34 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                             className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:outline-none"
                         />
                     </div>
-                    <div className="flex items-center gap-2">
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-2 border rounded-lg text-sm" />
-                        <span className="text-slate-400">-</span>
-                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-2 border rounded-lg text-sm" />
-                        {(searchTerm || startDate || endDate) && (
-                            <button onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); }} className="text-xs text-red-500 hover:underline px-2">Clear</button>
+                    
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <div className="relative">
+                            <select 
+                                value={selectedReportType} 
+                                onChange={(e) => setSelectedReportType(e.target.value as any)}
+                                className="pl-3 pr-8 py-2 border rounded-lg appearance-none bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                            >
+                                <option value="all">All Types</option>
+                                <option value="onsite">Onsite</option>
+                                <option value="offsite">Offsite</option>
+                                <option value="creator_connections">Creator Connections</option>
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-white border rounded-lg p-1">
+                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-1 border-none text-sm focus:ring-0" />
+                            <span className="text-slate-400">-</span>
+                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-1 border-none text-sm focus:ring-0" />
+                        </div>
+
+                        {(searchTerm || startDate || endDate || selectedReportType !== 'all') && (
+                            <button 
+                                onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); setSelectedReportType('all'); }} 
+                                className="text-xs text-red-500 hover:underline px-2 whitespace-nowrap"
+                            >
+                                Clear
+                            </button>
                         )}
                     </div>
                 </div>
