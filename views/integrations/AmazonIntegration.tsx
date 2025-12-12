@@ -1,8 +1,9 @@
 
+
 import React, { useState, useMemo, useRef } from 'react';
 import type { AmazonMetric, AmazonReportType } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, CloseIcon, DeleteIcon, SearchCircleIcon, CalendarIcon, SortIcon } from '../../components/Icons';
-import { readCSVRaw, processAmazonData, type CsvData, type ColumnMapping } from '../../services/csvParserService';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, CloseIcon, DeleteIcon, SearchCircleIcon, CalendarIcon, SortIcon, ClipboardIcon } from '../../components/Icons';
+import { readCSVRaw, processAmazonData, readStringAsCSV, type CsvData, type ColumnMapping } from '../../services/csvParserService';
 import AmazonTable from '../../components/AmazonTable';
 import AmazonImportWizard from '../../components/AmazonImportWizard';
 
@@ -18,13 +19,16 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US').format(val);
 
 const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics, onUpdateMetric }) => {
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload' | 'paste'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
     
     // Wizard State
     const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [csvData, setCsvData] = useState<CsvData>({ headers: [], rows: [] });
     const [uploadFileName, setUploadFileName] = useState('');
+
+    // Paste State
+    const [pastedText, setPastedText] = useState('');
 
     // Filter State
     const [searchTerm, setSearchTerm] = useState('');
@@ -90,12 +94,27 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         }
     };
 
+    const handlePasteProcess = () => {
+        if (!pastedText.trim()) return;
+        try {
+            const data = readStringAsCSV(pastedText);
+            if (data.rows.length === 0) {
+                alert("Could not parse data from text. Ensure it is tabular (Excel/CSV/TSV).");
+                return;
+            }
+            setCsvData(data);
+            setUploadFileName('Pasted Data');
+            setIsWizardOpen(true);
+            setPastedText(''); // Clear buffer
+        } catch (error) {
+            console.error(error);
+            alert("Failed to parse text.");
+        }
+    }
+
     const handleWizardComplete = (mapping: ColumnMapping, source: AmazonReportType | 'auto') => {
         try {
             const newMetrics = processAmazonData(csvData, mapping, source);
-            
-            // Deduplication Removed per user request
-            // Note: We might want to re-introduce a smarter dedup later, but complying with strict instructions to allow all.
             
             if (newMetrics.length > 0) {
                 onAddMetrics(newMetrics);
@@ -208,11 +227,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><BarChartIcon className="w-4 h-4"/> Dashboard</button>
                     <button onClick={() => setActiveTab('data')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'data' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><TableIcon className="w-4 h-4"/> Data</button>
                     <button onClick={() => setActiveTab('upload')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'upload' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><CloudArrowUpIcon className="w-4 h-4"/> Upload</button>
+                    <button onClick={() => setActiveTab('paste')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'paste' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><ClipboardIcon className="w-4 h-4"/> Paste</button>
                 </div>
             </div>
 
             {/* Filter Bar */}
-            {activeTab !== 'upload' && (
+            {activeTab !== 'upload' && activeTab !== 'paste' && (
                 <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0 items-center justify-between">
                     <div className="flex flex-col sm:flex-row gap-4 flex-grow items-center">
                         <div className="relative flex-grow w-full sm:w-auto">
@@ -385,7 +405,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         <input 
                             type="file" 
                             ref={fileInputRef}
-                            accept=".csv,.tsv" 
+                            accept=".csv,.tsv,.txt" 
                             onChange={handleFileUpload} 
                             className="hidden" 
                         />
@@ -395,7 +415,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 disabled={isUploading}
                                 className="px-6 py-3 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 disabled:bg-slate-300 transition-colors"
                             >
-                                {isUploading ? 'Parsing...' : 'Select CSV File'}
+                                {isUploading ? 'Parsing...' : 'Select File'}
                             </button>
                             {metrics.length > 0 && (
                                 <button 
@@ -405,6 +425,37 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     Clear All Data
                                 </button>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* PASTE TAB */}
+                {activeTab === 'paste' && (
+                    <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200 overflow-hidden">
+                        <div className="p-4 bg-slate-50 border-b border-slate-200">
+                            <h3 className="text-lg font-bold text-slate-700">Paste Data</h3>
+                            <p className="text-sm text-slate-500">Copy table data from your Amazon Associates dashboard and paste it here.</p>
+                        </div>
+                        <textarea
+                            value={pastedText}
+                            onChange={(e) => setPastedText(e.target.value)}
+                            placeholder="Paste your CSV or Tab-separated data here..."
+                            className="flex-1 p-4 resize-none focus:outline-none focus:bg-slate-50 transition-colors font-mono text-xs"
+                        />
+                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
+                            <button 
+                                onClick={() => setPastedText('')}
+                                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
+                            >
+                                Clear
+                            </button>
+                            <button 
+                                onClick={handlePasteProcess}
+                                disabled={!pastedText.trim()}
+                                className="px-6 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:bg-slate-300 transition-colors"
+                            >
+                                Process Data
+                            </button>
                         </div>
                     </div>
                 )}

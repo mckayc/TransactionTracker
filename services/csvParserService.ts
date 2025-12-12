@@ -1,4 +1,5 @@
 
+
 import type { RawTransaction, TransactionType, AmazonMetric, AmazonReportType } from '../types';
 import { generateUUID } from '../utils';
 
@@ -124,10 +125,8 @@ const parseCSVLine = (line: string, delimiter = ','): string[] => {
     return result;
 };
 
-export const readCSVRaw = async (file: File): Promise<CsvData> => {
-    const text = await readFileAsText(file);
+export const readStringAsCSV = (text: string): CsvData => {
     const lines = text.split('\n');
-    
     let headerIndex = -1;
     let headers: string[] = [];
     const rows: string[][] = [];
@@ -135,7 +134,7 @@ export const readCSVRaw = async (file: File): Promise<CsvData> => {
     // Heuristic: Find the header row (contains ASIN, Date, or similar)
     for(let i=0; i<Math.min(lines.length, 25); i++) {
         const line = lines[i].toLowerCase();
-        if (line.includes('asin') || (line.includes('date') && (line.includes('commission') || line.includes('earnings') || line.includes('fees')))) {
+        if (line.includes('asin') || (line.includes('date') && (line.includes('commission') || line.includes('earnings') || line.includes('fees') || line.includes('name')))) {
             headerIndex = i;
             break;
         }
@@ -169,6 +168,11 @@ export const readCSVRaw = async (file: File): Promise<CsvData> => {
     }
 
     return { headers, rows };
+};
+
+export const readCSVRaw = async (file: File): Promise<CsvData> => {
+    const text = await readFileAsText(file);
+    return readStringAsCSV(text);
 }
 
 export interface ColumnMapping {
@@ -276,7 +280,7 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
     const mapping: ColumnMapping = {
         date: findExact('date', 'date shipped'),
         asin: findExact('asin'),
-        title: find('product title', 'title', 'item name'),
+        title: find('product title', 'title', 'item name', 'name'),
         clicks: find('clicks'),
         ordered: find('ordered items', 'items ordered'),
         shipped: find('shipped items', 'items shipped'),
