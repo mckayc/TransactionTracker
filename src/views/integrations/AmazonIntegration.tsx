@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import type { AmazonMetric, AmazonReportType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, CloseIcon, DeleteIcon, SearchCircleIcon, CalendarIcon, SortIcon, ClipboardIcon } from '../../components/Icons';
-import { parseAmazonReport, processAmazonData, readStringAsCSV, autoMapAmazonColumns, readCSVRaw } from '../../services/csvParserService';
+import { parseAmazonReport, processAmazonData, readStringAsCSV, autoMapAmazonColumns } from '../../services/csvParserService';
 import AmazonTable from '../../components/AmazonTable';
 
 interface AmazonIntegrationProps {
@@ -67,8 +67,9 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
         setIsUploading(true);
         try {
-            // Direct Auto Import logic
+            // DIRECT IMPORT: Parse, Auto-Map, Process
             const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
+            
             if (newMetrics.length > 0) {
                 onAddMetrics(newMetrics);
                 alert(`Successfully imported ${newMetrics.length} records.`);
@@ -88,25 +89,28 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const handlePasteProcess = () => {
         if (!pastedText.trim()) return;
         try {
-            // Direct Auto Import logic
+            // DIRECT IMPORT: Parse text, Auto-Map, Process
             const data = readStringAsCSV(pastedText);
             if (data.rows.length === 0) {
                 alert("Could not parse data from text.");
                 return;
             }
+            
             const mapping = autoMapAmazonColumns(data.headers);
             if (mapping.asin === -1) {
-                 alert("Could not find 'ASIN' column in pasted text.");
+                 alert("Could not automatically find an 'ASIN' column in the pasted text.");
                  return;
             }
+
             const newMetrics = processAmazonData(data, mapping, 'auto');
+            
             if (newMetrics.length > 0) {
                 onAddMetrics(newMetrics);
                 alert(`Successfully imported ${newMetrics.length} records.`);
                 setActiveTab('dashboard');
                 setPastedText('');
             } else {
-                alert("No valid records found.");
+                alert("No valid records found. Ensure headers like 'ASIN', 'Date', and 'Earnings' are present.");
             }
         } catch (error) {
             console.error(error);
