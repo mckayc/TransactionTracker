@@ -174,7 +174,10 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
 
         const parseNum = (idx: number) => {
             if (idx === -1) return 0;
-            const val = values[idx]?.replace(/[$,%]/g, '') || '0';
+            const valStr = values[idx];
+            if (!valStr) return 0;
+            // Remove '$', '%', AND commas ',' which breaks parseFloat for thousands
+            const val = valStr.replace(/[$,%\s]/g, '');
             return parseFloat(val) || 0;
         }
 
@@ -284,6 +287,7 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
             }
         } else if (colMap.amount > -1) {
             // Handle single Amount column
+            // IMPORTANT: Remove commas here too for general CSVs
             const valStr = parts[colMap.amount].replace(/[$,\s]/g, '');
             const val = parseFloat(valStr);
             if (isNaN(val)) continue;

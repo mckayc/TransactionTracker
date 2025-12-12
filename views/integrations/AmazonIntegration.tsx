@@ -66,9 +66,14 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         try {
             const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
             
-            // Deduplication: Check if Date+ASIN+Type already exists
-            const existingKeys = new Set(metrics.map(m => `${m.date}|${m.asin}|${m.reportType}`));
-            const uniqueMetrics = newMetrics.filter(m => !existingKeys.has(`${m.date}|${m.asin}|${m.reportType}`));
+            // Refined Deduplication: 
+            // Include Tracking ID and Revenue in the key to prevent merging separate campaigns/tracking IDs for same ASIN/Date
+            // This fixes the issue of missing rows when multiple events occur for same ASIN/Day
+            const generateKey = (m: AmazonMetric) => `${m.date}|${m.asin}|${m.reportType}|${m.trackingId}|${m.revenue.toFixed(2)}`;
+            
+            const existingKeys = new Set(metrics.map(generateKey));
+            
+            const uniqueMetrics = newMetrics.filter(m => !existingKeys.has(generateKey(m)));
             const duplicateCount = newMetrics.length - uniqueMetrics.length;
 
             if (uniqueMetrics.length > 0) {
@@ -93,6 +98,15 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const handleClearAll = () => {
+        if (metrics.length === 0) return;
+        if (window.confirm(`Are you sure you want to delete ALL ${metrics.length} Amazon records? This cannot be undone.`)) {
+            onDeleteMetrics(metrics.map(m => m.id));
+            setSelectedIds(new Set());
+            alert("All Amazon data cleared.");
         }
     };
 
@@ -191,47 +205,58 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
             {/* Filter Bar (Shared for Dashboard and Data) */}
             {activeTab !== 'upload' && (
-                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0 items-center">
-                    <div className="relative flex-grow w-full sm:w-auto">
-                        <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                        <input 
-                            type="text" 
-                            placeholder="Search Products or ASINs..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                        />
+                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0 items-center justify-between">
+                    <div className="flex flex-col sm:flex-row gap-4 flex-grow items-center">
+                        <div className="relative flex-grow w-full sm:w-auto">
+                            <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                            <input 
+                                type="text" 
+                                placeholder="Search Products or ASINs..." 
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                            />
+                        </div>
+                        
+                        <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <div className="relative">
+                                <select 
+                                    value={selectedReportType} 
+                                    onChange={(e) => setSelectedReportType(e.target.value as any)}
+                                    className="pl-3 pr-8 py-2 border rounded-lg appearance-none bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none"
+                                >
+                                    <option value="all">All Types</option>
+                                    <option value="onsite">Onsite</option>
+                                    <option value="offsite">Offsite</option>
+                                    <option value="creator_connections">Creator Connections</option>
+                                </select>
+                            </div>
+
+                            <div className="flex items-center gap-2 bg-white border rounded-lg p-1">
+                                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-1 border-none text-sm focus:ring-0" />
+                                <span className="text-slate-400">-</span>
+                                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-1 border-none text-sm focus:ring-0" />
+                            </div>
+
+                            {(searchTerm || startDate || endDate || selectedReportType !== 'all') && (
+                                <button 
+                                    onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); setSelectedReportType('all'); }} 
+                                    className="text-xs text-red-500 hover:underline px-2 whitespace-nowrap"
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
                     </div>
                     
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <div className="relative">
-                            <select 
-                                value={selectedReportType} 
-                                onChange={(e) => setSelectedReportType(e.target.value as any)}
-                                className="pl-3 pr-8 py-2 border rounded-lg appearance-none bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                            >
-                                <option value="all">All Types</option>
-                                <option value="onsite">Onsite</option>
-                                <option value="offsite">Offsite</option>
-                                <option value="creator_connections">Creator Connections</option>
-                            </select>
-                        </div>
-
-                        <div className="flex items-center gap-2 bg-white border rounded-lg p-1">
-                            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-1 border-none text-sm focus:ring-0" />
-                            <span className="text-slate-400">-</span>
-                            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-1 border-none text-sm focus:ring-0" />
-                        </div>
-
-                        {(searchTerm || startDate || endDate || selectedReportType !== 'all') && (
-                            <button 
-                                onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); setSelectedReportType('all'); }} 
-                                className="text-xs text-red-500 hover:underline px-2 whitespace-nowrap"
-                            >
-                                Clear
-                            </button>
-                        )}
-                    </div>
+                    {metrics.length > 0 && activeTab === 'data' && (
+                        <button 
+                            onClick={handleClearAll}
+                            className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors whitespace-nowrap"
+                        >
+                            Clear All Data
+                        </button>
+                    )}
                 </div>
             )}
 
