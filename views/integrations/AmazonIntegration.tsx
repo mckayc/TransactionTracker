@@ -2,8 +2,9 @@
 import React, { useState, useMemo, useRef } from 'react';
 import type { AmazonMetric, AmazonReportType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, CloseIcon, DeleteIcon, SearchCircleIcon, CalendarIcon, SortIcon } from '../../components/Icons';
-import { parseAmazonReport } from '../../services/csvParserService';
+import { readCSVRaw, processAmazonData, type CsvData, type ColumnMapping } from '../../services/csvParserService';
 import AmazonTable from '../../components/AmazonTable';
+import AmazonImportWizard from '../../components/AmazonImportWizard';
 
 interface AmazonIntegrationProps {
     metrics: AmazonMetric[];
@@ -20,6 +21,11 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
     
+    // Wizard State
+    const [isWizardOpen, setIsWizardOpen] = useState(false);
+    const [csvData, setCsvData] = useState<CsvData>({ headers: [], rows: [] });
+    const [uploadFileName, setUploadFileName] = useState('');
+
     // Filter State
     const [searchTerm, setSearchTerm] = useState('');
     const [startDate, setStartDate] = useState('');
@@ -64,24 +70,44 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
         setIsUploading(true);
         try {
-            const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
-            
-            // Deduplication REMOVED per user request
-            
-            if (newMetrics.length > 0) {
-                onAddMetrics(newMetrics);
-                setActiveTab('dashboard'); // Switch to dashboard to see results
-                
-                alert(`Successfully imported ${newMetrics.length} records.`);
-            } else {
-                alert("No valid records found in file. Please check the CSV format.");
+            // Read raw CSV data first
+            const data = await readCSVRaw(file);
+            if (data.rows.length === 0) {
+                alert("File appears to be empty or invalid.");
+                return;
             }
+            
+            setCsvData(data);
+            setUploadFileName(file.name);
+            setIsWizardOpen(true); // Open the verification/mapping wizard
+
         } catch (error) {
             console.error(error);
-            alert(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            alert(`Read failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const handleWizardComplete = (mapping: ColumnMapping, source: AmazonReportType | 'auto') => {
+        try {
+            const newMetrics = processAmazonData(csvData, mapping, source);
+            
+            // Deduplication Removed per user request
+            // Note: We might want to re-introduce a smarter dedup later, but complying with strict instructions to allow all.
+            
+            if (newMetrics.length > 0) {
+                onAddMetrics(newMetrics);
+                setIsWizardOpen(false);
+                setActiveTab('dashboard');
+                alert(`Successfully imported ${newMetrics.length} records.`);
+            } else {
+                alert("No valid records generated based on the mapping.");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error processing data.");
         }
     };
 
@@ -130,8 +156,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             byType: { onsite: 0, offsite: 0, creator_connections: 0, unknown: 0 }
         };
 
-        // Summary uses ALL metrics, or FILTERED metrics? Usually specific to view context.
-        // Let's use filteredMetrics for dashboard to allow date range analysis.
         const source = activeTab === 'dashboard' ? filteredMetrics : enrichedMetrics;
 
         source.forEach(m => {
@@ -187,7 +211,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 </div>
             </div>
 
-            {/* Filter Bar (Shared for Dashboard and Data) */}
+            {/* Filter Bar */}
             {activeTab !== 'upload' && (
                 <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0 items-center justify-between">
                     <div className="flex flex-col sm:flex-row gap-4 flex-grow items-center">
@@ -209,7 +233,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     onChange={(e) => setSelectedReportType(e.target.value as any)}
                                     className="pl-3 pr-8 py-2 border rounded-lg appearance-none bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none"
                                 >
-                                    <option value="all">All Types</option>
+                                    <option value="all">All Sources</option>
                                     <option value="onsite">Onsite</option>
                                     <option value="offsite">Offsite</option>
                                     <option value="creator_connections">Creator Connections</option>
@@ -385,6 +409,14 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     </div>
                 )}
             </div>
+
+            <AmazonImportWizard 
+                isOpen={isWizardOpen}
+                onClose={() => setIsWizardOpen(false)}
+                csvData={csvData}
+                onComplete={handleWizardComplete}
+                fileName={uploadFileName}
+            />
         </div>
     );
 };

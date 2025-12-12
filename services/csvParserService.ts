@@ -81,172 +81,175 @@ const formatDate = (date: Date): string => {
     return `${year}-${month}-${day}`;
 }
 
-export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
-    onProgress(`Reading ${file.name}...`);
+export interface CsvData {
+    headers: string[];
+    rows: string[][];
+}
+
+export const readCSVRaw = async (file: File): Promise<CsvData> => {
     const text = await readFileAsText(file);
     const lines = text.split('\n');
-    const metrics: AmazonMetric[] = [];
-
-    if (lines.length < 2) return [];
-
-    // Header Detection
+    
     let headerIndex = -1;
-    let isCreatorConnections = false;
+    let headers: string[] = [];
+    const rows: string[][] = [];
 
-    // Scan first 20 lines for a valid header row
-    for(let i=0; i<Math.min(lines.length, 20); i++) {
+    // Heuristic: Find the header row (contains ASIN, Date, or similar)
+    for(let i=0; i<Math.min(lines.length, 25); i++) {
         const line = lines[i].toLowerCase();
-        // Check for ASIN + Income keyword
-        if (line.includes('asin') && (
-            line.includes('earnings') || 
-            line.includes('commission income') || 
-            line.includes('ad fees') || 
-            line.includes('bounties') ||
-            line.includes('advertising fees')
-        )) {
+        if (line.includes('asin') || (line.includes('date') && (line.includes('commission') || line.includes('earnings') || line.includes('fees')))) {
             headerIndex = i;
-            if (line.includes('campaign title') || line.includes('commission income')) {
-                isCreatorConnections = true;
-            }
             break;
         }
     }
 
     if (headerIndex === -1) {
-        throw new Error("Invalid Amazon Report format. Could not find header row with 'ASIN' and 'Earnings/Commission/Ad Fees'.");
+        // Fallback: Assume first non-empty line is header
+        headerIndex = lines.findIndex(l => l.trim().length > 0);
     }
 
-    // Handle potential quotes in header and split by common delimiters
-    const header = lines[headerIndex].split(/[,;\t]/).map(h => h.trim().replace(/"/g, '').toLowerCase());
-    
-    // Strict Column Matching Logic
-    // We look for specific headers first before falling back to generic ones.
-    const findCol = (...candidates: string[]) => {
-        for (const c of candidates) {
-            const idx = header.findIndex(h => h === c || h === c.toLowerCase());
-            if (idx > -1) return idx;
-        }
-        return -1;
+    if (headerIndex === -1) return { headers: [], rows: [] };
+
+    // Helper to split CSV line handling quotes
+    const splitLine = (line: string) => {
+        if (line.includes('\t')) return line.split('\t').map(v => v.trim().replace(/^"|"$/g, ''));
+        return line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/^"|"$/g, ''));
     };
 
-    // Determine Revenue Column based on strict priority
-    let incomeIdx = -1;
-    if (isCreatorConnections) {
-        incomeIdx = findCol('commission income($)', 'commission income');
-    } else {
-        // Standard Associates (Onsite/Offsite) use "Advertising Fees"
-        incomeIdx = findCol('advertising fees($)', 'ad fees($)', 'advertising fees', 'ad fees');
-    }
+    headers = splitLine(lines[headerIndex]);
 
-    // Fallback if specific columns not found (e.g. older reports or unified reports)
-    if (incomeIdx === -1) {
-        incomeIdx = findCol('total earnings($)', 'total earnings', 'earnings($)', 'earnings');
-    }
-    
-    // Last ditch effort: fuzzy match, but be careful not to pick "Earnings Report Date"
-    if (incomeIdx === -1) {
-        incomeIdx = header.findIndex(h => (h.includes('earnings') || h.includes('commission')) && !h.includes('date') && !h.includes('report'));
-    }
-
-    const colMap = {
-        date: findCol('date', 'date shipped'),
-        asin: findCol('asin'),
-        title: findCol('product title', 'title', 'item name', 'name'),
-        clicks: findCol('clicks'),
-        ordered: findCol('ordered items', 'items ordered'),
-        shipped: findCol('shipped items', 'items shipped'),
-        income: incomeIdx,
-        conversion: header.findIndex(h => h.includes('conversion')),
-        tracking: header.findIndex(h => h.includes('tracking id')),
-        category: findCol('category', 'product group'),
-        campaignTitle: findCol('campaign title')
-    };
-
-    if (colMap.asin === -1) {
-         throw new Error("Missing ASIN column.");
-    }
-
-    for (let i = headerIndex + 1; i < lines.length; i++) {
+    for(let i = headerIndex + 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-
-        // Split respecting CSV quotes
-        let values: string[] = [];
-        if (line.includes('\t')) {
-             values = line.split('\t').map(v => v.trim().replace(/"/g, ''));
-        } else {
-             values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
+        const values = splitLine(line);
+        // Basic consistency check
+        if (values.length > 1) { 
+            rows.push(values);
         }
+    }
 
-        // Basic validation: row should have enough columns relative to where our mapped columns are
-        const maxIndex = Math.max(...Object.values(colMap));
-        if (values.length <= maxIndex && values.length < header.length - 2) continue;
+    return { headers, rows };
+}
 
-        const dateRaw = colMap.date > -1 ? values[colMap.date] : '';
-        // If date is missing, skip row (usually summary footer), unless it's CC which sometimes has odd formats
-        if (!dateRaw && !isCreatorConnections) continue; 
+export interface ColumnMapping {
+    date: number;
+    asin: number;
+    title: number;
+    revenue: number;
+    clicks?: number;
+    ordered?: number;
+    shipped?: number;
+    tracking?: number;
+    category?: number;
+    campaignTitle?: number;
+}
 
-        const parsedDate = parseDate(dateRaw) || new Date(); 
-        const dateStr = formatDate(parsedDate);
+export const processAmazonData = (
+    data: CsvData, 
+    mapping: ColumnMapping, 
+    forcedSource: AmazonReportType | 'auto' = 'auto'
+): AmazonMetric[] => {
+    const metrics: AmazonMetric[] = [];
+
+    data.rows.forEach(values => {
+        const dateRaw = mapping.date > -1 ? values[mapping.date] : '';
+        const parsedDate = parseDate(dateRaw);
         
-        const asin = colMap.asin > -1 ? values[colMap.asin] : 'Unknown';
-        // Skip rows without ASIN
-        if (!asin || asin.length < 5) continue;
+        // Skip invalid rows (summaries/footers often have empty dates)
+        if (!parsedDate) return;
 
-        const parseNum = (idx: number) => {
-            if (idx === -1) return 0;
+        const dateStr = formatDate(parsedDate);
+        const asin = mapping.asin > -1 ? values[mapping.asin] : 'Unknown';
+        
+        if (!asin || asin.length < 5) return; // Skip invalid ASIN rows
+
+        const parseNum = (idx: number | undefined) => {
+            if (idx === undefined || idx === -1) return 0;
             const valStr = values[idx];
             if (!valStr) return 0;
-            // Remove '$', '%', AND commas ',' which breaks parseFloat for thousands
-            // Note: We preserve '-' for negative numbers (returns)
             const val = valStr.replace(/[$,%\s]/g, '');
-            // Handle accounting format (100) -> -100 if necessary, though CSV usually uses -
             if (val.startsWith('(') && val.endsWith(')')) {
                 return -1 * parseFloat(val.replace(/[()]/g, ''));
             }
             return parseFloat(val) || 0;
         }
 
-        const trackingId = colMap.tracking > -1 ? values[colMap.tracking] : 'creator-connections';
-        const campaignTitle = colMap.campaignTitle > -1 ? values[colMap.campaignTitle] : undefined;
+        const title = mapping.title > -1 ? values[mapping.title] : `Product ${asin}`;
+        const trackingId = mapping.tracking && mapping.tracking > -1 ? values[mapping.tracking] : 'default';
+        const campaignTitle = mapping.campaignTitle && mapping.campaignTitle > -1 ? values[mapping.campaignTitle] : undefined;
 
         // Determine Report Type
         let reportType: AmazonReportType = 'unknown';
-        if (isCreatorConnections || campaignTitle) {
-            reportType = 'creator_connections';
-        } else if (trackingId.includes('onamz')) {
-            reportType = 'onsite';
+        
+        if (forcedSource !== 'auto') {
+            reportType = forcedSource;
         } else {
-            reportType = 'offsite';
+            // Auto-detect logic
+            if (campaignTitle) {
+                reportType = 'creator_connections';
+            } else if (trackingId.includes('onamz')) {
+                reportType = 'onsite';
+            } else {
+                reportType = 'offsite';
+            }
         }
-
-        // Creator Connections often puts title in Campaign Title if product title is generic
-        let title = colMap.title > -1 ? values[colMap.title] : '';
-        if ((!title || title === 'Unknown') && campaignTitle) title = campaignTitle;
-        if (!title) title = `Product ${asin}`;
 
         const metric: AmazonMetric = {
             id: generateUUID(),
             date: dateStr,
             asin: asin,
-            title: title,
-            clicks: parseNum(colMap.clicks),
-            orderedItems: parseNum(colMap.ordered),
-            shippedItems: parseNum(colMap.shipped),
-            revenue: parseNum(colMap.income),
-            conversionRate: parseNum(colMap.conversion),
+            title: title || campaignTitle || asin, // Fallback logic
+            clicks: parseNum(mapping.clicks),
+            orderedItems: parseNum(mapping.ordered),
+            shippedItems: parseNum(mapping.shipped),
+            revenue: parseNum(mapping.revenue),
+            conversionRate: 0, // Calculated field if needed
             trackingId: trackingId,
-            category: colMap.category > -1 ? values[colMap.category] : undefined,
+            category: mapping.category && mapping.category > -1 ? values[mapping.category] : undefined,
             reportType: reportType,
             campaignTitle: campaignTitle
         };
 
-        metrics.push(metric);
-    }
+        // Recalculate conversion if not mapped directly
+        if (metric.clicks > 0) {
+            metric.conversionRate = (metric.orderedItems / metric.clicks) * 100;
+        }
 
-    onProgress(`Parsed ${metrics.length} amazon metrics.`);
+        metrics.push(metric);
+    });
+
     return metrics;
-}
+};
+
+// Legacy support for direct parsing (still used by Drag-and-Drop if we bypass wizard, but ideally we route through wizard)
+export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
+    onProgress('Reading CSV...');
+    const rawData = await readCSVRaw(file);
+    
+    // Auto-map based on headers
+    const h = rawData.headers.map(h => h.toLowerCase());
+    
+    // Helper to find index
+    const find = (...search: string[]) => h.findIndex(hdr => search.some(s => hdr === s || hdr.includes(s)));
+    const findExact = (...search: string[]) => h.findIndex(hdr => search.includes(hdr));
+
+    const mapping: ColumnMapping = {
+        date: findExact('date', 'date shipped'),
+        asin: findExact('asin'),
+        title: find('product title', 'title', 'item name'),
+        clicks: find('clicks'),
+        ordered: find('ordered items', 'items ordered'),
+        shipped: find('shipped items', 'items shipped'),
+        revenue: find('ad fees', 'advertising fees', 'commission income', 'earnings'),
+        tracking: find('tracking id'),
+        category: find('category', 'product group'),
+        campaignTitle: find('campaign title')
+    };
+
+    if (mapping.asin === -1) throw new Error("Could not find ASIN column.");
+    
+    return processAmazonData(rawData, mapping, 'auto');
+};
 
 const parseCSV = (lines: string[], accountId: string, transactionTypes: TransactionType[], sourceName: string): RawTransaction[] => {
     const transactions: RawTransaction[] = [];
