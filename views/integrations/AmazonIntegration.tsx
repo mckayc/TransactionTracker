@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import type { AmazonMetric } from '../../types';
+import type { AmazonMetric, AmazonReportType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon } from '../../components/Icons';
 import { parseAmazonReport } from '../../services/csvParserService';
 
@@ -17,6 +17,32 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // Title Sync Logic:
+    // 1. Build a map of ASIN -> Title from Onsite/Offsite records (which have titles)
+    // 2. If title is unknown (CC records), look it up.
+    const enrichedMetrics = useMemo(() => {
+        const titleMap = new Map<string, string>();
+        
+        // Pass 1: Gather Titles
+        metrics.forEach(m => {
+            if (m.asin && m.title && !m.title.startsWith('Unknown Product') && m.reportType !== 'creator_connections') {
+                // If map doesn't have it, or this title is longer (usually better), store it
+                const existing = titleMap.get(m.asin);
+                if (!existing || m.title.length > existing.length) {
+                    titleMap.set(m.asin, m.title);
+                }
+            }
+        });
+
+        // Pass 2: Enrich
+        return metrics.map(m => {
+            if (titleMap.has(m.asin) && (m.title.startsWith('Unknown Product') || m.reportType === 'creator_connections')) {
+                return { ...m, title: titleMap.get(m.asin)! };
+            }
+            return m;
+        });
+    }, [metrics]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -43,18 +69,35 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     // --- aggregations ---
     const summary = useMemo(() => {
-        const totalRevenue = metrics.reduce((acc, m) => acc + m.revenue, 0);
-        const totalClicks = metrics.reduce((acc, m) => acc + m.clicks, 0);
-        const totalOrdered = metrics.reduce((acc, m) => acc + m.orderedItems, 0);
-        const avgConversion = totalClicks > 0 ? (totalOrdered / totalClicks) * 100 : 0;
+        const result = {
+            totalRevenue: 0,
+            totalClicks: 0,
+            totalOrdered: 0,
+            avgConversion: 0,
+            byType: {
+                onsite: 0,
+                offsite: 0,
+                creator_connections: 0
+            }
+        };
 
-        return { totalRevenue, totalClicks, totalOrdered, avgConversion };
-    }, [metrics]);
+        enrichedMetrics.forEach(m => {
+            result.totalRevenue += m.revenue;
+            result.totalClicks += m.clicks;
+            result.totalOrdered += m.orderedItems;
+            if (m.reportType in result.byType) {
+                result.byType[m.reportType as AmazonReportType] += m.revenue;
+            }
+        });
+
+        result.avgConversion = result.totalClicks > 0 ? (result.totalOrdered / result.totalClicks) * 100 : 0;
+        return result;
+    }, [enrichedMetrics]);
 
     const topProducts = useMemo(() => {
         const productMap = new Map<string, { title: string, revenue: number, clicks: number, ordered: number }>();
         
-        metrics.forEach(m => {
+        enrichedMetrics.forEach(m => {
             if (!productMap.has(m.asin)) {
                 productMap.set(m.asin, { title: m.title, revenue: 0, clicks: 0, ordered: 0 });
             }
@@ -68,7 +111,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             .map(([asin, data]) => ({ asin, ...data }))
             .sort((a, b) => b.revenue - a.revenue)
             .slice(0, 10);
-    }, [metrics]);
+    }, [enrichedMetrics]);
 
     return (
         <div className="space-y-6 h-full flex flex-col">
@@ -109,7 +152,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                                <p className="text-xs font-bold text-slate-400 uppercase">Total Revenue</p>
+                                <p className="text-xs font-bold text-slate-400 uppercase">Total Earnings</p>
                                 <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(summary.totalRevenue)}</p>
                             </div>
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
@@ -126,6 +169,22 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                             </div>
                         </div>
 
+                        {/* Breakdown by Type */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-blue-500">
+                                <p className="text-xs font-bold text-slate-400 uppercase">Onsite Earnings</p>
+                                <p className="text-xl font-bold text-slate-800 mt-1">{formatCurrency(summary.byType.onsite)}</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-green-500">
+                                <p className="text-xs font-bold text-slate-400 uppercase">Offsite Earnings</p>
+                                <p className="text-xl font-bold text-slate-800 mt-1">{formatCurrency(summary.byType.offsite)}</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 border-l-4 border-l-purple-500">
+                                <p className="text-xs font-bold text-slate-400 uppercase">Creator Connections</p>
+                                <p className="text-xl font-bold text-slate-800 mt-1">{formatCurrency(summary.byType.creator_connections)}</p>
+                            </div>
+                        </div>
+
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="p-4 border-b border-slate-100">
                                 <h3 className="font-bold text-slate-700">Top Performing Products</h3>
@@ -136,7 +195,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Product</th>
                                         <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Clicks</th>
                                         <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Ordered</th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
+                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Earnings</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
@@ -167,25 +226,36 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                             <thead className="bg-slate-50">
                                 <tr>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">ASIN / Title</th>
                                     <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Clicks</th>
-                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Earnings</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200">
-                                {metrics.slice(0, 100).map((m) => (
+                                {enrichedMetrics.slice(0, 100).map((m) => (
                                     <tr key={m.id} className="hover:bg-slate-50">
                                         <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.date}</td>
+                                        <td className="px-4 py-2 text-sm">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
+                                                m.reportType === 'onsite' ? 'bg-blue-100 text-blue-700' : 
+                                                m.reportType === 'offsite' ? 'bg-green-100 text-green-700' : 
+                                                'bg-purple-100 text-purple-700'
+                                            }`}>
+                                                {m.reportType.replace('_', ' ')}
+                                            </span>
+                                        </td>
                                         <td className="px-4 py-2 text-sm text-slate-800">
                                             <div className="line-clamp-1" title={m.title}>{m.title}</div>
-                                            <span className="text-xs text-slate-400 font-mono">{m.asin}</span>
+                                            <span className="text-xs text-slate-400 font-mono mr-2">{m.asin}</span>
+                                            {m.campaignTitle && <span className="text-xs text-purple-600 bg-purple-50 px-1 rounded">{m.campaignTitle}</span>}
                                         </td>
                                         <td className="px-4 py-2 text-right text-sm text-slate-600">{m.clicks}</td>
                                         <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.revenue)}</td>
                                     </tr>
                                 ))}
-                                {metrics.length === 0 && (
-                                    <tr><td colSpan={4} className="p-8 text-center text-slate-400">No data imported yet.</td></tr>
+                                {enrichedMetrics.length === 0 && (
+                                    <tr><td colSpan={5} className="p-8 text-center text-slate-400">No data imported yet.</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -200,12 +270,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         </div>
                         <h3 className="text-xl font-bold text-slate-700 mb-2">Upload Amazon Report</h3>
                         <p className="text-slate-500 text-center max-w-md mb-6">
-                            Download the <strong>"Earnings Report"</strong> (Standard) from your Amazon Associates dashboard as a CSV file.
+                            Supports <strong>Standard Associates</strong> (Onsite/Offsite) and <strong>Creator Connections</strong> CSV exports.
                         </p>
                         <input 
                             type="file" 
                             ref={fileInputRef}
-                            accept=".csv" 
+                            accept=".csv,.tsv" 
                             onChange={handleFileUpload} 
                             className="hidden" 
                         />

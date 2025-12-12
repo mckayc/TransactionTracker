@@ -318,6 +318,8 @@ export interface SavedReport {
 
 // --- Integrations ---
 
+export type AmazonReportType = 'onsite' | 'offsite' | 'creator_connections' | 'unknown';
+
 export interface AmazonMetric {
     id: string;
     date: string; // YYYY-MM-DD
@@ -326,10 +328,12 @@ export interface AmazonMetric {
     clicks: number;
     orderedItems: number;
     shippedItems: number;
-    revenue: number; // Earnings
+    revenue: number; // Earnings/Commission Income
     conversionRate: number;
     trackingId: string;
     category?: string;
+    reportType: AmazonReportType;
+    campaignTitle?: string; // For Creator Connections
 }
 
 export interface IntegrationConfig {
