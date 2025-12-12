@@ -366,7 +366,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
                 {/* UPLOAD TAB */}
                 {activeTab === 'upload' && (
-                    <div className="flex flex-col items-center justify-center h-full bg-white rounded-xl border-2 border-dashed border-slate-300 p-12">
+                    <div className="flex flex-col items-center justify-center h-full bg-white rounded-xl border-2 border-dashed border-slate-300 p-12 relative">
                         <div className="bg-orange-50 p-4 rounded-full mb-4">
                             <CloudArrowUpIcon className="w-8 h-8 text-orange-500" />
                         </div>
@@ -381,13 +381,23 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                             onChange={handleFileUpload} 
                             className="hidden" 
                         />
-                        <button 
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={isUploading}
-                            className="px-6 py-3 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 disabled:bg-slate-300 transition-colors"
-                        >
-                            {isUploading ? 'Parsing...' : 'Select CSV File'}
-                        </button>
+                        <div className="flex gap-4">
+                            <button 
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isUploading}
+                                className="px-6 py-3 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 disabled:bg-slate-300 transition-colors"
+                            >
+                                {isUploading ? 'Parsing...' : 'Select CSV File'}
+                            </button>
+                            {metrics.length > 0 && (
+                                <button 
+                                    onClick={handleClearAll}
+                                    className="px-6 py-3 text-red-600 bg-red-50 font-medium rounded-lg hover:bg-red-100 border border-red-200 transition-colors"
+                                >
+                                    Clear All Data
+                                </button>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>

@@ -119,26 +119,47 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
     // Handle potential quotes in header and split by common delimiters
     const header = lines[headerIndex].split(/[,;\t]/).map(h => h.trim().replace(/"/g, '').toLowerCase());
     
+    // Strict Column Matching Logic
+    // We look for specific headers first before falling back to generic ones.
+    const findCol = (...candidates: string[]) => {
+        for (const c of candidates) {
+            const idx = header.findIndex(h => h === c || h === c.toLowerCase());
+            if (idx > -1) return idx;
+        }
+        return -1;
+    };
+
+    // Determine Revenue Column based on strict priority
+    let incomeIdx = -1;
+    if (isCreatorConnections) {
+        incomeIdx = findCol('commission income($)', 'commission income');
+    } else {
+        // Standard Associates (Onsite/Offsite) use "Advertising Fees"
+        incomeIdx = findCol('advertising fees($)', 'ad fees($)', 'advertising fees', 'ad fees');
+    }
+
+    // Fallback if specific columns not found (e.g. older reports or unified reports)
+    if (incomeIdx === -1) {
+        incomeIdx = findCol('total earnings($)', 'total earnings', 'earnings($)', 'earnings');
+    }
+    
+    // Last ditch effort: fuzzy match, but be careful not to pick "Earnings Report Date"
+    if (incomeIdx === -1) {
+        incomeIdx = header.findIndex(h => (h.includes('earnings') || h.includes('commission')) && !h.includes('date') && !h.includes('report'));
+    }
+
     const colMap = {
-        date: header.findIndex(h => h === 'date' || h === 'date shipped'),
-        asin: header.findIndex(h => h === 'asin'),
-        title: header.findIndex(h => h === 'product title' || h === 'title' || h === 'item name' || h === 'name'),
-        clicks: header.findIndex(h => h === 'clicks'),
-        ordered: header.findIndex(h => h === 'ordered items' || h === 'items ordered'),
-        shipped: header.findIndex(h => h === 'shipped items' || h === 'items shipped'),
-        // Unified Revenue/Earnings column detection
-        income: header.findIndex(h => 
-            h.includes('earnings') || 
-            h === 'ad fees($)' || 
-            h === 'advertising fees($)' ||
-            h === 'commission income($)' || 
-            h.includes('commission income') ||
-            h.includes('total earnings')
-        ),
+        date: findCol('date', 'date shipped'),
+        asin: findCol('asin'),
+        title: findCol('product title', 'title', 'item name', 'name'),
+        clicks: findCol('clicks'),
+        ordered: findCol('ordered items', 'items ordered'),
+        shipped: findCol('shipped items', 'items shipped'),
+        income: incomeIdx,
         conversion: header.findIndex(h => h.includes('conversion')),
         tracking: header.findIndex(h => h.includes('tracking id')),
-        category: header.findIndex(h => h === 'category' || h === 'product group'),
-        campaignTitle: header.findIndex(h => h === 'campaign title')
+        category: findCol('category', 'product group'),
+        campaignTitle: findCol('campaign title')
     };
 
     if (colMap.asin === -1) {
@@ -177,7 +198,12 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
             const valStr = values[idx];
             if (!valStr) return 0;
             // Remove '$', '%', AND commas ',' which breaks parseFloat for thousands
+            // Note: We preserve '-' for negative numbers (returns)
             const val = valStr.replace(/[$,%\s]/g, '');
+            // Handle accounting format (100) -> -100 if necessary, though CSV usually uses -
+            if (val.startsWith('(') && val.endsWith(')')) {
+                return -1 * parseFloat(val.replace(/[()]/g, ''));
+            }
             return parseFloat(val) || 0;
         }
 
