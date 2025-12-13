@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon } from '../../components/Icons';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon } from '../../components/Icons';
 import { parseYouTubeReport } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
 
@@ -151,6 +151,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const [filterChannelId, setFilterChannelId] = useState('');
     const [filterReportYear, setFilterReportYear] = useState('');
     
+    // Aggregation Toggle
+    const [groupByVideo, setGroupByVideo] = useState(false);
+    
     const [sortKey, setSortKey] = useState<keyof YouTubeMetric>('publishDate');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     const [productSortKey, setProductSortKey] = useState<'estimatedRevenue' | 'views' | 'subscribersGained' | 'watchTimeHours'>('estimatedRevenue');
@@ -193,7 +196,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
     }, [previewMetrics, uploadYear, uploadChannelId, channels]);
 
-    const displayMetrics = useMemo(() => {
+    const filteredMetrics = useMemo(() => {
         let result = metrics;
 
         if (debouncedSearchTerm) {
@@ -215,8 +218,53 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         if (filterReportYear) {
             result = result.filter(m => m.reportYear === filterReportYear);
         }
+        
+        return result;
+    }, [metrics, debouncedSearchTerm, startDate, endDate, filterChannelId, filterReportYear]);
 
-        result.sort((a, b) => {
+    // Apply Grouping if enabled
+    const finalDisplayMetrics = useMemo(() => {
+        if (!groupByVideo) return filteredMetrics;
+
+        // Aggregate metrics by Video ID
+        const groups = new Map<string, YouTubeMetric & { _clicks: number }>();
+        
+        filteredMetrics.forEach(m => {
+            if (!groups.has(m.videoId)) {
+                // Initialize with first record found
+                groups.set(m.videoId, { 
+                    ...m, 
+                    // Store intermediate clicks for weighted CTR calculation
+                    _clicks: m.impressions * (m.ctr / 100) 
+                });
+            } else {
+                const existing = groups.get(m.videoId)!;
+                existing.views += m.views;
+                existing.watchTimeHours += m.watchTimeHours;
+                existing.subscribersGained += m.subscribersGained;
+                existing.estimatedRevenue += m.estimatedRevenue;
+                
+                // Add new clicks/impressions
+                const newClicks = m.impressions * (m.ctr / 100);
+                existing.impressions += m.impressions;
+                existing._clicks += newClicks;
+                
+                // Keep the earliest publish date if mixed? Usually same video has same publish date.
+                // We'll trust the initial one.
+            }
+        });
+
+        // Finalize CTR calculation
+        return Array.from(groups.values()).map(g => ({
+            ...g,
+            ctr: g.impressions > 0 ? (g._clicks / g.impressions) * 100 : 0
+        }));
+
+    }, [filteredMetrics, groupByVideo]);
+
+    // Apply Sorting to the finalized list (grouped or flat)
+    const sortedMetrics = useMemo(() => {
+        const sorted = [...finalDisplayMetrics].sort((a, b) => {
             let valA = a[sortKey];
             let valB = b[sortKey];
             
@@ -233,16 +281,15 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
             return 0;
         });
+        return sorted;
+    }, [finalDisplayMetrics, sortKey, sortDirection]);
 
-        return result;
-    }, [metrics, debouncedSearchTerm, startDate, endDate, sortKey, sortDirection, filterChannelId, filterReportYear]);
-
-    const totalPages = Math.ceil(displayMetrics.length / rowsPerPage);
+    const totalPages = Math.ceil(sortedMetrics.length / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
-    const paginatedMetrics = displayMetrics.slice(startIndex, startIndex + rowsPerPage);
+    const paginatedMetrics = sortedMetrics.slice(startIndex, startIndex + rowsPerPage);
 
     // Reset pagination
-    useEffect(() => { setCurrentPage(1); }, [debouncedSearchTerm, startDate, endDate, rowsPerPage, filterChannelId, filterReportYear]);
+    useEffect(() => { setCurrentPage(1); }, [debouncedSearchTerm, startDate, endDate, rowsPerPage, filterChannelId, filterReportYear, groupByVideo]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -294,7 +341,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             totalWatchTime: 0,
             avgRPM: 0
         };
-        displayMetrics.forEach(m => {
+        filteredMetrics.forEach(m => {
             result.totalRevenue += m.estimatedRevenue;
             result.totalViews += m.views;
             result.totalSubs += m.subscribersGained;
@@ -307,7 +354,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
 
         return result;
-    }, [displayMetrics]);
+    }, [filteredMetrics]);
 
     const previewSummary = useMemo(() => {
         return previewMetrics.reduce((acc, curr) => ({
@@ -321,7 +368,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     // Chart Data: Aggregated Revenue by Publish Month
     const revenueByMonth = useMemo(() => {
         const grouped = new Map<string, number>();
-        displayMetrics.forEach(m => {
+        filteredMetrics.forEach(m => {
             const monthKey = m.publishDate.substring(0, 7); // YYYY-MM
             grouped.set(monthKey, (grouped.get(monthKey) || 0) + m.estimatedRevenue);
         });
@@ -329,13 +376,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         return Array.from(grouped.entries())
             .sort((a, b) => a[0].localeCompare(b[0]))
             .map(([date, value]) => ({ label: date, value }));
-    }, [displayMetrics]);
+    }, [filteredMetrics]);
 
     // Aggregate by Year
     const yearStats = useMemo(() => {
         const grouped = new Map<string, { revenue: number, views: number, subs: number, impressions: number, clicks: number }>();
         
-        displayMetrics.forEach(m => {
+        filteredMetrics.forEach(m => {
             const year = m.publishDate.substring(0, 4);
             if (!grouped.has(year)) {
                 grouped.set(year, { revenue: 0, views: 0, subs: 0, impressions: 0, clicks: 0 });
@@ -356,13 +403,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 ...d,
                 avgCtr: d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0
             }));
-    }, [displayMetrics]);
+    }, [filteredMetrics]);
 
     const topVideos = useMemo(() => {
-        return [...displayMetrics]
+        return [...filteredMetrics]
             .sort((a, b) => b[productSortKey] - a[productSortKey])
             .slice(0, 10);
-    }, [displayMetrics, productSortKey]);
+    }, [filteredMetrics, productSortKey]);
 
     const handleHeaderClick = (key: keyof YouTubeMetric) => {
         if (sortKey === key) {
@@ -472,7 +519,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             onChange={(e) => setFilterReportYear(e.target.value)}
                             className="p-2 border rounded-lg text-sm bg-white"
                         >
-                            <option value="">All Report Years</option>
+                            <option value="">All Reported Years</option>
                             {availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
 
@@ -621,8 +668,19 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                         
                         {/* Summary Bar for Data Table */}
                         <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center justify-between text-sm text-red-900">
-                            <span>Showing <strong>{displayMetrics.length}</strong> records</span>
-                            <span className="font-bold">Total Revenue: {formatCurrency(summary.totalRevenue)}</span>
+                            <span>Showing <strong>{displayMetrics.length}</strong> {groupByVideo ? 'videos' : 'records'}</span>
+                            <div className="flex items-center gap-4">
+                                <span className="font-bold hidden sm:inline">Total Revenue: {formatCurrency(summary.totalRevenue)}</span>
+                                <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-full border border-red-200 hover:bg-red-50 transition-colors shadow-sm select-none">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={groupByVideo} 
+                                        onChange={() => setGroupByVideo(!groupByVideo)} 
+                                        className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
+                                    />
+                                    <span className="text-xs font-bold text-red-700 uppercase">Group by Video</span>
+                                </label>
+                            </div>
                         </div>
 
                         {/* Delete All Button */}
@@ -641,21 +699,25 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
                                             <th className="px-4 py-3 w-10 bg-slate-50">
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={selectedIds.size === displayMetrics.length && displayMetrics.length > 0}
-                                                    onChange={() => {
-                                                        if (selectedIds.size === displayMetrics.length) setSelectedIds(new Set());
-                                                        else setSelectedIds(new Set(displayMetrics.map(m => m.id)));
-                                                    }}
-                                                    className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
-                                                />
+                                                {!groupByVideo && (
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedIds.size === displayMetrics.length && displayMetrics.length > 0}
+                                                        onChange={() => {
+                                                            if (selectedIds.size === displayMetrics.length) setSelectedIds(new Set());
+                                                            else setSelectedIds(new Set(displayMetrics.map(m => m.id)));
+                                                        }}
+                                                        className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                                                    />
+                                                )}
                                             </th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('reportYear')}>
-                                                <div className="flex items-center gap-1">Report Year {getSortIcon('reportYear')}</div>
-                                            </th>
+                                            {!groupByVideo && (
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('reportYear')}>
+                                                    <div className="flex items-center gap-1">Year Reported {getSortIcon('reportYear')}</div>
+                                                </th>
+                                            )}
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('publishDate')}>
-                                                <div className="flex items-center gap-1">Published {getSortIcon('publishDate')}</div>
+                                                <div className="flex items-center gap-1">Year Published {getSortIcon('publishDate')}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('videoTitle')}>
                                                 <div className="flex items-center gap-1">Video {getSortIcon('videoTitle')}</div>
@@ -670,24 +732,29 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                     </thead>
                                     <tbody className="divide-y divide-slate-200 bg-white">
                                         {paginatedMetrics.map((m) => (
-                                            <tr key={m.id} className={selectedIds.has(m.id) ? "bg-red-50" : "hover:bg-slate-50 transition-colors"}>
+                                            <tr key={m.id} className={!groupByVideo && selectedIds.has(m.id) ? "bg-red-50" : "hover:bg-slate-50 transition-colors"}>
                                                 <td className="px-4 py-2 text-center">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedIds.has(m.id)} 
-                                                        onChange={() => handleToggleSelection(m.id)}
-                                                        className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
-                                                    />
+                                                    {!groupByVideo && (
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedIds.has(m.id)} 
+                                                            onChange={() => handleToggleSelection(m.id)}
+                                                            className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                                                        />
+                                                    )}
                                                 </td>
-                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">
-                                                    {m.reportYear || '-'}
-                                                </td>
+                                                {!groupByVideo && (
+                                                    <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">
+                                                        {m.reportYear || '-'}
+                                                    </td>
+                                                )}
                                                 <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">
                                                     {m.publishDate}
                                                     {m.channelId && <div className="text-xs text-indigo-600">{channelMap.get(m.channelId)}</div>}
                                                 </td>
                                                 <td className="px-4 py-2 text-sm text-slate-800">
                                                     <div className="line-clamp-1 max-w-md" title={m.videoTitle}>{m.videoTitle}</div>
+                                                    {groupByVideo && <div className="text-xs text-slate-400 mt-0.5">{m.videoId}</div>}
                                                 </td>
                                                 <td className="px-4 py-2 text-right text-sm text-slate-600">{formatNumber(m.views)}</td>
                                                 <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.estimatedRevenue)}</td>
@@ -698,7 +765,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             </div>
                             {totalPages > 1 && (
                                 <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 sticky bottom-0 z-20">
-                                    <div className="text-sm text-slate-600">{startIndex + 1}-{Math.min(startIndex + rowsPerPage, displayMetrics.length)} of {displayMetrics.length}</div>
+                                    <div className="text-sm text-slate-600">{startIndex + 1}-{Math.min(startIndex + rowsPerPage, sortedMetrics.length)} of {sortedMetrics.length}</div>
                                     <div className="flex items-center gap-2">
                                         <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronLeftIcon className="w-5 h-5 text-slate-600" /></button>
                                         <span className="text-sm font-medium text-slate-700">Page {currentPage}</span>
