@@ -98,9 +98,6 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
     if (lines.length < 2) return [];
 
     // Header Detection
-    // 1. Creator Connections often has "Campaign Title"
-    // 2. Standard Associates has "Tracking ID"
-    // Find header line
     let headerIndex = -1;
     let isCreatorConnections = false;
 
@@ -129,11 +126,8 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         asin: header.findIndex(h => h === 'asin'),
         title: header.findIndex(h => h === 'product title' || h === 'title' || h === 'name'),
         clicks: header.findIndex(h => h === 'clicks'),
-        ordered: header.findIndex(h => h === 'ordered items' || h === 'items shipped'), // Sometimes Items Shipped is the main metric in CC
+        ordered: header.findIndex(h => h === 'ordered items' || h === 'items shipped'),
         shipped: header.findIndex(h => h === 'shipped items'),
-        // Earnings/Revenue logic varies. 
-        // In Standard: "Ad Fees($)" or "Earnings" is income. "Revenue($)" or "Price" * "Items" is Sales Amount.
-        // In CC: "Commission Income" is income. "Revenue" is sales.
         income: header.findIndex(h => h.includes('earnings') || h.includes('ad fees') || h.includes('commission income') || h.includes('bounties')),
         conversion: header.findIndex(h => h.includes('conversion')),
         tracking: header.findIndex(h => h.includes('tracking id')),
@@ -147,15 +141,22 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
 
     // Process rows
     for (let i = headerIndex + 1; i < lines.length; i++) {
-        const line = lines[i].trim();
+        let line = lines[i].trim();
         if (!line) continue;
 
-        // Handle CSV split respecting quotes
-        // Simple splitter for tab/comma
         let values: string[] = [];
         if (line.includes('\t')) {
              values = line.split('\t').map(v => v.trim().replace(/"/g, ''));
         } else {
+             // Handle "inch" symbol edge case in CSVs
+             // If a line has an odd number of quotes, it's likely broken by unescaped inches (e.g. 1.8")
+             const quoteCount = (line.match(/"/g) || []).length;
+             if (quoteCount % 2 !== 0) {
+                 // Heuristic: Replace quotes preceded by a digit with "in" to normalize quotes
+                 // matches 1.8" or 1/4"
+                 line = line.replace(/(\d)"/g, '$1in');
+             }
+
              // CSV regex
              values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
         }
@@ -196,9 +197,9 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
             asin: asin,
             title: colMap.title > -1 ? values[colMap.title] : (campaignTitle || `Unknown Product (${asin})`),
             clicks: parseNum(colMap.clicks),
-            orderedItems: parseNum(colMap.ordered), // CC uses 'Shipped Items' column for quantity often
+            orderedItems: parseNum(colMap.ordered),
             shippedItems: parseNum(colMap.shipped),
-            revenue: parseNum(colMap.income), // This maps to our unified "Revenue/Earnings" field
+            revenue: parseNum(colMap.income),
             conversionRate: parseNum(colMap.conversion),
             trackingId: trackingId,
             category: colMap.category > -1 ? values[colMap.category] : undefined,
