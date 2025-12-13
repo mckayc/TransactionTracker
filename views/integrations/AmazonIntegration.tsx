@@ -97,6 +97,10 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             let valA = a[sortKey];
             let valB = b[sortKey];
 
+            // Handle undefined/null values for optional fields
+            if (valA === undefined || valA === null) valA = '';
+            if (valB === undefined || valB === null) valB = '';
+
             // Handle strings vs numbers
             if (typeof valA === 'string' && typeof valB === 'string') {
                 valA = valA.toLowerCase();
