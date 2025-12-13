@@ -142,7 +142,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
                   {!isCollapsed && <span>AI Assistant</span>}
               </button>
           )}
-          {!isCollapsed && <CalendarView transactions={transactions} />}
+          {!isCollapsed && (
+            <>
+              <CalendarView transactions={transactions} />
+              <div className="text-center pb-2">
+                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.0.30</span>
+              </div>
+            </>
+          )}
       </div>
     </aside>
   );
