@@ -3,19 +3,17 @@
 
     WORKDIR /app
     
-    # Copy only dependency manifests first (better cache usage)
+    # Copy dependency manifests
     COPY package*.json ./
-    RUN npm ci
     
-    # Copy the rest of the source
+    # Install deps (no lockfile present)
+    RUN npm install
+    
+    # Copy rest of source
     COPY . .
     
-    # Build-time args (explicitly documented)
-    ARG API_KEY
+    # Build-time metadata (non-secret)
     ARG BUILD_TIME
-    
-    # Expose build-time values (useful for debugging)
-    ENV VITE_API_KEY=$API_KEY
     ENV BUILD_TIME=$BUILD_TIME
     
     # Build frontend
@@ -27,25 +25,24 @@
     
     WORKDIR /app
     
-    # Install native build deps only once
+    # Native build deps for better-sqlite3
     RUN apk add --no-cache python3 make g++
     
-    # Copy backend dependency manifests
+    # Copy backend manifests
     COPY package*.json ./
     
-    # Install production dependencies only
-    RUN npm ci --omit=dev && npm cache clean --force
+    # Install production deps only
+    RUN npm install --omit=dev && npm cache clean --force
     
     # Copy backend server
     COPY server.js ./
     
-    # Copy built frontend assets
+    # Copy built frontend
     COPY --from=builder /app/dist ./public
     
     # Create volume mount points
     RUN mkdir -p /app/data/config /app/media/files
     
-    # Runtime environment (NOT baked into frontend)
     ENV NODE_ENV=production
     ENV TZ=America/Denver
     
