@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon } from '../../components/Icons';
@@ -159,32 +158,39 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(50);
 
-    // Years for dropdown
-    const years = useMemo(() => Array.from({length: 51}, (_, i) => (2000 + i).toString()), []);
+    // Years for dropdown (2000-2050)
+    const years = useMemo(() => Array.from({length: 51}, (_, i) => (2000 + i).toString()).reverse(), []);
 
-    // Guess Year Effect
+    // Guess Year & Channel Effect
     useEffect(() => {
-        if (previewMetrics.length > 0 && !uploadYear) {
-            // Logic to guess year from previewMetrics
-            const yearCounts: Record<string, number> = {};
-            previewMetrics.forEach(m => {
-                if (m.publishDate) {
-                    const y = m.publishDate.substring(0, 4);
-                    yearCounts[y] = (yearCounts[y] || 0) + 1;
+        if (previewMetrics.length > 0) {
+            // 1. Guess Year from most frequent year in publishDate
+            if (!uploadYear) {
+                const yearCounts: Record<string, number> = {};
+                previewMetrics.forEach(m => {
+                    if (m.publishDate) {
+                        const y = m.publishDate.substring(0, 4);
+                        if (!isNaN(Number(y))) yearCounts[y] = (yearCounts[y] || 0) + 1;
+                    }
+                });
+                // Find most frequent year
+                let maxCount = 0;
+                let bestYear = '';
+                for (const [y, count] of Object.entries(yearCounts)) {
+                    if (count > maxCount) {
+                        maxCount = count;
+                        bestYear = y;
+                    }
                 }
-            });
-            // Find most frequent year
-            let maxCount = 0;
-            let bestYear = '';
-            for (const [y, count] of Object.entries(yearCounts)) {
-                if (count > maxCount) {
-                    maxCount = count;
-                    bestYear = y;
-                }
+                if (bestYear) setUploadYear(bestYear);
             }
-            if (bestYear) setUploadYear(bestYear);
+
+            // 2. Guess Channel if only one exists
+            if (!uploadChannelId && channels.length === 1) {
+                setUploadChannelId(channels[0].id);
+            }
         }
-    }, [previewMetrics, uploadYear]);
+    }, [previewMetrics, uploadYear, uploadChannelId, channels]);
 
     const displayMetrics = useMemo(() => {
         let result = metrics;
@@ -209,9 +215,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             let valA = a[sortKey];
             let valB = b[sortKey];
             
+            // Normalize undefined/null
+            if (valA === undefined || valA === null) valA = (typeof valB === 'number' ? 0 : '');
+            if (valB === undefined || valB === null) valB = (typeof valA === 'number' ? 0 : '');
+
             if (typeof valA === 'string' && typeof valB === 'string') {
-                valA = valA.toLowerCase();
-                valB = valB.toLowerCase();
+                const cmp = valA.toLowerCase().localeCompare(valB.toLowerCase());
+                return sortDirection === 'asc' ? cmp : -cmp;
             }
 
             if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
@@ -739,15 +749,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                     <ExternalLinkIcon className="w-5 h-5 text-indigo-600" />
                                     How to Export
                                 </h3>
-                                <ol className="space-y-3 list-decimal list-inside text-sm text-slate-600">
-                                    <li>Go to <a href="https://studio.youtube.com/" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline font-medium">YouTube Studio</a>.</li>
+                                <p className="text-sm text-slate-600 mb-2">Follow these exact steps:</p>
+                                <ol className="space-y-3 list-decimal list-inside text-sm text-slate-600 font-medium">
+                                    <li>Go to <a href="https://studio.youtube.com/" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">YouTube Studio</a>.</li>
                                     <li>Click <strong>Analytics</strong> in the left sidebar.</li>
-                                    <li>Click <strong>Advanced Mode</strong> in the top right corner.</li>
-                                    <li>
-                                        In the date picker (top right), select <strong>Custom</strong> and choose a full year (e.g., Jan 1 - Dec 31).
-                                    </li>
-                                    <li>Ensure the main tab selected is <strong>Video</strong> (usually default) to see per-video breakdown.</li>
-                                    <li>Click the <strong>Download</strong> icon (top right) and select <strong>Google Sheets</strong> or <strong>Comma-separated values (.csv)</strong>.</li>
+                                    <li>Click <strong>Advanced Mode</strong> (top right).</li>
+                                    <li>Select the <strong>Year</strong> in the date dropdown (top right).</li>
+                                    <li>Click <strong>Export current view</strong> (top right) and choose <strong>Comma-separated values (.csv)</strong>.</li>
                                     <li>Upload that file here.</li>
                                 </ol>
                             </div>
