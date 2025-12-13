@@ -1,9 +1,10 @@
 
+
 import React from 'react';
-import { PuzzleIcon, ArrowRightIcon, BoxIcon } from '../components/Icons';
+import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon } from '../components/Icons';
 
 interface IntegrationsPageProps {
-    onNavigate: (view: 'integration-amazon') => void;
+    onNavigate: (view: 'integration-amazon' | 'integration-youtube') => void;
 }
 
 const IntegrationCard: React.FC<{
@@ -52,6 +53,14 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
                     status="active"
                     onClick={() => onNavigate('integration-amazon')}
                 />
+
+                <IntegrationCard 
+                    title="YouTube Analytics" 
+                    description="Track estimated revenue, views, subscribers, and watch time performance by video."
+                    icon={<YoutubeIcon className="w-8 h-8" />}
+                    status="active"
+                    onClick={() => onNavigate('integration-youtube')}
+                />
                 
                 {/* Future placeholders */}
                 <div className="bg-slate-50 p-6 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-center opacity-70">
@@ -59,7 +68,7 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
                         <PuzzleIcon className="w-8 h-8" />
                     </div>
                     <h3 className="font-bold text-slate-600">More Coming Soon</h3>
-                    <p className="text-xs text-slate-500 mt-1">YouTube, Etsy, and more.</p>
+                    <p className="text-xs text-slate-500 mt-1">Etsy, Shopify, and more.</p>
                 </div>
             </div>
         </div>

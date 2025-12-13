@@ -1,7 +1,7 @@
 
 
 import React, { useState, useEffect } from 'react';
-import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange, AmazonMetric } from '../types';
+import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange, AmazonMetric, YouTubeMetric } from '../types';
 import ReportColumn from '../components/ReportColumn';
 import ReportConfigModal from '../components/ReportConfigModal';
 import { AddIcon, DeleteIcon, EditIcon, ChartPieIcon, CloseIcon, DocumentIcon, FolderIcon, CheckCircleIcon, SettingsIcon, DragHandleIcon } from '../components/Icons';
@@ -20,9 +20,10 @@ interface ReportsProps {
   savedDateRanges: CustomDateRange[];
   setSavedDateRanges: React.Dispatch<React.SetStateAction<CustomDateRange[]>>;
   amazonMetrics: AmazonMetric[];
+  youtubeMetrics: YouTubeMetric[];
 }
 
-const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users, tags, accounts, savedReports, setSavedReports, savedDateRanges, setSavedDateRanges, amazonMetrics }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users, tags, accounts, savedReports, setSavedReports, savedDateRanges, setSavedDateRanges, amazonMetrics, youtubeMetrics }) => {
     
     // Active columns in the workspace
     const [activeReports, setActiveReports] = useState<ReportConfig[]>([]);
@@ -286,6 +287,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                     onDeleteDateRange={handleDeleteDateRange}
                                     savedReports={savedReports}
                                     amazonMetrics={amazonMetrics}
+                                    youtubeMetrics={youtubeMetrics}
                                 />
                             </div>
                         ))}
@@ -405,6 +407,9 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                                     </span>
                                                     {report.config.dataSource === 'amazon' && (
                                                         <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold">Amazon</span>
+                                                    )}
+                                                    {report.config.dataSource === 'youtube' && (
+                                                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded text-[10px] font-bold">YouTube</span>
                                                     )}
                                                 </div>
                                             </div>

@@ -1,25 +1,16 @@
 
-import type { RawTransaction, TransactionType, AmazonMetric, AmazonReportType } from '../types';
+import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType } from '../types';
 import { generateUUID } from '../utils';
 
 declare const pdfjsLib: any;
 
 const cleanDescription = (string: string): string => {
   // Cleans up common noise from transaction descriptions for better readability.
-  // "COSTCO WHSE #0733 " -> "COSTCO WHSE #0733"
-  // "'AMAZON PRIME'," -> "AMAZON PRIME"
   let cleaned = string.trim();
-  // Collapse multiple spaces into one
   cleaned = cleaned.replace(/\s+/g, ' ');
-  // Remove one or more quotes from the start and end
   cleaned = cleaned.replace(/^["']+|["']+$/g, '');
-  // Remove one or more trailing commas or periods
   cleaned = cleaned.replace(/[,.]+$/, '');
-  
-  // Clean up common bank statement noise prefixes
   cleaned = cleaned.replace(/^(Pos Debit|Debit Purchase|Recurring Payment|Preauthorized Debit|Checkcard|Visa Purchase) - /i, '');
-  
-  // Trim again in case the removals left whitespace at the ends
   return cleaned.trim();
 };
 
@@ -40,11 +31,11 @@ const readFileAsText = (file: File): Promise<string> => {
 };
 
 const parseDate = (dateStr: string): Date | null => {
-    if (!dateStr || dateStr.length < 5) return null; // Avoid tiny strings
+    if (!dateStr || dateStr.length < 5) return null;
 
     // Try YYYY-MM-DD
     if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) {
-        const date = new Date(dateStr + 'T00:00:00'); // Add time to avoid timezone issues
+        const date = new Date(dateStr + 'T00:00:00'); 
         if (!isNaN(date.getTime())) return date;
     }
     
@@ -52,7 +43,7 @@ const parseDate = (dateStr: string): Date | null => {
     if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(dateStr)) {
         const parts = dateStr.split('-');
         let year = parseInt(parts[2], 10);
-        if (year < 100) { // Handle 2-digit year
+        if (year < 100) { 
             year += year < 70 ? 2000 : 1900;
         }
         const date = new Date(year, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
@@ -63,17 +54,15 @@ const parseDate = (dateStr: string): Date | null => {
     if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(dateStr)) {
         const parts = dateStr.split('/');
         let year = parseInt(parts[2], 10);
-        if (year < 100) { // Handle 2-digit year
+        if (year < 100) { 
             year += year < 70 ? 2000 : 1900;
         }
         const date = new Date(year, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
         if (!isNaN(date.getTime())) return date;
     }
 
-    // Fallback for textual dates like "Nov 6, 2025" or "02-Nov-2024"
-    // We add a strict check to ensure it contains a month name or looks date-like
+    // Fallback for textual dates like "Nov 6, 2025" or "02-Nov-2024" or "Apr 1, 2023"
     const hasDateStructure = /[a-zA-Z]{3,}\s+\d{1,2},?\s+\d{4}/.test(dateStr) || /\d{1,2}\s+[a-zA-Z]{3,}\s+\d{4}/.test(dateStr) || /\d{1,2}-[a-zA-Z]{3}-\d{4}/.test(dateStr);
-    
     if (hasDateStructure) {
         const date = new Date(dateStr);
         if (!isNaN(date.getTime()) && date.getFullYear() > 1990 && date.getFullYear() < 2050) return date;
@@ -148,16 +137,10 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         if (line.includes('\t')) {
              values = line.split('\t').map(v => v.trim().replace(/"/g, ''));
         } else {
-             // Handle "inch" symbol edge case in CSVs
-             // If a line has an odd number of quotes, it's likely broken by unescaped inches (e.g. 1.8")
              const quoteCount = (line.match(/"/g) || []).length;
              if (quoteCount % 2 !== 0) {
-                 // Heuristic: Replace quotes preceded by a digit with "in" to normalize quotes
-                 // matches 1.8" or 1/4"
                  line = line.replace(/(\d)"/g, '$1in');
              }
-
-             // CSV regex
              values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
         }
         
@@ -181,7 +164,6 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         const trackingId = colMap.tracking > -1 ? values[colMap.tracking] : 'creator-connections';
         const campaignTitle = colMap.campaignTitle > -1 ? values[colMap.campaignTitle] : undefined;
 
-        // Determine Report Type
         let reportType: AmazonReportType = 'unknown';
         if (isCreatorConnections || campaignTitle) {
             reportType = 'creator_connections';
@@ -213,6 +195,97 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
     onProgress(`Parsed ${metrics.length} amazon metrics.`);
     return metrics;
 }
+
+export const parseYouTubeReport = async (file: File, onProgress: (msg: string) => void): Promise<YouTubeMetric[]> => {
+    onProgress(`Reading ${file.name}...`);
+    const text = await readFileAsText(file);
+    const lines = text.split('\n');
+    const metrics: YouTubeMetric[] = [];
+
+    if (lines.length < 2) return [];
+
+    // Find header row containing "Video title" or "Content"
+    let headerIndex = -1;
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+        const lower = lines[i].toLowerCase();
+        if (lower.includes('video title') || (lower.includes('content') && lower.includes('views'))) {
+            headerIndex = i;
+            break;
+        }
+    }
+
+    if (headerIndex === -1) {
+        throw new Error("Invalid YouTube Report format. Could not find header row.");
+    }
+
+    // Determine separator (Comma or Tab)
+    const headerLine = lines[headerIndex];
+    const separator = headerLine.includes('\t') ? '\t' : ',';
+    
+    const header = headerLine.split(separator).map(h => h.trim().replace(/"/g, '').toLowerCase());
+
+    const colMap = {
+        content: header.findIndex(h => h === 'content' || h === 'video id'),
+        title: header.findIndex(h => h === 'video title'),
+        publishTime: header.findIndex(h => h === 'video publish time' || h === 'publish date'),
+        views: header.findIndex(h => h === 'views'),
+        watchTime: header.findIndex(h => h.includes('watch time')),
+        subscribers: header.findIndex(h => h === 'subscribers'),
+        revenue: header.findIndex(h => h.includes('estimated revenue') || h.includes('revenue')),
+        impressions: header.findIndex(h => h === 'impressions'),
+        ctr: header.findIndex(h => h.includes('click-through rate'))
+    };
+
+    if (colMap.title === -1 || colMap.views === -1) {
+        throw new Error("Missing critical columns (Video title or Views).");
+    }
+
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+        let line = lines[i].trim();
+        if (!line) continue;
+
+        let values: string[] = [];
+        if (separator === '\t') {
+             values = line.split('\t').map(v => v.trim().replace(/"/g, ''));
+        } else {
+             // Basic CSV split, handle quotes crudely if needed
+             values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
+        }
+
+        // Skip "Total" row or invalid rows
+        if (values.length < 3) continue;
+        if (values[0].toLowerCase() === 'total' || values[colMap.title].toLowerCase() === '') continue;
+
+        const parseNum = (idx: number) => {
+            if (idx === -1) return 0;
+            const val = values[idx]?.replace(/[$,%]/g, '');
+            return parseFloat(val) || 0;
+        }
+
+        // Parse Date - Use Publish Time as the record date
+        const dateRaw = colMap.publishTime > -1 ? values[colMap.publishTime] : '';
+        const parsedDate = parseDate(dateRaw) || new Date(); // Default to today if missing? Or should we skip?
+        // Note: The provided sample data uses "Apr 1, 2023" format which parseDate handles.
+        
+        const metric: YouTubeMetric = {
+            id: generateUUID(),
+            videoId: colMap.content > -1 ? values[colMap.content] : 'unknown',
+            videoTitle: values[colMap.title] || 'Unknown Video',
+            publishDate: formatDate(parsedDate),
+            views: parseNum(colMap.views),
+            watchTimeHours: parseNum(colMap.watchTime),
+            subscribersGained: parseNum(colMap.subscribers),
+            estimatedRevenue: parseNum(colMap.revenue),
+            impressions: parseNum(colMap.impressions),
+            ctr: parseNum(colMap.ctr)
+        };
+
+        metrics.push(metric);
+    }
+
+    onProgress(`Parsed ${metrics.length} videos.`);
+    return metrics;
+};
 
 const parseCSV = (lines: string[], accountId: string, transactionTypes: TransactionType[], sourceName: string): RawTransaction[] => {
     const transactions: RawTransaction[] = [];

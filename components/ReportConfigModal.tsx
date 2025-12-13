@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset, Transaction, AmazonReportType } from '../types';
-import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon, SaveIcon, BoxIcon } from './Icons';
+import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon, SaveIcon, BoxIcon, YoutubeIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
 import { calculateDateRange } from './ReportColumn';
@@ -28,7 +28,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     isOpen, onClose, onSave, initialConfig, accounts, categories, users, transactionTypes, tags, payees, savedDateRanges, onSaveDateRange, onDeleteDateRange, transactions
 }) => {
     const [name, setName] = useState('');
-    const [dataSource, setDataSource] = useState<'financial' | 'amazon'>('financial');
+    const [dataSource, setDataSource] = useState<'financial' | 'amazon' | 'youtube'>('financial');
     const [datePreset, setDatePreset] = useState<DateRangePreset>('thisMonth');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
@@ -65,7 +65,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setDatePreset(initialConfig.datePreset);
                 setCustomStartDate(initialConfig.customStartDate || '');
                 setCustomEndDate(initialConfig.customEndDate || '');
-                setGroupBy(initialConfig.groupBy || (initialConfig.dataSource === 'amazon' ? 'source' : 'category'));
+                setGroupBy(initialConfig.groupBy || (initialConfig.dataSource === 'amazon' ? 'source' : (initialConfig.dataSource === 'youtube' ? 'video' : 'category')));
                 setSubGroupBy(initialConfig.subGroupBy || '');
                 
                 // Hydrate filters
@@ -104,7 +104,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     // Live Preview Logic (Only for Financial Transactions currently, adding dummy data for amazon preview might be complex without props)
     // We will just show a placeholder preview for Amazon for simplicity in this modal, relying on real data in the main view.
     const previewData = useMemo(() => {
-        if (!isOpen || dataSource === 'amazon') return { transactions: [], total: 0, count: 0, dateLabel: '' };
+        if (!isOpen || dataSource !== 'financial') return { transactions: [], total: 0, count: 0, dateLabel: '' };
         
         const { start, end } = calculateDateRange(datePreset, customStartDate, customEndDate, savedDateRanges);
         const filterEnd = new Date(end);
@@ -332,6 +332,12 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                         >
                                             <BoxIcon className="w-3 h-3" /> Amazon
                                         </button>
+                                        <button 
+                                            onClick={() => { setDataSource('youtube'); setGroupBy('video'); }} 
+                                            className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-1 ${dataSource === 'youtube' ? 'bg-white shadow text-red-700' : 'text-slate-500 hover:text-slate-700'}`}
+                                        >
+                                            <YoutubeIcon className="w-3 h-3" /> YouTube
+                                        </button>
                                     </div>
                                 </div>
 
@@ -368,11 +374,15 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                                     <option value="type">Type</option>
                                                     <option value="tag">Tag</option>
                                                 </>
-                                            ) : (
+                                            ) : dataSource === 'amazon' ? (
                                                 <>
                                                     <option value="source">Source (On/Offsite)</option>
                                                     <option value="category">Category</option>
                                                     <option value="product">Product (ASIN)</option>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <option value="video">Video</option>
                                                 </>
                                             )}
                                         </select>
@@ -391,7 +401,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                             <MultiSelect label="Tags" options={tags} selectedIds={selectedTags} onChange={setSelectedTags} />
                                             <MultiSelect label="Payees" options={payees} selectedIds={selectedPayees} onChange={setSelectedPayees} />
                                         </>
-                                    ) : (
+                                    ) : dataSource === 'amazon' ? (
                                         <div className="flex flex-col gap-2">
                                             <label className="text-xs font-bold text-slate-500 uppercase">Traffic Source</label>
                                             <div className="flex flex-wrap gap-2">
@@ -402,6 +412,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                                 ))}
                                             </div>
                                         </div>
+                                    ) : (
+                                        <p className="text-xs text-slate-400 italic">No additional filters for YouTube reports.</p>
                                     )}
                                 </div>
                             </>
@@ -424,7 +436,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                 </table>
                             ) : (
                                 <div className="flex items-center justify-center h-full text-slate-400">
-                                    <p className="text-sm italic">Amazon metric preview is available in the Reports view.</p>
+                                    <p className="text-sm italic">Metrics preview is available in the Reports view.</p>
                                 </div>
                             )}
                         </div>

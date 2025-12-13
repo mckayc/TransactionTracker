@@ -1,7 +1,7 @@
 
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric } from '../types';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric, YouTubeMetric } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import TransactionTable from './TransactionTable';
@@ -23,6 +23,7 @@ interface ReportColumnProps {
     onDeleteDateRange: (id: string) => void;
     savedReports?: SavedReport[];
     amazonMetrics?: AmazonMetric[];
+    youtubeMetrics?: YouTubeMetric[];
 }
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
@@ -357,7 +358,7 @@ const ReportRow: React.FC<{
     );
 };
 
-const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, onUpdateReport, savedDateRanges, onSaveDateRange, onDeleteDateRange, savedReports, amazonMetrics }) => {
+const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, onUpdateReport, savedDateRanges, onSaveDateRange, onDeleteDateRange, savedReports, amazonMetrics, youtubeMetrics }) => {
     
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
@@ -386,11 +387,18 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
         let filteredItems: any[] = [];
         const isAmazon = config.dataSource === 'amazon';
+        const isYouTube = config.dataSource === 'youtube';
 
         if (isAmazon) {
             filteredItems = (amazonMetrics || []).filter(m => {
                 if (m.date < startDateStr || m.date > endDateStr) return false;
                 if (config.filters.amazonSources && !config.filters.amazonSources.includes(m.reportType)) return false;
+                return true;
+            });
+        } else if (isYouTube) {
+            filteredItems = (youtubeMetrics || []).filter(m => {
+                // Using publishDate as the filter date
+                if (m.publishDate < startDateStr || m.publishDate > endDateStr) return false;
                 return true;
             });
         } else {
@@ -421,7 +429,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         
         let rootNodes: ItemNode[] = [];
 
-        if (isHierarchical && !isAmazon) {
+        if (isHierarchical && !isAmazon && !isYouTube) {
             const nodeMap = new Map<string, ItemNode>();
             
             const getNode = (id: string, label: string, parentId?: string): ItemNode => {
@@ -539,6 +547,17 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         key = m.asin;
                         label = m.title || m.asin;
                     }
+                } else if (isYouTube) {
+                    const m = item as YouTubeMetric;
+                    val = m.estimatedRevenue;
+                    if (config.groupBy === 'video') {
+                        key = m.videoId;
+                        label = m.videoTitle || m.videoId;
+                    } else {
+                        // Default fallback for YouTube if groupBy is generic
+                        key = m.videoId;
+                        label = m.videoTitle || m.videoId;
+                    }
                 } else {
                     const tx = item as Transaction;
                     val = tx.amount;
@@ -578,7 +597,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 }
                 const node = nodes.get(key)!;
                 node.ownValue += val;
-                if (!isAmazon) node.transactions.push(item as Transaction);
+                if (!isAmazon && !isYouTube) node.transactions.push(item as Transaction);
             });
             
             rootNodes = Array.from(nodes.values());
@@ -618,7 +637,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
         return { items: rootNodes, totalValue, visibleItems };
 
-    }, [transactions, config, dateRange, transactionTypes, categories, accounts, payees, tags, sortBy, amazonMetrics]);
+    }, [transactions, config, dateRange, transactionTypes, categories, accounts, payees, tags, sortBy, amazonMetrics, youtubeMetrics]);
 
     const handleConfigUpdate = (newConfig: ReportConfig) => {
         setConfig(newConfig);
@@ -654,7 +673,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
     const handleInspect = (item: ItemNode) => {
         // Inspection only works for transactions for now, not amazon metrics
-        if (config.dataSource === 'amazon') return;
+        if (config.dataSource === 'amazon' || config.dataSource === 'youtube') return;
         setInspectingTitle(`${item.label} Transactions`);
         setInspectingItems(item.transactions);
     };
@@ -667,6 +686,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     <div className="flex items-center gap-2">
                         <h3 className="font-bold text-slate-800 text-lg truncate" title={config.name}>{config.name}</h3>
                         {config.dataSource === 'amazon' && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 rounded font-bold uppercase">Amazon</span>}
+                        {config.dataSource === 'youtube' && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 rounded font-bold uppercase">YouTube</span>}
                     </div>
                     <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
                         <span className="truncate">{dateRange.label}</span>

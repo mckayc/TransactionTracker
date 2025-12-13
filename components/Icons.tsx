@@ -8,7 +8,8 @@ import {
     Play, Wand2, FileText, Lightbulb, UploadCloud, DollarSign, Bot, 
     Search, Wrench, Info, Eye, EyeOff, Folder, GripVertical, 
     ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Heart, Printer, 
-    ShieldCheck, Scissors, UsersRound, Puzzle, Box, BarChart3, ArrowRight
+    ShieldCheck, Scissors, UsersRound, Puzzle, Box, BarChart3, ArrowRight,
+    Youtube, Video
 } from 'lucide-react';
 
 export const UploadIcon = Upload;
@@ -67,3 +68,5 @@ export const PuzzleIcon = Puzzle;
 export const BoxIcon = Box;
 export const BarChartIcon = BarChart3;
 export const ArrowRightIcon = ArrowRight;
+export const YoutubeIcon = Youtube;
+export const VideoIcon = Video;

@@ -287,12 +287,12 @@ export interface CustomDateRange {
     offsets?: DateOffset[]; // Optional list of additional offsets for fixed periods
 }
 
-export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account' | 'source' | 'product';
+export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account' | 'source' | 'product' | 'video';
 
 export interface ReportConfig {
     id: string;
     name: string;
-    dataSource?: 'financial' | 'amazon'; // Default 'financial'
+    dataSource?: 'financial' | 'amazon' | 'youtube'; // Default 'financial'
     datePreset: DateRangePreset;
     customStartDate?: string; // Used for Custom Start, Specific Month (YYYY-MM), or Relative Offset (string "3")
     customEndDate?: string;
@@ -337,6 +337,19 @@ export interface AmazonMetric {
     category?: string;
     reportType: AmazonReportType;
     campaignTitle?: string; // For Creator Connections
+}
+
+export interface YouTubeMetric {
+    id: string;
+    videoId: string;
+    videoTitle: string;
+    publishDate: string; // YYYY-MM-DD
+    views: number;
+    watchTimeHours: number;
+    subscribersGained: number;
+    estimatedRevenue: number;
+    impressions: number;
+    ctr: number;
 }
 
 export interface IntegrationConfig {

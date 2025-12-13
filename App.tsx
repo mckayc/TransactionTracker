@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -20,6 +20,7 @@ import BusinessHub from './views/BusinessHub';
 import DocumentsPage from './views/DocumentsPage';
 import IntegrationsPage from './views/IntegrationsPage';
 import AmazonIntegration from './views/integrations/AmazonIntegration';
+import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
 import { MenuIcon, CloseIcon } from './components/Icons';
@@ -28,7 +29,7 @@ import { generateUUID } from './utils';
 import { api } from './services/apiService';
 import { saveFile, deleteFile } from './services/storageService';
 
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'integrations' | 'integration-amazon';
+type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'integrations' | 'integration-amazon' | 'integration-youtube';
 
 const DEFAULT_CATEGORIES: Category[] = [
     "Groceries", "Dining", "Shopping", "Travel", "Entertainment", "Utilities", "Health", "Services", "Transportation", "Income", "Other"
@@ -91,6 +92,7 @@ const App: React.FC = () => {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [savedDateRanges, setSavedDateRanges] = useState<CustomDateRange[]>([]);
   const [amazonMetrics, setAmazonMetrics] = useState<AmazonMetric[]>([]);
+  const [youtubeMetrics, setYoutubeMetrics] = useState<YouTubeMetric[]>([]);
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -181,6 +183,7 @@ const App: React.FC = () => {
       setChatSessions(safeLoad<ChatSession[]>('chatSessions', []));
       setSavedDateRanges(safeLoad<CustomDateRange[]>('savedDateRanges', []));
       setAmazonMetrics(safeLoad<AmazonMetric[]>('amazonMetrics', []));
+      setYoutubeMetrics(safeLoad<YouTubeMetric[]>('youtubeMetrics', []));
 
       // Handle Account Types and Accounts
       let finalAccountTypes = safeLoad<AccountType[]>('accountTypes', []);
@@ -214,7 +217,7 @@ const App: React.FC = () => {
       const viewParam = params.get('view');
       const taskId = params.get('taskId');
       
-      if (viewParam && ['dashboard', 'transactions', 'calendar', 'accounts', 'reports', 'settings', 'tasks', 'rules', 'payees', 'categories', 'tags', 'users', 'hub', 'documents', 'integrations', 'integration-amazon'].includes(viewParam)) {
+      if (viewParam && ['dashboard', 'transactions', 'calendar', 'accounts', 'reports', 'settings', 'tasks', 'rules', 'payees', 'categories', 'tags', 'users', 'hub', 'documents', 'integrations', 'integration-amazon', 'integration-youtube'].includes(viewParam)) {
           setCurrentView(viewParam as View);
       } else if (taskId) {
           // If taskId is present but no view, default to calendar context
@@ -259,7 +262,7 @@ const App: React.FC = () => {
                       transactions, accounts, accountTypes, categories, tags, payees, 
                       reconciliationRules, templates, scheduledEvents, users, 
                       transactionTypes, businessProfile, documentFolders, savedReports,
-                      chatSessions, savedDateRanges, amazonMetrics
+                      chatSessions, savedDateRanges, amazonMetrics, youtubeMetrics
                   };
                   const jsonString = JSON.stringify(exportData, null, 2);
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
@@ -460,6 +463,12 @@ const App: React.FC = () => {
     const handler = setTimeout(() => api.save('amazonMetrics', amazonMetrics), 500);
     return () => clearTimeout(handler);
   }, [amazonMetrics, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('youtubeMetrics', youtubeMetrics), 500);
+    return () => clearTimeout(handler);
+  }, [youtubeMetrics, isLoading]);
 
 
   // Handlers
@@ -700,8 +709,6 @@ const App: React.FC = () => {
   };
 
   const handleAddAmazonMetrics = (newMetrics: AmazonMetric[]) => {
-      // Per request: No deduplication logic. Just import every entry.
-      // We append all new metrics to the existing state.
       if(newMetrics.length > 0) {
           setAmazonMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       }
@@ -710,6 +717,17 @@ const App: React.FC = () => {
   const handleDeleteAmazonMetrics = (ids: string[]) => {
       const idSet = new Set(ids);
       setAmazonMetrics(prev => prev.filter(m => !idSet.has(m.id)));
+  };
+
+  const handleAddYouTubeMetrics = (newMetrics: YouTubeMetric[]) => {
+      if(newMetrics.length > 0) {
+          setYoutubeMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime()));
+      }
+  };
+
+  const handleDeleteYouTubeMetrics = (ids: string[]) => {
+      const idSet = new Set(ids);
+      setYoutubeMetrics(prev => prev.filter(m => !idSet.has(m.id)));
   };
 
   if (isLoading) {
@@ -727,11 +745,9 @@ const App: React.FC = () => {
       case 'transactions':
         return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onSaveReport={handleAddSavedReport} />;
       case 'calendar':
-        // Modified to pass handleSaveTask to support full editing from calendar
-        // Added onAddTransaction for Donation modal support
         return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports':
-        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} savedDateRanges={savedDateRanges} setSavedDateRanges={setSavedDateRanges} amazonMetrics={amazonMetrics} />;
+        return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} savedDateRanges={savedDateRanges} setSavedDateRanges={setSavedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} />;
       case 'accounts':
         return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
       case 'users':
@@ -749,7 +765,6 @@ const App: React.FC = () => {
       case 'tasks':
         return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
       case 'hub':
-        // Passed additional financial data for AI context syncing
         return <BusinessHub 
             profile={businessProfile} 
             onUpdateProfile={setBusinessProfile} 
@@ -765,6 +780,8 @@ const App: React.FC = () => {
         return <IntegrationsPage onNavigate={setCurrentView} />;
       case 'integration-amazon':
         return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} onDeleteMetrics={handleDeleteAmazonMetrics} />;
+      case 'integration-youtube':
+        return <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={handleAddYouTubeMetrics} onDeleteMetrics={handleDeleteYouTubeMetrics} />;
       default:
         return null;
     }
