@@ -23,7 +23,36 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
-const formatNumber = (val: number) => new Intl.NumberFormat('en-US').format(val);
+const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
+
+// Simple SVG Bar Chart Component
+const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color: string }> = ({ data, color }) => {
+    if (data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data to display</div>;
+
+    const maxValue = Math.max(...data.map(d => d.value));
+    const barWidth = 100 / data.length;
+
+    return (
+        <div className="h-48 flex items-end gap-1 pt-6 pb-2">
+            {data.map((d, i) => {
+                const heightPct = maxValue > 0 ? (d.value / maxValue) * 100 : 0;
+                return (
+                    <div key={i} className="flex-1 flex flex-col justify-end group relative min-w-[4px]">
+                        <div 
+                            className={`w-full rounded-t-sm transition-all duration-500 ${color} opacity-80 hover:opacity-100`}
+                            style={{ height: `${Math.max(heightPct, 2)}%` }}
+                        ></div>
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10 shadow-lg">
+                            <div className="font-bold">{d.label}</div>
+                            <div>{formatCurrency(d.value)}</div>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
 
 const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload'>('dashboard');
@@ -35,6 +64,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     // Filter & Sort
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    
     const [sortKey, setSortKey] = useState<keyof YouTubeMetric>('publishDate');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     const [productSortKey, setProductSortKey] = useState<'estimatedRevenue' | 'views' | 'subscribersGained' | 'watchTimeHours'>('estimatedRevenue');
@@ -49,6 +81,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         if (debouncedSearchTerm) {
             const lowerSearch = debouncedSearchTerm.toLowerCase();
             result = result.filter(m => m.videoTitle.toLowerCase().includes(lowerSearch) || m.videoId.toLowerCase().includes(lowerSearch));
+        }
+
+        if (startDate) {
+            result = result.filter(m => m.publishDate >= startDate);
+        }
+        if (endDate) {
+            result = result.filter(m => m.publishDate <= endDate);
         }
 
         result.sort((a, b) => {
@@ -66,11 +105,14 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         });
 
         return result;
-    }, [metrics, debouncedSearchTerm, sortKey, sortDirection]);
+    }, [metrics, debouncedSearchTerm, startDate, endDate, sortKey, sortDirection]);
 
     const totalPages = Math.ceil(displayMetrics.length / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const paginatedMetrics = displayMetrics.slice(startIndex, startIndex + rowsPerPage);
+
+    // Reset pagination
+    useEffect(() => { setCurrentPage(1); }, [debouncedSearchTerm, startDate, endDate, rowsPerPage]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -107,7 +149,8 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             totalRevenue: 0,
             totalViews: 0,
             totalSubs: 0,
-            totalWatchTime: 0
+            totalWatchTime: 0,
+            avgRPM: 0
         };
         displayMetrics.forEach(m => {
             result.totalRevenue += m.estimatedRevenue;
@@ -115,7 +158,26 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             result.totalSubs += m.subscribersGained;
             result.totalWatchTime += m.watchTimeHours;
         });
+        
+        // RPM = (Revenue / Views) * 1000
+        if (result.totalViews > 0) {
+            result.avgRPM = (result.totalRevenue / result.totalViews) * 1000;
+        }
+
         return result;
+    }, [displayMetrics]);
+
+    // Chart Data: Aggregated Revenue by Publish Month
+    const revenueByMonth = useMemo(() => {
+        const grouped = new Map<string, number>();
+        displayMetrics.forEach(m => {
+            const monthKey = m.publishDate.substring(0, 7); // YYYY-MM
+            grouped.set(monthKey, (grouped.get(monthKey) || 0) + m.estimatedRevenue);
+        });
+        
+        return Array.from(grouped.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([date, value]) => ({ label: date, value }));
     }, [displayMetrics]);
 
     const topVideos = useMemo(() => {
@@ -151,6 +213,37 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
     };
 
+    const handleDeleteAll = () => {
+        if (window.confirm("WARNING: This will delete ALL YouTube Analytics data. Are you sure?")) {
+            const allIds = metrics.map(m => m.id);
+            onDeleteMetrics(allIds);
+            setSelectedIds(new Set());
+        }
+    };
+
+    // Date Range Presets
+    const setDateRange = (type: 'thisYear' | 'lastYear' | 'thisMonth' | 'lastMonth') => {
+        const now = new Date();
+        let start, end;
+        
+        if (type === 'thisYear') {
+            start = new Date(now.getFullYear(), 0, 1);
+            end = new Date(now.getFullYear(), 11, 31);
+        } else if (type === 'lastYear') {
+            start = new Date(now.getFullYear() - 1, 0, 1);
+            end = new Date(now.getFullYear() - 1, 11, 31);
+        } else if (type === 'thisMonth') {
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else {
+            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0);
+        }
+        
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(end.toISOString().split('T')[0]);
+    };
+
     return (
         <div className="space-y-6 h-full flex flex-col relative">
             <div className="flex justify-between items-center flex-shrink-0">
@@ -182,13 +275,36 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                 className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none"
                             />
                         </div>
-                        <button onClick={() => setSearchTerm('')} className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2">Clear</button>
+                        
+                        <div className="flex items-center gap-2 w-full md:w-auto">
+                            <input 
+                                type="date" 
+                                value={startDate} 
+                                onChange={(e) => setStartDate(e.target.value)} 
+                                className="p-2 border rounded-lg text-sm w-full md:w-auto" 
+                            />
+                            <span className="text-slate-400">-</span>
+                            <input 
+                                type="date" 
+                                value={endDate} 
+                                onChange={(e) => setEndDate(e.target.value)} 
+                                className="p-2 border rounded-lg text-sm w-full md:w-auto" 
+                            />
+                        </div>
+
+                        <div className="flex gap-2">
+                            <button onClick={() => setDateRange('thisMonth')} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-md font-medium text-slate-600">This Month</button>
+                            <button onClick={() => setDateRange('thisYear')} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-md font-medium text-slate-600">This Year</button>
+                        </div>
+
+                        <button onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); }} className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2">Clear</button>
                     </div>
                 )}
 
                 {activeTab === 'dashboard' && (
                     <div className="space-y-6 pb-8">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        {/* Summary Cards */}
+                        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Total Revenue</p>
                                 <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(summary.totalRevenue)}</p>
@@ -196,6 +312,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Total Views</p>
                                 <p className="text-2xl font-bold text-slate-800 mt-1">{formatNumber(summary.totalViews)}</p>
+                            </div>
+                            <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                                <p className="text-xs font-bold text-slate-400 uppercase">Avg RPM</p>
+                                <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(summary.avgRPM)}</p>
+                                <p className="text-[10px] text-slate-400">per 1k views</p>
                             </div>
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Total Subscribers</p>
@@ -207,6 +328,16 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             </div>
                         </div>
 
+                        {/* Visual Chart - Revenue by Publish Date */}
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                            <div className="mb-4">
+                                <h3 className="font-bold text-slate-700">Revenue by Publish Month</h3>
+                                <p className="text-xs text-slate-500">Cumulative estimated revenue for videos published in each month.</p>
+                            </div>
+                            <SimpleBarChart data={revenueByMonth} color="bg-red-500" />
+                        </div>
+
+                        {/* Top Videos Table */}
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                 <h3 className="font-bold text-slate-700">Top Performing Videos</h3>
@@ -255,68 +386,87 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 )}
 
                 {activeTab === 'data' && (
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0 overflow-hidden relative">
-                        <div className="overflow-auto flex-grow">
-                            <table className="min-w-full divide-y divide-slate-200">
-                                <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
-                                    <tr>
-                                        <th className="px-4 py-3 w-10 bg-slate-50">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={selectedIds.size === displayMetrics.length && displayMetrics.length > 0}
-                                                onChange={() => {
-                                                    if (selectedIds.size === displayMetrics.length) setSelectedIds(new Set());
-                                                    else setSelectedIds(new Set(displayMetrics.map(m => m.id)));
-                                                }}
-                                                className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
-                                            />
-                                        </th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('publishDate')}>
-                                            <div className="flex items-center gap-1">Published {getSortIcon('publishDate')}</div>
-                                        </th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('videoTitle')}>
-                                            <div className="flex items-center gap-1">Video {getSortIcon('videoTitle')}</div>
-                                        </th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('views')}>
-                                            <div className="flex items-center justify-end gap-1">Views {getSortIcon('views')}</div>
-                                        </th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('estimatedRevenue')}>
-                                            <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue')}</div>
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200 bg-white">
-                                    {paginatedMetrics.map((m) => (
-                                        <tr key={m.id} className={selectedIds.has(m.id) ? "bg-red-50" : "hover:bg-slate-50 transition-colors"}>
-                                            <td className="px-4 py-2 text-center">
+                    <div className="space-y-4 h-full flex flex-col">
+                        
+                        {/* Summary Bar for Data Table */}
+                        <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center justify-between text-sm text-red-900">
+                            <span>Showing <strong>{displayMetrics.length}</strong> records</span>
+                            <span className="font-bold">Total Revenue: {formatCurrency(summary.totalRevenue)}</span>
+                        </div>
+
+                        {/* Delete All Button */}
+                        <div className="flex justify-end">
+                             <button 
+                                onClick={handleDeleteAll} 
+                                className="text-red-600 hover:text-red-700 text-xs font-bold flex items-center gap-1 px-3 py-1 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap"
+                            >
+                                <DeleteIcon className="w-3 h-3" /> Delete All Data
+                            </button>
+                        </div>
+
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0 overflow-hidden relative">
+                            <div className="overflow-auto flex-grow">
+                                <table className="min-w-full divide-y divide-slate-200">
+                                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                                        <tr>
+                                            <th className="px-4 py-3 w-10 bg-slate-50">
                                                 <input 
                                                     type="checkbox" 
-                                                    checked={selectedIds.has(m.id)} 
-                                                    onChange={() => handleToggleSelection(m.id)}
+                                                    checked={selectedIds.size === displayMetrics.length && displayMetrics.length > 0}
+                                                    onChange={() => {
+                                                        if (selectedIds.size === displayMetrics.length) setSelectedIds(new Set());
+                                                        else setSelectedIds(new Set(displayMetrics.map(m => m.id)));
+                                                    }}
                                                     className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
                                                 />
-                                            </td>
-                                            <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.publishDate}</td>
-                                            <td className="px-4 py-2 text-sm text-slate-800">
-                                                <div className="line-clamp-1 max-w-md" title={m.videoTitle}>{m.videoTitle}</div>
-                                            </td>
-                                            <td className="px-4 py-2 text-right text-sm text-slate-600">{formatNumber(m.views)}</td>
-                                            <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.estimatedRevenue)}</td>
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('publishDate')}>
+                                                <div className="flex items-center gap-1">Published {getSortIcon('publishDate')}</div>
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('videoTitle')}>
+                                                <div className="flex items-center gap-1">Video {getSortIcon('videoTitle')}</div>
+                                            </th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('views')}>
+                                                <div className="flex items-center justify-end gap-1">Views {getSortIcon('views')}</div>
+                                            </th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('estimatedRevenue')}>
+                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue')}</div>
+                                            </th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        {totalPages > 1 && (
-                            <div className="border-t border-slate-200 p-3 bg-slate-50 flex justify-between items-center gap-3 sticky bottom-0 z-20">
-                                <div className="text-sm text-slate-600">{startIndex + 1}-{Math.min(startIndex + rowsPerPage, displayMetrics.length)} of {displayMetrics.length}</div>
-                                <div className="flex items-center gap-2">
-                                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronLeftIcon className="w-5 h-5 text-slate-600" /></button>
-                                    <span className="text-sm font-medium text-slate-700">Page {currentPage}</span>
-                                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronRightIcon className="w-5 h-5 text-slate-600" /></button>
-                                </div>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200 bg-white">
+                                        {paginatedMetrics.map((m) => (
+                                            <tr key={m.id} className={selectedIds.has(m.id) ? "bg-red-50" : "hover:bg-slate-50 transition-colors"}>
+                                                <td className="px-4 py-2 text-center">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedIds.has(m.id)} 
+                                                        onChange={() => handleToggleSelection(m.id)}
+                                                        className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
+                                                    />
+                                                </td>
+                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.publishDate}</td>
+                                                <td className="px-4 py-2 text-sm text-slate-800">
+                                                    <div className="line-clamp-1 max-w-md" title={m.videoTitle}>{m.videoTitle}</div>
+                                                </td>
+                                                <td className="px-4 py-2 text-right text-sm text-slate-600">{formatNumber(m.views)}</td>
+                                                <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.estimatedRevenue)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
-                        )}
+                            {totalPages > 1 && (
+                                <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 sticky bottom-0 z-20">
+                                    <div className="text-sm text-slate-600">{startIndex + 1}-{Math.min(startIndex + rowsPerPage, displayMetrics.length)} of {displayMetrics.length}</div>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronLeftIcon className="w-5 h-5 text-slate-600" /></button>
+                                        <span className="text-sm font-medium text-slate-700">Page {currentPage}</span>
+                                        <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronRightIcon className="w-5 h-5 text-slate-600" /></button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
 
