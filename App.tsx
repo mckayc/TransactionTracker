@@ -699,14 +699,22 @@ const App: React.FC = () => {
   };
 
   const handleAddAmazonMetrics = (newMetrics: AmazonMetric[]) => {
-      // deduplicate based on ID if needed, but for now just append new ones
-      // Since IDs are generated on parse, we should check distinct by date+asin?
-      // For simplicity, let's just append for now or filter duplicates
-      const existingIds = new Set(amazonMetrics.map(m => `${m.date}-${m.asin}`));
-      const filtered = newMetrics.filter(m => !existingIds.has(`${m.date}-${m.asin}`));
+      // Use a composite key including Tracking ID and Revenue to allow multiple rows per ASIN/Date
+      // This allows distinct transactions (e.g. different tracking IDs) to be imported separately
+      const getSignature = (m: AmazonMetric) => `${m.date}|${m.asin}|${m.trackingId}|${m.revenue.toFixed(2)}|${m.orderedItems}`;
       
-      if(filtered.length > 0) {
-          setAmazonMetrics(prev => [...prev, ...filtered].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      const existingSignatures = new Set(amazonMetrics.map(m => getSignature(m)));
+      
+      const uniqueNewMetrics = newMetrics.filter(m => {
+          const sig = getSignature(m);
+          if (existingSignatures.has(sig)) return false;
+          // Add to the local set to handle duplicates occurring within the new batch itself
+          existingSignatures.add(sig);
+          return true;
+      });
+      
+      if(uniqueNewMetrics.length > 0) {
+          setAmazonMetrics(prev => [...prev, ...uniqueNewMetrics].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       }
   };
 
