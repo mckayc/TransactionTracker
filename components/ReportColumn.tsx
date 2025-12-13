@@ -1,16 +1,14 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric } from '../types';
-import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon, BoxIcon } from './Icons';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport } from '../types';
+import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import TransactionTable from './TransactionTable';
-import AmazonTable from './AmazonTable';
 import ReportConfigModal from './ReportConfigModal';
 
 interface ReportColumnProps {
     config: ReportConfig;
     transactions: Transaction[];
-    amazonMetrics: AmazonMetric[]; // Added prop
     categories: Category[];
     transactionTypes: TransactionType[];
     accounts: Account[];
@@ -252,8 +250,7 @@ interface ItemNode {
     value: number; // Display Value (0 if hidden)
     sortValue: number; // Sort Value (includes value even if hidden)
     color: string;
-    // We use a flexible items array to hold either Transactions or Amazon Metrics
-    items: (Transaction | AmazonMetric)[];
+    transactions: Transaction[];
     children: ItemNode[];
     parentId?: string;
     ownValue: number; // Direct value of this node
@@ -358,14 +355,12 @@ const ReportRow: React.FC<{
     );
 };
 
-const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, amazonMetrics, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, onUpdateReport, savedDateRanges, onSaveDateRange, onDeleteDateRange, savedReports }) => {
+const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, onUpdateReport, savedDateRanges, onSaveDateRange, onDeleteDateRange, savedReports }) => {
     
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
     const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
-    
-    // Inspect state can hold either Transaction[] or AmazonMetric[]
-    const [inspectingItems, setInspectingItems] = useState<(Transaction | AmazonMetric)[] | null>(null);
+    const [inspectingItems, setInspectingItems] = useState<Transaction[] | null>(null);
     const [inspectingTitle, setInspectingTitle] = useState('');
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     
@@ -384,221 +379,174 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         const { start, end } = dateRange;
         const filterEnd = new Date(end);
         filterEnd.setHours(23, 59, 59, 999);
+
+        // 1. Filter Transactions
+        const filtered = transactions.filter(tx => {
+            if (tx.isParent) return false;
+            
+            const txDate = new Date(tx.date);
+            if (txDate < start || txDate > filterEnd) return false;
+
+            // Balance Effect Filter
+            const type = transactionTypes.find(t => t.id === tx.typeId);
+            if (!type || !config.filters.balanceEffects?.includes(type.balanceEffect)) return false;
+
+            if (config.filters.accountIds && !config.filters.accountIds.includes(tx.accountId || '')) return false;
+            if (config.filters.userIds && !config.filters.userIds.includes(tx.userId || '')) return false;
+            if (config.filters.categoryIds && !config.filters.categoryIds.includes(tx.categoryId)) return false;
+            if (config.filters.typeIds && !config.filters.typeIds.includes(tx.typeId)) return false;
+            if (config.filters.payeeIds && !config.filters.payeeIds.includes(tx.payeeId || '')) return false;
+            if (config.filters.tagIds && config.filters.tagIds.length > 0) {
+                if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) return false;
+            }
+
+            return true;
+        });
+
+        const isHierarchical = config.groupBy === 'category' || config.groupBy === 'payee';
         const hiddenIds = new Set(config.hiddenIds || config.hiddenCategoryIds || []);
         
         let rootNodes: ItemNode[] = [];
 
-        // --- DATA SOURCE: AMAZON ---
-        if (config.dataSource === 'amazon') {
-            const filteredMetrics = amazonMetrics.filter(m => {
-                const date = new Date(m.date);
-                if (date < start || date > filterEnd) return false;
-                if (config.amazonFilters?.reportTypes && !config.amazonFilters.reportTypes.includes(m.reportType)) return false;
-                return true;
+        if (isHierarchical) {
+            const nodeMap = new Map<string, ItemNode>();
+            
+            const getNode = (id: string, label: string, parentId?: string): ItemNode => {
+                if (!nodeMap.has(id)) {
+                    nodeMap.set(id, { 
+                        id, 
+                        label, 
+                        value: 0, 
+                        sortValue: 0,
+                        ownValue: 0,
+                        color: '', 
+                        transactions: [], 
+                        children: [], 
+                        parentId 
+                    });
+                }
+                return nodeMap.get(id)!;
+            }
+
+            // 1. Map transactions to nodes
+            filtered.forEach(tx => {
+                let key = '', label = 'Unknown', parentId: string | undefined = undefined;
+                
+                if (config.groupBy === 'category') {
+                    key = tx.categoryId;
+                    const cat = categories.find(c => c.id === key);
+                    label = cat?.name || 'Uncategorized';
+                    parentId = cat?.parentId;
+                } else if (config.groupBy === 'payee') {
+                    key = tx.payeeId || 'no-payee';
+                    const p = payees.find(py => py.id === key);
+                    label = p?.name || 'No Payee';
+                    parentId = p?.parentId;
+                }
+
+                const node = getNode(key, label, parentId);
+                node.ownValue += tx.amount; 
+                node.transactions.push(tx);
             });
 
-            const nodes = new Map<string, ItemNode>();
+            // 2. Build tree structure
+            const currentNodes = Array.from(nodeMap.values());
             
-            filteredMetrics.forEach(m => {
-                let key = '', label = 'Unknown';
+            currentNodes.forEach(node => {
+                if (node.parentId) {
+                    if (!nodeMap.has(node.parentId)) {
+                        let parentLabel = 'Unknown Parent';
+                        let grandParentId: string | undefined = undefined;
+                        
+                        if (config.groupBy === 'category') {
+                            const p = categories.find(c => c.id === node.parentId);
+                            if (p) { parentLabel = p.name; grandParentId = p.parentId; }
+                        } else {
+                            const p = payees.find(py => py.id === node.parentId);
+                            if (p) { parentLabel = p.name; grandParentId = p.parentId; }
+                        }
+                        getNode(node.parentId, parentLabel, grandParentId);
+                    }
+                    
+                    const parent = nodeMap.get(node.parentId)!;
+                    if (!parent.children.find(c => c.id === node.id)) {
+                        parent.children.push(node);
+                    }
+                }
+            });
+
+            // 3. Identify roots
+            const roots = Array.from(nodeMap.values()).filter(n => !n.parentId || !nodeMap.has(n.parentId));
+
+            // 4. Calculate total values recursively
+            const aggregateValues = (node: ItemNode): { visible: number, total: number } => {
+                let visibleSum = 0;
+                let totalSum = node.ownValue;
+
+                const isNodeHidden = hiddenIds.has(node.id);
+
+                if (!isNodeHidden) {
+                    visibleSum = node.ownValue;
+                }
                 
-                if (config.groupBy === 'reportType') {
-                    key = m.reportType;
-                    // Capitalize label nicely
-                    label = m.reportType === 'creator_connections' ? 'Creator Connections' : (m.reportType.charAt(0).toUpperCase() + m.reportType.slice(1));
-                } else if (config.groupBy === 'title') {
-                    key = m.asin;
-                    label = m.title || m.asin;
-                } else if (config.groupBy === 'category') {
-                    key = m.category || 'uncategorized';
-                    label = m.category || 'Uncategorized';
-                } else {
-                    // Default fallback
-                    key = 'all';
-                    label = 'All Metrics';
+                for (const child of node.children) {
+                    const childSums = aggregateValues(child);
+                    if (!isNodeHidden) {
+                        visibleSum += childSums.visible;
+                    }
+                    totalSum += childSums.total;
+                    node.transactions = [...node.transactions, ...child.transactions];
+                }
+                
+                node.value = visibleSum;
+                node.sortValue = totalSum;
+                return { visible: visibleSum, total: totalSum };
+            };
+            
+            roots.forEach(aggregateValues);
+            rootNodes = roots;
+
+        } else {
+            // Flat Aggregation
+            const nodes = new Map<string, ItemNode>();
+            filtered.forEach(tx => {
+                let key = '', label = 'Unknown';
+                if (config.groupBy === 'account') {
+                    key = tx.accountId || 'no-account';
+                    label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
+                } else if (config.groupBy === 'type') {
+                    key = tx.typeId;
+                    label = transactionTypes.find(t => t.id === key)?.name || 'Unknown Type';
+                } else if (config.groupBy === 'tag') {
+                    const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
+                    txTags.forEach(tagId => {
+                        const tagKey = tagId;
+                        const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
+                        if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
+                        
+                        if (!nodes.has(tagKey)) {
+                            nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, sortValue: 0, ownValue: 0, color: '', transactions: [], children: [] });
+                        }
+                        const node = nodes.get(tagKey)!;
+                        node.ownValue += tx.amount;
+                        node.transactions.push(tx);
+                    });
+                    return;
                 }
 
                 if (!nodes.has(key)) {
-                    nodes.set(key, { id: key, label, value: 0, sortValue: 0, ownValue: 0, color: '', items: [], children: [] });
+                    nodes.set(key, { id: key, label, value: 0, sortValue: 0, ownValue: 0, color: '', transactions: [], children: [] });
                 }
                 const node = nodes.get(key)!;
-                node.ownValue += m.revenue; // We use Revenue as the value
-                node.items.push(m);
+                node.ownValue += tx.amount;
+                node.transactions.push(tx);
             });
-
+            
             rootNodes = Array.from(nodes.values());
             rootNodes.forEach(node => {
                 node.sortValue = node.ownValue;
                 node.value = hiddenIds.has(node.id) ? 0 : node.ownValue;
             });
-
-        } 
-        // --- DATA SOURCE: TRANSACTIONS (Default) ---
-        else {
-            const filtered = transactions.filter(tx => {
-                if (tx.isParent) return false;
-                
-                const txDate = new Date(tx.date);
-                if (txDate < start || txDate > filterEnd) return false;
-
-                // Balance Effect Filter
-                const type = transactionTypes.find(t => t.id === tx.typeId);
-                if (!type || !config.filters.balanceEffects?.includes(type.balanceEffect)) return false;
-
-                if (config.filters.accountIds && !config.filters.accountIds.includes(tx.accountId || '')) return false;
-                if (config.filters.userIds && !config.filters.userIds.includes(tx.userId || '')) return false;
-                if (config.filters.categoryIds && !config.filters.categoryIds.includes(tx.categoryId)) return false;
-                if (config.filters.typeIds && !config.filters.typeIds.includes(tx.typeId)) return false;
-                if (config.filters.payeeIds && !config.filters.payeeIds.includes(tx.payeeId || '')) return false;
-                if (config.filters.tagIds && config.filters.tagIds.length > 0) {
-                    if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) return false;
-                }
-
-                return true;
-            });
-
-            const isHierarchical = config.groupBy === 'category' || config.groupBy === 'payee';
-            
-            if (isHierarchical) {
-                const nodeMap = new Map<string, ItemNode>();
-                
-                const getNode = (id: string, label: string, parentId?: string): ItemNode => {
-                    if (!nodeMap.has(id)) {
-                        nodeMap.set(id, { 
-                            id, 
-                            label, 
-                            value: 0, 
-                            sortValue: 0,
-                            ownValue: 0,
-                            color: '', 
-                            items: [], 
-                            children: [], 
-                            parentId 
-                        });
-                    }
-                    return nodeMap.get(id)!;
-                }
-
-                // 1. Map transactions to nodes
-                filtered.forEach(tx => {
-                    let key = '', label = 'Unknown', parentId: string | undefined = undefined;
-                    
-                    if (config.groupBy === 'category') {
-                        key = tx.categoryId;
-                        const cat = categories.find(c => c.id === key);
-                        label = cat?.name || 'Uncategorized';
-                        parentId = cat?.parentId;
-                    } else if (config.groupBy === 'payee') {
-                        key = tx.payeeId || 'no-payee';
-                        const p = payees.find(py => py.id === key);
-                        label = p?.name || 'No Payee';
-                        parentId = p?.parentId;
-                    }
-
-                    const node = getNode(key, label, parentId);
-                    node.ownValue += tx.amount; 
-                    node.items.push(tx);
-                });
-
-                // 2. Build tree structure
-                const currentNodes = Array.from(nodeMap.values());
-                
-                currentNodes.forEach(node => {
-                    if (node.parentId) {
-                        if (!nodeMap.has(node.parentId)) {
-                            let parentLabel = 'Unknown Parent';
-                            let grandParentId: string | undefined = undefined;
-                            
-                            if (config.groupBy === 'category') {
-                                const p = categories.find(c => c.id === node.parentId);
-                                if (p) { parentLabel = p.name; grandParentId = p.parentId; }
-                            } else {
-                                const p = payees.find(py => py.id === node.parentId);
-                                if (p) { parentLabel = p.name; grandParentId = p.parentId; }
-                            }
-                            getNode(node.parentId, parentLabel, grandParentId);
-                        }
-                        
-                        const parent = nodeMap.get(node.parentId)!;
-                        if (!parent.children.find(c => c.id === node.id)) {
-                            parent.children.push(node);
-                        }
-                    }
-                });
-
-                // 3. Identify roots
-                const roots = Array.from(nodeMap.values()).filter(n => !n.parentId || !nodeMap.has(n.parentId));
-
-                // 4. Calculate total values recursively
-                const aggregateValues = (node: ItemNode): { visible: number, total: number } => {
-                    let visibleSum = 0;
-                    let totalSum = node.ownValue;
-
-                    const isNodeHidden = hiddenIds.has(node.id);
-
-                    if (!isNodeHidden) {
-                        visibleSum = node.ownValue;
-                    }
-                    
-                    for (const child of node.children) {
-                        const childSums = aggregateValues(child);
-                        if (!isNodeHidden) {
-                            visibleSum += childSums.visible;
-                        }
-                        totalSum += childSums.total;
-                        node.items = [...node.items, ...child.items];
-                    }
-                    
-                    node.value = visibleSum;
-                    node.sortValue = totalSum;
-                    return { visible: visibleSum, total: totalSum };
-                };
-                
-                roots.forEach(aggregateValues);
-                rootNodes = roots;
-
-            } else {
-                // Flat Aggregation
-                const nodes = new Map<string, ItemNode>();
-                filtered.forEach(tx => {
-                    let key = '', label = 'Unknown';
-                    if (config.groupBy === 'account') {
-                        key = tx.accountId || 'no-account';
-                        label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
-                    } else if (config.groupBy === 'type') {
-                        key = tx.typeId;
-                        label = transactionTypes.find(t => t.id === key)?.name || 'Unknown Type';
-                    } else if (config.groupBy === 'tag') {
-                        const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
-                        txTags.forEach(tagId => {
-                            const tagKey = tagId;
-                            const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
-                            if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
-                            
-                            if (!nodes.has(tagKey)) {
-                                nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, sortValue: 0, ownValue: 0, color: '', items: [], children: [] });
-                            }
-                            const node = nodes.get(tagKey)!;
-                            node.ownValue += tx.amount;
-                            node.items.push(tx);
-                        });
-                        return;
-                    }
-
-                    if (!nodes.has(key)) {
-                        nodes.set(key, { id: key, label, value: 0, sortValue: 0, ownValue: 0, color: '', items: [], children: [] });
-                    }
-                    const node = nodes.get(key)!;
-                    node.ownValue += tx.amount;
-                    node.items.push(tx);
-                });
-                
-                rootNodes = Array.from(nodes.values());
-                rootNodes.forEach(node => {
-                    node.sortValue = node.ownValue;
-                    node.value = hiddenIds.has(node.id) ? 0 : node.ownValue;
-                });
-            }
         }
 
         // Sort roots first so colors align with magnitude, using sortValue (includes hidden amounts) to maintain order
@@ -612,11 +560,17 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             // Assign colors to children creating a lightness gradient
             const processChildren = (n: ItemNode, base: string) => {
                 if(n.children && n.children.length > 0) {
+                    // Sort children by value so largest gets darker shade if we varied by index?
+                    // Actually, let's keep it simple: lighter shades for all children
+                    // Sort children for color consistency using sortValue too
                     n.children.sort((a,b) => b.sortValue - a.sortValue);
+                    
                     n.children.forEach((child, idx) => {
+                        // Lighten each child. To distinguish siblings, we can shift slightly based on index
+                        // 15% lighter base + small variance per index
                         const lightness = 15 + (Math.min(idx, 5) * 5); 
                         child.color = lightenColor(base, lightness);
-                        processChildren(child, base); 
+                        processChildren(child, base); // Pass base color down to keep family resemblance
                     });
                 }
             };
@@ -630,7 +584,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
         return { items: rootNodes, totalValue, visibleItems };
 
-    }, [transactions, amazonMetrics, config, dateRange, transactionTypes, categories, accounts, payees, tags, sortBy]);
+    }, [transactions, config, dateRange, transactionTypes, categories, accounts, payees, tags, sortBy]);
 
     const handleConfigUpdate = (newConfig: ReportConfig) => {
         setConfig(newConfig);
@@ -665,8 +619,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     };
 
     const handleInspect = (item: ItemNode) => {
-        setInspectingTitle(`${item.label} Details`);
-        setInspectingItems(item.items);
+        setInspectingTitle(`${item.label} Transactions`);
+        setInspectingItems(item.transactions);
     };
 
     return (
@@ -677,14 +631,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     <h3 className="font-bold text-slate-800 text-lg truncate" title={config.name}>{config.name}</h3>
                     <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
                         <span className="truncate">{dateRange.label}</span>
-                        {config.dataSource === 'amazon' ? (
-                            <span className="px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">Amazon</span>
-                        ) : (
-                            config.filters.balanceEffects?.length === 1 && (
-                                <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-medium capitalize">
-                                    {config.filters.balanceEffects[0]}
-                                </span>
-                            )
+                        {config.filters.balanceEffects?.length === 1 && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-medium capitalize">
+                                {config.filters.balanceEffects[0]}
+                            </span>
                         )}
                     </div>
                 </div>
@@ -756,30 +706,19 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             <h3 className="font-bold text-lg text-slate-800">{inspectingTitle}</h3>
                             <button onClick={() => setInspectingItems(null)} className="p-1 rounded-full hover:bg-slate-100"><CloseIcon className="w-6 h-6"/></button>
                         </div>
-                        <div className="flex-1 overflow-auto bg-slate-50 relative">
-                            {config.dataSource === 'amazon' ? (
-                                <AmazonTable 
-                                    metrics={inspectingItems as AmazonMetric[]}
-                                    onUpdateMetric={() => {}} // Read-only view in report inspector
-                                    onDeleteMetric={() => {}}
-                                    selectedIds={new Set()}
-                                    onToggleSelection={() => {}}
-                                    onToggleSelectAll={() => {}}
-                                />
-                            ) : (
-                                <TransactionTable 
-                                    transactions={inspectingItems as Transaction[]}
-                                    accounts={accounts}
-                                    categories={categories}
-                                    tags={tags}
-                                    transactionTypes={transactionTypes}
-                                    payees={payees}
-                                    users={users}
-                                    onUpdateTransaction={() => {}} 
-                                    onDeleteTransaction={() => {}}
-                                    visibleColumns={new Set(['date', 'description', 'amount', 'account'])}
-                                />
-                            )}
+                        <div className="flex-1 overflow-auto">
+                            <TransactionTable 
+                                transactions={inspectingItems}
+                                accounts={accounts}
+                                categories={categories}
+                                tags={tags}
+                                transactionTypes={transactionTypes}
+                                payees={payees}
+                                users={users}
+                                onUpdateTransaction={() => {}} 
+                                onDeleteTransaction={() => {}}
+                                visibleColumns={new Set(['date', 'description', 'amount', 'account'])}
+                            />
                         </div>
                         <div className="p-4 border-t bg-slate-50 flex justify-end">
                             <button onClick={() => setInspectingItems(null)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Close</button>

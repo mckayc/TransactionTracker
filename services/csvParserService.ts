@@ -1,5 +1,4 @@
 
-
 import type { RawTransaction, TransactionType, AmazonMetric, AmazonReportType } from '../types';
 import { generateUUID } from '../utils';
 
@@ -7,11 +6,20 @@ declare const pdfjsLib: any;
 
 const cleanDescription = (string: string): string => {
   // Cleans up common noise from transaction descriptions for better readability.
+  // "COSTCO WHSE #0733 " -> "COSTCO WHSE #0733"
+  // "'AMAZON PRIME'," -> "AMAZON PRIME"
   let cleaned = string.trim();
+  // Collapse multiple spaces into one
   cleaned = cleaned.replace(/\s+/g, ' ');
+  // Remove one or more quotes from the start and end
   cleaned = cleaned.replace(/^["']+|["']+$/g, '');
+  // Remove one or more trailing commas or periods
   cleaned = cleaned.replace(/[,.]+$/, '');
+  
+  // Clean up common bank statement noise prefixes
   cleaned = cleaned.replace(/^(Pos Debit|Debit Purchase|Recurring Payment|Preauthorized Debit|Checkcard|Visa Purchase) - /i, '');
+  
+  // Trim again in case the removals left whitespace at the ends
   return cleaned.trim();
 };
 
@@ -32,22 +40,19 @@ const readFileAsText = (file: File): Promise<string> => {
 };
 
 const parseDate = (dateStr: string): Date | null => {
-    if (!dateStr || dateStr.length < 5) return null;
-
-    // Sanitize: "2024-12-31 0:00:00" -> "2024-12-31"
-    const cleanStr = dateStr.trim().split(/\s+|T/)[0];
+    if (!dateStr || dateStr.length < 5) return null; // Avoid tiny strings
 
     // Try YYYY-MM-DD
-    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(cleanStr)) {
-        const date = new Date(cleanStr + 'T00:00:00'); 
+    if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateStr)) {
+        const date = new Date(dateStr + 'T00:00:00'); // Add time to avoid timezone issues
         if (!isNaN(date.getTime())) return date;
     }
     
     // Try MM-DD-YYYY or MM-DD-YY
-    if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(cleanStr)) {
-        const parts = cleanStr.split('-');
+    if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(dateStr)) {
+        const parts = dateStr.split('-');
         let year = parseInt(parts[2], 10);
-        if (year < 100) { 
+        if (year < 100) { // Handle 2-digit year
             year += year < 70 ? 2000 : 1900;
         }
         const date = new Date(year, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
@@ -55,18 +60,20 @@ const parseDate = (dateStr: string): Date | null => {
     }
 
     // Try MM/DD/YY or MM/DD/YYYY
-    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(cleanStr)) {
-        const parts = cleanStr.split('/');
+    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(dateStr)) {
+        const parts = dateStr.split('/');
         let year = parseInt(parts[2], 10);
-        if (year < 100) { 
+        if (year < 100) { // Handle 2-digit year
             year += year < 70 ? 2000 : 1900;
         }
         const date = new Date(year, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
         if (!isNaN(date.getTime())) return date;
     }
 
-    // Standard JS Date parsing for other formats (e.g. "Dec 31, 2024")
-    const hasDateStructure = /[a-zA-Z]{3,}\s+\d{1,2},?\s+\d{4}/.test(dateStr) || /\d{1,2}\s+[a-zA-Z]{3,}\s+\d{4}/.test(dateStr);
+    // Fallback for textual dates like "Nov 6, 2025" or "02-Nov-2024"
+    // We add a strict check to ensure it contains a month name or looks date-like
+    const hasDateStructure = /[a-zA-Z]{3,}\s+\d{1,2},?\s+\d{4}/.test(dateStr) || /\d{1,2}\s+[a-zA-Z]{3,}\s+\d{4}/.test(dateStr) || /\d{1,2}-[a-zA-Z]{3}-\d{4}/.test(dateStr);
+    
     if (hasDateStructure) {
         const date = new Date(dateStr);
         if (!isNaN(date.getTime()) && date.getFullYear() > 1990 && date.getFullYear() < 2050) return date;
@@ -82,256 +89,129 @@ const formatDate = (date: Date): string => {
     return `${year}-${month}-${day}`;
 }
 
-export interface CsvData {
-    headers: string[];
-    rows: string[][];
-}
-
-/**
- * Robust CSV Line Parser
- * Handles:
- * - Delimiters inside quotes ("Product, Name")
- * - Escaped quotes ("Product ""Super"" Name")
- * - Empty fields
- */
-const parseCSVLine = (line: string, delimiter = ','): string[] => {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-    
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        const nextChar = line[i + 1];
-        
-        if (char === '"') {
-            if (inQuotes && nextChar === '"') {
-                // Escaped quote: "" becomes " inside a quoted field
-                current += '"';
-                i++; // Skip the next quote
-            } else {
-                // Toggle quote state
-                inQuotes = !inQuotes;
-            }
-        } else if (char === delimiter && !inQuotes) {
-            // Found delimiter outside quotes: End of field
-            result.push(current.trim()); // Trim whitespace around unquoted delimiters
-            current = '';
-        } else {
-            current += char;
-        }
-    }
-    // Push the last field
-    result.push(current.trim());
-    return result;
-};
-
-export const readStringAsCSV = (text: string): CsvData => {
-    const lines = text.split('\n');
-    
-    // --- Header Detection Strategy: Scoring ---
-    // We scan the first 50 lines. The line with the most matches to known Amazon/Financial headers wins.
-    // This allows us to skip "Fee-Earnings Report", "Generated by...", or blank lines.
-    
-    const keywords = [
-        'asin', 'date', 'product title', 'title', 'name', 
-        'ordered items', 'shipped items', 'clicks', 'conversion',
-        'revenue', 'earnings', 'fees', 'commission', 'bonus', 
-        'tracking id', 'tag', 'category'
-    ];
-
-    let bestHeaderIndex = -1;
-    let maxScore = 0;
-
-    // Scan first 50 lines to find the most likely header row
-    for(let i=0; i<Math.min(lines.length, 50); i++) {
-        const line = lines[i].toLowerCase().trim();
-        if (line.length === 0) continue;
-
-        let score = 0;
-        keywords.forEach(k => {
-            if (line.includes(k)) score++;
-        });
-
-        // Heuristic: A header line shouldn't be excessively long (like a legal footer)
-        if (score > maxScore && line.length < 1000) {
-            maxScore = score;
-            bestHeaderIndex = i;
-        }
-    }
-
-    // Fallback: If no good header found, try finding just "ASIN" or assume line 0
-    if (bestHeaderIndex === -1) {
-        bestHeaderIndex = lines.findIndex(l => l.toLowerCase().includes('asin'));
-    }
-    if (bestHeaderIndex === -1) bestHeaderIndex = 0;
-
-    const headerLine = lines[bestHeaderIndex];
-
-    // --- Delimiter Detection Strategy: Trial ---
-    // Try parsing with both delimiters and see which one yields more columns.
-    const tabParts = parseCSVLine(headerLine, '\t');
-    const commaParts = parseCSVLine(headerLine, ',');
-    
-    let delimiter = ',';
-    let headers = commaParts;
-
-    // If Tab split resulted in more columns, or equal but > 1, prefer Tab (common for Amazon reports)
-    if (tabParts.length > commaParts.length) {
-        delimiter = '\t';
-        headers = tabParts;
-    } else if (tabParts.length === commaParts.length && tabParts.length > 1) {
-        // If ambiguous, check if the file extension or content hints (optional, but defaulting to comma is usually safer unless we are sure)
-        // However, Amazon reports are often .txt which are TSV.
-        // If both separate successfully, we stick with comma unless we detect tabs in the raw string.
-        if (headerLine.includes('\t')) {
-            delimiter = '\t';
-            headers = tabParts;
-        }
-    }
-
-    // Parse Rows
-    const rows: string[][] = [];
-    for(let i = bestHeaderIndex + 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        const values = parseCSVLine(line, delimiter);
-        
-        // Basic consistency check: Ignore rows that have significantly fewer columns than header
-        // (Allows for some variance, e.g. empty trailing cols, but filters out total lines or footers)
-        if (values.length >= Math.max(1, headers.length - 2)) { 
-            rows.push(values);
-        }
-    }
-
-    return { headers, rows };
-};
-
-export const readCSVRaw = async (file: File): Promise<CsvData> => {
+export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
+    onProgress(`Reading ${file.name}...`);
     const text = await readFileAsText(file);
-    return readStringAsCSV(text);
-}
-
-export interface ColumnMapping {
-    date: number;
-    asin: number;
-    title: number;
-    revenue: number;
-    clicks?: number;
-    ordered?: number;
-    shipped?: number;
-    tracking?: number;
-    category?: number;
-    campaignTitle?: number;
-}
-
-export const processAmazonData = (
-    data: CsvData, 
-    mapping: ColumnMapping, 
-    forcedSource: AmazonReportType | 'auto' = 'auto'
-): AmazonMetric[] => {
+    const lines = text.split('\n');
     const metrics: AmazonMetric[] = [];
 
-    data.rows.forEach(values => {
-        const dateRaw = mapping.date > -1 ? values[mapping.date] : '';
-        const parsedDate = parseDate(dateRaw);
-        
-        // Skip invalid rows (summaries/footers often have empty dates)
-        if (!parsedDate) return;
+    if (lines.length < 2) return [];
 
+    // Header Detection
+    // 1. Creator Connections often has "Campaign Title"
+    // 2. Standard Associates has "Tracking ID"
+    // Find header line
+    let headerIndex = -1;
+    let isCreatorConnections = false;
+
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+        const lower = lines[i].toLowerCase();
+        if (lower.includes('campaign title')) {
+            headerIndex = i;
+            isCreatorConnections = true;
+            break;
+        }
+        if (lower.includes('tracking id') && lower.includes('asin')) {
+            headerIndex = i;
+            break;
+        }
+    }
+
+    if (headerIndex === -1) {
+        throw new Error("Invalid Amazon Report format. Could not find recognizable header.");
+    }
+
+    const header = lines[headerIndex].split(/[,;\t]/).map(h => h.trim().replace(/"/g, '').toLowerCase());
+    
+    // Map Columns based on known schemas
+    const colMap = {
+        date: header.findIndex(h => h === 'date' || h === 'date shipped'),
+        asin: header.findIndex(h => h === 'asin'),
+        title: header.findIndex(h => h === 'product title' || h === 'title' || h === 'name'),
+        clicks: header.findIndex(h => h === 'clicks'),
+        ordered: header.findIndex(h => h === 'ordered items' || h === 'items shipped'), // Sometimes Items Shipped is the main metric in CC
+        shipped: header.findIndex(h => h === 'shipped items'),
+        // Earnings/Revenue logic varies. 
+        // In Standard: "Ad Fees($)" or "Earnings" is income. "Revenue($)" or "Price" * "Items" is Sales Amount.
+        // In CC: "Commission Income" is income. "Revenue" is sales.
+        income: header.findIndex(h => h.includes('earnings') || h.includes('ad fees') || h.includes('commission income') || h.includes('bounties')),
+        conversion: header.findIndex(h => h.includes('conversion')),
+        tracking: header.findIndex(h => h.includes('tracking id')),
+        category: header.findIndex(h => h === 'category' || h === 'product group'),
+        campaignTitle: header.findIndex(h => h === 'campaign title')
+    };
+
+    if (colMap.asin === -1) {
+         throw new Error("Missing ASIN column.");
+    }
+
+    // Process rows
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        // Handle CSV split respecting quotes
+        // Simple splitter for tab/comma
+        let values: string[] = [];
+        if (line.includes('\t')) {
+             values = line.split('\t').map(v => v.trim().replace(/"/g, ''));
+        } else {
+             // CSV regex
+             values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
+        }
+        
+        if (values.length < 3) continue; // Skip malformed lines
+
+        // Date Parsing
+        const dateRaw = colMap.date > -1 ? values[colMap.date] : '';
+        const parsedDate = parseDate(dateRaw) || new Date();
         const dateStr = formatDate(parsedDate);
-        const asin = mapping.asin > -1 ? values[mapping.asin] : 'Unknown';
         
-        // Skip invalid ASIN rows or summary totals rows
-        if (!asin || asin.length < 2 || asin.toLowerCase().includes('total')) return;
+        // Skip summary rows (often missing ASIN or date)
+        if ((!values[colMap.asin] || values[colMap.asin].length < 2) && !isCreatorConnections) continue;
 
-        const parseNum = (idx: number | undefined) => {
-            if (idx === undefined || idx === -1) return 0;
-            const valStr = values[idx];
-            if (!valStr) return 0;
-            const val = valStr.replace(/[$,%\s]/g, '');
-            if (val.startsWith('(') && val.endsWith(')')) {
-                return -1 * parseFloat(val.replace(/[()]/g, ''));
-            }
+        const parseNum = (idx: number) => {
+            if (idx === -1) return 0;
+            const val = values[idx]?.replace(/[$,%]/g, '');
             return parseFloat(val) || 0;
         }
 
-        const title = mapping.title > -1 ? values[mapping.title] : `Product ${asin}`;
-        const trackingId = mapping.tracking && mapping.tracking > -1 ? values[mapping.tracking] : 'default';
-        const campaignTitle = mapping.campaignTitle && mapping.campaignTitle > -1 ? values[mapping.campaignTitle] : undefined;
+        const asin = colMap.asin > -1 ? values[colMap.asin] : 'Unknown';
+        const trackingId = colMap.tracking > -1 ? values[colMap.tracking] : 'creator-connections';
+        const campaignTitle = colMap.campaignTitle > -1 ? values[colMap.campaignTitle] : undefined;
 
         // Determine Report Type
         let reportType: AmazonReportType = 'unknown';
-        
-        if (forcedSource !== 'auto') {
-            reportType = forcedSource;
+        if (isCreatorConnections || campaignTitle) {
+            reportType = 'creator_connections';
+        } else if (trackingId.includes('onamz')) {
+            reportType = 'onsite';
         } else {
-            // Auto-detect logic
-            if (campaignTitle) {
-                reportType = 'creator_connections';
-            } else if (trackingId.includes('onamz')) {
-                reportType = 'onsite';
-            } else {
-                reportType = 'offsite';
-            }
+            reportType = 'offsite';
         }
 
         const metric: AmazonMetric = {
             id: generateUUID(),
             date: dateStr,
             asin: asin,
-            title: title || campaignTitle || asin, // Fallback logic
-            clicks: parseNum(mapping.clicks),
-            orderedItems: parseNum(mapping.ordered),
-            shippedItems: parseNum(mapping.shipped),
-            revenue: parseNum(mapping.revenue),
-            conversionRate: 0, // Calculated field if needed
+            title: colMap.title > -1 ? values[colMap.title] : (campaignTitle || `Unknown Product (${asin})`),
+            clicks: parseNum(colMap.clicks),
+            orderedItems: parseNum(colMap.ordered), // CC uses 'Shipped Items' column for quantity often
+            shippedItems: parseNum(colMap.shipped),
+            revenue: parseNum(colMap.income), // This maps to our unified "Revenue/Earnings" field
+            conversionRate: parseNum(colMap.conversion),
             trackingId: trackingId,
-            category: mapping.category && mapping.category > -1 ? values[mapping.category] : undefined,
+            category: colMap.category > -1 ? values[colMap.category] : undefined,
             reportType: reportType,
             campaignTitle: campaignTitle
         };
 
-        // Recalculate conversion if not mapped directly
-        if (metric.clicks > 0) {
-            metric.conversionRate = (metric.orderedItems / metric.clicks) * 100;
-        }
-
         metrics.push(metric);
-    });
+    }
 
+    onProgress(`Parsed ${metrics.length} amazon metrics.`);
     return metrics;
-};
-
-// Legacy support for direct parsing (still used by Drag-and-Drop if we bypass wizard, but ideally we route through wizard)
-export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
-    onProgress('Reading CSV...');
-    const rawData = await readCSVRaw(file);
-    
-    // Auto-map based on headers
-    const h = rawData.headers.map(h => h.toLowerCase());
-    
-    // Helper to find index
-    const find = (...search: string[]) => h.findIndex(hdr => search.some(s => hdr === s || hdr.includes(s)));
-    const findExact = (...search: string[]) => h.findIndex(hdr => search.includes(hdr));
-
-    const mapping: ColumnMapping = {
-        date: findExact('date', 'date shipped'),
-        asin: findExact('asin'),
-        title: find('product title', 'title', 'item name', 'name'),
-        clicks: find('clicks'),
-        ordered: find('ordered items', 'items ordered'),
-        shipped: find('shipped items', 'items shipped'),
-        revenue: find('ad fees', 'advertising fees', 'commission income', 'earnings'),
-        tracking: find('tracking id'),
-        category: find('category', 'product group'),
-        campaignTitle: find('campaign title')
-    };
-
-    if (mapping.asin === -1) throw new Error("Could not find ASIN column.");
-    
-    return processAmazonData(rawData, mapping, 'auto');
-};
+}
 
 const parseCSV = (lines: string[], accountId: string, transactionTypes: TransactionType[], sourceName: string): RawTransaction[] => {
     const transactions: RawTransaction[] = [];
@@ -340,14 +220,9 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
     let headerIndex = -1;
     let colMap = { date: -1, description: -1, amount: -1, credit: -1, debit: -1, category: -1 };
     
-    // Use the robust parser logic for generic CSVs too
     for(let i=0; i<Math.min(lines.length, 20); i++) {
         const lineLower = lines[i].toLowerCase();
-        
-        // Auto-detect delimiter per line for robustness in mixed files (rare but possible)
-        // or just default to comma if unspecified.
-        const delimiter = lineLower.includes('\t') && !lineLower.includes(',') ? '\t' : ',';
-        const parts = parseCSVLine(lineLower, delimiter);
+        const parts = lineLower.split(/[,;\t]/).map(p => p.trim().replace(/"/g, ''));
         
         const dateIdx = parts.findIndex(p => p.includes('date') || p === 'dt');
         const descIdx = parts.findIndex(p => p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction'));
@@ -370,15 +245,11 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
     const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
     const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
 
-    // Detect delimiter from header line
-    const headerLine = lines[headerIndex];
-    const delimiter = headerLine.includes('\t') && (headerLine.match(/\t/g) || []).length > (headerLine.match(/,/g) || []).length ? '\t' : ',';
-
     for(let i=headerIndex + 1; i<lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
         
-        const parts = parseCSVLine(line, delimiter);
+        const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(p => p.trim().replace(/^"|"$/g, ''));
         
         if (parts.length < 2) continue;
 

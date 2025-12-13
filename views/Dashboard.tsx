@@ -9,12 +9,13 @@ import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import DuplicateReview from '../components/DuplicateReview';
+import ImportVerification from '../components/ImportVerification';
 import { ExclamationTriangleIcon, CalendarIcon } from '../components/Icons';
 import { formatDate } from '../dateUtils';
 import { generateUUID } from '../utils';
 import { saveFile } from '../services/storageService';
 
-type AppState = 'idle' | 'processing' | 'reviewing_duplicates' | 'success' | 'error';
+type AppState = 'idle' | 'processing' | 'verifying_import' | 'reviewing_duplicates' | 'success' | 'error';
 type ImportMethod = 'upload' | 'paste';
 
 interface DashboardProps {
@@ -107,6 +108,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   }, [users, accounts, selectedUserId, pasteAccountId]);
 
   // State for the import and review flow
+  const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; })[]>([]);
   const [stagedForImport, setStagedForImport] = useState<Transaction[]>([]);
   const [duplicatesToReview, setDuplicatesToReview] = useState<DuplicatePair[]>([]);
   const [stagedNewCategories, setStagedNewCategories] = useState<Category[]>([]);
@@ -120,17 +122,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setProgressMessage(msg);
   };
 
-  const processAndImport = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
+  const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
     handleProgress('Applying automation rules...');
-    
-    // 1. Apply User Assignment
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
     
-    // 2. Apply Reconciliation Rules
     // Pass accounts to support "Account Name" based rules
     const transactionsWithRules = applyRulesToTransactions(rawWithUser, rules, accounts);
 
-    // 3. Identify and Create New Categories found in import
     const existingCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
     const newCategories: Category[] = [];
     transactionsWithRules.forEach(tx => {
@@ -147,33 +145,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     const categoryNameToIdMap = new Map([...categories, ...newCategories].map(c => [c.name.toLowerCase(), c.id]));
     const defaultCategoryId = categories.find(c => c.name === 'Other')?.id || categories[0]?.id || '';
 
-    // 4. Map to final Transaction structure
-    const processedTransactions = transactionsWithRules.map(tx => ({
+    const transactionsWithCategoryIds = transactionsWithRules.map(tx => ({
         ...tx,
         categoryId: tx.categoryId || categoryNameToIdMap.get(tx.category.toLowerCase()) || defaultCategoryId,
-        // tempId used by previous verification step is implicit here
+        tempId: generateUUID(), 
     }));
 
-    // 5. Check for Duplicates immediately (Skipping manual Verification UI)
-    handleProgress('Checking for duplicates...');
-    const { added, duplicates } = mergeTransactions(transactions, processedTransactions);
-
     setStagedNewCategories(newCategories);
+    setRawTransactionsToVerify(transactionsWithCategoryIds);
+    setAppState('verifying_import');
 
-    if (duplicates.length > 0) {
-        setStagedForImport(added);
-        setDuplicatesToReview(duplicates);
-        setAppState('reviewing_duplicates');
-    } else {
-        // No duplicates, finish immediately
-        onTransactionsAdded(added, newCategories);
-        setFinalizedTransactions(added);
-        setDuplicatesIgnored(0);
-        setDuplicatesImported(0);
-        setAppState('success');
-    }
-
-  }, [rules, categories, accounts, transactions, onTransactionsAdded]);
+  }, [rules, categories, accounts]);
 
   const handleFileUpload = useCallback(async (files: File[], accountId: string) => {
     setAppState('processing');
@@ -191,6 +173,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
               createdAt: new Date().toISOString()
           };
           onCreateFolder(newFolder);
+          // Note: onCreateFolder updates parent state, but we use the local ID for this batch
       }
 
       // Save files to Document Vault first
@@ -227,15 +210,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       const rawTransactions = useAi 
         ? await extractTransactionsFromFiles(files, accountId, transactionTypes, handleProgress) 
         : await parseTransactionsFromFiles(files, accountId, transactionTypes, handleProgress);
-      
-      await processAndImport(rawTransactions, selectedUserId);
-
+      await prepareForVerification(rawTransactions, selectedUserId);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
       setAppState('error');
     }
-  }, [useAi, transactionTypes, processAndImport, selectedUserId, onAddDocument, documentFolders, onCreateFolder]);
+  }, [useAi, transactionTypes, prepareForVerification, selectedUserId, onAddDocument, documentFolders, onCreateFolder]);
 
   const handleTextPaste = useCallback(async () => {
     if (!textInput.trim() || !pasteAccountId) return;
@@ -245,16 +226,31 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       const rawTransactions = useAi
         ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress)
         : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress);
-      
-      await processAndImport(rawTransactions, selectedUserId);
-
+      await prepareForVerification(rawTransactions, selectedUserId);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
       setAppState('error');
     }
-  }, [textInput, useAi, pasteAccountId, transactionTypes, processAndImport, selectedUserId]);
+  }, [textInput, useAi, pasteAccountId, transactionTypes, prepareForVerification, selectedUserId]);
   
+  const handleVerificationComplete = (verifiedTransactions: (RawTransaction & { categoryId: string; })[]) => {
+      handleProgress('Checking for duplicates...');
+      const { added, duplicates } = mergeTransactions(transactions, verifiedTransactions);
+
+      if (duplicates.length > 0) {
+          setStagedForImport(added);
+          setDuplicatesToReview(duplicates);
+          setAppState('reviewing_duplicates');
+      } else {
+          onTransactionsAdded(added, stagedNewCategories);
+          setFinalizedTransactions(added);
+          setDuplicatesIgnored(0);
+          setDuplicatesImported(0);
+          setAppState('success');
+      }
+  };
+
   const handleReviewComplete = (duplicatesToImport: Transaction[]) => {
     const finalTransactions = [...stagedForImport, ...duplicatesToImport];
     onTransactionsAdded(finalTransactions, stagedNewCategories);
@@ -272,6 +268,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setError(null);
     setProgressMessage('');
     setTextInput('');
+    setRawTransactionsToVerify([]);
     setStagedForImport([]);
     setDuplicatesToReview([]);
     setStagedNewCategories([]);
@@ -462,6 +459,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                   </div>
                 </div>
             </div>
+        ) : appState === 'verifying_import' ? (
+            <ImportVerification 
+                initialTransactions={rawTransactionsToVerify} 
+                onComplete={handleVerificationComplete} 
+                onCancel={handleClear}
+                accounts={accounts}
+                categories={categories.concat(stagedNewCategories)}
+                transactionTypes={transactionTypes}
+                payees={payees}
+                users={users}
+            />
         ) : appState === 'reviewing_duplicates' ? (
             <DuplicateReview 
                 duplicates={duplicatesToReview} 

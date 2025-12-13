@@ -1,55 +1,41 @@
 
-
 import React, { useState, useMemo, useRef } from 'react';
 import type { AmazonMetric, AmazonReportType } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, CloseIcon, DeleteIcon, SearchCircleIcon, CalendarIcon, SortIcon, ClipboardIcon } from '../../components/Icons';
-import { readCSVRaw, processAmazonData, readStringAsCSV, type CsvData, type ColumnMapping } from '../../services/csvParserService';
-import AmazonTable from '../../components/AmazonTable';
-import AmazonImportWizard from '../../components/AmazonImportWizard';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon } from '../../components/Icons';
+import { parseAmazonReport } from '../../services/csvParserService';
 
 interface AmazonIntegrationProps {
     metrics: AmazonMetric[];
     onAddMetrics: (metrics: AmazonMetric[]) => void;
-    onDeleteMetrics: (ids: string[]) => void;
-    onUpdateMetric: (metric: AmazonMetric) => void;
 }
 
 // Helper for currency
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US').format(val);
 
-const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics, onUpdateMetric }) => {
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload' | 'paste'>('dashboard');
+const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMetrics }) => {
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
-    
-    // Wizard State
-    const [isWizardOpen, setIsWizardOpen] = useState(false);
-    const [csvData, setCsvData] = useState<CsvData>({ headers: [], rows: [] });
-    const [uploadFileName, setUploadFileName] = useState('');
-
-    // Paste State
-    const [pastedText, setPastedText] = useState('');
-
-    // Filter State
-    const [searchTerm, setSearchTerm] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [selectedReportType, setSelectedReportType] = useState<AmazonReportType | 'all'>('all');
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Title Sync Logic (same as before)
+    // Title Sync Logic:
+    // 1. Build a map of ASIN -> Title from Onsite/Offsite records (which have titles)
+    // 2. If title is unknown (CC records), look it up.
     const enrichedMetrics = useMemo(() => {
         const titleMap = new Map<string, string>();
+        
+        // Pass 1: Gather Titles
         metrics.forEach(m => {
             if (m.asin && m.title && !m.title.startsWith('Unknown Product') && m.reportType !== 'creator_connections') {
+                // If map doesn't have it, or this title is longer (usually better), store it
                 const existing = titleMap.get(m.asin);
                 if (!existing || m.title.length > existing.length) {
                     titleMap.set(m.asin, m.title);
                 }
             }
         });
+
+        // Pass 2: Enrich
         return metrics.map(m => {
             if (titleMap.has(m.asin) && (m.title.startsWith('Unknown Product') || m.reportType === 'creator_connections')) {
                 return { ...m, title: titleMap.get(m.asin)! };
@@ -58,110 +44,26 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         });
     }, [metrics]);
 
-    const filteredMetrics = useMemo(() => {
-        return enrichedMetrics.filter(m => {
-            if (searchTerm && !m.title.toLowerCase().includes(searchTerm.toLowerCase()) && !m.asin.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-            if (startDate && new Date(m.date) < new Date(startDate)) return false;
-            if (endDate && new Date(m.date) > new Date(endDate)) return false;
-            if (selectedReportType !== 'all' && m.reportType !== selectedReportType) return false;
-            return true;
-        });
-    }, [enrichedMetrics, searchTerm, startDate, endDate, selectedReportType]);
-
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
         setIsUploading(true);
         try {
-            // Read raw CSV data first
-            const data = await readCSVRaw(file);
-            if (data.rows.length === 0) {
-                alert("File appears to be empty or invalid.");
-                return;
+            const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
+            if (newMetrics.length > 0) {
+                onAddMetrics(newMetrics);
+                alert(`Successfully imported ${newMetrics.length} records.`);
+                setActiveTab('dashboard');
+            } else {
+                alert("No valid records found in file.");
             }
-            
-            setCsvData(data);
-            setUploadFileName(file.name);
-            setIsWizardOpen(true); // Open the verification/mapping wizard
-
         } catch (error) {
             console.error(error);
-            alert(`Read failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            alert(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
-        }
-    };
-
-    const handlePasteProcess = () => {
-        if (!pastedText.trim()) return;
-        try {
-            const data = readStringAsCSV(pastedText);
-            if (data.rows.length === 0) {
-                alert("Could not parse data from text. Ensure it is tabular (Excel/CSV/TSV).");
-                return;
-            }
-            setCsvData(data);
-            setUploadFileName('Pasted Data');
-            setIsWizardOpen(true);
-            setPastedText(''); // Clear buffer
-        } catch (error) {
-            console.error(error);
-            alert("Failed to parse text.");
-        }
-    }
-
-    const handleWizardComplete = (mapping: ColumnMapping, source: AmazonReportType | 'auto') => {
-        try {
-            const newMetrics = processAmazonData(csvData, mapping, source);
-            
-            if (newMetrics.length > 0) {
-                onAddMetrics(newMetrics);
-                setIsWizardOpen(false);
-                setActiveTab('dashboard');
-                alert(`Successfully imported ${newMetrics.length} records.`);
-            } else {
-                alert("No valid records generated based on the mapping.");
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Error processing data.");
-        }
-    };
-
-    const handleClearAll = () => {
-        if (metrics.length === 0) return;
-        if (window.confirm(`Are you sure you want to delete ALL ${metrics.length} Amazon records? This cannot be undone.`)) {
-            onDeleteMetrics(metrics.map(m => m.id));
-            setSelectedIds(new Set());
-            alert("All Amazon data cleared.");
-        }
-    };
-
-    // Bulk Actions
-    const handleToggleSelection = (id: string) => {
-        const newSet = new Set(selectedIds);
-        if (newSet.has(id)) newSet.delete(id);
-        else newSet.add(id);
-        setSelectedIds(newSet);
-    };
-
-    const handleToggleSelectAll = () => {
-        if (selectedIds.size === filteredMetrics.length) setSelectedIds(new Set());
-        else setSelectedIds(new Set(filteredMetrics.map(m => m.id)));
-    };
-
-    const handleBulkSelection = (ids: string[], selected: boolean) => {
-        const newSet = new Set(selectedIds);
-        ids.forEach(id => selected ? newSet.add(id) : newSet.delete(id));
-        setSelectedIds(newSet);
-    };
-
-    const handleBulkDelete = () => {
-        if (window.confirm(`Are you sure you want to delete ${selectedIds.size} records?`)) {
-            onDeleteMetrics(Array.from(selectedIds));
-            setSelectedIds(new Set());
         }
     };
 
@@ -172,32 +74,30 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             totalClicks: 0,
             totalOrdered: 0,
             avgConversion: 0,
-            byType: { onsite: 0, offsite: 0, creator_connections: 0, unknown: 0 }
+            byType: {
+                onsite: 0,
+                offsite: 0,
+                creator_connections: 0
+            }
         };
 
-        const source = activeTab === 'dashboard' ? filteredMetrics : enrichedMetrics;
-
-        source.forEach(m => {
+        enrichedMetrics.forEach(m => {
             result.totalRevenue += m.revenue;
             result.totalClicks += m.clicks;
             result.totalOrdered += m.orderedItems;
-            
             if (m.reportType in result.byType) {
                 result.byType[m.reportType as AmazonReportType] += m.revenue;
-            } else {
-                result.byType.unknown += m.revenue;
             }
         });
 
         result.avgConversion = result.totalClicks > 0 ? (result.totalOrdered / result.totalClicks) * 100 : 0;
         return result;
-    }, [filteredMetrics, enrichedMetrics, activeTab]);
+    }, [enrichedMetrics]);
 
     const topProducts = useMemo(() => {
         const productMap = new Map<string, { title: string, revenue: number, clicks: number, ordered: number }>();
-        const source = activeTab === 'dashboard' ? filteredMetrics : enrichedMetrics;
         
-        source.forEach(m => {
+        enrichedMetrics.forEach(m => {
             if (!productMap.has(m.asin)) {
                 productMap.set(m.asin, { title: m.title, revenue: 0, clicks: 0, ordered: 0 });
             }
@@ -211,11 +111,11 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             .map(([asin, data]) => ({ asin, ...data }))
             .sort((a, b) => b.revenue - a.revenue)
             .slice(0, 10);
-    }, [filteredMetrics, enrichedMetrics, activeTab]);
+    }, [enrichedMetrics]);
 
     return (
         <div className="space-y-6 h-full flex flex-col">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
+            <div className="flex justify-between items-center flex-shrink-0">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                         <BoxIcon className="w-8 h-8 text-orange-500" />
@@ -224,69 +124,26 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <p className="text-slate-500">Track clicks, commissions, and top performing ASINs.</p>
                 </div>
                 <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200">
-                    <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><BarChartIcon className="w-4 h-4"/> Dashboard</button>
-                    <button onClick={() => setActiveTab('data')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'data' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><TableIcon className="w-4 h-4"/> Data</button>
-                    <button onClick={() => setActiveTab('upload')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'upload' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><CloudArrowUpIcon className="w-4 h-4"/> Upload</button>
-                    <button onClick={() => setActiveTab('paste')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'paste' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}><ClipboardIcon className="w-4 h-4"/> Paste</button>
+                    <button 
+                        onClick={() => setActiveTab('dashboard')} 
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'dashboard' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <BarChartIcon className="w-4 h-4"/> Dashboard
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('data')} 
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'data' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <TableIcon className="w-4 h-4"/> Data
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('upload')} 
+                        className={`px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2 ${activeTab === 'upload' ? 'bg-orange-50 text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        <CloudArrowUpIcon className="w-4 h-4"/> Upload
+                    </button>
                 </div>
             </div>
-
-            {/* Filter Bar */}
-            {activeTab !== 'upload' && activeTab !== 'paste' && (
-                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0 items-center justify-between">
-                    <div className="flex flex-col sm:flex-row gap-4 flex-grow items-center">
-                        <div className="relative flex-grow w-full sm:w-auto">
-                            <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                            <input 
-                                type="text" 
-                                placeholder="Search Products or ASINs..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                            />
-                        </div>
-                        
-                        <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <div className="relative">
-                                <select 
-                                    value={selectedReportType} 
-                                    onChange={(e) => setSelectedReportType(e.target.value as any)}
-                                    className="pl-3 pr-8 py-2 border rounded-lg appearance-none bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none"
-                                >
-                                    <option value="all">All Sources</option>
-                                    <option value="onsite">Onsite</option>
-                                    <option value="offsite">Offsite</option>
-                                    <option value="creator_connections">Creator Connections</option>
-                                </select>
-                            </div>
-
-                            <div className="flex items-center gap-2 bg-white border rounded-lg p-1">
-                                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="p-1 border-none text-sm focus:ring-0" />
-                                <span className="text-slate-400">-</span>
-                                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="p-1 border-none text-sm focus:ring-0" />
-                            </div>
-
-                            {(searchTerm || startDate || endDate || selectedReportType !== 'all') && (
-                                <button 
-                                    onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); setSelectedReportType('all'); }} 
-                                    className="text-xs text-red-500 hover:underline px-2 whitespace-nowrap"
-                                >
-                                    Clear
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                    
-                    {metrics.length > 0 && activeTab === 'data' && (
-                        <button 
-                            onClick={handleClearAll}
-                            className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors whitespace-nowrap"
-                        >
-                            Clear All Data
-                        </button>
-                    )}
-                </div>
-            )}
 
             <div className="flex-1 overflow-y-auto min-h-0 bg-slate-50 -mx-4 px-4 pt-4">
                 
@@ -295,7 +152,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                                <p className="text-xs font-bold text-slate-400 uppercase">Total Revenue</p>
+                                <p className="text-xs font-bold text-slate-400 uppercase">Total Earnings</p>
                                 <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(summary.totalRevenue)}</p>
                             </div>
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
@@ -338,7 +195,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Product</th>
                                         <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Clicks</th>
                                         <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Ordered</th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
+                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Earnings</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200">
@@ -354,7 +211,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         </tr>
                                     ))}
                                     {topProducts.length === 0 && (
-                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400">No data available for current selection.</td></tr>
+                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400">No data available.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -364,37 +221,50 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
                 {/* DATA TAB */}
                 {activeTab === 'data' && (
-                    <div className="flex flex-col h-full space-y-4">
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 min-h-0 flex flex-col overflow-hidden relative">
-                            <AmazonTable 
-                                metrics={filteredMetrics} 
-                                onUpdateMetric={onUpdateMetric}
-                                onDeleteMetric={(id) => onDeleteMetrics([id])}
-                                selectedIds={selectedIds}
-                                onToggleSelection={handleToggleSelection}
-                                onToggleSelectAll={handleToggleSelectAll}
-                                onBulkSelection={handleBulkSelection}
-                            />
-                        </div>
-                        {selectedIds.size > 0 && (
-                            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 animate-slide-up print:hidden">
-                                <div className="flex items-center gap-3 border-r border-slate-700 pr-4">
-                                    <span className="font-medium text-sm">{selectedIds.size} selected</span>
-                                    <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-white transition-colors p-1 rounded-full hover:bg-slate-800">
-                                        <CloseIcon className="w-4 h-4" />
-                                    </button>
-                                </div>
-                                <button onClick={handleBulkDelete} className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-500 rounded-full transition-colors shadow-sm">
-                                    <DeleteIcon className="w-4 h-4"/> Delete
-                                </button>
-                            </div>
-                        )}
+                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        <table className="min-w-full divide-y divide-slate-200">
+                            <thead className="bg-slate-50">
+                                <tr>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">ASIN / Title</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Clicks</th>
+                                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Earnings</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                                {enrichedMetrics.slice(0, 100).map((m) => (
+                                    <tr key={m.id} className="hover:bg-slate-50">
+                                        <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.date}</td>
+                                        <td className="px-4 py-2 text-sm">
+                                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
+                                                m.reportType === 'onsite' ? 'bg-blue-100 text-blue-700' : 
+                                                m.reportType === 'offsite' ? 'bg-green-100 text-green-700' : 
+                                                'bg-purple-100 text-purple-700'
+                                            }`}>
+                                                {m.reportType.replace('_', ' ')}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-2 text-sm text-slate-800">
+                                            <div className="line-clamp-1" title={m.title}>{m.title}</div>
+                                            <span className="text-xs text-slate-400 font-mono mr-2">{m.asin}</span>
+                                            {m.campaignTitle && <span className="text-xs text-purple-600 bg-purple-50 px-1 rounded">{m.campaignTitle}</span>}
+                                        </td>
+                                        <td className="px-4 py-2 text-right text-sm text-slate-600">{m.clicks}</td>
+                                        <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.revenue)}</td>
+                                    </tr>
+                                ))}
+                                {enrichedMetrics.length === 0 && (
+                                    <tr><td colSpan={5} className="p-8 text-center text-slate-400">No data imported yet.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 )}
 
                 {/* UPLOAD TAB */}
                 {activeTab === 'upload' && (
-                    <div className="flex flex-col items-center justify-center h-full bg-white rounded-xl border-2 border-dashed border-slate-300 p-12 relative">
+                    <div className="flex flex-col items-center justify-center h-full bg-white rounded-xl border-2 border-dashed border-slate-300 p-12">
                         <div className="bg-orange-50 p-4 rounded-full mb-4">
                             <CloudArrowUpIcon className="w-8 h-8 text-orange-500" />
                         </div>
@@ -405,69 +275,20 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         <input 
                             type="file" 
                             ref={fileInputRef}
-                            accept=".csv,.tsv,.txt" 
+                            accept=".csv,.tsv" 
                             onChange={handleFileUpload} 
                             className="hidden" 
                         />
-                        <div className="flex gap-4">
-                            <button 
-                                onClick={() => fileInputRef.current?.click()}
-                                disabled={isUploading}
-                                className="px-6 py-3 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 disabled:bg-slate-300 transition-colors"
-                            >
-                                {isUploading ? 'Parsing...' : 'Select File'}
-                            </button>
-                            {metrics.length > 0 && (
-                                <button 
-                                    onClick={handleClearAll}
-                                    className="px-6 py-3 text-red-600 bg-red-50 font-medium rounded-lg hover:bg-red-100 border border-red-200 transition-colors"
-                                >
-                                    Clear All Data
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {/* PASTE TAB */}
-                {activeTab === 'paste' && (
-                    <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200 overflow-hidden">
-                        <div className="p-4 bg-slate-50 border-b border-slate-200">
-                            <h3 className="text-lg font-bold text-slate-700">Paste Data</h3>
-                            <p className="text-sm text-slate-500">Copy table data from your Amazon Associates dashboard and paste it here.</p>
-                        </div>
-                        <textarea
-                            value={pastedText}
-                            onChange={(e) => setPastedText(e.target.value)}
-                            placeholder="Paste your CSV or Tab-separated data here..."
-                            className="flex-1 p-4 resize-none focus:outline-none focus:bg-slate-50 transition-colors font-mono text-xs"
-                        />
-                        <div className="p-4 border-t border-slate-200 bg-slate-50 flex justify-end gap-3">
-                            <button 
-                                onClick={() => setPastedText('')}
-                                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 transition-colors"
-                            >
-                                Clear
-                            </button>
-                            <button 
-                                onClick={handlePasteProcess}
-                                disabled={!pastedText.trim()}
-                                className="px-6 py-2 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:bg-slate-300 transition-colors"
-                            >
-                                Process Data
-                            </button>
-                        </div>
+                        <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isUploading}
+                            className="px-6 py-3 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 disabled:bg-slate-300 transition-colors"
+                        >
+                            {isUploading ? 'Parsing...' : 'Select CSV File'}
+                        </button>
                     </div>
                 )}
             </div>
-
-            <AmazonImportWizard 
-                isOpen={isWizardOpen}
-                onClose={() => setIsWizardOpen(false)}
-                csvData={csvData}
-                onComplete={handleWizardComplete}
-                fileName={uploadFileName}
-            />
         </div>
     );
 };

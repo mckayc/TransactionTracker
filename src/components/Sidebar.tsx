@@ -4,7 +4,7 @@ import CalendarView from './CalendarView';
 import type { Transaction } from '../types';
 import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon } from './Icons';
 
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'integrations' | 'integration-amazon' | 'integration-youtube';
+type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'integrations' | 'integration-amazon';
 
 interface SidebarProps {
   currentView: View;
@@ -143,10 +143,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
               </button>
           )}
           {!isCollapsed && <CalendarView transactions={transactions} />}
-          
-          <div className={`text-center text-xs text-slate-600 pt-2 ${isCollapsed ? 'hidden' : 'block'}`}>
-              v0.1.0 (YouTube)
-          </div>
       </div>
     </aside>
   );
