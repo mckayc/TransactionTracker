@@ -166,6 +166,15 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         return result;
     }, [displayMetrics]);
 
+    const previewSummary = useMemo(() => {
+        return previewMetrics.reduce((acc, curr) => ({
+            revenue: acc.revenue + curr.estimatedRevenue,
+            views: acc.views + curr.views,
+            subs: acc.subs + curr.subscribersGained,
+            watchTime: acc.watchTime + curr.watchTimeHours
+        }), { revenue: 0, views: 0, subs: 0, watchTime: 0 });
+    }, [previewMetrics]);
+
     // Chart Data: Aggregated Revenue by Publish Month
     const revenueByMonth = useMemo(() => {
         const grouped = new Map<string, number>();
@@ -531,12 +540,30 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                     <div className="h-full">
                         {previewMetrics.length > 0 ? (
                             <div className="flex flex-col h-full space-y-4">
-                                <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex items-start justify-between">
-                                    <div className="flex gap-3">
+                                <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex flex-col gap-4">
+                                    <div className="flex items-start gap-3">
                                         <div className="p-2 bg-red-100 rounded-full text-red-600"><CheckCircleIcon className="w-6 h-6" /></div>
                                         <div>
                                             <h3 className="font-bold text-red-900 text-lg">Ready to Import</h3>
                                             <p className="text-red-700 text-sm">Found <strong>{previewMetrics.length}</strong> records.</p>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full pt-2 border-t border-red-200/50">
+                                        <div>
+                                            <p className="text-xs font-bold text-red-800 uppercase opacity-70">Total Revenue</p>
+                                            <p className="text-lg font-bold text-red-900">{formatCurrency(previewSummary.revenue)}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-red-800 uppercase opacity-70">Total Views</p>
+                                            <p className="text-lg font-bold text-red-900">{formatNumber(previewSummary.views)}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-red-800 uppercase opacity-70">Subscribers</p>
+                                            <p className="text-lg font-bold text-red-900">{formatNumber(previewSummary.subs)}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-bold text-red-800 uppercase opacity-70">Watch Time</p>
+                                            <p className="text-lg font-bold text-red-900">{formatNumber(previewSummary.watchTime)} hrs</p>
                                         </div>
                                     </div>
                                 </div>
