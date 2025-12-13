@@ -287,11 +287,12 @@ export interface CustomDateRange {
     offsets?: DateOffset[]; // Optional list of additional offsets for fixed periods
 }
 
-export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account';
+export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account' | 'source' | 'product';
 
 export interface ReportConfig {
     id: string;
     name: string;
+    dataSource?: 'financial' | 'amazon'; // Default 'financial'
     datePreset: DateRangePreset;
     customStartDate?: string; // Used for Custom Start, Specific Month (YYYY-MM), or Relative Offset (string "3")
     customEndDate?: string;
@@ -305,6 +306,8 @@ export interface ReportConfig {
         balanceEffects?: BalanceEffect[]; 
         tagIds?: string[];
         payeeIds?: string[];
+        // Amazon Specific Filters
+        amazonSources?: AmazonReportType[];
     };
     hiddenCategoryIds?: string[]; // Legacy: IDs of categories hidden via the eye icon
     hiddenIds?: string[]; // New: Universal hidden IDs for any group type (replaces hiddenCategoryIds logic)

@@ -1,6 +1,7 @@
 
+
 import React, { useState, useEffect } from 'react';
-import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange } from '../types';
+import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange, AmazonMetric } from '../types';
 import ReportColumn from '../components/ReportColumn';
 import ReportConfigModal from '../components/ReportConfigModal';
 import { AddIcon, DeleteIcon, EditIcon, ChartPieIcon, CloseIcon, DocumentIcon, FolderIcon, CheckCircleIcon, SettingsIcon, DragHandleIcon } from '../components/Icons';
@@ -18,9 +19,10 @@ interface ReportsProps {
   setSavedReports: React.Dispatch<React.SetStateAction<SavedReport[]>>;
   savedDateRanges: CustomDateRange[];
   setSavedDateRanges: React.Dispatch<React.SetStateAction<CustomDateRange[]>>;
+  amazonMetrics: AmazonMetric[];
 }
 
-const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users, tags, accounts, savedReports, setSavedReports, savedDateRanges, setSavedDateRanges }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categories, payees, users, tags, accounts, savedReports, setSavedReports, savedDateRanges, setSavedDateRanges, amazonMetrics }) => {
     
     // Active columns in the workspace
     const [activeReports, setActiveReports] = useState<ReportConfig[]>([]);
@@ -283,6 +285,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                     onSaveDateRange={handleSaveDateRange}
                                     onDeleteDateRange={handleDeleteDateRange}
                                     savedReports={savedReports}
+                                    amazonMetrics={amazonMetrics}
                                 />
                             </div>
                         ))}
@@ -400,6 +403,9 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                                                         {savedDateRanges.find(r => r.id === report.config.datePreset)?.name || 
                                                          (report.config.datePreset === 'custom' ? 'Custom Range' : report.config.datePreset)}
                                                     </span>
+                                                    {report.config.dataSource === 'amazon' && (
+                                                        <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-[10px] font-bold">Amazon</span>
+                                                    )}
                                                 </div>
                                             </div>
 

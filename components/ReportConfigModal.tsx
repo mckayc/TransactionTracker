@@ -1,7 +1,8 @@
 
+
 import React, { useState, useEffect, useMemo } from 'react';
-import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset, Transaction } from '../types';
-import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon, SaveIcon } from './Icons';
+import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset, Transaction, AmazonReportType } from '../types';
+import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon, SaveIcon, BoxIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
 import { calculateDateRange } from './ReportColumn';
@@ -27,6 +28,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     isOpen, onClose, onSave, initialConfig, accounts, categories, users, transactionTypes, tags, payees, savedDateRanges, onSaveDateRange, onDeleteDateRange, transactions
 }) => {
     const [name, setName] = useState('');
+    const [dataSource, setDataSource] = useState<'financial' | 'amazon'>('financial');
     const [datePreset, setDatePreset] = useState<DateRangePreset>('thisMonth');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
@@ -41,6 +43,9 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     const [selectedEffects, setSelectedEffects] = useState<Set<BalanceEffect>>(new Set(['expense', 'income']));
     const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
     const [selectedPayees, setSelectedPayees] = useState<Set<string>>(new Set());
+    
+    // Amazon Filters
+    const [selectedAmazonSources, setSelectedAmazonSources] = useState<Set<AmazonReportType>>(new Set(['onsite', 'offsite', 'creator_connections']));
 
     // Date Range Manager State
     const [isManagingRanges, setIsManagingRanges] = useState(false);
@@ -56,10 +61,11 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             if (initialConfig) {
                 // Editing existing report - STRICTLY preserve ID to allow updating existing records
                 setName(initialConfig.name);
+                setDataSource(initialConfig.dataSource || 'financial');
                 setDatePreset(initialConfig.datePreset);
                 setCustomStartDate(initialConfig.customStartDate || '');
                 setCustomEndDate(initialConfig.customEndDate || '');
-                setGroupBy(initialConfig.groupBy || 'category');
+                setGroupBy(initialConfig.groupBy || (initialConfig.dataSource === 'amazon' ? 'source' : 'category'));
                 setSubGroupBy(initialConfig.subGroupBy || '');
                 
                 // Hydrate filters
@@ -70,9 +76,11 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setSelectedEffects(new Set(initialConfig.filters.balanceEffects || ['expense', 'income']));
                 setSelectedTags(initialConfig.filters.tagIds ? new Set(initialConfig.filters.tagIds) : new Set(tags.map(t => t.id)));
                 setSelectedPayees(initialConfig.filters.payeeIds ? new Set(initialConfig.filters.payeeIds) : new Set(payees.map(p => p.id)));
+                setSelectedAmazonSources(initialConfig.filters.amazonSources ? new Set(initialConfig.filters.amazonSources) : new Set(['onsite', 'offsite', 'creator_connections']));
             } else {
                 // Creating NEW report
                 setName('');
+                setDataSource('financial');
                 setDatePreset('thisMonth');
                 setCustomStartDate('');
                 setCustomEndDate('');
@@ -87,14 +95,17 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setSelectedEffects(new Set(['expense', 'income']));
                 setSelectedTags(new Set(tags.map(t => t.id)));
                 setSelectedPayees(new Set(payees.map(p => p.id)));
+                setSelectedAmazonSources(new Set(['onsite', 'offsite', 'creator_connections']));
             }
             setIsManagingRanges(false);
         }
     }, [isOpen, initialConfig, accounts, categories, users, transactionTypes, tags, payees]);
 
-    // Live Preview Logic
+    // Live Preview Logic (Only for Financial Transactions currently, adding dummy data for amazon preview might be complex without props)
+    // We will just show a placeholder preview for Amazon for simplicity in this modal, relying on real data in the main view.
     const previewData = useMemo(() => {
-        if (!isOpen) return { transactions: [], total: 0, count: 0, dateLabel: '' };
+        if (!isOpen || dataSource === 'amazon') return { transactions: [], total: 0, count: 0, dateLabel: '' };
+        
         const { start, end } = calculateDateRange(datePreset, customStartDate, customEndDate, savedDateRanges);
         const filterEnd = new Date(end);
         filterEnd.setHours(23, 59, 59, 999);
@@ -106,7 +117,6 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             const type = transactionTypes.find(t => t.id === tx.typeId);
             if (!type || !selectedEffects.has(type.balanceEffect)) return false;
             
-            // Basic inclusion checks
             if (selectedAccounts.size > 0 && !selectedAccounts.has(tx.accountId || '')) return false;
             if (selectedUsers.size > 0 && !selectedUsers.has(tx.userId || '')) return false;
             if (selectedCategories.size > 0 && !selectedCategories.has(tx.categoryId)) return false;
@@ -121,7 +131,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         const total = filtered.reduce((sum, tx) => sum + tx.amount, 0);
 
         return { transactions: filtered, total, count: filtered.length, dateLabel: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}` };
-    }, [isOpen, transactions, datePreset, customStartDate, customEndDate, savedDateRanges, selectedAccounts, selectedCategories, selectedTypes, selectedUsers, selectedTags, selectedPayees, selectedEffects]);
+    }, [isOpen, dataSource, transactions, datePreset, customStartDate, customEndDate, savedDateRanges, selectedAccounts, selectedCategories, selectedTypes, selectedUsers, selectedTags, selectedPayees, selectedEffects]);
 
     if (!isOpen) return null;
 
@@ -139,6 +149,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         const config: ReportConfig = {
             id: id, 
             name: name.trim() || 'New Report',
+            dataSource,
             datePreset,
             customStartDate: ['custom', 'specificMonth', 'relativeMonth'].includes(datePreset) ? customStartDate : undefined,
             customEndDate: datePreset === 'custom' ? customEndDate : undefined,
@@ -152,6 +163,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 balanceEffects: Array.from(selectedEffects),
                 tagIds: isAllTags ? undefined : Array.from(selectedTags),
                 payeeIds: isAllPayees ? undefined : Array.from(selectedPayees),
+                amazonSources: dataSource === 'amazon' ? Array.from(selectedAmazonSources) : undefined
             },
             hiddenCategoryIds: asNew ? [] : (initialConfig?.hiddenCategoryIds || []),
             hiddenIds: asNew ? [] : (initialConfig?.hiddenIds || [])
@@ -165,6 +177,12 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         const newSet = new Set(selectedEffects);
         if (newSet.has(effect)) newSet.delete(effect); else newSet.add(effect);
         setSelectedEffects(newSet);
+    };
+
+    const toggleAmazonSource = (source: AmazonReportType) => {
+        const newSet = new Set(selectedAmazonSources);
+        if (newSet.has(source)) newSet.delete(source); else newSet.add(source);
+        setSelectedAmazonSources(newSet);
     };
 
     const handleSaveRange = () => {
@@ -298,6 +316,25 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                             // Standard Config UI
                             <>
                                 <div><label className="block text-sm font-bold text-slate-700 mb-1">Report Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 border rounded-md" /></div>
+                                
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Data Source</label>
+                                    <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
+                                        <button 
+                                            onClick={() => { setDataSource('financial'); setGroupBy('category'); }} 
+                                            className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-all ${dataSource === 'financial' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+                                        >
+                                            Transactions
+                                        </button>
+                                        <button 
+                                            onClick={() => { setDataSource('amazon'); setGroupBy('source'); }} 
+                                            className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-all flex items-center justify-center gap-1 ${dataSource === 'amazon' ? 'bg-white shadow text-orange-700' : 'text-slate-500 hover:text-slate-700'}`}
+                                        >
+                                            <BoxIcon className="w-3 h-3" /> Amazon
+                                        </button>
+                                    </div>
+                                </div>
+
                                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                                     <div className="flex justify-between mb-1"><label className="block text-sm font-bold text-slate-700">Date Range</label><button onClick={() => setIsManagingRanges(true)} className="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1"><EditIcon className="w-3 h-3"/> Manage Custom</button></div>
                                     <select value={datePreset} onChange={e => setDatePreset(e.target.value as DateRangePreset)} className="w-full p-2 border rounded-md bg-white">
@@ -318,17 +355,54 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                         </div>
                                     )}
                                 </div>
+                                
                                 <div className="grid grid-cols-2 gap-2">
-                                    <div><label className="text-xs font-bold text-slate-500 uppercase">Group By</label><select value={groupBy} onChange={e => setGroupBy(e.target.value as ReportGroupBy)} className="w-full p-2 border rounded-md text-sm"><option value="category">Category</option><option value="payee">Payee</option><option value="account">Account</option><option value="type">Type</option><option value="tag">Tag</option></select></div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-500 uppercase">Group By</label>
+                                        <select value={groupBy} onChange={e => setGroupBy(e.target.value as ReportGroupBy)} className="w-full p-2 border rounded-md text-sm">
+                                            {dataSource === 'financial' ? (
+                                                <>
+                                                    <option value="category">Category</option>
+                                                    <option value="payee">Payee</option>
+                                                    <option value="account">Account</option>
+                                                    <option value="type">Type</option>
+                                                    <option value="tag">Tag</option>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <option value="source">Source (On/Offsite)</option>
+                                                    <option value="category">Category</option>
+                                                    <option value="product">Product (ASIN)</option>
+                                                </>
+                                            )}
+                                        </select>
+                                    </div>
                                 </div>
+
                                 <div className="space-y-3 pt-4 border-t border-slate-200">
                                     <label className="block text-sm font-bold text-slate-700">Filters</label>
-                                    <div className="flex gap-2">{(['expense', 'income', 'investment'] as BalanceEffect[]).map(e => <button key={e} onClick={() => toggleEffect(e)} className={`px-2 py-1 text-xs rounded border uppercase font-bold ${selectedEffects.has(e) ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white text-slate-500'}`}>{e}</button>)}</div>
-                                    <MultiSelect label="Categories" options={categories} selectedIds={selectedCategories} onChange={setSelectedCategories} />
-                                    <MultiSelect label="Types" options={transactionTypes} selectedIds={selectedTypes} onChange={setSelectedTypes} />
-                                    <MultiSelect label="Accounts" options={accounts} selectedIds={selectedAccounts} onChange={setSelectedAccounts} />
-                                    <MultiSelect label="Tags" options={tags} selectedIds={selectedTags} onChange={setSelectedTags} />
-                                    <MultiSelect label="Payees" options={payees} selectedIds={selectedPayees} onChange={setSelectedPayees} />
+                                    
+                                    {dataSource === 'financial' ? (
+                                        <>
+                                            <div className="flex gap-2">{(['expense', 'income', 'investment'] as BalanceEffect[]).map(e => <button key={e} onClick={() => toggleEffect(e)} className={`px-2 py-1 text-xs rounded border uppercase font-bold ${selectedEffects.has(e) ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white text-slate-500'}`}>{e}</button>)}</div>
+                                            <MultiSelect label="Categories" options={categories} selectedIds={selectedCategories} onChange={setSelectedCategories} />
+                                            <MultiSelect label="Types" options={transactionTypes} selectedIds={selectedTypes} onChange={setSelectedTypes} />
+                                            <MultiSelect label="Accounts" options={accounts} selectedIds={selectedAccounts} onChange={setSelectedAccounts} />
+                                            <MultiSelect label="Tags" options={tags} selectedIds={selectedTags} onChange={setSelectedTags} />
+                                            <MultiSelect label="Payees" options={payees} selectedIds={selectedPayees} onChange={setSelectedPayees} />
+                                        </>
+                                    ) : (
+                                        <div className="flex flex-col gap-2">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Traffic Source</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {(['onsite', 'offsite', 'creator_connections'] as AmazonReportType[]).map(s => (
+                                                    <button key={s} onClick={() => toggleAmazonSource(s)} className={`px-2 py-1 text-xs rounded border uppercase font-bold ${selectedAmazonSources.has(s) ? 'bg-orange-50 border-orange-300 text-orange-700' : 'bg-white text-slate-500'}`}>
+                                                        {s.replace('_', ' ')}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             </>
                         )}
@@ -338,13 +412,21 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                     <div className="w-2/3 flex flex-col bg-slate-50 p-6 overflow-hidden">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="font-bold text-slate-700 flex items-center gap-2"><TableIcon className="w-5 h-5 text-slate-400" /> Live Preview</h3>
-                            <span className="text-sm text-slate-600 font-bold">{previewData.count} items • ${previewData.total.toLocaleString()}</span>
+                            {dataSource === 'financial' && (
+                                <span className="text-sm text-slate-600 font-bold">{previewData.count} items • ${previewData.total.toLocaleString()}</span>
+                            )}
                         </div>
                         <div className="flex-1 overflow-auto bg-white rounded-lg border border-slate-200 shadow-sm">
-                            <table className="min-w-full divide-y divide-slate-200">
-                                <thead className="bg-slate-50 sticky top-0"><tr><th className="px-3 py-2 text-left text-xs uppercase">Date</th><th className="px-3 py-2 text-left text-xs uppercase">Desc</th><th className="px-3 py-2 text-right text-xs uppercase">Amt</th></tr></thead>
-                                <tbody>{previewData.transactions.slice(0, 50).map(tx => <tr key={tx.id}><td className="px-3 py-2 text-xs">{tx.date}</td><td className="px-3 py-2 text-xs truncate max-w-[200px]">{tx.description}</td><td className="px-3 py-2 text-xs text-right font-mono">${tx.amount.toFixed(2)}</td></tr>)}</tbody>
-                            </table>
+                            {dataSource === 'financial' ? (
+                                <table className="min-w-full divide-y divide-slate-200">
+                                    <thead className="bg-slate-50 sticky top-0"><tr><th className="px-3 py-2 text-left text-xs uppercase">Date</th><th className="px-3 py-2 text-left text-xs uppercase">Desc</th><th className="px-3 py-2 text-right text-xs uppercase">Amt</th></tr></thead>
+                                    <tbody>{previewData.transactions.slice(0, 50).map(tx => <tr key={tx.id}><td className="px-3 py-2 text-xs">{tx.date}</td><td className="px-3 py-2 text-xs truncate max-w-[200px]">{tx.description}</td><td className="px-3 py-2 text-xs text-right font-mono">${tx.amount.toFixed(2)}</td></tr>)}</tbody>
+                                </table>
+                            ) : (
+                                <div className="flex items-center justify-center h-full text-slate-400">
+                                    <p className="text-sm italic">Amazon metric preview is available in the Reports view.</p>
+                                </div>
+                            )}
                         </div>
                         {isManagingRanges && (
                             <div className="mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-lg text-sm text-indigo-800">

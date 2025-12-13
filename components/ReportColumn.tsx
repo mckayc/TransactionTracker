@@ -1,6 +1,7 @@
 
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport } from '../types';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
 import { formatDate } from '../dateUtils';
 import TransactionTable from './TransactionTable';
@@ -21,6 +22,7 @@ interface ReportColumnProps {
     onSaveDateRange: (range: CustomDateRange) => void;
     onDeleteDateRange: (id: string) => void;
     savedReports?: SavedReport[];
+    amazonMetrics?: AmazonMetric[];
 }
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
@@ -220,22 +222,22 @@ const DonutChart: React.FC<{ data: { label: string; value: number; color: string
                             strokeDasharray={strokeDasharray}
                             strokeDashoffset={strokeDashoffset}
                             style={{ transformOrigin: '50px 50px' }}
-                            className={`transition-all duration-300 cursor-pointer ${isHovered ? 'opacity-100 scale-105 drop-shadow-md z-10' : 'opacity-90 hover:opacity-100 hover:scale-105'}`}
+                            className={`transition-all duration-300 cursor-pointer ${isHovered ? 'opacity-100 scale-105 drop-shadow-md z-20' : 'opacity-90 hover:opacity-100 hover:scale-105'}`}
                             onMouseEnter={() => setHoveredSlice(slice)}
                             onMouseLeave={() => setHoveredSlice(null)}
                         />
                     );
                 })}
             </svg>
-            <div className={`absolute inset-0 flex flex-col items-center justify-center pointer-events-none transition-all duration-300 ${hoveredSlice ? 'scale-110' : ''}`}>
-                <span className="text-xs text-slate-500 font-medium uppercase mb-1">
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-10">
+                <span className="text-xs text-slate-500 font-medium uppercase mb-1 drop-shadow-sm bg-white/70 px-1 rounded">
                     {hoveredSlice ? hoveredSlice.label : 'Total'}
                 </span>
-                <span className={`text-lg font-bold ${hoveredSlice ? '' : 'text-slate-800'}`} style={{ color: hoveredSlice ? hoveredSlice.color : undefined }}>
+                <span className={`text-lg font-bold ${hoveredSlice ? '' : 'text-slate-800'} drop-shadow-sm`} style={{ color: hoveredSlice ? hoveredSlice.color : undefined }}>
                     {formatCurrency(hoveredSlice ? hoveredSlice.value : total)}
                 </span>
                 {hoveredSlice && total > 0 && (
-                    <span className="text-xs text-slate-400 font-medium">
+                    <span className="text-xs text-slate-400 font-medium bg-white/70 px-1 rounded">
                         {((hoveredSlice.value / total) * 100).toFixed(1)}%
                     </span>
                 )}
@@ -355,7 +357,7 @@ const ReportRow: React.FC<{
     );
 };
 
-const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, onUpdateReport, savedDateRanges, onSaveDateRange, onDeleteDateRange, savedReports }) => {
+const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, transactions, categories, transactionTypes, accounts, users, tags, payees, onSaveReport, onUpdateReport, savedDateRanges, onSaveDateRange, onDeleteDateRange, savedReports, amazonMetrics }) => {
     
     const [config, setConfig] = useState<ReportConfig>(initialConfig);
     const [sortBy, setSortBy] = useState<'amount' | 'name'>('amount');
@@ -379,36 +381,47 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         const { start, end } = dateRange;
         const filterEnd = new Date(end);
         filterEnd.setHours(23, 59, 59, 999);
+        const startDateStr = formatDate(start);
+        const endDateStr = formatDate(filterEnd);
 
-        // 1. Filter Transactions
-        const filtered = transactions.filter(tx => {
-            if (tx.isParent) return false;
-            
-            const txDate = new Date(tx.date);
-            if (txDate < start || txDate > filterEnd) return false;
+        let filteredItems: any[] = [];
+        const isAmazon = config.dataSource === 'amazon';
 
-            // Balance Effect Filter
-            const type = transactionTypes.find(t => t.id === tx.typeId);
-            if (!type || !config.filters.balanceEffects?.includes(type.balanceEffect)) return false;
+        if (isAmazon) {
+            filteredItems = (amazonMetrics || []).filter(m => {
+                if (m.date < startDateStr || m.date > endDateStr) return false;
+                if (config.filters.amazonSources && !config.filters.amazonSources.includes(m.reportType)) return false;
+                return true;
+            });
+        } else {
+            // Standard Financial
+            filteredItems = transactions.filter(tx => {
+                if (tx.isParent) return false;
+                
+                const txDate = new Date(tx.date);
+                if (txDate < start || txDate > filterEnd) return false;
 
-            if (config.filters.accountIds && !config.filters.accountIds.includes(tx.accountId || '')) return false;
-            if (config.filters.userIds && !config.filters.userIds.includes(tx.userId || '')) return false;
-            if (config.filters.categoryIds && !config.filters.categoryIds.includes(tx.categoryId)) return false;
-            if (config.filters.typeIds && !config.filters.typeIds.includes(tx.typeId)) return false;
-            if (config.filters.payeeIds && !config.filters.payeeIds.includes(tx.payeeId || '')) return false;
-            if (config.filters.tagIds && config.filters.tagIds.length > 0) {
-                if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) return false;
-            }
+                const type = transactionTypes.find(t => t.id === tx.typeId);
+                if (!type || !config.filters.balanceEffects?.includes(type.balanceEffect)) return false;
 
-            return true;
-        });
+                if (config.filters.accountIds && !config.filters.accountIds.includes(tx.accountId || '')) return false;
+                if (config.filters.userIds && !config.filters.userIds.includes(tx.userId || '')) return false;
+                if (config.filters.categoryIds && !config.filters.categoryIds.includes(tx.categoryId)) return false;
+                if (config.filters.typeIds && !config.filters.typeIds.includes(tx.typeId)) return false;
+                if (config.filters.payeeIds && !config.filters.payeeIds.includes(tx.payeeId || '')) return false;
+                if (config.filters.tagIds && config.filters.tagIds.length > 0) {
+                    if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) return false;
+                }
+                return true;
+            });
+        }
 
         const isHierarchical = config.groupBy === 'category' || config.groupBy === 'payee';
         const hiddenIds = new Set(config.hiddenIds || config.hiddenCategoryIds || []);
         
         let rootNodes: ItemNode[] = [];
 
-        if (isHierarchical) {
+        if (isHierarchical && !isAmazon) {
             const nodeMap = new Map<string, ItemNode>();
             
             const getNode = (id: string, label: string, parentId?: string): ItemNode => {
@@ -429,7 +442,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             }
 
             // 1. Map transactions to nodes
-            filtered.forEach(tx => {
+            filteredItems.forEach((tx: Transaction) => {
                 let key = '', label = 'Unknown', parentId: string | undefined = undefined;
                 
                 if (config.groupBy === 'category') {
@@ -509,37 +522,63 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         } else {
             // Flat Aggregation
             const nodes = new Map<string, ItemNode>();
-            filtered.forEach(tx => {
-                let key = '', label = 'Unknown';
-                if (config.groupBy === 'account') {
-                    key = tx.accountId || 'no-account';
-                    label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
-                } else if (config.groupBy === 'type') {
-                    key = tx.typeId;
-                    label = transactionTypes.find(t => t.id === key)?.name || 'Unknown Type';
-                } else if (config.groupBy === 'tag') {
-                    const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
-                    txTags.forEach(tagId => {
-                        const tagKey = tagId;
-                        const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
-                        if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
-                        
-                        if (!nodes.has(tagKey)) {
-                            nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, sortValue: 0, ownValue: 0, color: '', transactions: [], children: [] });
-                        }
-                        const node = nodes.get(tagKey)!;
-                        node.ownValue += tx.amount;
-                        node.transactions.push(tx);
-                    });
-                    return;
+            
+            filteredItems.forEach((item) => {
+                let key = '', label = 'Unknown', val = 0;
+
+                if (isAmazon) {
+                    const m = item as AmazonMetric;
+                    val = m.revenue;
+                    if (config.groupBy === 'source') {
+                        key = m.reportType;
+                        label = m.reportType.replace('_', ' ').toUpperCase();
+                    } else if (config.groupBy === 'category') {
+                        key = m.category || 'Unknown';
+                        label = m.category || 'Unknown Category';
+                    } else if (config.groupBy === 'product') {
+                        key = m.asin;
+                        label = m.title || m.asin;
+                    }
+                } else {
+                    const tx = item as Transaction;
+                    val = tx.amount;
+                    if (config.groupBy === 'account') {
+                        key = tx.accountId || 'no-account';
+                        label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
+                    } else if (config.groupBy === 'type') {
+                        key = tx.typeId;
+                        label = transactionTypes.find(t => t.id === key)?.name || 'Unknown Type';
+                    } else if (config.groupBy === 'tag') {
+                        const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
+                        txTags.forEach(tagId => {
+                            const tagKey = tagId;
+                            const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
+                            if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
+                            
+                            if (!nodes.has(tagKey)) {
+                                nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, sortValue: 0, ownValue: 0, color: '', transactions: [], children: [] });
+                            }
+                            const node = nodes.get(tagKey)!;
+                            node.ownValue += val;
+                            node.transactions.push(tx);
+                        });
+                        return;
+                    } else if (config.groupBy === 'category') {
+                        // Fallback flat category group
+                        key = tx.categoryId;
+                        label = categories.find(c => c.id === key)?.name || 'Unknown';
+                    } else if (config.groupBy === 'payee') {
+                        key = tx.payeeId || 'no-payee';
+                        label = payees.find(p => p.id === key)?.name || 'No Payee';
+                    }
                 }
 
                 if (!nodes.has(key)) {
                     nodes.set(key, { id: key, label, value: 0, sortValue: 0, ownValue: 0, color: '', transactions: [], children: [] });
                 }
                 const node = nodes.get(key)!;
-                node.ownValue += tx.amount;
-                node.transactions.push(tx);
+                node.ownValue += val;
+                if (!isAmazon) node.transactions.push(item as Transaction);
             });
             
             rootNodes = Array.from(nodes.values());
@@ -560,17 +599,12 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             // Assign colors to children creating a lightness gradient
             const processChildren = (n: ItemNode, base: string) => {
                 if(n.children && n.children.length > 0) {
-                    // Sort children by value so largest gets darker shade if we varied by index?
-                    // Actually, let's keep it simple: lighter shades for all children
-                    // Sort children for color consistency using sortValue too
                     n.children.sort((a,b) => b.sortValue - a.sortValue);
                     
                     n.children.forEach((child, idx) => {
-                        // Lighten each child. To distinguish siblings, we can shift slightly based on index
-                        // 15% lighter base + small variance per index
                         const lightness = 15 + (Math.min(idx, 5) * 5); 
                         child.color = lightenColor(base, lightness);
-                        processChildren(child, base); // Pass base color down to keep family resemblance
+                        processChildren(child, base); 
                     });
                 }
             };
@@ -584,7 +618,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
         return { items: rootNodes, totalValue, visibleItems };
 
-    }, [transactions, config, dateRange, transactionTypes, categories, accounts, payees, tags, sortBy]);
+    }, [transactions, config, dateRange, transactionTypes, categories, accounts, payees, tags, sortBy, amazonMetrics]);
 
     const handleConfigUpdate = (newConfig: ReportConfig) => {
         setConfig(newConfig);
@@ -619,6 +653,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
     };
 
     const handleInspect = (item: ItemNode) => {
+        // Inspection only works for transactions for now, not amazon metrics
+        if (config.dataSource === 'amazon') return;
         setInspectingTitle(`${item.label} Transactions`);
         setInspectingItems(item.transactions);
     };
@@ -628,10 +664,13 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             
             <div className="p-4 border-b border-slate-100 flex justify-between items-start bg-slate-50 flex-shrink-0">
                 <div className="min-w-0 flex-1">
-                    <h3 className="font-bold text-slate-800 text-lg truncate" title={config.name}>{config.name}</h3>
+                    <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-slate-800 text-lg truncate" title={config.name}>{config.name}</h3>
+                        {config.dataSource === 'amazon' && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 rounded font-bold uppercase">Amazon</span>}
+                    </div>
                     <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
                         <span className="truncate">{dateRange.label}</span>
-                        {config.filters.balanceEffects?.length === 1 && (
+                        {config.filters.balanceEffects?.length === 1 && !config.dataSource && (
                             <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-medium capitalize">
                                 {config.filters.balanceEffects[0]}
                             </span>

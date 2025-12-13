@@ -1,7 +1,8 @@
 
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, AmazonReportType } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon } from '../../components/Icons';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon } from '../../components/Icons';
 import { parseAmazonReport } from '../../services/csvParserService';
 
 interface AmazonIntegrationProps {
@@ -41,9 +42,13 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     
+    // Data Table Sorting
     const [sortKey, setSortKey] = useState<keyof AmazonMetric>('date');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     
+    // Top Products Sorting (Dashboard)
+    const [productSortKey, setProductSortKey] = useState<'revenue' | 'clicks' | 'orderedItems' | 'conversionRate'>('revenue');
+
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(50);
@@ -161,8 +166,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     // --- Deletion Handlers ---
     const handleToggleSelectAll = () => {
-        // Toggle selection based on CURRENT PAGE view or ALL filtered items? 
-        // Typically select ALL filtered items is more powerful for bulk delete.
         if (selectedIds.size === displayMetrics.length && displayMetrics.length > 0) {
             setSelectedIds(new Set());
         } else {
@@ -198,7 +201,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
         } else {
             setSortKey(key);
-            setSortDirection('desc'); // Default to desc for new columns usually
+            setSortDirection('desc'); 
         }
     };
 
@@ -207,7 +210,10 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         return sortDirection === 'asc' ? <SortIcon className="w-4 h-4 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-4 h-4 text-indigo-600" />;
     };
 
-    // --- aggregations (Global) ---
+    // --- aggregations (Global or Filtered) ---
+    // Dashboard should reflect filtered data if filters are applied, or global if not?
+    // Let's make dashboard global for now, but respect a date filter if implemented on dashboard
+    // Currently, `displayMetrics` respects filters. Let's use `displayMetrics` for summary to allow dashboard filtering.
     const summary = useMemo(() => {
         const result = {
             totalRevenue: 0,
@@ -222,7 +228,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             } as Record<AmazonReportType, number>
         };
 
-        enrichedMetrics.forEach(m => {
+        displayMetrics.forEach(m => {
             result.totalRevenue += m.revenue;
             result.totalClicks += m.clicks;
             result.totalOrdered += m.orderedItems;
@@ -234,12 +240,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
         result.avgConversion = result.totalClicks > 0 ? (result.totalOrdered / result.totalClicks) * 100 : 0;
         return result;
-    }, [enrichedMetrics]);
+    }, [displayMetrics]);
 
     const topProducts = useMemo(() => {
         const productMap = new Map<string, { title: string, revenue: number, clicks: number, ordered: number }>();
         
-        enrichedMetrics.forEach(m => {
+        displayMetrics.forEach(m => {
             if (!productMap.has(m.asin)) {
                 productMap.set(m.asin, { title: m.title, revenue: 0, clicks: 0, ordered: 0 });
             }
@@ -250,10 +256,43 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         });
 
         return Array.from(productMap.entries())
-            .map(([asin, data]) => ({ asin, ...data }))
-            .sort((a, b) => b.revenue - a.revenue)
+            .map(([asin, data]) => ({ 
+                asin, 
+                ...data,
+                conversionRate: data.clicks > 0 ? (data.ordered / data.clicks) * 100 : 0
+            }))
+            .sort((a, b) => {
+                if (productSortKey === 'revenue') return b.revenue - a.revenue;
+                if (productSortKey === 'clicks') return b.clicks - a.clicks;
+                if (productSortKey === 'orderedItems') return b.ordered - a.ordered;
+                if (productSortKey === 'conversionRate') return b.conversionRate - a.conversionRate;
+                return b.revenue - a.revenue;
+            })
             .slice(0, 10);
-    }, [enrichedMetrics]);
+    }, [displayMetrics, productSortKey]);
+
+    // Date Range Presets
+    const setDateRange = (type: 'thisYear' | 'lastYear' | 'thisMonth' | 'lastMonth') => {
+        const now = new Date();
+        let start, end;
+        
+        if (type === 'thisYear') {
+            start = new Date(now.getFullYear(), 0, 1);
+            end = new Date(now.getFullYear(), 11, 31);
+        } else if (type === 'lastYear') {
+            start = new Date(now.getFullYear() - 1, 0, 1);
+            end = new Date(now.getFullYear() - 1, 11, 31);
+        } else if (type === 'thisMonth') {
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else {
+            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0);
+        }
+        
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(end.toISOString().split('T')[0]);
+    };
 
     return (
         <div className="space-y-6 h-full flex flex-col relative">
@@ -289,13 +328,55 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
             <div className="flex-1 overflow-y-auto min-h-0 bg-slate-50 -mx-4 px-4 pt-4 relative">
                 
+                {/* GLOBAL FILTERS (Apply to Dashboard and Data) */}
+                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-4 flex-shrink-0 mb-6">
+                    <div className="relative flex-grow w-full md:w-auto">
+                        <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <input 
+                            type="text" 
+                            placeholder="Search Title or ASIN..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                        />
+                    </div>
+                    
+                    <div className="flex items-center gap-2 w-full md:w-auto">
+                        <input 
+                            type="date" 
+                            value={startDate} 
+                            onChange={(e) => setStartDate(e.target.value)} 
+                            className="p-2 border rounded-lg text-sm w-full md:w-auto" 
+                        />
+                        <span className="text-slate-400">-</span>
+                        <input 
+                            type="date" 
+                            value={endDate} 
+                            onChange={(e) => setEndDate(e.target.value)} 
+                            className="p-2 border rounded-lg text-sm w-full md:w-auto" 
+                        />
+                    </div>
+
+                    <div className="flex gap-2">
+                        <button onClick={() => setDateRange('thisMonth')} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-md font-medium text-slate-600">This Month</button>
+                        <button onClick={() => setDateRange('thisYear')} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-md font-medium text-slate-600">This Year</button>
+                    </div>
+
+                    <button 
+                        onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); }} 
+                        className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2"
+                    >
+                        Clear
+                    </button>
+                </div>
+
                 {/* DASHBOARD TAB */}
                 {activeTab === 'dashboard' && (
-                    <div className="space-y-6">
+                    <div className="space-y-6 pb-8">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Total Earnings</p>
-                                <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(summary.totalRevenue)}</p>
+                                <p className="text-2xl font-bold text-green-600 mt-1">{formatCurrency(summary.totalRevenue)}</p>
                             </div>
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Total Clicks</p>
@@ -328,35 +409,57 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         </div>
 
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                            <div className="p-4 border-b border-slate-100">
+                            <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                 <h3 className="font-bold text-slate-700">Top Performing Products</h3>
-                            </div>
-                            <table className="min-w-full divide-y divide-slate-200">
-                                <thead className="bg-slate-50">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Product</th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Clicks</th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Ordered</th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Earnings</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200">
-                                    {topProducts.map((prod) => (
-                                        <tr key={prod.asin} className="hover:bg-slate-50">
-                                            <td className="px-4 py-3">
-                                                <div className="text-sm font-medium text-slate-800 line-clamp-1" title={prod.title}>{prod.title}</div>
-                                                <div className="text-xs text-slate-400 font-mono">{prod.asin}</div>
-                                            </td>
-                                            <td className="px-4 py-3 text-right text-sm text-slate-600">{formatNumber(prod.clicks)}</td>
-                                            <td className="px-4 py-3 text-right text-sm text-slate-600">{formatNumber(prod.ordered)}</td>
-                                            <td className="px-4 py-3 text-right text-sm font-bold text-green-600">{formatCurrency(prod.revenue)}</td>
-                                        </tr>
+                                <div className="flex gap-2">
+                                    {['revenue', 'clicks', 'orderedItems', 'conversionRate'].map(key => (
+                                        <button 
+                                            key={key}
+                                            onClick={() => setProductSortKey(key as any)}
+                                            className={`px-3 py-1 text-xs font-bold uppercase rounded-md transition-colors ${productSortKey === key ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                        >
+                                            {key.replace('Items', '').replace('Rate', '')}
+                                        </button>
                                     ))}
-                                    {topProducts.length === 0 && (
-                                        <tr><td colSpan={4} className="p-8 text-center text-slate-400">No data available.</td></tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-slate-200">
+                                    <thead className="bg-slate-50">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Product</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Clicks</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Ordered</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Conv. %</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Earnings</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200">
+                                        {topProducts.map((prod) => (
+                                            <tr key={prod.asin} className="hover:bg-slate-50">
+                                                <td className="px-4 py-3">
+                                                    <div className="text-sm font-medium text-slate-800 line-clamp-1" title={prod.title}>{prod.title}</div>
+                                                    <a 
+                                                        href={`https://www.amazon.com/dp/${prod.asin}`} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        className="text-xs text-indigo-500 hover:text-indigo-700 font-mono flex items-center gap-1 mt-0.5"
+                                                    >
+                                                        {prod.asin} <ExternalLinkIcon className="w-3 h-3" />
+                                                    </a>
+                                                </td>
+                                                <td className="px-4 py-3 text-right text-sm text-slate-600">{formatNumber(prod.clicks)}</td>
+                                                <td className="px-4 py-3 text-right text-sm text-slate-600">{formatNumber(prod.ordered)}</td>
+                                                <td className="px-4 py-3 text-right text-sm text-slate-600">{prod.conversionRate.toFixed(1)}%</td>
+                                                <td className="px-4 py-3 text-right text-sm font-bold text-green-600">{formatCurrency(prod.revenue)}</td>
+                                            </tr>
+                                        ))}
+                                        {topProducts.length === 0 && (
+                                            <tr><td colSpan={5} className="p-8 text-center text-slate-400">No data available.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -365,49 +468,19 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 {activeTab === 'data' && (
                     <div className="space-y-4 h-full flex flex-col">
                         
-                        {/* Filter Bar */}
-                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-4 flex-shrink-0">
-                            <div className="relative flex-grow w-full md:w-auto">
-                                <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                <input 
-                                    type="text" 
-                                    placeholder="Search Title or ASIN..." 
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                                />
-                            </div>
-                            
-                            <div className="flex items-center gap-2 w-full md:w-auto">
-                                <input 
-                                    type="date" 
-                                    value={startDate} 
-                                    onChange={(e) => setStartDate(e.target.value)} 
-                                    className="p-2 border rounded-lg text-sm w-full md:w-auto" 
-                                />
-                                <span className="text-slate-400">-</span>
-                                <input 
-                                    type="date" 
-                                    value={endDate} 
-                                    onChange={(e) => setEndDate(e.target.value)} 
-                                    className="p-2 border rounded-lg text-sm w-full md:w-auto" 
-                                />
-                            </div>
+                        {/* Summary Bar for Data Table */}
+                        <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg flex items-center justify-between text-sm text-indigo-900">
+                            <span>Showing <strong>{displayMetrics.length}</strong> records</span>
+                            <span className="font-bold">Total Income: {formatCurrency(summary.totalRevenue)}</span>
+                        </div>
 
-                            <button 
-                                onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); }} 
-                                className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2"
-                            >
-                                Clear
-                            </button>
-
-                            <div className="h-6 w-px bg-slate-200 hidden md:block"></div>
-
-                            <button 
+                        {/* Delete All Button (Specific to Data View management) */}
+                        <div className="flex justify-end">
+                             <button 
                                 onClick={handleDeleteAll} 
-                                className="text-red-600 hover:text-red-700 text-sm font-medium flex items-center gap-1 px-3 py-2 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap"
+                                className="text-red-600 hover:text-red-700 text-xs font-bold flex items-center gap-1 px-3 py-1 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap"
                             >
-                                <DeleteIcon className="w-4 h-4" /> Delete All
+                                <DeleteIcon className="w-3 h-3" /> Delete All Data
                             </button>
                         </div>
 
@@ -431,7 +504,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                             >
                                                 <div className="flex items-center gap-1">Date {getSortIcon('date')}</div>
                                             </th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Source</th>
                                             <th 
                                                 className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group"
                                                 onClick={() => handleHeaderClick('title')}
@@ -481,7 +554,14 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                 </td>
                                                 <td className="px-4 py-2 text-sm text-slate-800">
                                                     <div className="line-clamp-1 max-w-md" title={m.title}>{m.title}</div>
-                                                    <span className="text-xs text-slate-400 font-mono mr-2">{m.asin}</span>
+                                                    <a 
+                                                        href={`https://www.amazon.com/dp/${m.asin}`} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        className="text-xs text-indigo-500 hover:text-indigo-700 font-mono mr-2 flex items-center gap-1 mt-0.5"
+                                                    >
+                                                        {m.asin} <ExternalLinkIcon className="w-3 h-3" />
+                                                    </a>
                                                     {m.campaignTitle && <span className="text-xs text-purple-600 bg-purple-50 px-1 rounded">{m.campaignTitle}</span>}
                                                 </td>
                                                 <td className="px-4 py-2 text-right text-sm text-slate-600">{m.clicks}</td>
@@ -571,7 +651,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                             <thead className="bg-white sticky top-0 shadow-sm">
                                                 <tr>
                                                     <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                                                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
+                                                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Source</th>
                                                     <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">ASIN / Title</th>
                                                     <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Rev</th>
                                                 </tr>
