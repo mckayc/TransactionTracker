@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon } from '../../components/Icons';
@@ -180,6 +179,33 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             .map(([date, value]) => ({ label: date, value }));
     }, [displayMetrics]);
 
+    // Aggregate by Year
+    const yearStats = useMemo(() => {
+        const grouped = new Map<string, { revenue: number, views: number, subs: number, impressions: number, clicks: number }>();
+        
+        displayMetrics.forEach(m => {
+            const year = m.publishDate.substring(0, 4);
+            if (!grouped.has(year)) {
+                grouped.set(year, { revenue: 0, views: 0, subs: 0, impressions: 0, clicks: 0 });
+            }
+            const data = grouped.get(year)!;
+            data.revenue += m.estimatedRevenue;
+            data.views += m.views;
+            data.subs += m.subscribersGained;
+            data.impressions += m.impressions;
+            // Estimated clicks based on impression * ctr%
+            data.clicks += (m.impressions * (m.ctr / 100)); 
+        });
+
+        return Array.from(grouped.entries())
+            .sort((a, b) => b[0].localeCompare(a[0])) // Descending Year
+            .map(([year, d]) => ({
+                year,
+                ...d,
+                avgCtr: d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0
+            }));
+    }, [displayMetrics]);
+
     const topVideos = useMemo(() => {
         return [...displayMetrics]
             .sort((a, b) => b[productSortKey] - a[productSortKey])
@@ -325,6 +351,37 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Watch Time (Hrs)</p>
                                 <p className="text-2xl font-bold text-slate-800 mt-1">{formatNumber(summary.totalWatchTime)}</p>
+                            </div>
+                        </div>
+
+                        {/* Yearly Performance Table */}
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                            <div className="p-4 border-b border-slate-100">
+                                <h3 className="font-bold text-slate-700">Yearly Performance</h3>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-slate-200">
+                                    <thead className="bg-slate-50">
+                                        <tr>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Year</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Views</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Subs</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Avg CTR</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200">
+                                        {yearStats.map((stat) => (
+                                            <tr key={stat.year} className="hover:bg-slate-50">
+                                                <td className="px-4 py-3 text-sm font-bold text-slate-800">{stat.year}</td>
+                                                <td className="px-4 py-3 text-right text-sm font-medium text-green-600">{formatCurrency(stat.revenue)}</td>
+                                                <td className="px-4 py-3 text-right text-sm text-slate-600">{formatNumber(stat.views)}</td>
+                                                <td className="px-4 py-3 text-right text-sm text-slate-600">{formatNumber(stat.subs)}</td>
+                                                <td className="px-4 py-3 text-right text-sm text-slate-600">{stat.avgCtr.toFixed(2)}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
 
@@ -490,14 +547,18 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                 <tr>
                                                     <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Publish Date</th>
                                                     <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Title</th>
+                                                    <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Views</th>
+                                                    <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Subs</th>
                                                     <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-200">
-                                                {previewMetrics.slice(0, 50).map(m => (
+                                                {previewMetrics.slice(0, 1000).map(m => (
                                                     <tr key={m.id}>
                                                         <td className="px-4 py-2 text-xs text-slate-600">{m.publishDate}</td>
                                                         <td className="px-4 py-2 text-xs text-slate-800 truncate max-w-xs">{m.videoTitle}</td>
+                                                        <td className="px-4 py-2 text-xs text-right text-slate-600">{formatNumber(m.views)}</td>
+                                                        <td className="px-4 py-2 text-xs text-right text-slate-600">{formatNumber(m.subscribersGained)}</td>
                                                         <td className="px-4 py-2 text-xs text-right font-medium text-green-600">{formatCurrency(m.estimatedRevenue)}</td>
                                                     </tr>
                                                 ))}
