@@ -1,9 +1,7 @@
-
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric, YouTubeMetric } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
-import { formatDate } from '../dateUtils';
+import { formatDate, calculateDateRange } from '../dateUtils';
 import TransactionTable from './TransactionTable';
 import ReportConfigModal from './ReportConfigModal';
 
@@ -39,159 +37,6 @@ const lightenColor = (color: string, percent: number) => {
 };
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
-
-export const applyOffset = (date: Date, value: number, unit: DateRangeUnit) => {
-    const d = new Date(date);
-    switch (unit) {
-        case 'day':
-            d.setDate(d.getDate() - value);
-            break;
-        case 'week':
-            d.setDate(d.getDate() - (value * 7));
-            break;
-        case 'month':
-            d.setMonth(d.getMonth() - value);
-            break;
-        case 'quarter':
-            d.setMonth(d.getMonth() - (value * 3));
-            break;
-        case 'year':
-            d.setFullYear(d.getFullYear() - value);
-            break;
-    }
-    return d;
-};
-
-export const calculateDateRange = (preset: DateRangePreset, customStart: string | undefined, customEnd: string | undefined, savedRanges: CustomDateRange[]): { start: Date, end: Date, label: string } => {
-    const now = new Date();
-    let start = new Date();
-    let end = new Date();
-    let label = '';
-
-    const resetTime = (d: Date, endOfDay = false) => {
-        if (endOfDay) d.setHours(23, 59, 59, 999);
-        else d.setHours(0, 0, 0, 0);
-        return d;
-    };
-
-    const customRange = savedRanges.find(r => r.id === preset);
-
-    if (customRange) {
-        label = customRange.name;
-        const val = customRange.value;
-        const unit = customRange.unit;
-        
-        if (customRange.type === 'fixed_period') {
-            let anchor = new Date(now);
-            
-            if (customRange.offsets && customRange.offsets.length > 0) {
-                customRange.offsets.forEach(offset => {
-                    anchor = applyOffset(anchor, offset.value, offset.unit);
-                });
-            } else {
-                anchor = applyOffset(anchor, val, unit);
-            }
-
-            if (unit === 'day') {
-                start = new Date(anchor);
-                end = new Date(anchor);
-            } else if (unit === 'week') {
-                const day = anchor.getDay();
-                start = new Date(anchor);
-                start.setDate(anchor.getDate() - day);
-                end = new Date(start);
-                end.setDate(start.getDate() + 6);
-            } else if (unit === 'month') {
-                start = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
-                end = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0);
-            } else if (unit === 'quarter') {
-                const q = Math.floor(anchor.getMonth() / 3);
-                start = new Date(anchor.getFullYear(), q * 3, 1);
-                end = new Date(anchor.getFullYear(), q * 3 + 3, 0);
-            } else if (unit === 'year') {
-                start = new Date(anchor.getFullYear(), 0, 1);
-                end = new Date(anchor.getFullYear(), 11, 31);
-            }
-
-        } else {
-            end = new Date(); 
-            start = new Date();
-            start = applyOffset(start, val, unit);
-        }
-    } else {
-        switch (preset) {
-            case 'thisMonth':
-                start = new Date(now.getFullYear(), now.getMonth(), 1);
-                end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-                label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
-                break;
-            case 'lastMonth':
-                start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-                end = new Date(now.getFullYear(), now.getMonth(), 0);
-                label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
-                break;
-            case 'thisYear':
-                start = new Date(now.getFullYear(), 0, 1);
-                end = new Date(now.getFullYear(), 11, 31);
-                label = now.getFullYear().toString();
-                break;
-            case 'lastYear':
-                start = new Date(now.getFullYear() - 1, 0, 1);
-                end = new Date(now.getFullYear() - 1, 11, 31);
-                label = (now.getFullYear() - 1).toString();
-                break;
-            case 'allTime':
-                start = new Date(0); 
-                end = new Date();
-                label = 'All Time';
-                break;
-            case 'custom':
-                start = customStart ? new Date(customStart) : new Date();
-                end = customEnd ? new Date(customEnd) : new Date();
-                label = `${formatDate(start)} - ${formatDate(end)}`;
-                break;
-            case 'last3Months':
-                end = new Date();
-                start = new Date();
-                start.setDate(now.getDate() - 90);
-                label = 'Last 90 Days';
-                break;
-            case 'last6Months':
-                end = new Date();
-                start = new Date();
-                start.setMonth(now.getMonth() - 6);
-                label = 'Last 6 Months';
-                break;
-            case 'last12Months':
-                end = new Date();
-                start = new Date();
-                start.setFullYear(now.getFullYear() - 1);
-                label = 'Last 12 Months';
-                break;
-            default:
-                if (preset === 'specificMonth' && customStart) {
-                     const parts = customStart.split('-');
-                    if (parts.length === 2) {
-                        const year = parseInt(parts[0], 10);
-                        const month = parseInt(parts[1], 10) - 1;
-                        start = new Date(year, month, 1);
-                        end = new Date(year, month + 1, 0);
-                        label = start.toLocaleString('default', { month: 'long', year: 'numeric' });
-                    }
-                } else if (preset === 'relativeMonth' && customStart) {
-                    const offset = parseInt(customStart, 10);
-                    start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
-                    end = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0);
-                    label = `${offset} Months Ago`;
-                } else {
-                    label = 'Custom Range';
-                }
-                break;
-        }
-    }
-
-    return { start: resetTime(start), end: resetTime(end, true), label };
-};
 
 const DonutChart: React.FC<{ data: { label: string; value: number; color: string }[]; total: number }> = ({ data, total }) => {
     let accumulatedAngle = 0;
@@ -393,6 +238,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             filteredItems = (amazonMetrics || []).filter(m => {
                 if (m.date < startDateStr || m.date > endDateStr) return false;
                 if (config.filters.amazonSources && !config.filters.amazonSources.includes(m.reportType)) return false;
+                if (config.filters.amazonTrackingIds && config.filters.amazonTrackingIds.length > 0 && !config.filters.amazonTrackingIds.includes(m.trackingId)) return false;
                 return true;
             });
         } else if (isYouTube) {
@@ -546,6 +392,9 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     } else if (config.groupBy === 'product') {
                         key = m.asin;
                         label = m.title || m.asin;
+                    } else if (config.groupBy === 'trackingId') {
+                        key = m.trackingId || 'Unknown ID';
+                        label = m.trackingId || 'Unknown ID';
                     }
                 } else if (isYouTube) {
                     const m = item as YouTubeMetric;
@@ -780,7 +629,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                             />
                         </div>
                         <div className="p-4 border-t bg-slate-50 flex justify-end">
-                            <button onClick={() => setInspectingItems(null)} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">Close</button>
+                            <button onClick={() => setInspectingItems(null)} className="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded text-slate-700 font-medium">Close</button>
                         </div>
                     </div>
                 </div>
@@ -800,7 +649,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 savedDateRanges={savedDateRanges}
                 onSaveDateRange={onSaveDateRange}
                 onDeleteDateRange={onDeleteDateRange}
-                transactions={transactions} 
+                transactions={transactions}
             />
         </div>
     );

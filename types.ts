@@ -1,92 +1,166 @@
 
-
-
 export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation';
 
 export interface TransactionType {
-  id: string;
-  name: string;
-  balanceEffect: BalanceEffect;
-  isDefault?: boolean;
-}
-
-export interface Payee {
-  id: string;
-  name: string;
-  parentId?: string;
-}
-
-export interface Category {
-  id: string;
-  name: string;
-  parentId?: string;
+    id: string;
+    name: string;
+    balanceEffect: BalanceEffect;
+    isDefault?: boolean;
 }
 
 export interface Tag {
-  id: string;
-  name: string;
-  color: string; // Hex code or Tailwind class suffix
+    id: string;
+    name: string;
+    color: string;
 }
 
-export interface User {
-  id: string;
-  name: string;
-  isDefault?: boolean;
+export interface Category {
+    id: string;
+    name: string;
+    parentId?: string;
 }
 
-export interface Transaction {
-  id: string;
-  date: string;
-  description: string;
-  originalDescription?: string;
-  categoryId: string;
-  amount: number;
-  typeId: string;
-  location?: string;
-  accountId?: string;
-  notes?: string;
-  payeeId?: string;
-  linkedTransactionId?: string; // Legacy 1-to-1 link
-  linkGroupId?: string; // New 1-to-many group link
-  sourceFilename?: string;
-  userId?: string;
-  tagIds?: string[];
-  isParent?: boolean; // If true, this is a container for split transactions and should be excluded from sums
-  parentTransactionId?: string; // ID of the parent transaction if this is a split part
+export interface Payee {
+    id: string;
+    name: string;
+    parentId?: string;
 }
 
 export interface AccountType {
-  id: string;
-  name: string;
-  isDefault?: boolean;
+    id: string;
+    name: string;
+    isDefault?: boolean;
 }
 
 export interface Account {
-  id:string;
-  name: string;
-  identifier: string;
-  accountTypeId: string;
+    id: string;
+    name: string;
+    identifier: string;
+    accountTypeId: string;
 }
 
-export interface BusinessInfo {
-  llcName?: string;
-  ein?: string;
-  address?: string;
-  formationDate?: string;
-  stateOfFormation?: string;
-  businessType?: 'sole-proprietorship' | 'llc-single' | 'llc-multi' | 'c-corp' | 's-corp';
-  industry?: string;
+export interface User {
+    id: string;
+    name: string;
+    isDefault?: boolean;
 }
 
-export interface TaxInfo {
-  filingStatus?: 'sole-proprietor' | 's-corp' | 'c-corp' | 'partnership' | '';
-  accountantName?: string;
-  accountantEmail?: string;
-  taxYearEnd?: string;
-  lastFilingDate?: string;
-  notes?: string;
+export interface RawTransaction {
+    date: string;
+    description: string;
+    amount: number;
+    category: string;
+    accountId: string;
+    typeId: string;
+    location?: string;
+    sourceFilename?: string;
+    originalDescription?: string;
+    payeeId?: string;
+    userId?: string;
+    tagIds?: string[];
+    notes?: string;
+    categoryId?: string; 
 }
 
+export interface Transaction extends RawTransaction {
+    id: string;
+    categoryId: string; // Required in final transaction
+    linkGroupId?: string;
+    linkedTransactionId?: string; // Legacy
+    isParent?: boolean;
+    parentTransactionId?: string;
+    isCompleted?: boolean;
+}
+
+export interface DuplicatePair {
+    newTx: Transaction;
+    existingTx: Transaction;
+}
+
+// Rules
+export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than';
+export type RuleField = 'description' | 'amount' | 'accountId';
+export type RuleLogic = 'AND' | 'OR';
+
+export interface RuleCondition {
+    id: string;
+    field: RuleField;
+    operator: RuleOperator;
+    value: any;
+    nextLogic?: RuleLogic;
+}
+
+export interface ReconciliationRule {
+    id: string;
+    name: string;
+    conditions?: RuleCondition[];
+    // Actions
+    setCategoryId?: string;
+    setPayeeId?: string;
+    setTransactionTypeId?: string;
+    setDescription?: string;
+    assignTagIds?: string[];
+    // Legacy support
+    descriptionContains?: string;
+    amountEquals?: number;
+    accountId?: string;
+}
+
+// Tasks & Calendar
+export type TaskPriority = 'low' | 'medium' | 'high';
+
+export interface SubTask {
+    id: string;
+    text: string;
+    isCompleted: boolean;
+    linkUrl?: string;
+    linkText?: string;
+    notes?: string;
+}
+
+export interface RecurrenceRule {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    interval: number;
+    byWeekDays?: number[]; // 0-6
+    byMonthDay?: number; // 1-31, -1 for last day
+    endDate?: string;
+}
+
+export interface TaskItem {
+    id: string;
+    title: string;
+    description?: string;
+    notes?: string;
+    priority: TaskPriority;
+    dueDate?: string;
+    isCompleted: boolean;
+    createdAt: string;
+    subtasks: SubTask[];
+    recurrence?: RecurrenceRule;
+}
+
+export interface Task { // Simple task for Template
+    id: string;
+    text: string;
+}
+
+export interface Template {
+    id: string;
+    name: string;
+    instructions: string;
+    tasks: Task[];
+}
+
+export interface ScheduledEvent {
+    id: string;
+    templateId: string;
+    startDate: string;
+    recurrence: 'none' | 'monthly';
+}
+
+export type TaskCompletions = Record<string, Record<string, string[]>>; // Date -> EventID -> CompletedTaskIDs
+
+// Documents
 export interface DocumentFolder {
     id: string;
     name: string;
@@ -95,31 +169,110 @@ export interface DocumentFolder {
 }
 
 export interface BusinessDocument {
-  id: string;
-  name: string;
-  uploadDate: string;
-  size: number;
-  mimeType: string;
-  parentId?: string; // For folder nesting
-  aiAnalysis?: {
-    documentType: string;
-    summary: string;
-    keyDates: string[];
-    taxTips: string[];
-  };
+    id: string;
+    name: string;
+    uploadDate: string;
+    size: number;
+    mimeType: string;
+    parentId?: string;
+    aiAnalysis?: {
+        documentType?: string;
+        summary?: string;
+        keyDates?: string[];
+        taxTips?: string[];
+    };
+}
+
+// Settings & Profile
+export interface BackupConfig {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'never';
+    retentionCount: number;
+    lastBackupDate?: string;
+}
+
+export interface SystemSettings {
+    apiKey?: string;
+    backupConfig?: BackupConfig;
+}
+
+export interface BusinessInfo {
+    llcName?: string;
+    businessType?: string;
+    stateOfFormation?: string;
+    industry?: string;
+    formationDate?: string;
+    ein?: string;
+}
+
+export interface TaxInfo {
+    filingStatus?: string;
+    taxYearEnd?: string;
+    accountantName?: string;
 }
 
 export interface BusinessProfile {
-  info: BusinessInfo;
-  tax: TaxInfo;
-  completedSteps: string[]; // IDs of completed wizard steps
+    info: BusinessInfo;
+    tax: TaxInfo;
+    completedSteps: string[];
 }
 
+// Reports & Integrations
+export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime' | 'custom' | 'last3Months' | 'last6Months' | 'last12Months' | 'specificMonth' | 'relativeMonth';
+export type ReportGroupBy = 'category' | 'payee' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'video' | 'trackingId';
+export type DateRangeUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
+export type DateRangeType = 'rolling_window' | 'fixed_period';
+
+export interface DateOffset {
+    value: number;
+    unit: DateRangeUnit;
+}
+
+export interface CustomDateRange {
+    id: string;
+    name: string;
+    type: DateRangeType;
+    unit: DateRangeUnit;
+    value: number;
+    offsets?: DateOffset[];
+}
+
+export interface ReportConfig {
+    id: string;
+    name: string;
+    dataSource: 'financial' | 'amazon' | 'youtube';
+    datePreset: DateRangePreset;
+    customStartDate?: string;
+    customEndDate?: string;
+    groupBy?: ReportGroupBy;
+    subGroupBy?: ReportGroupBy;
+    filters: {
+        accountIds?: string[];
+        userIds?: string[];
+        categoryIds?: string[];
+        typeIds?: string[];
+        balanceEffects?: BalanceEffect[];
+        tagIds?: string[];
+        payeeIds?: string[];
+        amazonSources?: AmazonReportType[];
+        amazonTrackingIds?: string[];
+    };
+    hiddenCategoryIds?: string[];
+    hiddenIds?: string[];
+}
+
+export interface SavedReport {
+    id: string;
+    name: string;
+    config: ReportConfig;
+}
+
+// AI & Chat
 export interface ChatMessage {
     id: string;
-    role: 'user' | 'ai';
+    role: 'user' | 'ai' | 'model';
     content: string;
     timestamp: string;
+    isError?: boolean;
 }
 
 export interface ChatSession {
@@ -130,198 +283,19 @@ export interface ChatSession {
     updatedAt: string;
 }
 
-export interface BackupConfig {
-    frequency: 'daily' | 'weekly' | 'monthly' | 'never';
-    retentionCount: number;
-    lastBackupDate?: string;
-}
-
-export interface SystemSettings {
-    apiKey?: string;
-    backupConfig?: BackupConfig;
-    enabledIntegrations?: string[]; // IDs of enabled integrations
-}
-
-
-// Represents a transaction before it has been assigned a unique ID.
-export type RawTransaction = Omit<Transaction, 'id' | 'categoryId' | 'linkedTransactionId'> & { category: string };
-
-export interface DuplicatePair {
-  newTx: Transaction;
-  existingTx: Transaction;
-}
-
-
-// Types for the new Task Management feature
-export interface Task {
-  id: string;
-  text: string;
-}
-
-export interface Template {
-  id: string;
-  name: string;
-  instructions: string; // Markdown supported
-  tasks: Task[];
-}
-
-export interface ScheduledEvent {
-  id: string;
-  templateId: string;
-  startDate: string; // YYYY-MM-DD
-  recurrence: 'none' | 'monthly';
-}
-
-export type TaskPriority = 'low' | 'medium' | 'high';
-
-export interface SubTask {
-  id: string;
-  text: string;
-  isCompleted: boolean;
-  linkUrl?: string; // Optional URL for checklist items
-  linkText?: string; // Optional display text for the link
-  notes?: string; // Optional notes for the checklist item
-}
-
-export interface RecurrenceRule {
-  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
-  interval: number; // e.g. 1 for "every day", 2 for "every 2 weeks"
-  endDate?: string; // YYYY-MM-DD
-  byWeekDays?: number[]; // 0=Sun, 1=Mon, etc. for Weekly
-  byMonthDay?: number; // 1-31, or -1 for Last Day for Monthly
-}
-
-export interface TaskItem {
-  id: string;
-  title: string;
-  description?: string;
-  notes?: string; // Longer detailed notes
-  dueDate?: string; // YYYY-MM-DD
-  isCompleted: boolean;
-  priority: TaskPriority;
-  createdAt: string;
-  subtasks?: SubTask[];
-  recurrence?: RecurrenceRule;
-}
-
-export type TaskCompletions = Record<string, Record<string, string[]>>;
-
-// Rules Engine Types
-export type RuleLogic = 'AND' | 'OR';
-export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than';
-
-export interface RuleCondition {
-  id: string;
-  field: 'description' | 'amount' | 'accountId';
-  operator: RuleOperator;
-  value: string | number;
-  nextLogic?: RuleLogic; // Connects this condition to the next one (e.g. Condition 1 [AND] Condition 2)
-}
-
-export interface ReconciliationRule {
-  id: string;
-  name: string;
-  
-  // Legacy simple conditions (kept for backward compatibility)
-  descriptionContains?: string;
-  accountId?: string;
-  amountEquals?: number;
-
-  // New flexible conditions
-  matchLogic?: RuleLogic; // Deprecated in favor of linear logic in conditions
-  conditions?: RuleCondition[];
-
-  // Actions
-  setCategoryId?: string;
-  setPayeeId?: string;
-  setTransactionTypeId?: string;
-  setDescription?: string;
-  assignTagIds?: string[]; // New: Auto-assign tags
-}
-
-// Types for AI Audit
 export interface AuditFinding {
-  id: string;
-  title: string;
-  reason: string;
-  affectedTransactionIds: string[];
-  suggestedChanges: {
-    categoryId?: string; // ID of the category to change to
-    typeId?: string; // ID of the transaction type to change to
-    payeeName?: string; // Suggested payee name (to find or create)
-  };
-}
-
-// --- Report Types ---
-
-export type DateRangePreset = 
-    | 'thisMonth' 
-    | 'lastMonth' 
-    | 'thisYear' 
-    | 'lastYear' 
-    | 'allTime'
-    | 'last3Months' 
-    | 'last6Months'
-    | 'last12Months'
-    | 'custom' 
-    | 'sameMonthLastYear' 
-    | 'sameMonth2YearsAgo' 
-    | 'lastMonthPriorYear'
-    | 'specificMonth' // Static month (e.g. "2023-08")
-    | 'relativeMonth' // Relative offset (e.g. "3 months ago")
-    | string; // Allow custom IDs
-
-export type DateRangeUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
-export type DateRangeType = 'fixed_period' | 'rolling_window';
-
-export interface DateOffset {
-    unit: DateRangeUnit;
-    value: number;
-}
-
-export interface CustomDateRange {
     id: string;
-    name: string;
-    type: DateRangeType; // e.g. "rolling_window" (Last 3 months) vs "fixed_period" (The month 3 months ago)
-    unit: DateRangeUnit; // Primary unit or Window Size for fixed period
-    value: number; // Primary value
-    offsets?: DateOffset[]; // Optional list of additional offsets for fixed periods
-}
-
-export type ReportGroupBy = 'category' | 'payee' | 'tag' | 'type' | 'account' | 'source' | 'product' | 'video';
-
-export interface ReportConfig {
-    id: string;
-    name: string;
-    dataSource?: 'financial' | 'amazon' | 'youtube'; // Default 'financial'
-    datePreset: DateRangePreset;
-    customStartDate?: string; // Used for Custom Start, Specific Month (YYYY-MM), or Relative Offset (string "3")
-    customEndDate?: string;
-    groupBy?: ReportGroupBy; // Dimension to group by (default: category)
-    subGroupBy?: ReportGroupBy; // Secondary dimension to group by (e.g. Account -> Category)
-    filters: {
-        accountIds?: string[];
-        userIds?: string[];
-        typeIds?: string[];
-        categoryIds?: string[];
-        balanceEffects?: BalanceEffect[]; 
-        tagIds?: string[];
-        payeeIds?: string[];
-        // Amazon Specific Filters
-        amazonSources?: AmazonReportType[];
+    title: string;
+    reason: string;
+    affectedTransactionIds: string[];
+    suggestedChanges: {
+        categoryId?: string;
+        typeId?: string;
+        payeeName?: string;
     };
-    hiddenCategoryIds?: string[]; // Legacy: IDs of categories hidden via the eye icon
-    hiddenIds?: string[]; // New: Universal hidden IDs for any group type (replaces hiddenCategoryIds logic)
 }
 
-export interface SavedReport {
-    id: string;
-    name: string;
-    config: ReportConfig;
-}
-
-// --- Integrations ---
-
+// Integrations
 export type AmazonReportType = 'onsite' | 'offsite' | 'creator_connections' | 'unknown';
 
 export interface AmazonMetric {
@@ -332,12 +306,12 @@ export interface AmazonMetric {
     clicks: number;
     orderedItems: number;
     shippedItems: number;
-    revenue: number; // Earnings/Commission Income
+    revenue: number;
     conversionRate: number;
     trackingId: string;
     category?: string;
     reportType: AmazonReportType;
-    campaignTitle?: string; // For Creator Connections
+    campaignTitle?: string;
 }
 
 export interface YouTubeChannel {
@@ -348,10 +322,11 @@ export interface YouTubeChannel {
 
 export interface YouTubeMetric {
     id: string;
-    channelId?: string; // New field to link to a channel
+    channelId?: string;
     videoId: string;
     videoTitle: string;
     publishDate: string; // YYYY-MM-DD
+    reportYear?: string;
     views: number;
     watchTimeHours: number;
     subscribersGained: number;

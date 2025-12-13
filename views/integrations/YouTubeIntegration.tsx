@@ -149,6 +149,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [filterChannelId, setFilterChannelId] = useState('');
+    const [filterReportYear, setFilterReportYear] = useState('');
     
     const [sortKey, setSortKey] = useState<keyof YouTubeMetric>('publishDate');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -161,28 +162,28 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     // Years for dropdown (2000-2050)
     const years = useMemo(() => Array.from({length: 51}, (_, i) => (2000 + i).toString()).reverse(), []);
 
+    // Unique Report Years available in data
+    const availableReportYears = useMemo(() => {
+        const yearsSet = new Set<string>();
+        metrics.forEach(m => {
+            if (m.reportYear) yearsSet.add(m.reportYear);
+        });
+        return Array.from(yearsSet).sort().reverse();
+    }, [metrics]);
+
     // Guess Year & Channel Effect
     useEffect(() => {
         if (previewMetrics.length > 0) {
-            // 1. Guess Year from most frequent year in publishDate
+            // 1. Guess Year: Find the MOST RECENT year in the data (max of publish dates)
             if (!uploadYear) {
-                const yearCounts: Record<string, number> = {};
+                let maxYear = 0;
                 previewMetrics.forEach(m => {
                     if (m.publishDate) {
-                        const y = m.publishDate.substring(0, 4);
-                        if (!isNaN(Number(y))) yearCounts[y] = (yearCounts[y] || 0) + 1;
+                        const y = parseInt(m.publishDate.substring(0, 4));
+                        if (!isNaN(y) && y > maxYear) maxYear = y;
                     }
                 });
-                // Find most frequent year
-                let maxCount = 0;
-                let bestYear = '';
-                for (const [y, count] of Object.entries(yearCounts)) {
-                    if (count > maxCount) {
-                        maxCount = count;
-                        bestYear = y;
-                    }
-                }
-                if (bestYear) setUploadYear(bestYear);
+                if (maxYear > 0) setUploadYear(maxYear.toString());
             }
 
             // 2. Guess Channel if only one exists
@@ -211,6 +212,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             result = result.filter(m => m.channelId === filterChannelId);
         }
 
+        if (filterReportYear) {
+            result = result.filter(m => m.reportYear === filterReportYear);
+        }
+
         result.sort((a, b) => {
             let valA = a[sortKey];
             let valB = b[sortKey];
@@ -230,14 +235,14 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         });
 
         return result;
-    }, [metrics, debouncedSearchTerm, startDate, endDate, sortKey, sortDirection, filterChannelId]);
+    }, [metrics, debouncedSearchTerm, startDate, endDate, sortKey, sortDirection, filterChannelId, filterReportYear]);
 
     const totalPages = Math.ceil(displayMetrics.length / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const paginatedMetrics = displayMetrics.slice(startIndex, startIndex + rowsPerPage);
 
     // Reset pagination
-    useEffect(() => { setCurrentPage(1); }, [debouncedSearchTerm, startDate, endDate, rowsPerPage, filterChannelId]);
+    useEffect(() => { setCurrentPage(1); }, [debouncedSearchTerm, startDate, endDate, rowsPerPage, filterChannelId, filterReportYear]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -266,12 +271,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             return;
         }
         if (previewMetrics.length > 0) {
-            // Apply selected channel ID to all imported metrics
+            // Apply selected channel ID and Report Year to all imported metrics
             const metricsWithChannel = previewMetrics.map(m => ({
                 ...m,
-                channelId: uploadChannelId
-                // Note: We don't overwrite the publishDate year because actual date is better,
-                // but we could use uploadYear for metadata if we had a field for it.
+                channelId: uploadChannelId,
+                reportYear: uploadYear || undefined
             }));
             onAddMetrics(metricsWithChannel);
             setPreviewMetrics([]);
@@ -462,6 +466,16 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
                         </select>
 
+                        {/* Report Year Filter */}
+                        <select 
+                            value={filterReportYear} 
+                            onChange={(e) => setFilterReportYear(e.target.value)}
+                            className="p-2 border rounded-lg text-sm bg-white"
+                        >
+                            <option value="">All Report Years</option>
+                            {availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}
+                        </select>
+
                         <div className="flex items-center gap-2 w-full md:w-auto">
                             <input 
                                 type="date" 
@@ -483,7 +497,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             <button onClick={() => setDateRange('thisYear')} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-md font-medium text-slate-600">This Year</button>
                         </div>
 
-                        <button onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); setFilterChannelId(''); }} className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2">Clear</button>
+                        <button onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); setFilterChannelId(''); setFilterReportYear(''); }} className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2">Clear</button>
                     </div>
                 )}
 
@@ -637,6 +651,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                     className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
                                                 />
                                             </th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('reportYear')}>
+                                                <div className="flex items-center gap-1">Report Year {getSortIcon('reportYear')}</div>
+                                            </th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('publishDate')}>
                                                 <div className="flex items-center gap-1">Published {getSortIcon('publishDate')}</div>
                                             </th>
@@ -661,6 +678,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                         onChange={() => handleToggleSelection(m.id)}
                                                         className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
                                                     />
+                                                </td>
+                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">
+                                                    {m.reportYear || '-'}
                                                 </td>
                                                 <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">
                                                     {m.publishDate}

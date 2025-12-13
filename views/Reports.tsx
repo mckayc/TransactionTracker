@@ -1,5 +1,7 @@
 
 
+
+
 import React, { useState, useEffect } from 'react';
 import type { Transaction, TransactionType, Category, Payee, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange, AmazonMetric, YouTubeMetric } from '../types';
 import ReportColumn from '../components/ReportColumn';
@@ -321,6 +323,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                 onSaveDateRange={handleSaveDateRange}
                 onDeleteDateRange={handleDeleteDateRange}
                 transactions={transactions}
+                amazonMetrics={amazonMetrics}
             />
 
             {/* Manage Reports Modal */}

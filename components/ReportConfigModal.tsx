@@ -1,11 +1,9 @@
-
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset, Transaction, AmazonReportType } from '../types';
 import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon, SaveIcon, BoxIcon, YoutubeIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
-import { calculateDateRange } from './ReportColumn';
+import { calculateDateRange } from '../dateUtils';
 
 interface ReportConfigModalProps {
     isOpen: boolean;

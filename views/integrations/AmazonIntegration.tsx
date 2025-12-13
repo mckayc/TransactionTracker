@@ -1,5 +1,7 @@
 
 
+
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, AmazonReportType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon } from '../../components/Icons';
@@ -41,6 +43,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [filterTrackingId, setFilterTrackingId] = useState('');
     
     // Data Table Sorting
     const [sortKey, setSortKey] = useState<keyof AmazonMetric>('date');
@@ -52,6 +55,15 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(50);
+
+    // Unique Tracking IDs for filter
+    const trackingIds = useMemo(() => {
+        const ids = new Set<string>();
+        metrics.forEach(m => {
+            if (m.trackingId) ids.add(m.trackingId);
+        });
+        return Array.from(ids).sort();
+    }, [metrics]);
 
     // Title Sync Logic (Memoized)
     const enrichedMetrics = useMemo(() => {
@@ -97,7 +109,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             result = result.filter(m => m.date <= endDate);
         }
 
-        // 3. Sort
+        // 3. Filter by Tracking ID
+        if (filterTrackingId) {
+            result = result.filter(m => m.trackingId === filterTrackingId);
+        }
+
+        // 4. Sort
         result.sort((a, b) => {
             let valA = a[sortKey];
             let valB = b[sortKey];
@@ -118,7 +135,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         });
 
         return result;
-    }, [enrichedMetrics, debouncedSearchTerm, startDate, endDate, sortKey, sortDirection]);
+    }, [enrichedMetrics, debouncedSearchTerm, startDate, endDate, filterTrackingId, sortKey, sortDirection]);
 
     // Pagination Logic
     const totalPages = Math.ceil(displayMetrics.length / rowsPerPage);
@@ -128,7 +145,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     // Reset pagination when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [debouncedSearchTerm, startDate, endDate, rowsPerPage]);
+    }, [debouncedSearchTerm, startDate, endDate, filterTrackingId, rowsPerPage]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -211,9 +228,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     };
 
     // --- aggregations (Global or Filtered) ---
-    // Dashboard should reflect filtered data if filters are applied, or global if not?
-    // Let's make dashboard global for now, but respect a date filter if implemented on dashboard
-    // Currently, `displayMetrics` respects filters. Let's use `displayMetrics` for summary to allow dashboard filtering.
     const summary = useMemo(() => {
         const result = {
             totalRevenue: 0,
@@ -341,6 +355,16 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         />
                     </div>
                     
+                    {/* Tracking ID Filter */}
+                    <select 
+                        value={filterTrackingId} 
+                        onChange={(e) => setFilterTrackingId(e.target.value)}
+                        className="p-2 border rounded-lg text-sm bg-white"
+                    >
+                        <option value="">All Tracking IDs</option>
+                        {trackingIds.map(id => <option key={id} value={id}>{id}</option>)}
+                    </select>
+
                     <div className="flex items-center gap-2 w-full md:w-auto">
                         <input 
                             type="date" 
@@ -363,7 +387,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     </div>
 
                     <button 
-                        onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); }} 
+                        onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); setFilterTrackingId(''); }} 
                         className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2"
                     >
                         Clear
@@ -469,12 +493,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <div className="space-y-4 h-full flex flex-col">
                         
                         {/* Summary Bar for Data Table */}
-                        <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-lg flex items-center justify-between text-sm text-indigo-900">
+                        <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center justify-between text-sm text-red-900">
                             <span>Showing <strong>{displayMetrics.length}</strong> records</span>
-                            <span className="font-bold">Total Income: {formatCurrency(summary.totalRevenue)}</span>
+                            <span className="font-bold">Total Revenue: {formatCurrency(summary.totalRevenue)}</span>
                         </div>
 
-                        {/* Delete All Button (Specific to Data View management) */}
+                        {/* Delete All Button */}
                         <div className="flex justify-end">
                              <button 
                                 onClick={handleDeleteAll} 
@@ -510,6 +534,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                 onClick={() => handleHeaderClick('title')}
                                             >
                                                 <div className="flex items-center gap-1">ASIN / Title {getSortIcon('title')}</div>
+                                            </th>
+                                            <th 
+                                                className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group"
+                                                onClick={() => handleHeaderClick('trackingId')}
+                                            >
+                                                <div className="flex items-center gap-1">Tracking ID {getSortIcon('trackingId')}</div>
                                             </th>
                                             <th 
                                                 className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group"
@@ -564,13 +594,14 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                     </a>
                                                     {m.campaignTitle && <span className="text-xs text-purple-600 bg-purple-50 px-1 rounded">{m.campaignTitle}</span>}
                                                 </td>
+                                                <td className="px-4 py-2 text-sm text-slate-600">{m.trackingId}</td>
                                                 <td className="px-4 py-2 text-right text-sm text-slate-600">{m.clicks}</td>
                                                 <td className="px-4 py-2 text-right text-sm text-slate-600">{m.orderedItems}</td>
                                                 <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.revenue)}</td>
                                             </tr>
                                         ))}
                                         {paginatedMetrics.length === 0 && (
-                                            <tr><td colSpan={7} className="p-12 text-center text-slate-400 italic">No data matches your filters.</td></tr>
+                                            <tr><td colSpan={8} className="p-12 text-center text-slate-400 italic">No data matches your filters.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
