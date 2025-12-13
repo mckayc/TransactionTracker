@@ -143,6 +143,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
               </button>
           )}
           {!isCollapsed && <CalendarView transactions={transactions} />}
+          
+          <div className={`text-center text-xs text-slate-600 pt-2 ${isCollapsed ? 'hidden' : 'block'}`}>
+              v0.1.0 (YouTube)
+          </div>
       </div>
     </aside>
   );
