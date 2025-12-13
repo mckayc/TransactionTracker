@@ -668,7 +668,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                         
                         {/* Summary Bar for Data Table */}
                         <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center justify-between text-sm text-red-900">
-                            <span>Showing <strong>{displayMetrics.length}</strong> {groupByVideo ? 'videos' : 'records'}</span>
+                            <span>Showing <strong>{finalDisplayMetrics.length}</strong> {groupByVideo ? 'videos' : 'records'}</span>
                             <div className="flex items-center gap-4">
                                 <span className="font-bold hidden sm:inline">Total Revenue: {formatCurrency(summary.totalRevenue)}</span>
                                 <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-full border border-red-200 hover:bg-red-50 transition-colors shadow-sm select-none">
@@ -702,10 +702,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                 {!groupByVideo && (
                                                     <input 
                                                         type="checkbox" 
-                                                        checked={selectedIds.size === displayMetrics.length && displayMetrics.length > 0}
+                                                        checked={selectedIds.size === finalDisplayMetrics.length && finalDisplayMetrics.length > 0}
                                                         onChange={() => {
-                                                            if (selectedIds.size === displayMetrics.length) setSelectedIds(new Set());
-                                                            else setSelectedIds(new Set(displayMetrics.map(m => m.id)));
+                                                            if (selectedIds.size === finalDisplayMetrics.length) setSelectedIds(new Set());
+                                                            else setSelectedIds(new Set(finalDisplayMetrics.map(m => m.id)));
                                                         }}
                                                         className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
                                                     />
