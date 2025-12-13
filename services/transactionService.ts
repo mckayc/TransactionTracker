@@ -52,9 +52,9 @@ export const mergeTransactions = (
     // Sanitize amount to ensure it's a number, default to 0 if invalid
     const amount = typeof newTx.amount === 'number' ? newTx.amount : 0;
     
-    const { category, ...transactionData } = newTx;
+    // We retain the original 'category' string in the new transaction object to satisfy the Transaction interface.
     const transactionWithId: Transaction = {
-        ...transactionData,
+        ...newTx,
         amount,
         id: generateTransactionId(newTx),
     };

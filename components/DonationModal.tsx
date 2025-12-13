@@ -134,6 +134,7 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
                     payeeId: item.payeeId || undefined,
                     typeId: donationType.id,
                     categoryId: donationCategory.id,
+                    category: donationCategory.name,
                     notes: `Calculated from ${monthName} income of $${totalIncome.toLocaleString()}.`,
                 };
                 onSave(newTx);

@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset, Transaction, AmazonReportType } from '../types';
+import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset, Transaction, AmazonReportType, AmazonMetric } from '../types';
 import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon, SaveIcon, BoxIcon, YoutubeIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
@@ -20,10 +21,11 @@ interface ReportConfigModalProps {
     onSaveDateRange: (range: CustomDateRange) => void;
     onDeleteDateRange: (id: string) => void;
     transactions: Transaction[];
+    amazonMetrics?: AmazonMetric[];
 }
 
 const ReportConfigModal: React.FC<ReportConfigModalProps> = ({ 
-    isOpen, onClose, onSave, initialConfig, accounts, categories, users, transactionTypes, tags, payees, savedDateRanges, onSaveDateRange, onDeleteDateRange, transactions
+    isOpen, onClose, onSave, initialConfig, accounts, categories, users, transactionTypes, tags, payees, savedDateRanges, onSaveDateRange, onDeleteDateRange, transactions, amazonMetrics
 }) => {
     const [name, setName] = useState('');
     const [dataSource, setDataSource] = useState<'financial' | 'amazon' | 'youtube'>('financial');

@@ -35,6 +35,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
             date: getTodayDate(),
             description: '',
             categoryId: defaultCategory?.id || '',
+            category: defaultCategory?.name || '',
             amount: 0,
             typeId: defaultExpenseType ? defaultExpenseType.id : '',
             location: '',
@@ -98,10 +99,20 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: name === 'amount' ? parseFloat(value) || 0 : value,
-        }));
+        
+        if (name === 'categoryId') {
+            const catName = categories.find(c => c.id === value)?.name || '';
+            setFormData(prev => ({
+                ...prev,
+                categoryId: value,
+                category: catName
+            }));
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                [name]: name === 'amount' ? parseFloat(value) || 0 : value,
+            }));
+        }
     };
 
     const toggleTag = (tagId: string) => {

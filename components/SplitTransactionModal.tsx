@@ -91,21 +91,25 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
             linkGroupId: transaction.linkGroupId || generateUUID() // Generate group ID if not exists
         };
 
-        const children: Transaction[] = splits.map(s => ({
-            id: generateUUID(),
-            date: transaction.date,
-            description: s.description,
-            amount: s.amount,
-            categoryId: s.categoryId,
-            typeId: s.typeId,
-            accountId: transaction.accountId,
-            payeeId: transaction.payeeId,
-            userId: transaction.userId,
-            location: transaction.location,
-            sourceFilename: transaction.sourceFilename,
-            linkGroupId: parent.linkGroupId, // Link to parent's group
-            parentTransactionId: transaction.id // Explicit link to parent
-        }));
+        const children: Transaction[] = splits.map(s => {
+            const catName = categories.find(c => c.id === s.categoryId)?.name || 'Split';
+            return {
+                id: generateUUID(),
+                date: transaction.date,
+                description: s.description,
+                amount: s.amount,
+                categoryId: s.categoryId,
+                category: catName,
+                typeId: s.typeId,
+                accountId: transaction.accountId,
+                payeeId: transaction.payeeId,
+                userId: transaction.userId,
+                location: transaction.location,
+                sourceFilename: transaction.sourceFilename,
+                linkGroupId: parent.linkGroupId, // Link to parent's group
+                parentTransactionId: transaction.id // Explicit link to parent
+            };
+        });
 
         onSplit(parent, children);
         onClose();

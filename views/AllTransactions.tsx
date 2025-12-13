@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag, SavedReport, ReportConfig } from '../types';
 import TransactionTable from '../components/TransactionTable';
@@ -685,6 +686,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       const config: ReportConfig = {
           id: generateUUID(),
           name,
+          dataSource: 'financial',
           datePreset: dateMode === 'all' ? 'allTime' : 'custom',
           customStartDate: dateMode === 'all' ? undefined : startDate,
           customEndDate: dateMode === 'all' ? undefined : endDate,
