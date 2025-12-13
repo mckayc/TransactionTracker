@@ -77,16 +77,19 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             byType: {
                 onsite: 0,
                 offsite: 0,
-                creator_connections: 0
-            }
+                creator_connections: 0,
+                unknown: 0
+            } as Record<AmazonReportType, number>
         };
 
         enrichedMetrics.forEach(m => {
             result.totalRevenue += m.revenue;
             result.totalClicks += m.clicks;
             result.totalOrdered += m.orderedItems;
-            if (m.reportType in result.byType) {
-                result.byType[m.reportType as AmazonReportType] += m.revenue;
+            
+            // Safe indexing now that 'unknown' is initialized
+            if (result.byType[m.reportType] !== undefined) {
+                result.byType[m.reportType] += m.revenue;
             }
         });
 
@@ -240,7 +243,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                             <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
                                                 m.reportType === 'onsite' ? 'bg-blue-100 text-blue-700' : 
                                                 m.reportType === 'offsite' ? 'bg-green-100 text-green-700' : 
-                                                'bg-purple-100 text-purple-700'
+                                                m.reportType === 'creator_connections' ? 'bg-purple-100 text-purple-700' :
+                                                'bg-slate-100 text-slate-600'
                                             }`}>
                                                 {m.reportType.replace('_', ' ')}
                                             </span>
