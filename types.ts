@@ -1,5 +1,6 @@
 
 
+
 export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation';
 
 export interface TransactionType {
@@ -339,8 +340,15 @@ export interface AmazonMetric {
     campaignTitle?: string; // For Creator Connections
 }
 
+export interface YouTubeChannel {
+    id: string;
+    name: string;
+    url?: string;
+}
+
 export interface YouTubeMetric {
     id: string;
+    channelId?: string; // New field to link to a channel
     videoId: string;
     videoTitle: string;
     publishDate: string; // YYYY-MM-DD

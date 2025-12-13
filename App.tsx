@@ -1,8 +1,10 @@
 
 
+
+
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -93,6 +95,7 @@ const App: React.FC = () => {
   const [savedDateRanges, setSavedDateRanges] = useState<CustomDateRange[]>([]);
   const [amazonMetrics, setAmazonMetrics] = useState<AmazonMetric[]>([]);
   const [youtubeMetrics, setYoutubeMetrics] = useState<YouTubeMetric[]>([]);
+  const [youtubeChannels, setYoutubeChannels] = useState<YouTubeChannel[]>([]);
   
   const [currentView, setCurrentView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -184,6 +187,7 @@ const App: React.FC = () => {
       setSavedDateRanges(safeLoad<CustomDateRange[]>('savedDateRanges', []));
       setAmazonMetrics(safeLoad<AmazonMetric[]>('amazonMetrics', []));
       setYoutubeMetrics(safeLoad<YouTubeMetric[]>('youtubeMetrics', []));
+      setYoutubeChannels(safeLoad<YouTubeChannel[]>('youtubeChannels', []));
 
       // Handle Account Types and Accounts
       let finalAccountTypes = safeLoad<AccountType[]>('accountTypes', []);
@@ -262,7 +266,7 @@ const App: React.FC = () => {
                       transactions, accounts, accountTypes, categories, tags, payees, 
                       reconciliationRules, templates, scheduledEvents, users, 
                       transactionTypes, businessProfile, documentFolders, savedReports,
-                      chatSessions, savedDateRanges, amazonMetrics, youtubeMetrics
+                      chatSessions, savedDateRanges, amazonMetrics, youtubeMetrics, youtubeChannels
                   };
                   const jsonString = JSON.stringify(exportData, null, 2);
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
@@ -469,6 +473,12 @@ const App: React.FC = () => {
     const handler = setTimeout(() => api.save('youtubeMetrics', youtubeMetrics), 500);
     return () => clearTimeout(handler);
   }, [youtubeMetrics, isLoading]);
+
+  useEffect(() => {
+    if (isLoading) return;
+    const handler = setTimeout(() => api.save('youtubeChannels', youtubeChannels), 500);
+    return () => clearTimeout(handler);
+  }, [youtubeChannels, isLoading]);
 
 
   // Handlers
@@ -730,6 +740,22 @@ const App: React.FC = () => {
       setYoutubeMetrics(prev => prev.filter(m => !idSet.has(m.id)));
   };
 
+  const handleSaveYouTubeChannel = (channel: YouTubeChannel) => {
+      setYoutubeChannels(prev => {
+          const index = prev.findIndex(c => c.id === channel.id);
+          if (index > -1) {
+              const updated = [...prev];
+              updated[index] = channel;
+              return updated;
+          }
+          return [...prev, channel];
+      });
+  };
+
+  const handleDeleteYouTubeChannel = (channelId: string) => {
+      setYoutubeChannels(prev => prev.filter(c => c.id !== channelId));
+  };
+
   if (isLoading) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-slate-100">
@@ -781,7 +807,7 @@ const App: React.FC = () => {
       case 'integration-amazon':
         return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} onDeleteMetrics={handleDeleteAmazonMetrics} />;
       case 'integration-youtube':
-        return <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={handleAddYouTubeMetrics} onDeleteMetrics={handleDeleteYouTubeMetrics} />;
+        return <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={handleAddYouTubeMetrics} onDeleteMetrics={handleDeleteYouTubeMetrics} channels={youtubeChannels} onSaveChannel={handleSaveYouTubeChannel} onDeleteChannel={handleDeleteYouTubeChannel} />;
       default:
         return null;
     }

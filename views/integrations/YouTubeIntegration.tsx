@@ -1,13 +1,18 @@
 
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { YouTubeMetric } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon } from '../../components/Icons';
+import type { YouTubeMetric, YouTubeChannel } from '../../types';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon } from '../../components/Icons';
 import { parseYouTubeReport } from '../../services/csvParserService';
+import { generateUUID } from '../../utils';
 
 interface YouTubeIntegrationProps {
     metrics: YouTubeMetric[];
     onAddMetrics: (metrics: YouTubeMetric[]) => void;
     onDeleteMetrics: (ids: string[]) => void;
+    channels: YouTubeChannel[];
+    onSaveChannel: (channel: YouTubeChannel) => void;
+    onDeleteChannel: (channelId: string) => void;
 }
 
 function useDebounce<T>(value: T, delay: number): T {
@@ -53,18 +58,98 @@ const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color
     );
 };
 
-const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics }) => {
+const ManageChannelsModal: React.FC<{ 
+    isOpen: boolean; 
+    onClose: () => void; 
+    channels: YouTubeChannel[]; 
+    onSave: (ch: YouTubeChannel) => void; 
+    onDelete: (id: string) => void;
+}> = ({ isOpen, onClose, channels, onSave, onDelete }) => {
+    const [name, setName] = useState('');
+    const [url, setUrl] = useState('');
+    const [editingId, setEditingId] = useState<string | null>(null);
+
+    const handleSave = () => {
+        if (!name.trim()) return;
+        onSave({
+            id: editingId || generateUUID(),
+            name: name.trim(),
+            url: url.trim() || undefined
+        });
+        setName('');
+        setUrl('');
+        setEditingId(null);
+    };
+
+    const handleEdit = (ch: YouTubeChannel) => {
+        setName(ch.name);
+        setUrl(ch.url || '');
+        setEditingId(ch.id);
+    };
+
+    const handleDelete = (id: string) => {
+        if(confirm("Delete this channel definition?")) onDelete(id);
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+                    <h3 className="font-bold text-slate-800">Manage Channels</h3>
+                    <button onClick={onClose}><CloseIcon className="w-5 h-5 text-slate-500 hover:text-slate-700"/></button>
+                </div>
+                <div className="p-4 space-y-4">
+                    <div className="space-y-2 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                        <label className="text-xs font-bold text-slate-500 uppercase">Channel Name</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 border rounded text-sm" placeholder="My Tech Channel" />
+                        <label className="text-xs font-bold text-slate-500 uppercase mt-2 block">Channel URL (Optional)</label>
+                        <input type="text" value={url} onChange={e => setUrl(e.target.value)} className="w-full p-2 border rounded text-sm" placeholder="https://youtube.com/..." />
+                        <div className="flex justify-end pt-2">
+                            <button onClick={handleSave} disabled={!name} className="px-4 py-1.5 bg-red-600 text-white rounded text-sm font-bold hover:bg-red-700 disabled:opacity-50">
+                                {editingId ? 'Update' : 'Add Channel'}
+                            </button>
+                        </div>
+                    </div>
+                    <div className="space-y-2 max-h-60 overflow-y-auto">
+                        {channels.length === 0 ? <p className="text-sm text-slate-400 text-center italic">No channels added yet.</p> : channels.map(ch => (
+                            <div key={ch.id} className="flex items-center justify-between p-2 border rounded hover:bg-slate-50">
+                                <div>
+                                    <p className="font-bold text-sm text-slate-700">{ch.name}</p>
+                                    {ch.url && <p className="text-xs text-slate-400 truncate max-w-[200px]">{ch.url}</p>}
+                                </div>
+                                <div className="flex gap-1">
+                                    <button onClick={() => handleEdit(ch)} className="p-1 text-slate-400 hover:text-indigo-600"><EditIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => handleDelete(ch.id)} className="p-1 text-slate-400 hover:text-red-600"><DeleteIcon className="w-4 h-4"/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics, channels, onSaveChannel, onDeleteChannel }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
     const [previewMetrics, setPreviewMetrics] = useState<YouTubeMetric[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Upload Context State
+    const [uploadYear, setUploadYear] = useState<string>('');
+    const [uploadChannelId, setUploadChannelId] = useState<string>('');
+    const [isManageChannelsOpen, setIsManageChannelsOpen] = useState(false);
+
     // Filter & Sort
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [filterChannelId, setFilterChannelId] = useState('');
     
     const [sortKey, setSortKey] = useState<keyof YouTubeMetric>('publishDate');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -73,6 +158,33 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(50);
+
+    // Years for dropdown
+    const years = useMemo(() => Array.from({length: 51}, (_, i) => (2000 + i).toString()), []);
+
+    // Guess Year Effect
+    useEffect(() => {
+        if (previewMetrics.length > 0 && !uploadYear) {
+            // Logic to guess year from previewMetrics
+            const yearCounts: Record<string, number> = {};
+            previewMetrics.forEach(m => {
+                if (m.publishDate) {
+                    const y = m.publishDate.substring(0, 4);
+                    yearCounts[y] = (yearCounts[y] || 0) + 1;
+                }
+            });
+            // Find most frequent year
+            let maxCount = 0;
+            let bestYear = '';
+            for (const [y, count] of Object.entries(yearCounts)) {
+                if (count > maxCount) {
+                    maxCount = count;
+                    bestYear = y;
+                }
+            }
+            if (bestYear) setUploadYear(bestYear);
+        }
+    }, [previewMetrics, uploadYear]);
 
     const displayMetrics = useMemo(() => {
         let result = metrics;
@@ -87,6 +199,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
         if (endDate) {
             result = result.filter(m => m.publishDate <= endDate);
+        }
+        
+        if (filterChannelId) {
+            result = result.filter(m => m.channelId === filterChannelId);
         }
 
         result.sort((a, b) => {
@@ -104,14 +220,14 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         });
 
         return result;
-    }, [metrics, debouncedSearchTerm, startDate, endDate, sortKey, sortDirection]);
+    }, [metrics, debouncedSearchTerm, startDate, endDate, sortKey, sortDirection, filterChannelId]);
 
     const totalPages = Math.ceil(displayMetrics.length / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const paginatedMetrics = displayMetrics.slice(startIndex, startIndex + rowsPerPage);
 
     // Reset pagination
-    useEffect(() => { setCurrentPage(1); }, [debouncedSearchTerm, startDate, endDate, rowsPerPage]);
+    useEffect(() => { setCurrentPage(1); }, [debouncedSearchTerm, startDate, endDate, rowsPerPage, filterChannelId]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -135,9 +251,22 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     };
 
     const confirmImport = () => {
+        if (!uploadChannelId) {
+            alert("Please select a Channel for this data.");
+            return;
+        }
         if (previewMetrics.length > 0) {
-            onAddMetrics(previewMetrics);
+            // Apply selected channel ID to all imported metrics
+            const metricsWithChannel = previewMetrics.map(m => ({
+                ...m,
+                channelId: uploadChannelId
+                // Note: We don't overwrite the publishDate year because actual date is better,
+                // but we could use uploadYear for metadata if we had a field for it.
+            }));
+            onAddMetrics(metricsWithChannel);
             setPreviewMetrics([]);
+            setUploadYear('');
+            // Keep channel ID selected for convenience
             alert(`Successfully imported ${previewMetrics.length} records.`);
             setActiveTab('dashboard');
         }
@@ -279,6 +408,8 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         setEndDate(end.toISOString().split('T')[0]);
     };
 
+    const channelMap = useMemo(() => new Map(channels.map(c => [c.id, c.name])), [channels]);
+
     return (
         <div className="space-y-6 h-full flex flex-col relative">
             <div className="flex justify-between items-center flex-shrink-0">
@@ -311,6 +442,16 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             />
                         </div>
                         
+                        {/* Channel Filter */}
+                        <select 
+                            value={filterChannelId} 
+                            onChange={(e) => setFilterChannelId(e.target.value)}
+                            className="p-2 border rounded-lg text-sm bg-white"
+                        >
+                            <option value="">All Channels</option>
+                            {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                        </select>
+
                         <div className="flex items-center gap-2 w-full md:w-auto">
                             <input 
                                 type="date" 
@@ -332,7 +473,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             <button onClick={() => setDateRange('thisYear')} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-md font-medium text-slate-600">This Year</button>
                         </div>
 
-                        <button onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); }} className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2">Clear</button>
+                        <button onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); setFilterChannelId(''); }} className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2">Clear</button>
                     </div>
                 )}
 
@@ -511,7 +652,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                         className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
                                                     />
                                                 </td>
-                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.publishDate}</td>
+                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">
+                                                    {m.publishDate}
+                                                    {m.channelId && <div className="text-xs text-indigo-600">{channelMap.get(m.channelId)}</div>}
+                                                </td>
                                                 <td className="px-4 py-2 text-sm text-slate-800">
                                                     <div className="line-clamp-1 max-w-md" title={m.videoTitle}>{m.videoTitle}</div>
                                                 </td>
@@ -537,15 +681,88 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 )}
 
                 {activeTab === 'upload' && (
-                    <div className="h-full">
-                        {previewMetrics.length > 0 ? (
-                            <div className="flex flex-col h-full space-y-4">
+                    <div className="h-full space-y-6">
+                        
+                        {/* 1. Configuration & Upload */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                            
+                            {/* Upload Area */}
+                            <div className="space-y-4">
+                                <div className="flex flex-col items-center justify-center bg-white rounded-xl border-2 border-dashed border-slate-300 p-8">
+                                    <div className="bg-red-50 p-4 rounded-full mb-4"><CloudArrowUpIcon className="w-8 h-8 text-red-500" /></div>
+                                    <h3 className="text-xl font-bold text-slate-700 mb-2">Select CSV File</h3>
+                                    <input type="file" ref={fileInputRef} accept=".csv,.tsv" onChange={handleFileUpload} className="hidden" />
+                                    <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:bg-slate-300 transition-colors">
+                                        {isUploading ? 'Parsing...' : 'Choose File'}
+                                    </button>
+                                </div>
+
+                                {/* Context Selectors */}
+                                <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-4">
+                                    <h4 className="font-bold text-slate-700 border-b pb-2">Import Context</h4>
+                                    
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">YouTube Channel <span className="text-red-500">*</span></label>
+                                        <div className="flex gap-2">
+                                            <select 
+                                                value={uploadChannelId} 
+                                                onChange={(e) => setUploadChannelId(e.target.value)} 
+                                                className="w-full p-2 border rounded-md text-sm"
+                                            >
+                                                <option value="">Select Channel...</option>
+                                                {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                                            </select>
+                                            <button onClick={() => setIsManageChannelsOpen(true)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded border text-slate-600" title="Manage Channels">
+                                                <EditIcon className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                        {channels.length === 0 && <p className="text-xs text-red-500 mt-1">Please add a channel to continue.</p>}
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Year (Optional)</label>
+                                        <select 
+                                            value={uploadYear} 
+                                            onChange={(e) => setUploadYear(e.target.value)} 
+                                            className="w-full p-2 border rounded-md text-sm"
+                                        >
+                                            <option value="">Auto-Detect from File</option>
+                                            {years.map(y => <option key={y} value={y}>{y}</option>)}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Instructions */}
+                            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                    <ExternalLinkIcon className="w-5 h-5 text-indigo-600" />
+                                    How to Export
+                                </h3>
+                                <ol className="space-y-3 list-decimal list-inside text-sm text-slate-600">
+                                    <li>Go to <a href="https://studio.youtube.com/" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline font-medium">YouTube Studio</a>.</li>
+                                    <li>Click <strong>Analytics</strong> in the left sidebar.</li>
+                                    <li>Click <strong>Advanced Mode</strong> in the top right corner.</li>
+                                    <li>
+                                        In the date picker (top right), select <strong>Custom</strong> and choose a full year (e.g., Jan 1 - Dec 31).
+                                    </li>
+                                    <li>Ensure the main tab selected is <strong>Video</strong> (usually default) to see per-video breakdown.</li>
+                                    <li>Click the <strong>Download</strong> icon (top right) and select <strong>Google Sheets</strong> or <strong>Comma-separated values (.csv)</strong>.</li>
+                                    <li>Upload that file here.</li>
+                                </ol>
+                            </div>
+                        </div>
+
+                        {/* Preview Area */}
+                        {previewMetrics.length > 0 && (
+                            <div className="flex flex-col space-y-4 pt-4 border-t">
                                 <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex flex-col gap-4">
                                     <div className="flex items-start gap-3">
                                         <div className="p-2 bg-red-100 rounded-full text-red-600"><CheckCircleIcon className="w-6 h-6" /></div>
                                         <div>
                                             <h3 className="font-bold text-red-900 text-lg">Ready to Import</h3>
                                             <p className="text-red-700 text-sm">Found <strong>{previewMetrics.length}</strong> records.</p>
+                                            {uploadYear && <p className="text-xs text-red-600 mt-1 font-bold">Detected/Selected Year: {uploadYear}</p>}
                                         </div>
                                     </div>
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full pt-2 border-t border-red-200/50">
@@ -567,7 +784,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex-1 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm flex flex-col">
+                                <div className="flex-1 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm flex flex-col max-h-96">
                                     <div className="flex-1 overflow-auto">
                                         <table className="min-w-full divide-y divide-slate-200">
                                             <thead className="bg-white sticky top-0 shadow-sm">
@@ -595,18 +812,8 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                 </div>
                                 <div className="flex justify-end gap-3 pt-2">
                                     <button onClick={() => setPreviewMetrics([])} className="px-4 py-2 bg-white border border-slate-300 text-slate-700 font-medium rounded-lg hover:bg-slate-50">Cancel</button>
-                                    <button onClick={confirmImport} className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 shadow-sm">Confirm Import</button>
+                                    <button onClick={confirmImport} disabled={!uploadChannelId} className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 shadow-sm disabled:bg-slate-300 disabled:cursor-not-allowed">Confirm Import</button>
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full bg-white rounded-xl border-2 border-dashed border-slate-300 p-12">
-                                <div className="bg-red-50 p-4 rounded-full mb-4"><CloudArrowUpIcon className="w-8 h-8 text-red-500" /></div>
-                                <h3 className="text-xl font-bold text-slate-700 mb-2">Upload YouTube Report</h3>
-                                <p className="text-slate-500 text-center max-w-md mb-6">Supports CSV/TSV exports from YouTube Analytics.</p>
-                                <input type="file" ref={fileInputRef} accept=".csv,.tsv" onChange={handleFileUpload} className="hidden" />
-                                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:bg-slate-300 transition-colors">
-                                    {isUploading ? 'Parsing...' : 'Select CSV File'}
-                                </button>
                             </div>
                         )}
                     </div>
@@ -622,6 +829,14 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                     <button onClick={handleBulkDelete} className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-500 rounded-full transition-colors shadow-sm"><DeleteIcon className="w-4 h-4"/> Delete Selected</button>
                 </div>
             )}
+
+            <ManageChannelsModal 
+                isOpen={isManageChannelsOpen}
+                onClose={() => setIsManageChannelsOpen(false)}
+                channels={channels}
+                onSave={onSaveChannel}
+                onDelete={onDeleteChannel}
+            />
         </div>
     );
 };
