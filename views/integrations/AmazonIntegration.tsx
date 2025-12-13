@@ -1,13 +1,27 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, AmazonReportType } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon } from '../../components/Icons';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon } from '../../components/Icons';
 import { parseAmazonReport } from '../../services/csvParserService';
 
 interface AmazonIntegrationProps {
     metrics: AmazonMetric[];
     onAddMetrics: (metrics: AmazonMetric[]) => void;
     onDeleteMetrics: (ids: string[]) => void;
+}
+
+// A custom hook to debounce a value
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+  return debouncedValue;
 }
 
 // Helper for currency
@@ -21,16 +35,26 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Title Sync Logic:
-    // 1. Build a map of ASIN -> Title from Onsite/Offsite records (which have titles)
-    // 2. If title is unknown (CC records), look it up.
+    // --- Filtering & Sorting State ---
+    const [searchTerm, setSearchTerm] = useState('');
+    const debouncedSearchTerm = useDebounce(searchTerm, 300);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    
+    const [sortKey, setSortKey] = useState<keyof AmazonMetric>('date');
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+    
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(50);
+
+    // Title Sync Logic (Memoized)
     const enrichedMetrics = useMemo(() => {
         const titleMap = new Map<string, string>();
         
         // Pass 1: Gather Titles
         metrics.forEach(m => {
             if (m.asin && m.title && !m.title.startsWith('Unknown Product') && m.reportType !== 'creator_connections') {
-                // If map doesn't have it, or this title is longer (usually better), store it
                 const existing = titleMap.get(m.asin);
                 if (!existing || m.title.length > existing.length) {
                     titleMap.set(m.asin, m.title);
@@ -46,6 +70,56 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             return m;
         });
     }, [metrics]);
+
+    // Derived State: Filtered & Sorted Metrics for Display
+    const displayMetrics = useMemo(() => {
+        let result = enrichedMetrics;
+
+        // 1. Filter by Search (Title or ASIN)
+        if (debouncedSearchTerm) {
+            const lowerSearch = debouncedSearchTerm.toLowerCase();
+            result = result.filter(m => 
+                (m.title && m.title.toLowerCase().includes(lowerSearch)) || 
+                (m.asin && m.asin.toLowerCase().includes(lowerSearch))
+            );
+        }
+
+        // 2. Filter by Date
+        if (startDate) {
+            result = result.filter(m => m.date >= startDate);
+        }
+        if (endDate) {
+            result = result.filter(m => m.date <= endDate);
+        }
+
+        // 3. Sort
+        result.sort((a, b) => {
+            let valA = a[sortKey];
+            let valB = b[sortKey];
+
+            // Handle strings vs numbers
+            if (typeof valA === 'string' && typeof valB === 'string') {
+                valA = valA.toLowerCase();
+                valB = valB.toLowerCase();
+            }
+
+            if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+            if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        return result;
+    }, [enrichedMetrics, debouncedSearchTerm, startDate, endDate, sortKey, sortDirection]);
+
+    // Pagination Logic
+    const totalPages = Math.ceil(displayMetrics.length / rowsPerPage);
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    const paginatedMetrics = displayMetrics.slice(startIndex, startIndex + rowsPerPage);
+
+    // Reset pagination when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [debouncedSearchTerm, startDate, endDate, rowsPerPage]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -83,10 +157,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     // --- Deletion Handlers ---
     const handleToggleSelectAll = () => {
-        if (selectedIds.size === enrichedMetrics.length) {
+        // Toggle selection based on CURRENT PAGE view or ALL filtered items? 
+        // Typically select ALL filtered items is more powerful for bulk delete.
+        if (selectedIds.size === displayMetrics.length && displayMetrics.length > 0) {
             setSelectedIds(new Set());
         } else {
-            setSelectedIds(new Set(enrichedMetrics.map(m => m.id)));
+            setSelectedIds(new Set(displayMetrics.map(m => m.id)));
         }
     };
 
@@ -112,7 +188,22 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         }
     };
 
-    // --- aggregations ---
+    // --- Header Sort Handler ---
+    const handleHeaderClick = (key: keyof AmazonMetric) => {
+        if (sortKey === key) {
+            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortKey(key);
+            setSortDirection('desc'); // Default to desc for new columns usually
+        }
+    };
+
+    const getSortIcon = (key: keyof AmazonMetric) => {
+        if (sortKey !== key) return <SortIcon className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />;
+        return sortDirection === 'asc' ? <SortIcon className="w-4 h-4 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-4 h-4 text-indigo-600" />;
+    };
+
+    // --- aggregations (Global) ---
     const summary = useMemo(() => {
         const result = {
             totalRevenue: 0,
@@ -132,7 +223,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             result.totalClicks += m.clicks;
             result.totalOrdered += m.orderedItems;
             
-            // Safe indexing now that 'unknown' is initialized
             if (result.byType[m.reportType] !== undefined) {
                 result.byType[m.reportType] += m.revenue;
             }
@@ -269,69 +359,184 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
                 {/* DATA TAB */}
                 {activeTab === 'data' && (
-                    <div className="space-y-4">
-                        <div className="flex justify-end">
+                    <div className="space-y-4 h-full flex flex-col">
+                        
+                        {/* Filter Bar */}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-4 flex-shrink-0">
+                            <div className="relative flex-grow w-full md:w-auto">
+                                <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                <input 
+                                    type="text" 
+                                    placeholder="Search Title or ASIN..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                />
+                            </div>
+                            
+                            <div className="flex items-center gap-2 w-full md:w-auto">
+                                <input 
+                                    type="date" 
+                                    value={startDate} 
+                                    onChange={(e) => setStartDate(e.target.value)} 
+                                    className="p-2 border rounded-lg text-sm w-full md:w-auto" 
+                                />
+                                <span className="text-slate-400">-</span>
+                                <input 
+                                    type="date" 
+                                    value={endDate} 
+                                    onChange={(e) => setEndDate(e.target.value)} 
+                                    className="p-2 border rounded-lg text-sm w-full md:w-auto" 
+                                />
+                            </div>
+
+                            <button 
+                                onClick={() => { setSearchTerm(''); setStartDate(''); setEndDate(''); }} 
+                                className="text-sm text-red-500 hover:text-red-700 whitespace-nowrap px-2"
+                            >
+                                Clear
+                            </button>
+
+                            <div className="h-6 w-px bg-slate-200 hidden md:block"></div>
+
                             <button 
                                 onClick={handleDeleteAll} 
-                                className="text-red-600 hover:text-red-700 text-sm font-medium flex items-center gap-1 px-3 py-1.5 hover:bg-red-50 rounded-lg transition-colors"
+                                className="text-red-600 hover:text-red-700 text-sm font-medium flex items-center gap-1 px-3 py-2 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap"
                             >
-                                <DeleteIcon className="w-4 h-4" /> Delete All Data
+                                <DeleteIcon className="w-4 h-4" /> Delete All
                             </button>
                         </div>
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                            <table className="min-w-full divide-y divide-slate-200">
-                                <thead className="bg-slate-50">
-                                    <tr>
-                                        <th className="px-4 py-3 w-10">
-                                            <input 
-                                                type="checkbox" 
-                                                checked={selectedIds.size === enrichedMetrics.length && enrichedMetrics.length > 0} 
-                                                onChange={handleToggleSelectAll}
-                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                                            />
-                                        </th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">ASIN / Title</th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Clicks</th>
-                                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Earnings</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200">
-                                    {enrichedMetrics.slice(0, 100).map((m) => (
-                                        <tr key={m.id} className={selectedIds.has(m.id) ? "bg-indigo-50" : "hover:bg-slate-50"}>
-                                            <td className="px-4 py-2 text-center">
+
+                        {/* Table */}
+                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0 overflow-hidden relative">
+                            <div className="overflow-auto flex-grow">
+                                <table className="min-w-full divide-y divide-slate-200">
+                                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                                        <tr>
+                                            <th className="px-4 py-3 w-10 bg-slate-50">
                                                 <input 
                                                     type="checkbox" 
-                                                    checked={selectedIds.has(m.id)} 
-                                                    onChange={() => handleToggleSelection(m.id)}
-                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                    checked={selectedIds.size === displayMetrics.length && displayMetrics.length > 0} 
+                                                    onChange={handleToggleSelectAll}
+                                                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
                                                 />
-                                            </td>
-                                            <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.date}</td>
-                                            <td className="px-4 py-2 text-sm">
-                                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
-                                                    m.reportType === 'onsite' ? 'bg-blue-100 text-blue-700' : 
-                                                    m.reportType === 'offsite' ? 'bg-green-100 text-green-700' : 
-                                                    'bg-purple-100 text-purple-700'
-                                                }`}>
-                                                    {m.reportType.replace('_', ' ')}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-2 text-sm text-slate-800">
-                                                <div className="line-clamp-1" title={m.title}>{m.title}</div>
-                                                <span className="text-xs text-slate-400 font-mono mr-2">{m.asin}</span>
-                                                {m.campaignTitle && <span className="text-xs text-purple-600 bg-purple-50 px-1 rounded">{m.campaignTitle}</span>}
-                                            </td>
-                                            <td className="px-4 py-2 text-right text-sm text-slate-600">{m.clicks}</td>
-                                            <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.revenue)}</td>
+                                            </th>
+                                            <th 
+                                                className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group"
+                                                onClick={() => handleHeaderClick('date')}
+                                            >
+                                                <div className="flex items-center gap-1">Date {getSortIcon('date')}</div>
+                                            </th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Type</th>
+                                            <th 
+                                                className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group"
+                                                onClick={() => handleHeaderClick('title')}
+                                            >
+                                                <div className="flex items-center gap-1">ASIN / Title {getSortIcon('title')}</div>
+                                            </th>
+                                            <th 
+                                                className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group"
+                                                onClick={() => handleHeaderClick('clicks')}
+                                            >
+                                                <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks')}</div>
+                                            </th>
+                                            <th 
+                                                className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group"
+                                                onClick={() => handleHeaderClick('orderedItems')}
+                                            >
+                                                <div className="flex items-center justify-end gap-1">Ordered {getSortIcon('orderedItems')}</div>
+                                            </th>
+                                            <th 
+                                                className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group"
+                                                onClick={() => handleHeaderClick('revenue')}
+                                            >
+                                                <div className="flex items-center justify-end gap-1">Earnings {getSortIcon('revenue')}</div>
+                                            </th>
                                         </tr>
-                                    ))}
-                                    {enrichedMetrics.length === 0 && (
-                                        <tr><td colSpan={6} className="p-8 text-center text-slate-400">No data imported yet.</td></tr>
-                                    )}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200 bg-white">
+                                        {paginatedMetrics.map((m) => (
+                                            <tr key={m.id} className={selectedIds.has(m.id) ? "bg-indigo-50" : "hover:bg-slate-50 transition-colors"}>
+                                                <td className="px-4 py-2 text-center">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedIds.has(m.id)} 
+                                                        onChange={() => handleToggleSelection(m.id)}
+                                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                </td>
+                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.date}</td>
+                                                <td className="px-4 py-2 text-sm">
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
+                                                        m.reportType === 'onsite' ? 'bg-blue-100 text-blue-700' : 
+                                                        m.reportType === 'offsite' ? 'bg-green-100 text-green-700' : 
+                                                        'bg-purple-100 text-purple-700'
+                                                    }`}>
+                                                        {m.reportType.replace('_', ' ')}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2 text-sm text-slate-800">
+                                                    <div className="line-clamp-1 max-w-md" title={m.title}>{m.title}</div>
+                                                    <span className="text-xs text-slate-400 font-mono mr-2">{m.asin}</span>
+                                                    {m.campaignTitle && <span className="text-xs text-purple-600 bg-purple-50 px-1 rounded">{m.campaignTitle}</span>}
+                                                </td>
+                                                <td className="px-4 py-2 text-right text-sm text-slate-600">{m.clicks}</td>
+                                                <td className="px-4 py-2 text-right text-sm text-slate-600">{m.orderedItems}</td>
+                                                <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.revenue)}</td>
+                                            </tr>
+                                        ))}
+                                        {paginatedMetrics.length === 0 && (
+                                            <tr><td colSpan={7} className="p-12 text-center text-slate-400 italic">No data matches your filters.</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Pagination Controls */}
+                            {totalPages > 1 && (
+                                <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 sticky bottom-0 z-20">
+                                    <div className="flex items-center text-sm text-slate-600">
+                                        <span className="mr-2 hidden sm:inline">Rows per page:</span>
+                                        <select 
+                                            value={rowsPerPage} 
+                                            onChange={(e) => {
+                                                setRowsPerPage(Number(e.target.value));
+                                                setCurrentPage(1);
+                                            }}
+                                            className="p-1 border rounded text-xs bg-white focus:ring-indigo-500 w-16"
+                                        >
+                                            <option value={25}>25</option>
+                                            <option value={50}>50</option>
+                                            <option value={100}>100</option>
+                                            <option value={500}>500</option>
+                                        </select>
+                                        <span className="mx-4 text-slate-400 hidden sm:inline">|</span>
+                                        <span className="hidden sm:inline">
+                                            {startIndex + 1}-{Math.min(startIndex + rowsPerPage, displayMetrics.length)} of {displayMetrics.length}
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                        <button 
+                                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                            disabled={currentPage === 1}
+                                            className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                                        >
+                                            <ChevronLeftIcon className="w-5 h-5 text-slate-600" />
+                                        </button>
+                                        <span className="text-sm font-medium text-slate-700 min-w-[3rem] text-center">
+                                            Page {currentPage} of {totalPages}
+                                        </span>
+                                        <button 
+                                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={currentPage === totalPages}
+                                            className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                                        >
+                                            <ChevronRightIcon className="w-5 h-5 text-slate-600" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
