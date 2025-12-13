@@ -710,6 +710,11 @@ const App: React.FC = () => {
       }
   };
 
+  const handleDeleteAmazonMetrics = (ids: string[]) => {
+      const idSet = new Set(ids);
+      setAmazonMetrics(prev => prev.filter(m => !idSet.has(m.id)));
+  };
+
   if (isLoading) {
       return (
           <div className="min-h-screen flex items-center justify-center bg-slate-100">
@@ -762,7 +767,7 @@ const App: React.FC = () => {
       case 'integrations':
         return <IntegrationsPage onNavigate={setCurrentView} />;
       case 'integration-amazon':
-        return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} />;
+        return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} onDeleteMetrics={handleDeleteAmazonMetrics} />;
       default:
         return null;
     }
