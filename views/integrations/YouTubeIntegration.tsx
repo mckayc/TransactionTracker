@@ -30,7 +30,7 @@ const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation:
 
 // Simple SVG Bar Chart Component
 const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color: string }> = ({ data, color }) => {
-    if (data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data to display</div>;
+    if (data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data for selected period</div>;
 
     const maxValue = Math.max(...data.map(d => d.value));
     const barWidth = 100 / data.length;
@@ -49,6 +49,10 @@ const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10 shadow-lg">
                             <div className="font-bold">{d.label}</div>
                             <div>{formatCurrency(d.value)}</div>
+                        </div>
+                        {/* X Axis Label (only if few bars or specific intervals) */}
+                        <div className="text-[10px] text-slate-400 text-center mt-1 truncate w-full overflow-hidden">
+                            {d.label.split('-')[1]}
                         </div>
                     </div>
                 );
@@ -158,9 +162,16 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     const [productSortKey, setProductSortKey] = useState<'estimatedRevenue' | 'views' | 'subscribersGained' | 'watchTimeHours'>('estimatedRevenue');
 
+    // Chart Settings
+    const [revenueChartYear, setRevenueChartYear] = useState<string>('');
+
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(50);
+
+    // Top Videos Pagination
+    const [topVideosPage, setTopVideosPage] = useState(1);
+    const [topVideosPerPage, setTopVideosPerPage] = useState(10);
 
     // Years for dropdown (2000-2050)
     const years = useMemo(() => Array.from({length: 51}, (_, i) => (2000 + i).toString()).reverse(), []);
@@ -173,6 +184,22 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         });
         return Array.from(yearsSet).sort().reverse();
     }, [metrics]);
+
+    // Available Years for Revenue Chart (based on publish date)
+    const availableRevenueYears = useMemo(() => {
+        const yearsSet = new Set<string>();
+        metrics.forEach(m => {
+            if (m.publishDate) yearsSet.add(m.publishDate.substring(0, 4));
+        });
+        return Array.from(yearsSet).sort().reverse();
+    }, [metrics]);
+
+    // Set default revenue chart year
+    useEffect(() => {
+        if (!revenueChartYear && availableRevenueYears.length > 0) {
+            setRevenueChartYear(availableRevenueYears[0]);
+        }
+    }, [availableRevenueYears, revenueChartYear]);
 
     // Guess Year & Channel Effect
     useEffect(() => {
@@ -365,10 +392,21 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }), { revenue: 0, views: 0, subs: 0, watchTime: 0 });
     }, [previewMetrics]);
 
-    // Chart Data: Aggregated Revenue by Publish Month
+    // Chart Data: Aggregated Revenue by Publish Month, filtered by selected year
     const revenueByMonth = useMemo(() => {
         const grouped = new Map<string, number>();
+        // Fill all 12 months with 0
+        if (revenueChartYear) {
+            for (let i = 1; i <= 12; i++) {
+                const month = i.toString().padStart(2, '0');
+                grouped.set(`${revenueChartYear}-${month}`, 0);
+            }
+        }
+
         filteredMetrics.forEach(m => {
+            const year = m.publishDate.substring(0, 4);
+            if (revenueChartYear && year !== revenueChartYear) return;
+
             const monthKey = m.publishDate.substring(0, 7); // YYYY-MM
             grouped.set(monthKey, (grouped.get(monthKey) || 0) + m.estimatedRevenue);
         });
@@ -376,7 +414,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         return Array.from(grouped.entries())
             .sort((a, b) => a[0].localeCompare(b[0]))
             .map(([date, value]) => ({ label: date, value }));
-    }, [filteredMetrics]);
+    }, [filteredMetrics, revenueChartYear]);
 
     // Aggregate by Year
     const yearStats = useMemo(() => {
@@ -405,11 +443,21 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             }));
     }, [filteredMetrics]);
 
-    const topVideos = useMemo(() => {
+    // Top Videos with Pagination
+    const topVideosSorted = useMemo(() => {
         return [...filteredMetrics]
-            .sort((a, b) => b[productSortKey] - a[productSortKey])
-            .slice(0, 10);
+            .sort((a, b) => b[productSortKey] - a[productSortKey]);
     }, [filteredMetrics, productSortKey]);
+
+    const topVideosTotalPages = Math.ceil(topVideosSorted.length / topVideosPerPage);
+    const topVideosStartIndex = (topVideosPage - 1) * topVideosPerPage;
+    const topVideosPaginated = topVideosSorted.slice(topVideosStartIndex, topVideosStartIndex + topVideosPerPage);
+
+    // Reset Top Videos pagination when filter changes
+    useEffect(() => {
+        setTopVideosPage(1);
+    }, [filteredMetrics, productSortKey, topVideosPerPage]);
+
 
     const handleHeaderClick = (key: keyof YouTubeMetric) => {
         if (sortKey === key) {
@@ -584,7 +632,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                 <table className="min-w-full divide-y divide-slate-200">
                                     <thead className="bg-slate-50">
                                         <tr>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Year</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Year Published</th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Views</th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Subs</th>
@@ -608,9 +656,22 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
                         {/* Visual Chart - Revenue by Publish Date */}
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                            <div className="mb-4">
-                                <h3 className="font-bold text-slate-700">Revenue by Publish Month</h3>
-                                <p className="text-xs text-slate-500">Cumulative estimated revenue for videos published in each month.</p>
+                            <div className="mb-4 flex flex-col sm:flex-row justify-between sm:items-center">
+                                <div>
+                                    <h3 className="font-bold text-slate-700">Revenue by Publish Month</h3>
+                                    <p className="text-xs text-slate-500">Cumulative estimated revenue for videos published in {revenueChartYear || 'selected year'}.</p>
+                                </div>
+                                <select 
+                                    value={revenueChartYear} 
+                                    onChange={(e) => setRevenueChartYear(e.target.value)}
+                                    className="mt-2 sm:mt-0 p-1.5 border rounded-lg text-sm bg-slate-50 text-slate-700"
+                                >
+                                    {availableRevenueYears.length > 0 ? (
+                                        availableRevenueYears.map(year => <option key={year} value={year}>{year}</option>)
+                                    ) : (
+                                        <option value="">No Data</option>
+                                    )}
+                                </select>
                             </div>
                             <SimpleBarChart data={revenueByMonth} color="bg-red-500" />
                         </div>
@@ -642,7 +703,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-200">
-                                        {topVideos.map((video) => (
+                                        {topVideosPaginated.map((video) => (
                                             <tr key={video.id} className="hover:bg-slate-50">
                                                 <td className="px-4 py-3">
                                                     <div className="text-sm font-medium text-slate-800 line-clamp-1" title={video.videoTitle}>{video.videoTitle}</div>
@@ -653,12 +714,59 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                 <td className="px-4 py-3 text-right text-sm font-bold text-green-600">{formatCurrency(video.estimatedRevenue)}</td>
                                             </tr>
                                         ))}
-                                        {topVideos.length === 0 && (
+                                        {topVideosPaginated.length === 0 && (
                                             <tr><td colSpan={4} className="p-8 text-center text-slate-400">No data available.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            {/* Top Videos Pagination Controls */}
+                            {topVideosTotalPages > 1 && (
+                                <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3">
+                                    <div className="flex items-center text-sm text-slate-600">
+                                        <span className="mr-2 hidden sm:inline">Rows:</span>
+                                        <select 
+                                            value={topVideosPerPage} 
+                                            onChange={(e) => {
+                                                setTopVideosPerPage(Number(e.target.value));
+                                                setTopVideosPage(1);
+                                            }}
+                                            className="p-1 border rounded text-xs bg-white focus:ring-indigo-500 w-16"
+                                        >
+                                            <option value={10}>10</option>
+                                            <option value={30}>30</option>
+                                            <option value={50}>50</option>
+                                            <option value={100}>100</option>
+                                            <option value={200}>200</option>
+                                        </select>
+                                        <span className="mx-4 text-slate-400 hidden sm:inline">|</span>
+                                        <span className="hidden sm:inline">
+                                            {topVideosStartIndex + 1}-{Math.min(topVideosStartIndex + topVideosPerPage, topVideosSorted.length)} of {topVideosSorted.length}
+                                        </span>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                        <button 
+                                            onClick={() => setTopVideosPage(p => Math.max(1, p - 1))}
+                                            disabled={topVideosPage === 1}
+                                            className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                                        >
+                                            <ChevronLeftIcon className="w-5 h-5 text-slate-600" />
+                                        </button>
+                                        <span className="text-sm font-medium text-slate-700 min-w-[3rem] text-center">
+                                            Page {topVideosPage} of {topVideosTotalPages}
+                                        </span>
+                                        <button 
+                                            onClick={() => setTopVideosPage(p => Math.min(topVideosTotalPages, p + 1))}
+                                            disabled={topVideosPage === topVideosTotalPages}
+                                            className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
+                                        >
+                                            <ChevronRightIcon className="w-5 h-5 text-slate-600" />
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

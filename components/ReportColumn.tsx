@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric, YouTubeMetric } from '../types';
-import { ChevronDownIcon, ChevronRightIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
+import { ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
 import { formatDate, calculateDateRange } from '../dateUtils';
 import TransactionTable from './TransactionTable';
 import ReportConfigModal from './ReportConfigModal';
@@ -527,6 +528,46 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         setInspectingItems(item.transactions);
     };
 
+    const handleDateNavigate = (direction: 'prev' | 'next') => {
+        const { start, end } = dateRange;
+        // Calculate difference in days roughly
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        // Determine "unit" based on range size
+        // If range is roughly a month (28-31 days)
+        const isMonth = diffDays >= 28 && diffDays <= 32;
+        // If range is roughly a year (365-366 days)
+        const isYear = diffDays >= 365 && diffDays <= 366;
+
+        let newStart = new Date(start);
+        let newEnd = new Date(end);
+
+        if (isMonth) {
+            // Shift month
+            newStart.setMonth(newStart.getMonth() + (direction === 'next' ? 1 : -1));
+            // Ensure end is end of the new month
+            newEnd = new Date(newStart.getFullYear(), newStart.getMonth() + 1, 0);
+        } else if (isYear) {
+            // Shift year
+            newStart.setFullYear(newStart.getFullYear() + (direction === 'next' ? 1 : -1));
+            newEnd.setFullYear(newEnd.getFullYear() + (direction === 'next' ? 1 : -1));
+        } else {
+            // Shift by exact duration
+            const shiftMs = (diffDays + 1) * 24 * 60 * 60 * 1000 * (direction === 'next' ? 1 : -1);
+            newStart = new Date(start.getTime() + shiftMs);
+            newEnd = new Date(end.getTime() + shiftMs);
+        }
+
+        const newConfig = {
+            ...config,
+            datePreset: 'custom' as DateRangePreset,
+            customStartDate: formatDate(newStart),
+            customEndDate: formatDate(newEnd)
+        };
+        handleConfigUpdate(newConfig);
+    };
+
     return (
         <div ref={reportRef} className="bg-white rounded-xl shadow-md border border-slate-200 flex flex-col h-full overflow-hidden min-w-[320px] relative">
             
@@ -537,8 +578,12 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         {config.dataSource === 'amazon' && <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 rounded font-bold uppercase">Amazon</span>}
                         {config.dataSource === 'youtube' && <span className="text-[10px] bg-red-100 text-red-700 px-1.5 rounded font-bold uppercase">YouTube</span>}
                     </div>
-                    <div className="flex items-center gap-1 text-xs text-slate-500 mt-1">
-                        <span className="truncate">{dateRange.label}</span>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
+                        <div className="flex items-center bg-white border rounded shadow-sm">
+                            <button onClick={() => handleDateNavigate('prev')} className="p-0.5 hover:bg-slate-100 rounded-l border-r"><ChevronLeftIcon className="w-3 h-3"/></button>
+                            <span className="px-2 font-medium truncate max-w-[140px]">{dateRange.label}</span>
+                            <button onClick={() => handleDateNavigate('next')} className="p-0.5 hover:bg-slate-100 rounded-r border-l"><ChevronRightIcon className="w-3 h-3"/></button>
+                        </div>
                         {config.filters.balanceEffects?.length === 1 && !config.dataSource && (
                             <span className="px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 font-medium capitalize">
                                 {config.filters.balanceEffects[0]}
