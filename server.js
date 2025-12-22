@@ -1,4 +1,3 @@
-
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -13,22 +12,22 @@ const PORT = 3000;
 
 // Data Configuration
 const DATA_DIR = path.join(__dirname, 'data', 'config');
-// Store documents in a separate volume for easier access and management
 const DOCUMENTS_DIR = path.join(__dirname, 'media', 'files');
 const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 
 // Ensure directories exist
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-}
-if (!fs.existsSync(DOCUMENTS_DIR)) {
-  fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
-}
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 
-// Initialize SQLite Database
+// Initialize SQLite Database with performance optimizations
 const db = new Database(DB_PATH);
+// Use Write-Ahead Logging for better concurrency and speed
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
+db.pragma('temp_store = MEMORY');
+db.pragma('cache_size = -64000'); // ~64MB cache
 
-// 1. Key-Value Store for JSON Data (Transactions, Settings, etc.)
+// 1. Key-Value Store for JSON Data
 db.exec(`
   CREATE TABLE IF NOT EXISTS app_storage (
     key TEXT PRIMARY KEY,
@@ -36,7 +35,7 @@ db.exec(`
   )
 `);
 
-// 2. Metadata Store for Files (actual content is now on disk)
+// 2. Metadata Store for Files
 db.exec(`
   CREATE TABLE IF NOT EXISTS files_meta (
     id TEXT PRIMARY KEY,
@@ -48,36 +47,23 @@ db.exec(`
   )
 `);
 
-// Prepared statements
-const upsertAppStorage = db.prepare(`
-  INSERT INTO app_storage (key, value) VALUES (?, ?)
-  ON CONFLICT(key) DO UPDATE SET value = excluded.value
-`);
+const upsertAppStorage = db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
 const getAllAppStorage = db.prepare('SELECT key, value FROM app_storage');
-
 const insertFileMeta = db.prepare('INSERT OR REPLACE INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)');
 const getFileMeta = db.prepare('SELECT * FROM files_meta WHERE id = ?');
 const deleteFileMeta = db.prepare('DELETE FROM files_meta WHERE id = ?');
 
-// Middleware
-// Increase limit to handle large backups
 app.use(express.json({ limit: '100mb' }));
 app.use(express.raw({ type: '*/*', limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Utility: Generate unique readable filename
 const getSafeFilename = (dir, filename) => {
-    // Sanitize basic filename to prevent directory traversal and weird chars
     let safeName = path.basename(filename).replace(/[^a-zA-Z0-9.\-_() ]/g, '_');
     if (safeName.length === 0) safeName = 'unnamed_file';
-    
     const namePart = path.parse(safeName).name;
     const extPart = path.parse(safeName).ext;
-    
     let finalName = safeName;
     let counter = 1;
-    
-    // If file exists, append (1), (2), etc. like Windows/Mac
     while (fs.existsSync(path.join(dir, finalName))) {
         finalName = `${namePart} (${counter})${extPart}`;
         counter++;
@@ -85,8 +71,7 @@ const getSafeFilename = (dir, filename) => {
     return finalName;
 };
 
-// --- JSON API Routes ---
-
+// JSON API Routes
 app.get('/api/data', (req, res) => {
   try {
     const rows = getAllAppStorage.all();
@@ -94,9 +79,7 @@ app.get('/api/data', (req, res) => {
     for (const row of rows) {
       try {
         data[row.key] = JSON.parse(row.value);
-      } catch (parseError) {
-        data[row.key] = [];
-      }
+      } catch (e) { data[row.key] = []; }
     }
     res.json(data);
   } catch (e) {
@@ -108,8 +91,7 @@ app.get('/api/data', (req, res) => {
 app.post('/api/data/:key', (req, res) => {
   const { key } = req.params;
   try {
-    const jsonValue = JSON.stringify(req.body);
-    upsertAppStorage.run(key, jsonValue);
+    upsertAppStorage.run(key, JSON.stringify(req.body));
     res.json({ success: true });
   } catch (e) {
     console.error(e);
@@ -117,47 +99,23 @@ app.post('/api/data/:key', (req, res) => {
   }
 });
 
-// --- File API Routes (Disk Storage) ---
-
+// File API Routes
 app.post('/api/files/:id', (req, res) => {
   const { id } = req.params;
   const rawFilename = req.headers['x-filename'] || 'unknown.bin';
   const mimeType = req.headers['content-type'] || 'application/octet-stream';
-  
   try {
     let buffer = req.body; 
-    
-    // FIX: If express.json() middleware parsed the body (because Content-Type was application/json),
-    // req.body will be an object, not a buffer. We need to convert it back to a buffer/string to save it as a file.
     if (!Buffer.isBuffer(buffer)) {
-        if (typeof buffer === 'object' && buffer !== null) {
-            // Convert parsed JSON object back to string buffer
-            // Using null, 2 for pretty printing to ensure the backup is readable
-            buffer = Buffer.from(JSON.stringify(buffer, null, 2));
-        } else {
-            console.error("Upload failed: Body is not a buffer and not a valid object. Type:", typeof buffer);
-            return res.status(400).json({ error: 'Invalid or empty file data' });
-        }
+        if (typeof buffer === 'object' && buffer !== null) buffer = Buffer.from(JSON.stringify(buffer, null, 2));
+        else return res.status(400).json({ error: 'Invalid file data' });
     }
-
-    if (buffer.length === 0) {
-         return res.status(400).json({ error: 'Empty file data' });
-    }
-
     const diskFilename = getSafeFilename(DOCUMENTS_DIR, rawFilename);
-    const filePath = path.join(DOCUMENTS_DIR, diskFilename);
-
-    // LOGGING for debugging mount issues
-    console.log(`Attempting to save file to absolute path: ${path.resolve(filePath)}`);
-    
-    fs.writeFileSync(filePath, buffer);
-
+    fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), buffer);
     insertFileMeta.run(id, rawFilename, diskFilename, mimeType, buffer.length, new Date().toISOString());
-    
-    console.log(`Saved file successfully: ${diskFilename} (ID: ${id}, Size: ${buffer.length} bytes)`);
     res.json({ success: true, filename: diskFilename });
   } catch (e) {
-    console.error(`Upload error for ${rawFilename}:`, e);
+    console.error(`Upload error:`, e);
     res.status(500).send(`Failed to save file: ${e.message}`);
   }
 });
@@ -166,24 +124,13 @@ app.get('/api/files/:id', (req, res) => {
   const { id } = req.params;
   try {
     const meta = getFileMeta.get(id);
-    
-    if (!meta) {
-        return res.status(404).send('File not found');
-    }
-
+    if (!meta) return res.status(404).send('File not found');
     const filePath = path.join(DOCUMENTS_DIR, meta.disk_filename);
-    
-    if (!fs.existsSync(filePath)) {
-        return res.status(404).send('File content missing on disk');
-    }
-
+    if (!fs.existsSync(filePath)) return res.status(404).send('Content missing');
     res.setHeader('Content-Type', meta.mime_type);
     res.setHeader('Content-Disposition', `inline; filename="${meta.original_name}"`);
     res.sendFile(filePath);
-  } catch (e) {
-    console.error('Download error:', e);
-    res.status(500).send('Error retrieving file');
-  }
+  } catch (e) { res.status(500).send('Error'); }
 });
 
 app.delete('/api/files/:id', (req, res) => {
@@ -192,24 +139,13 @@ app.delete('/api/files/:id', (req, res) => {
     const meta = getFileMeta.get(id);
     if (meta) {
         const filePath = path.join(DOCUMENTS_DIR, meta.disk_filename);
-        if (fs.existsSync(filePath)) {
-            fs.unlinkSync(filePath);
-        }
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
         deleteFileMeta.run(id);
     }
     res.json({ success: true });
-  } catch (e) {
-    console.error('Delete error:', e);
-    res.status(500).json({ error: 'Failed to delete file' });
-  }
+  } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-// SPA Fallback
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Document Storage Path: ${DOCUMENTS_DIR}`);
-});
+app.listen(PORT, () => console.log(`Server on ${PORT}, Storage: ${DOCUMENTS_DIR}`));

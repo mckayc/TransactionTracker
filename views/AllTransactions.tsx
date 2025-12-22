@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag, SavedReport, ReportConfig } from '../types';
 import TransactionTable from '../components/TransactionTable';
@@ -360,7 +359,35 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
       if (start && txDate < start) return false;
       if (end && txDate > end) return false;
-      if (debouncedSearchTerm && !tx.description.toLowerCase().includes(debouncedSearchTerm.toLowerCase())) return false;
+
+      // --- Enhanced Global Search Logic ---
+      if (debouncedSearchTerm) {
+        const searchLower = debouncedSearchTerm.toLowerCase();
+        
+        // Match Description
+        const matchesDescription = tx.description.toLowerCase().includes(searchLower);
+        
+        // Match Amount (handle numeric and currency strings)
+        // Strip symbols from search term for pure numeric comparison
+        const searchNumeric = debouncedSearchTerm.replace(/[$,]/g, '');
+        const amountStr = Math.abs(tx.amount).toFixed(2);
+        const amountStrNoDec = Math.abs(tx.amount).toString();
+        const matchesAmount = searchNumeric !== '' && (amountStr.includes(searchNumeric) || amountStrNoDec.includes(searchNumeric));
+
+        // Match Notes
+        const matchesNotes = tx.notes?.toLowerCase().includes(searchLower);
+        
+        // Match Location
+        const matchesLocation = tx.location?.toLowerCase().includes(searchLower);
+
+        // Match Payee Name
+        const payeeName = payees.find(p => p.id === tx.payeeId)?.name || '';
+        const matchesPayee = payeeName.toLowerCase().includes(searchLower);
+
+        if (!(matchesDescription || matchesAmount || matchesNotes || matchesLocation || matchesPayee)) {
+            return false;
+        }
+      }
       
       // Multi-select filters logic
       if (selectedCategories.size > 0 && !selectedCategories.has(tx.categoryId)) return false;
@@ -371,7 +398,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       
       return true;
     });
-  }, [transactions, debouncedSearchTerm, selectedCategories, selectedTypes, selectedAccounts, selectedUsers, selectedPayees, startDate, endDate]);
+  }, [transactions, debouncedSearchTerm, selectedCategories, selectedTypes, selectedAccounts, selectedUsers, selectedPayees, startDate, endDate, payees]);
   
   // Calculate Summaries based on Filtered Data
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
@@ -762,7 +789,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
                     </span>
                     <input 
                         type="text" 
-                        placeholder="Search..."
+                        placeholder="Search Amount, Desc, Payee..."
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
                         className="hidden sm:block w-full md:w-48 px-3 py-1.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
