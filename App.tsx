@@ -154,9 +154,8 @@ const App: React.FC = () => {
     const loadHeavyData = async () => {
       setIsBackgroundLoading(true);
       
-      // FIX: Load transactions from relational endpoint, not KV store
       try {
-        const { data } = await api.getTransactions({ limit: 5000 }); // Large limit for initial hydration
+        const { data } = await api.getTransactions({ limit: 5000 });
         if (data) {
           setTransactions(data);
           hydratedKeys.current.add('transactions');
@@ -216,7 +215,6 @@ const App: React.FC = () => {
               }
           }
           
-          // Special handling for transactions to ensure they go into the relational table
           const legacyTxs = localStorage.getItem('transactions');
           if (legacyTxs) {
               const parsedTxs = JSON.parse(legacyTxs);
