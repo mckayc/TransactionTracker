@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
-import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage } from '../types';
+import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, FinancialPlan } from '../types';
 import * as XLSX from 'xlsx';
 
 declare const pdfjsLib: any;
@@ -371,6 +372,92 @@ export const streamTaxAdvice = async (history: ChatMessage[], profile: BusinessP
 
     return responseStream;
 };
+
+export const generateFinancialStrategy = async (transactions: Transaction[], goals: FinancialGoal[], categories: Category[]) => {
+    const ai = getAiClient();
+    
+    // Prepare a compact summary of spending habits
+    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+    const spendingSummary: Record<string, number> = {};
+    
+    // Analyze last 6 months of transactions
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    
+    const recentTxs = transactions.filter(tx => new Date(tx.date) >= sixMonthsAgo && !tx.isParent);
+    let totalIncome = 0;
+    
+    recentTxs.forEach(tx => {
+        if (tx.typeId.includes('income')) {
+            totalIncome += tx.amount;
+        } else if (tx.typeId.includes('expense')) {
+            const catName = categoryMap.get(tx.categoryId) || 'Other';
+            spendingSummary[catName] = (spendingSummary[catName] || 0) + tx.amount;
+        }
+    });
+
+    const monthlyIncomeAvg = totalIncome / 6;
+
+    const prompt = `
+        You are a Master Financial Planner and Wealth Coach. 
+        Your goal is to build a high-performance financial strategy for the user.
+
+        **Current Data (Monthly Avg):**
+        - Avg Monthly Income: ${formatCurrency(monthlyIncomeAvg)}
+        - Spending Breakdown: ${JSON.stringify(spendingSummary)}
+        
+        **Financial Goals:**
+        ${JSON.stringify(goals.map(g => ({ title: g.title, target: g.targetAmount, current: g.currentAmount })))}
+
+        **Task:**
+        1. Analyze the spending habits vs income. Is the user living within their means?
+        2. Evaluate progress toward goals.
+        3. Provide a clear, actionable strategy in Markdown. Use headings, bold text, and bullet points.
+        4. Suggest specific monthly budget limits for categories where they might be overspending.
+        5. Include a "Path to Success" with 3 immediate next steps.
+
+        Return the response in JSON format matching this schema:
+        {
+            "strategy": "The markdown strategy string",
+            "suggestedBudgets": [
+                { "categoryId": "matching ID from current data or category names", "monthlyLimit": number }
+            ]
+        }
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-preview',
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    strategy: { type: Type.STRING },
+                    suggestedBudgets: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                categoryId: { type: Type.STRING },
+                                monthlyLimit: { type: Type.NUMBER }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    try {
+        return JSON.parse(response.text || '{}');
+    } catch (e) {
+        console.error("Failed to parse strategy", e);
+        return { strategy: "I encountered an error generating your plan. Please try again." };
+    }
+};
+
+const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
 // Legacy single-turn (keep for backward compatibility if needed)
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
