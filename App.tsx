@@ -15,19 +15,21 @@ import CategoriesPage from './views/CategoriesPage';
 import TagsPage from './views/TagsPage';
 import UsersPage from './views/UsersPage';
 import BusinessHub from './views/BusinessHub';
+import FinancialPlan from './views/FinancialPlan';
 import DocumentsPage from './views/DocumentsPage';
 import IntegrationsPage from './views/IntegrationsPage';
 import AmazonIntegration from './views/integrations/AmazonIntegration';
 import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
+import DonationModal from './components/DonationModal';
 import { MenuIcon, CloseIcon, SparklesIcon } from './components/Icons';
 import { calculateNextDate } from './dateUtils';
 import { generateUUID } from './utils';
 import { api } from './services/apiService';
 import { saveFile, deleteFile } from './services/storageService';
 
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'integrations' | 'integration-amazon' | 'integration-youtube';
+type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'plan' | 'documents' | 'integrations' | 'integration-amazon' | 'integration-youtube';
 
 const DEFAULT_CATEGORIES: Category[] = [
     "Groceries", "Dining", "Shopping", "Travel", "Entertainment", "Utilities", "Health", "Services", "Transportation", "Income", "Other"
@@ -38,6 +40,7 @@ const DEFAULT_TRANSACTION_TYPES: TransactionType[] = [
     { id: 'default-expense-bill', name: 'Bill Payment', balanceEffect: 'expense', isDefault: true },
     { id: 'default-income-paycheck', name: 'Paycheck', balanceEffect: 'income', isDefault: true },
     { id: 'default-transfer-transfer', name: 'Transfer', balanceEffect: 'transfer', isDefault: true },
+    { id: 'default-donation', name: 'Donation', balanceEffect: 'donation', isDefault: true },
 ];
 
 const App: React.FC = () => {
@@ -86,14 +89,9 @@ const App: React.FC = () => {
     const hydratePriorityData = async () => {
       setIsShellLoading(true);
       
-      // Check for legacy local data that hasn't been migrated
       const legacyAccounts = localStorage.getItem('accounts');
-      const legacyTags = localStorage.getItem('tags');
-      if (legacyAccounts || legacyTags) {
-          setHasLegacyData(true);
-      }
+      if (legacyAccounts) setHasLegacyData(true);
 
-      // Load from server SQLite
       const [sets, usrs, cats, accTs, accs, txTs, tagsData, pyes, rules, folders] = await Promise.all([
         api.loadKey<SystemSettings>('systemSettings'),
         api.loadKey<User[]>('users'),
@@ -107,7 +105,6 @@ const App: React.FC = () => {
         api.loadKey<DocumentFolder[]>('documentFolders'),
       ]);
 
-      // Apply Settings & Users
       const finalSettings = sets || {};
       if (finalSettings.apiKey) localStorage.setItem('user_api_key', finalSettings.apiKey);
       setSystemSettings(finalSettings);
@@ -135,7 +132,6 @@ const App: React.FC = () => {
       setDocumentFolders(folders || []);
       hydratedKeys.current.add('documentFolders');
 
-      // Accounts
       let finalAccountTypes = accTs || [];
       if (finalAccountTypes.length === 0) finalAccountTypes = [{ id: 'default-bank', name: 'Bank', isDefault: true }, { id: 'default-cc', name: 'Credit Card', isDefault: true }];
       setAccountTypes(finalAccountTypes);
@@ -150,9 +146,7 @@ const App: React.FC = () => {
 
       const params = new URLSearchParams(window.location.search);
       const viewParam = params.get('view');
-      const taskId = params.get('taskId');
       if (viewParam) setCurrentView(viewParam as View);
-      if (taskId) setInitialTaskId(taskId);
 
       setIsShellLoading(false);
       loadHeavyData();
@@ -208,39 +202,24 @@ const App: React.FC = () => {
       setIsMigrating(true);
       try {
           const keysToMigrate = ['accounts', 'categories', 'tags', 'payees', 'reconciliationRules', 'templates', 'users', 'transactionTypes', 'businessProfile', 'tasks'];
-          
           for (const key of keysToMigrate) {
               const data = localStorage.getItem(key);
               if (data) {
                   const parsed = JSON.parse(data);
                   await api.save(key, parsed);
-                  // Update local state immediately
-                  if (key === 'accounts') setAccounts(parsed);
-                  if (key === 'tags') setTags(parsed);
-                  if (key === 'categories') setCategories(parsed);
-                  if (key === 'payees') setPayees(parsed);
-                  if (key === 'reconciliationRules') setReconciliationRules(parsed);
-                  if (key === 'users') setUsers(parsed);
-                  if (key === 'tasks') setTasks(parsed);
-                  if (key === 'businessProfile') setBusinessProfile(parsed);
-                  
-                  // Clear legacy key to avoid repeated prompts
                   localStorage.removeItem(key);
               }
           }
-          
-          setHasLegacyData(false);
-          alert("Migration successful! Your custom accounts and tags have been moved to the server.");
+          alert("Migration successful!");
           window.location.reload();
       } catch (e) {
-          console.error("Migration failed", e);
-          alert("Failed to migrate data. Please try the manual Restore feature in Settings.");
+          alert("Migration failed");
       } finally {
           setIsMigrating(false);
       }
   };
 
-  // Save Effects with Hydration Safety
+  // Save Effects
   useEffect(() => { if (hydratedKeys.current.has('systemSettings')) api.save('systemSettings', systemSettings); }, [systemSettings]);
   useEffect(() => { if (hydratedKeys.current.has('users')) api.save('users', users); }, [users]);
   useEffect(() => { if (hydratedKeys.current.has('categories')) api.save('categories', categories); }, [categories]);
@@ -257,13 +236,24 @@ const App: React.FC = () => {
   // Handlers
   const handleTransactionsAdded = (newlyAdded: Transaction[], newlyCreatedCategories: Category[]) => {
       if (newlyCreatedCategories.length > 0) setCategories(prev => [...prev, ...newlyCreatedCategories]);
-      if (newlyAdded.length > 0) setTransactions(prev => [...prev, ...newlyAdded].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      if (newlyAdded.length > 0) {
+        const sorted = [...transactions, ...newlyAdded].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setTransactions(sorted);
+        api.saveTransactions(newlyAdded);
+      }
   };
-  const handleAddTransaction = (newTransaction: Transaction) => setTransactions(prev => [...prev, newTransaction].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  const handleUpdateTransaction = (updatedTransaction: Transaction) => setTransactions(prev => prev.map(tx => tx.id === updatedTransaction.id ? updatedTransaction : tx).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  const handleUpdateTransactions = (updatedTransactions: Transaction[]) => { const updatedTxMap = new Map(updatedTransactions.map(tx => [tx.id, tx])); setTransactions(prev => prev.map(tx => updatedTxMap.has(tx.id) ? updatedTxMap.get(tx.id)! : tx).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())); };
-  const handleDeleteTransaction = (transactionId: string) => setTransactions(prev => prev.filter(tx => tx.id !== transactionId));
-  const handleDeleteTransactions = (transactionIds: string[]) => { const idsToDelete = new Set(transactionIds); setTransactions(prev => prev.filter(tx => !idsToDelete.has(tx.id))); };
+  const handleAddTransaction = (newTransaction: Transaction) => {
+    setTransactions(prev => [...prev, newTransaction].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    api.saveTransactions([newTransaction]);
+  };
+  const handleUpdateTransaction = (updatedTransaction: Transaction) => {
+    setTransactions(prev => prev.map(tx => tx.id === updatedTransaction.id ? updatedTransaction : tx).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+    api.saveTransactions([updatedTransaction]);
+  };
+  const handleDeleteTransaction = (transactionId: string) => {
+    setTransactions(prev => prev.filter(tx => tx.id !== transactionId));
+    api.deleteTransactions([transactionId]);
+  };
   const handleAddAccount = (account: Account) => setAccounts(prev => [...prev, account]);
   const handleUpdateAccount = (updatedAccount: Account) => setAccounts(prev => prev.map(acc => acc.id === updatedAccount.id ? updatedAccount : acc));
   const handleRemoveAccount = (accountId: string) => setAccounts(prev => prev.filter(c => c.id !== accountId));
@@ -281,17 +271,17 @@ const App: React.FC = () => {
   const handleSaveRule = (rule: ReconciliationRule) => setReconciliationRules(prev => { const index = prev.findIndex(r => r.id === rule.id); if (index > -1) { const newRules = [...prev]; newRules[index] = rule; return newRules; } return [...prev, rule]; });
   const handleDeleteRule = (ruleId: string) => setReconciliationRules(prev => prev.filter(r => r.id !== ruleId));
   const handleSavePayee = (payee: Payee) => setPayees(prev => { const index = prev.findIndex(p => p.id === payee.id); if (index > -1) { const newPayees = [...prev]; newPayees[index] = payee; return newPayees; } return [...prev, payee]; });
-  const handleDeletePayee = (payeeId: string) => setPayees(prev => { const children = prev.filter(p => p.parentId === payeeId); const updatedChildren = children.map(c => ({ ...c, parentId: undefined })); const filtered = prev.filter(p => p.id !== payeeId && p.parentId !== payeeId); return [...filtered, ...updatedChildren]; });
+  const handleDeletePayee = (payeeId: string) => setPayees(prev => { const filtered = prev.filter(p => p.id !== payeeId && p.parentId !== payeeId); return filtered; });
   const handleSaveCategory = (category: Category) => setCategories(prev => { const index = prev.findIndex(c => c.id === category.id); if (index > -1) { const newCategories = [...prev]; newCategories[index] = category; return newCategories; } return [...prev, category]; });
-  const handleDeleteCategory = (categoryId: string) => setCategories(prev => { const children = prev.filter(c => c.parentId === categoryId); const updatedChildren = children.map(c => ({ ...c, parentId: undefined })); const filtered = prev.filter(c => c.id !== categoryId && c.parentId !== categoryId); return [...filtered, ...updatedChildren]; });
+  const handleDeleteCategory = (categoryId: string) => setCategories(prev => prev.filter(c => c.id !== categoryId && c.parentId !== categoryId));
   const handleSaveTag = (tag: Tag) => setTags(prev => { const index = prev.findIndex(t => t.id === tag.id); if (index > -1) { const newTags = [...prev]; newTags[index] = tag; return newTags; } return [...prev, tag]; });
   const handleDeleteTag = (tagId: string) => { setTags(prev => prev.filter(t => t.id !== tagId)); setTransactions(prev => prev.map(tx => (tx.tagIds && tx.tagIds.includes(tagId)) ? { ...tx, tagIds: tx.tagIds.filter(id => id !== tagId) } : tx)); };
   const handleSaveUser = (user: User) => setUsers(prev => { const index = prev.findIndex(u => u.id === user.id); if (index > -1) { const newUsers = [...prev]; newUsers[index] = user; return newUsers; } return [...prev, user]; });
-  const handleDeleteUser = (userId: string) => { const userToDelete = users.find(u => u.id === userId); if (userToDelete?.isDefault) { alert("Cannot delete the default user."); return; } const defaultUser = users.find(u => u.isDefault) || users[0]; if (!defaultUser) { alert("Cannot delete user as no default user is available."); return; } setTransactions(prev => prev.map(tx => tx.userId === userId ? { ...tx, userId: defaultUser.id } : tx)); setUsers(prev => prev.filter(u => u.id !== userId)); };
+  const handleDeleteUser = (userId: string) => setUsers(prev => prev.filter(u => u.id !== userId));
   const handleAddDocument = (doc: BusinessDocument) => setBusinessDocuments(prev => [...prev, doc]);
   const handleRemoveDocument = (docId: string) => setBusinessDocuments(prev => prev.filter(d => d.id !== docId));
   const handleCreateFolder = (folder: DocumentFolder) => setDocumentFolders(prev => [...prev, folder]);
-  const handleDeleteFolder = (folderId: string) => { setBusinessDocuments(prev => prev.map(d => d.parentId === folderId ? { ...d, parentId: undefined } : d)); setDocumentFolders(prev => prev.filter(f => f.id !== folderId)); };
+  const handleDeleteFolder = (folderId: string) => setDocumentFolders(prev => prev.filter(f => f.id !== folderId));
   const handleAddSavedReport = (report: SavedReport) => setSavedReports(prev => [...prev, report]);
   const handleAddAmazonMetrics = (newMetrics: AmazonMetric[]) => { if(newMetrics.length > 0) setAmazonMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())); };
   const handleDeleteAmazonMetrics = (ids: string[]) => { const idSet = new Set(ids); setAmazonMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
@@ -303,24 +293,15 @@ const App: React.FC = () => {
   const renderView = () => {
     if (isShellLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Initializing secure vault..." /></div>;
     
-    if (isBackgroundLoading && (currentView === 'transactions' || currentView === 'reports')) {
-        return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Streaming historical data..." /></div>;
-    }
-
     switch (currentView) {
       case 'dashboard': return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
-      case 'transactions': return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onSaveReport={handleAddSavedReport} />;
+      case 'transactions': return <AllTransactions accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onSaveReport={handleAddSavedReport} />;
       case 'calendar': return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports': return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} savedDateRanges={savedDateRanges} setSavedDateRanges={setSavedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} />;
-      case 'accounts': return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
-      case 'users': return <UsersPage users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} />;
-      case 'payees': return <PayeesPage payees={payees} onSavePayee={handleSavePayee} onDeletePayee={handleDeletePayee} transactions={transactions}/>;
-      case 'categories': return <CategoriesPage categories={categories} onSaveCategory={handleSaveCategory} onDeleteCategory={handleDeleteCategory} transactions={transactions}/>;
-      case 'tags': return <TagsPage tags={tags} onSaveTag={handleSaveTag} onDeleteTag={handleDeleteTag} />;
-      case 'rules': return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} />;
       case 'settings': return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} tags={tags} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} users={users} businessProfile={businessProfile} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
       case 'tasks': return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
-      case 'hub': return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} chatSessions={chatSessions} onUpdateChatSessions={setChatSessions} transactions={transactions} accounts={accounts} categories={categories} />;
+      case 'hub': return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} chatSessions={chatSessions} onUpdateChatSessions={setChatSessions} transactions={transactions} accounts={accounts} categories={categories} onAddTransaction={handleAddTransaction} transactionTypes={transactionTypes} payees={payees} />;
+      case 'plan': return <FinancialPlan transactions={transactions} accounts={accounts} profile={businessProfile} categories={categories} transactionTypes={transactionTypes} payees={payees} onAddTransaction={handleAddTransaction} />;
       case 'documents': return <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
       case 'integrations': return <IntegrationsPage onNavigate={setCurrentView} />;
       case 'integration-amazon': return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} onDeleteMetrics={handleDeleteAmazonMetrics} />;
@@ -335,13 +316,9 @@ const App: React.FC = () => {
           <div className="bg-indigo-600 text-white p-3 flex flex-col sm:flex-row items-center justify-center gap-4 text-sm font-medium sticky top-0 z-50 shadow-lg">
               <div className="flex items-center gap-2">
                 <SparklesIcon className="w-5 h-5 text-indigo-300 animate-pulse" />
-                <span>We found custom accounts and tags from a previous version in your browser.</span>
+                <span>Legacy data detected in browser.</span>
               </div>
-              <button 
-                onClick={handleMigrateLegacyData}
-                disabled={isMigrating}
-                className="bg-white text-indigo-600 px-4 py-1 rounded-full font-bold hover:bg-indigo-50 transition-colors shadow-sm disabled:opacity-50"
-              >
+              <button onClick={handleMigrateLegacyData} disabled={isMigrating} className="bg-white text-indigo-600 px-4 py-1 rounded-full font-bold hover:bg-indigo-50 transition-colors shadow-sm disabled:opacity-50">
                   {isMigrating ? 'Migrating...' : 'Migrate to Server'}
               </button>
           </div>
@@ -363,7 +340,6 @@ const App: React.FC = () => {
         <div className="hidden md:block">
           <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} onChatToggle={() => setIsChatOpen(!isChatOpen)} isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} isStreaming={isBackgroundLoading} />
         </div>
-        
         <div className={`md:hidden fixed inset-0 z-30 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <Sidebar currentView={currentView} onNavigate={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} transactions={transactions} onChatToggle={() => { setIsChatOpen(!isChatOpen); setIsSidebarOpen(false); }} isStreaming={isBackgroundLoading} />
         </div>

@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, PuzzleIcon, ChevronLeftIcon, ChevronRightIcon, ChatBubbleIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, PuzzleIcon, ChevronLeftIcon, ChevronRightIcon, ChatBubbleIcon, LightBulbIcon } from './Icons';
 
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'integrations' | 'integration-amazon' | 'integration-youtube';
+type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'plan' | 'documents' | 'integrations' | 'integration-amazon' | 'integration-youtube';
 
 interface SidebarProps {
   currentView: View;
@@ -21,6 +22,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
   const mainNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
     { id: 'transactions', label: 'Transactions', icon: TableIcon },
+    { id: 'plan', label: 'Financial Plan', icon: LightBulbIcon },
     { id: 'documents', label: 'Documents', icon: DocumentIcon },
     { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
     { id: 'tasks', label: 'Tasks', icon: TasksIcon },
