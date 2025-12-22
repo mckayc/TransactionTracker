@@ -11,10 +11,12 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
+// Configuration for directories
 const DATA_DIR = path.join(__dirname, 'data', 'config');
 const DOCUMENTS_DIR = path.join(__dirname, 'media', 'files');
 const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 
+// Ensure directories exist
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 
@@ -22,6 +24,8 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 db.pragma('cache_size = -128000'); // 128MB cache
+
+// --- Database Schema ---
 
 // 1. Key-Value for metadata
 db.exec(`CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT)`);
@@ -48,13 +52,23 @@ db.exec(`
   )
 `);
 
-// High-performance indexes for search and reporting
+// High-performance indexes
 db.exec(`CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date)`);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_tx_amount ON transactions(amount)`);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_tx_description ON transactions(description)`);
 db.exec(`CREATE INDEX IF NOT EXISTS idx_tx_linkgroup ON transactions(linkGroupId)`);
 
-db.exec(`CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT)`);
+// 3. Metadata for uploaded files
+db.exec(`
+  CREATE TABLE IF NOT EXISTS files_meta (
+    id TEXT PRIMARY KEY, 
+    original_name TEXT, 
+    disk_filename TEXT, 
+    mime_type TEXT, 
+    size INTEGER, 
+    created_at TEXT
+  )
+`);
 
 // --- Migration Logic: JSON Blob to Relational ---
 const migrateLegacyData = () => {
@@ -89,8 +103,12 @@ migrateLegacyData();
 // --- API Implementation ---
 
 app.use(express.json({ limit: '100mb' }));
+app.use(express.raw({ type: '*/*', limit: '100mb' }));
 
-// Fetch Transactions with Server-Side Filtering/Pagination
+// Health check
+app.get('/api/health', (req, res) => res.json({ status: 'ok', database: DB_PATH }));
+
+// 1. Relational Transactions API
 app.get('/api/transactions', (req, res) => {
     try {
         const { 
@@ -111,7 +129,6 @@ app.get('/api/transactions', (req, res) => {
         if (startDate) { query += ` AND date >= ?`; params.push(startDate); }
         if (endDate) { query += ` AND date <= ?`; params.push(endDate); }
         
-        // Multi-select lists (pass as comma separated strings in query)
         const addInClause = (field, values) => {
             if (values) {
                 const list = values.split(',');
@@ -125,11 +142,9 @@ app.get('/api/transactions', (req, res) => {
         addInClause('userId', userIds);
         addInClause('payeeId', payeeIds);
 
-        // Get Total Count for pagination info
         const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as total');
         const total = db.prepare(countQuery).get(...params).total;
 
-        // Sorting & Pagination
         query += ` ORDER BY ${sort} ${order === 'asc' ? 'ASC' : 'DESC'}`;
         query += ` LIMIT ? OFFSET ?`;
         params.push(Number(limit), Number(offset));
@@ -147,10 +162,11 @@ app.get('/api/transactions', (req, res) => {
     }
 });
 
-// Bulk Upsert Transactions
 app.post('/api/transactions/bulk', (req, res) => {
     try {
-        const txs = req.body;
+        const txs = Array.isArray(req.body) ? req.body : [];
+        if (txs.length === 0) return res.json({ success: true, count: 0 });
+
         const upsert = db.prepare(`
             INSERT INTO transactions (id, date, description, amount, categoryId, accountId, typeId, payeeId, userId, tagIds, notes, location, originalDescription, isParent, parentTransactionId, linkGroupId)
             VALUES (@id, @date, @description, @amount, @categoryId, @accountId, @typeId, @payeeId, @userId, @tagIds, @notes, @location, @originalDescription, @isParent, @parentTransactionId, @linkGroupId)
@@ -186,7 +202,7 @@ app.delete('/api/transactions', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Standard Key-Value API
+// 2. Standard Key-Value API
 app.get('/api/data/:key', (req, res) => {
     try {
         const row = db.prepare('SELECT value FROM app_storage WHERE key = ?').get(req.params.key);
@@ -196,6 +212,7 @@ app.get('/api/data/:key', (req, res) => {
         res.status(500).json({ error: e.message });
     }
 });
+
 app.post('/api/data/:key', (req, res) => {
     try {
         db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
@@ -206,13 +223,83 @@ app.post('/api/data/:key', (req, res) => {
     }
 });
 
-// Serve static files from root or dist if needed - handle with care in dev
-app.use(express.static(__dirname));
+// 3. File Storage API (Document Vault)
+app.post('/api/files/:id', (req, res) => {
+    const { id } = req.params;
+    const filename = req.headers['x-filename'] || id;
+    const contentType = req.headers['content-type'] || 'application/octet-stream';
+    const diskFilename = `${id}_${Date.now()}`;
+    const fullPath = path.join(DOCUMENTS_DIR, diskFilename);
 
-// Single Page Application Fallback: Return index.html for all non-API routes
-app.get('*', (req, res) => {
-    if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'API route not found' });
-    res.sendFile(path.join(__dirname, 'index.html'));
+    try {
+        // req.body contains the raw binary if using raw parser
+        fs.writeFileSync(fullPath, req.body);
+
+        db.prepare(`
+            INSERT INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET 
+                original_name=excluded.original_name, 
+                disk_filename=excluded.disk_filename, 
+                mime_type=excluded.mime_type, 
+                size=excluded.size
+        `).run(id, String(filename), diskFilename, contentType, req.body.length, new Date().toISOString());
+
+        res.json({ success: true, id });
+    } catch (e) {
+        console.error(e);
+        res.status(500).send(e.message);
+    }
 });
 
-app.listen(PORT, () => console.log(`FinParser Server active on ${PORT}`));
+app.get('/api/files/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+        const meta = db.prepare('SELECT * FROM files_meta WHERE id = ?').get(id);
+        if (!meta) return res.status(404).send("File not found");
+
+        const fullPath = path.join(DOCUMENTS_DIR, meta.disk_filename);
+        if (!fs.existsSync(fullPath)) return res.status(404).send("File contents missing on disk");
+
+        res.setHeader('Content-Type', meta.mime_type);
+        res.setHeader('Content-Disposition', `attachment; filename="${meta.original_name}"`);
+        res.sendFile(fullPath);
+    } catch (e) {
+        res.status(500).send(e.message);
+    }
+});
+
+app.delete('/api/files/:id', (req, res) => {
+    const { id } = req.params;
+    try {
+        const meta = db.prepare('SELECT * FROM files_meta WHERE id = ?').get(id);
+        if (meta) {
+            const fullPath = path.join(DOCUMENTS_DIR, meta.disk_filename);
+            if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+            db.prepare('DELETE FROM files_meta WHERE id = ?').run(id);
+        }
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).send(e.message);
+    }
+});
+
+// Serve static files from root
+app.use(express.static(__dirname));
+
+// Fallback to index.html for SPA routing (MUST be last)
+app.get('*', (req, res) => {
+    // Safety check for API routes - if it starts with /api but didn't match anything above, 404
+    if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: 'API endpoint not found' });
+    }
+    // Serve index.html for all other routes to let React Router/Client-side routing handle it
+    const indexFile = path.join(__dirname, 'index.html');
+    if (fs.existsSync(indexFile)) {
+        res.sendFile(indexFile);
+    } else {
+        res.status(404).send("Frontend index.html not found. Please build the app.");
+    }
+});
+
+app.listen(PORT, () => console.log(`FinParser Server active on http://localhost:${PORT}`));
