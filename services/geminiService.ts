@@ -59,7 +59,7 @@ const fileToGenerativePart = async (file: File, onProgress: (msg: string) => voi
         const workbook = XLSX.read(buffer, { type: 'array' });
         let fullText = `\n\n--- Excel Workbook Data from ${file.name} ---\n`;
         
-        workbook.SheetNames.forEach(sheetName => {
+        workbook.SheetNames.forEach((sheetName: string) => {
             const worksheet = workbook.Sheets[sheetName];
             const csv = XLSX.utils.sheet_to_csv(worksheet);
             fullText += `\n[Sheet: ${sheetName}]\n${csv}\n`;
@@ -136,7 +136,7 @@ const getBasePrompt = (transactionTypes: TransactionType[]) => {
         - **sourceFilename**: The name of the file this transaction was extracted from. Use the '--- Document Start: [filename] ---' or '--- CSV Data from [filename] ---' markers to identify it.
     
     **Important Rules:**
-    - Ignore summary sections, cash advance details, interest charges, fees, and other non-transactional items unless a specific "Fee" or "Interest Charge" type is available.
+    - Ignore summary sections, cache advance details, interest charges, fees, and other non-transactional items unless a specific "Fee" or "Interest Charge" type is available.
     - The final 'amount' in the JSON must always be a positive number. The \`transactionType\` you choose indicates the money flow.
     - Return ONLY the specified JSON format. Do not include any other text or explanations.
 `;
