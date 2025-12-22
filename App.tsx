@@ -22,12 +22,11 @@ import AmazonIntegration from './views/integrations/AmazonIntegration';
 import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
-import DonationModal from './components/DonationModal';
 import { MenuIcon, CloseIcon, SparklesIcon } from './components/Icons';
 import { calculateNextDate } from './dateUtils';
 import { generateUUID } from './utils';
 import { api } from './services/apiService';
-import { saveFile, deleteFile } from './services/storageService';
+import { saveFile } from './services/storageService';
 
 type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'plan' | 'documents' | 'integrations' | 'integration-amazon' | 'integration-youtube';
 
@@ -154,10 +153,16 @@ const App: React.FC = () => {
 
     const loadHeavyData = async () => {
       setIsBackgroundLoading(true);
-      const txs = await api.loadKey<Transaction[]>('transactions');
-      if (txs) {
-          setTransactions(txs);
+      
+      // FIX: Load transactions from relational endpoint, not KV store
+      try {
+        const { data } = await api.getTransactions({ limit: 5000 }); // Large limit for initial hydration
+        if (data) {
+          setTransactions(data);
           hydratedKeys.current.add('transactions');
+        }
+      } catch (e) {
+        console.error("Failed to load transactions", e);
       }
 
       const tasksData = await api.loadKey<TaskItem[]>('tasks');
@@ -210,6 +215,17 @@ const App: React.FC = () => {
                   localStorage.removeItem(key);
               }
           }
+          
+          // Special handling for transactions to ensure they go into the relational table
+          const legacyTxs = localStorage.getItem('transactions');
+          if (legacyTxs) {
+              const parsedTxs = JSON.parse(legacyTxs);
+              if (Array.isArray(parsedTxs) && parsedTxs.length > 0) {
+                  await api.saveTransactions(parsedTxs);
+                  localStorage.removeItem('transactions');
+              }
+          }
+
           alert("Migration successful!");
           window.location.reload();
       } catch (e) {
@@ -229,7 +245,7 @@ const App: React.FC = () => {
   useEffect(() => { if (hydratedKeys.current.has('payees')) api.save('payees', payees); }, [payees]);
   useEffect(() => { if (hydratedKeys.current.has('reconciliationRules')) api.save('reconciliationRules', reconciliationRules); }, [reconciliationRules]);
   useEffect(() => { if (hydratedKeys.current.has('documentFolders')) api.save('documentFolders', documentFolders); }, [documentFolders]);
-  useEffect(() => { if (hydratedKeys.current.has('transactions')) { const h = setTimeout(() => api.save('transactions', transactions), 1000); return () => clearTimeout(h); } }, [transactions]);
+  useEffect(() => { if (hydratedKeys.current.has('transactions')) { const h = setTimeout(() => api.saveTransactions(transactions), 1000); return () => clearTimeout(h); } }, [transactions]);
   useEffect(() => { if (hydratedKeys.current.has('tasks')) api.save('tasks', tasks); }, [tasks]);
   useEffect(() => { if (hydratedKeys.current.has('businessDocuments')) api.save('businessDocuments', businessDocuments); }, [businessDocuments]);
 

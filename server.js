@@ -1,3 +1,4 @@
+
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -88,7 +89,6 @@ migrateLegacyData();
 // --- API Implementation ---
 
 app.use(express.json({ limit: '100mb' }));
-app.use(express.static(path.join(__dirname, 'public')));
 
 // Fetch Transactions with Server-Side Filtering/Pagination
 app.get('/api/transactions', (req, res) => {
@@ -188,15 +188,31 @@ app.delete('/api/transactions', (req, res) => {
 
 // Standard Key-Value API
 app.get('/api/data/:key', (req, res) => {
-    const row = db.prepare('SELECT value FROM app_storage WHERE key = ?').get(req.params.key);
-    if (!row) return res.json(null);
-    res.type('json').send(row.value);
+    try {
+        const row = db.prepare('SELECT value FROM app_storage WHERE key = ?').get(req.params.key);
+        if (!row) return res.json(null);
+        res.type('json').send(row.value);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 app.post('/api/data/:key', (req, res) => {
-    db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
-      .run(req.params.key, JSON.stringify(req.body));
-    res.json({ success: true });
+    try {
+        db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+          .run(req.params.key, JSON.stringify(req.body));
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
 });
 
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.listen(PORT, () => console.log(`Scaled Server on ${PORT}`));
+// Serve static files from root or dist if needed - handle with care in dev
+app.use(express.static(__dirname));
+
+// Single Page Application Fallback: Return index.html for all non-API routes
+app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) return res.status(404).json({ error: 'API route not found' });
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+app.listen(PORT, () => console.log(`FinParser Server active on ${PORT}`));
