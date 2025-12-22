@@ -2,9 +2,9 @@
 import React, { useState } from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, PuzzleIcon, ChevronLeftIcon, ChevronRightIcon, ChatBubbleIcon, LightBulbIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon } from './Icons';
 
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'plan' | 'documents' | 'integrations' | 'integration-amazon' | 'integration-youtube';
+type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'integrations' | 'integration-amazon' | 'integration-youtube';
 
 interface SidebarProps {
   currentView: View;
@@ -13,16 +13,14 @@ interface SidebarProps {
   onChatToggle?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
-  isStreaming?: boolean;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions, onChatToggle, isCollapsed = false, onToggleCollapse, isStreaming = false }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions, onChatToggle, isCollapsed = false, onToggleCollapse }) => {
   const [isManagementOpen, setIsManagementOpen] = useState(false);
 
   const mainNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
     { id: 'transactions', label: 'Transactions', icon: TableIcon },
-    { id: 'plan', label: 'Financial Plan', icon: LightBulbIcon },
     { id: 'documents', label: 'Documents', icon: DocumentIcon },
     { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
     { id: 'tasks', label: 'Tasks', icon: TasksIcon },
@@ -48,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
         <div className={`flex items-center h-16 ${isCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
             <div className="flex items-center gap-3 overflow-hidden">
                 <span className="text-2xl filter drop-shadow-sm">💰</span>
-                {!isCollapsed && <h1 className="text-sm font-bold text-slate-100 uppercase tracking-widest truncate font-mono">FinParser</h1>}
+                {!isCollapsed && <h1 className="text-sm font-bold text-slate-100 uppercase tracking-widest truncate font-mono">Transaction<br/>Tracker</h1>}
             </div>
             {onToggleCollapse && !isCollapsed && (
                 <button onClick={onToggleCollapse} className="text-slate-500 hover:text-white p-1 rounded-md hover:bg-slate-700 transition-colors">
@@ -56,17 +54,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
                 </button>
             )}
         </div>
-        
-        {isStreaming && (
-            <div className={`px-4 mb-2 flex items-center gap-2 ${isCollapsed ? 'justify-center' : ''}`}>
-                <div className="flex gap-1">
-                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse"></span>
-                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse delay-75"></span>
-                    <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-pulse delay-150"></span>
-                </div>
-                {!isCollapsed && <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Streaming History</span>}
-            </div>
-        )}
         
         {isCollapsed && onToggleCollapse && (
             <div className="flex justify-center mb-2">
@@ -93,6 +80,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
               </button>
             ))}
             
+            {/* Collapsible Management Section */}
             {!isCollapsed ? (
                 <div className="pt-4 pb-1">
                     <button 
@@ -109,6 +97,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
                 <div className="my-2 border-t border-slate-700 pt-2"></div>
             )}
             
+            {/* Show Management Items if expanded OR if sidebar is collapsed (icons only) */}
             {(isManagementOpen || isCollapsed) && managementNavItems.map(item => (
                 <button
                 key={item.id}
@@ -157,7 +146,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             <>
               <CalendarView transactions={transactions} />
               <div className="text-center pb-2">
-                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.0.35</span>
+                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.0.33</span>
               </div>
             </>
           )}
