@@ -21,7 +21,6 @@ if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true
 
 // Initialize SQLite Database with performance optimizations
 const db = new Database(DB_PATH);
-// Use Write-Ahead Logging for better concurrency and speed
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 db.pragma('temp_store = MEMORY');
@@ -49,6 +48,7 @@ db.exec(`
 
 const upsertAppStorage = db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
 const getAllAppStorage = db.prepare('SELECT key, value FROM app_storage');
+const getSpecificAppStorage = db.prepare('SELECT value FROM app_storage WHERE key = ?');
 const insertFileMeta = db.prepare('INSERT OR REPLACE INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)');
 const getFileMeta = db.prepare('SELECT * FROM files_meta WHERE id = ?');
 const deleteFileMeta = db.prepare('DELETE FROM files_meta WHERE id = ?');
@@ -86,6 +86,18 @@ app.get('/api/data', (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'Failed to read database' });
   }
+});
+
+// Faster route for specific key requests (e.g., just accounts or tags)
+app.get('/api/data/:key', (req, res) => {
+    const { key } = req.params;
+    try {
+        const row = getSpecificAppStorage.get(key);
+        if (!row) return res.json(null);
+        res.json(JSON.parse(row.value));
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch specific key' });
+    }
 });
 
 app.post('/api/data/:key', (req, res) => {

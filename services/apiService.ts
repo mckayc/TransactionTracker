@@ -1,4 +1,3 @@
-
 // Simple API client to replace localStorage functionality
 
 export const api = {
@@ -12,6 +11,17 @@ export const api = {
         } catch (error) {
             console.error("API Load Error:", error);
             return {};
+        }
+    },
+
+    get: async <T>(key: string): Promise<T | null> => {
+        try {
+            const response = await fetch(`/api/data/${key}`);
+            if (!response.ok) return null;
+            return await response.json();
+        } catch (error) {
+            console.error(`API Key Fetch Error (${key}):`, error);
+            return null;
         }
     },
 

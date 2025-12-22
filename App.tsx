@@ -61,7 +61,8 @@ const DEFAULT_TRANSACTION_TYPES: TransactionType[] = [
 
 
 const App: React.FC = () => {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isStructureLoading, setIsStructureLoading] = useState(true);
+  const [isHeavyDataLoading, setIsHeavyDataLoading] = useState(true);
   
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -93,102 +94,137 @@ const App: React.FC = () => {
   const [initialTaskId, setInitialTaskId] = useState<string | undefined>(undefined);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // Initial Load with sequential hydration
+  // Progressive Loading Strategy
   useEffect(() => {
-    // 1. Immediately signal that the JS bundle is loaded to hide the CSS splash
     document.body.classList.add('loaded');
 
-    const loadData = async () => {
-      setIsLoading(true);
-      const data = await api.loadAll();
+    const loadCoreStructure = async () => {
+      setIsStructureLoading(true);
+      
+      // Fetch small metadata keys in parallel
+      const [
+          settings, 
+          loadedUsers, 
+          loadedAccounts, 
+          loadedAccountTypes, 
+          loadedCategories, 
+          loadedTags, 
+          loadedPayees, 
+          loadedRules, 
+          loadedTypes
+      ] = await Promise.all([
+          api.get<SystemSettings>('systemSettings'),
+          api.get<User[]>('users'),
+          api.get<Account[]>('accounts'),
+          api.get<AccountType[]>('accountTypes'),
+          api.get<Category[]>('categories'),
+          api.get<Tag[]>('tags'),
+          api.get<Payee[]>('payees'),
+          api.get<ReconciliationRule[]>('reconciliationRules'),
+          api.get<TransactionType[]>('transactionTypes')
+      ]);
 
-      const safeLoad = <T,>(key: string, fallback: T): T => {
-          return (data[key] as T) || fallback;
-      };
-
-      // Priority 1: Settings & Users
-      let loadedSettings = safeLoad<SystemSettings>('systemSettings', {});
-      if (!loadedSettings.apiKey) {
+      // Handle Settings
+      let finalSettings = settings || {};
+      if (!finalSettings.apiKey) {
           const localKey = localStorage.getItem('user_api_key');
-          if (localKey) loadedSettings = { ...loadedSettings, apiKey: localKey };
+          if (localKey) finalSettings = { ...finalSettings, apiKey: localKey };
       }
-      if (loadedSettings.apiKey) localStorage.setItem('user_api_key', loadedSettings.apiKey);
-      setSystemSettings(loadedSettings);
+      setSystemSettings(finalSettings);
 
-      const loadedUsers = safeLoad<User[]>('users', []);
-      let finalUsers: User[] = (Array.isArray(loadedUsers) && loadedUsers.length > 0)
+      // Handle Users
+      let finalUsers: User[] = loadedUsers && loadedUsers.length > 0
           ? loadedUsers
           : [{ id: 'default-user', name: 'Primary User', isDefault: true }];
       setUsers(finalUsers);
-      const defaultUserId = finalUsers.find(u => u.isDefault)?.id || finalUsers[0]?.id;
 
-      // Priority 2: Structure (Categories, Accounts, Rules)
-      const loadedCategories = safeLoad<Category[] | string[]>('categories', []);
-      if (Array.isArray(loadedCategories) && loadedCategories.length > 0) {
-          if (typeof loadedCategories[0] === 'string') {
-              setCategories((loadedCategories as string[]).map((name: string) => ({
-                  id: `migrated-${name.toLowerCase().replace(/\s+/g, '-')}-${generateUUID().slice(0,4)}`,
-                  name: name
-              })));
-          } else {
-              setCategories(loadedCategories as Category[]);
-          }
-      } else {
-          setCategories(DEFAULT_CATEGORIES);
-      }
+      // Handle Categories
+      setCategories(loadedCategories && loadedCategories.length > 0 ? loadedCategories as Category[] : DEFAULT_CATEGORIES);
       
-      setTransactionTypes(safeLoad<TransactionType[]>('transactionTypes', DEFAULT_TRANSACTION_TYPES));
-      setTags(safeLoad<Tag[]>('tags', []));
-      setPayees(safeLoad<Payee[]>('payees', []));
-      setReconciliationRules(safeLoad<ReconciliationRule[]>('reconciliationRules', []));
+      // Handle other structure
+      setTransactionTypes(loadedTypes || DEFAULT_TRANSACTION_TYPES);
+      setTags(loadedTags || []);
+      setPayees(loadedPayees || []);
+      setReconciliationRules(loadedRules || []);
 
-      // Handle Account Types and Accounts
-      let finalAccountTypes = safeLoad<AccountType[]>('accountTypes', []);
-      if (!Array.isArray(finalAccountTypes) || finalAccountTypes.length === 0) {
-          finalAccountTypes = [{ id: 'default-bank', name: 'Bank', isDefault: true }, { id: 'default-cc', name: 'Credit Card', isDefault: true }];
-      }
-      let finalAccounts = safeLoad<Account[]>('accounts', []);
-      if (!Array.isArray(finalAccounts) || finalAccounts.length === 0) {
-          let genType = finalAccountTypes.find(t => t.name === 'General') || { id: 'default-general', name: 'General', isDefault: true };
-          if (!finalAccountTypes.find(t => t.id === genType.id)) finalAccountTypes.push(genType);
-          finalAccounts = [{ id: 'default-account-other', name: 'Other', identifier: 'Default Account', accountTypeId: genType.id }];
-      }
+      // Handle Accounts
+      let finalAccountTypes = loadedAccountTypes || [{ id: 'default-bank', name: 'Bank', isDefault: true }, { id: 'default-cc', name: 'Credit Card', isDefault: true }];
+      let finalAccounts = loadedAccounts || [{ id: 'default-account-other', name: 'Other', identifier: 'Default Account', accountTypeId: 'default-bank' }];
       setAccountTypes(finalAccountTypes);
       setAccounts(finalAccounts);
 
-      // Priority 3: Heavy Data (Transactions, Metrics, Documents)
-      const loadedTxs = safeLoad<Transaction[]>('transactions', []);
-      setTransactions(Array.isArray(loadedTxs) ? (loadedTxs.length > 0 && !loadedTxs[0].hasOwnProperty('userId') ? loadedTxs.map((tx: any) => ({ ...tx, userId: defaultUserId })) : loadedTxs) : []);
-      
-      setTemplates(safeLoad<Template[]>('templates', []));
-      setScheduledEvents(safeLoad<ScheduledEvent[]>('scheduledEvents', []));
-      setTasks(safeLoad<TaskItem[]>('tasks', []));
-      setTaskCompletions(safeLoad<TaskCompletions>('taskCompletions', {}));
-      setBusinessProfile(safeLoad<BusinessProfile>('businessProfile', { info: {}, tax: {}, completedSteps: [] }));
-      setBusinessDocuments(safeLoad<BusinessDocument[]>('businessDocuments', []));
-      setDocumentFolders(safeLoad<DocumentFolder[]>('documentFolders', []));
-      setSavedReports(safeLoad<SavedReport[]>('savedReports', []));
-      setChatSessions(safeLoad<ChatSession[]>('chatSessions', []));
-      setSavedDateRanges(safeLoad<CustomDateRange[]>('savedDateRanges', []));
-      setAmazonMetrics(safeLoad<AmazonMetric[]>('amazonMetrics', []));
-      setYoutubeMetrics(safeLoad<YouTubeMetric[]>('youtubeMetrics', []));
-      setYoutubeChannels(safeLoad<YouTubeChannel[]>('youtubeChannels', []));
+      setIsStructureLoading(false);
 
-      // Parse Deep Linking
-      const params = new URLSearchParams(window.location.search);
-      const viewParam = params.get('view');
-      const taskId = params.get('taskId');
-      if (viewParam) setCurrentView(viewParam as View);
-      if (taskId) setInitialTaskId(taskId);
-
-      setIsLoading(false);
+      // Now load heavy data in background
+      loadHeavyData(finalUsers.find(u => u.isDefault)?.id || finalUsers[0]?.id);
     };
-    loadData();
+
+    const loadHeavyData = async (defaultUserId: string) => {
+        setIsHeavyDataLoading(true);
+        const [
+            txs, 
+            templates, 
+            events, 
+            tasks, 
+            completions, 
+            profile, 
+            docs, 
+            folders, 
+            reports, 
+            chats, 
+            ranges, 
+            amazon, 
+            youtubeM, 
+            youtubeC
+        ] = await Promise.all([
+            api.get<Transaction[]>('transactions'),
+            api.get<Template[]>('templates'),
+            api.get<ScheduledEvent[]>('scheduledEvents'),
+            api.get<TaskItem[]>('tasks'),
+            api.get<TaskCompletions>('taskCompletions'),
+            api.get<BusinessProfile>('businessProfile'),
+            api.get<BusinessDocument[]>('businessDocuments'),
+            api.get<DocumentFolder[]>('documentFolders'),
+            api.get<SavedReport[]>('savedReports'),
+            api.get<ChatSession[]>('chatSessions'),
+            api.get<CustomDateRange[]>('savedDateRanges'),
+            api.get<AmazonMetric[]>('amazonMetrics'),
+            api.get<YouTubeMetric[]>('youtubeMetrics'),
+            api.get<YouTubeChannel[]>('youtubeChannels')
+        ]);
+
+        setTransactions(txs || []);
+        setTemplates(templates || []);
+        setScheduledEvents(events || []);
+        setTasks(tasks || []);
+        setTaskCompletions(completions || {});
+        setBusinessProfile(profile || { info: {}, tax: {}, completedSteps: [] });
+        setBusinessDocuments(docs || []);
+        setDocumentFolders(folders || []);
+        setSavedReports(reports || []);
+        setChatSessions(chats || []);
+        setSavedDateRanges(ranges || []);
+        setAmazonMetrics(amazon || []);
+        setYoutubeMetrics(youtubeM || []);
+        setYoutubeChannels(youtubeC || []);
+
+        setIsHeavyDataLoading(false);
+    };
+
+    loadCoreStructure();
+
+    // Parse Deep Linking from URL
+    const params = new URLSearchParams(window.location.search);
+    const viewParam = params.get('view');
+    const taskId = params.get('taskId');
+    if (viewParam) setCurrentView(viewParam as View);
+    if (taskId) setInitialTaskId(taskId);
+
   }, []);
 
-  // AUTOMATED BACKUP LOGIC (unchanged)
+  // AUTOMATED BACKUP LOGIC
   useEffect(() => {
-      if (isLoading) return;
+      if (isHeavyDataLoading) return;
       const checkAndRunBackup = async () => {
           const config = systemSettings.backupConfig;
           if (!config || config.frequency === 'never') return;
@@ -228,37 +264,37 @@ const App: React.FC = () => {
       };
       const timeout = setTimeout(checkAndRunBackup, 5000);
       return () => clearTimeout(timeout);
-  }, [isLoading, systemSettings.backupConfig, transactions, accounts, categories, tags]); 
+  }, [isHeavyDataLoading, systemSettings.backupConfig, transactions, accounts, categories, tags]); 
 
-  // Persistence hooks (unchanged)
+  // Persistence hooks
   useEffect(() => {
-      if (isLoading) return;
+      if (isStructureLoading) return;
       if (systemSettings.apiKey) localStorage.setItem('user_api_key', systemSettings.apiKey);
       else localStorage.removeItem('user_api_key');
       api.save('systemSettings', systemSettings);
-  }, [systemSettings, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('transactions', transactions), 1000); return () => clearTimeout(h); }, [transactions, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('accounts', accounts), 500); return () => clearTimeout(h); }, [accounts, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('accountTypes', accountTypes), 500); return () => clearTimeout(h); }, [accountTypes, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('transactionTypes', transactionTypes), 500); return () => clearTimeout(h); }, [transactionTypes, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('categories', categories), 500); return () => clearTimeout(h); }, [categories, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('tags', tags), 500); return () => clearTimeout(h); }, [tags, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('templates', templates), 500); return () => clearTimeout(h); }, [templates, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('scheduledEvents', scheduledEvents), 500); return () => clearTimeout(h); }, [scheduledEvents, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('tasks', tasks), 500); return () => clearTimeout(h); }, [tasks, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('taskCompletions', taskCompletions), 500); return () => clearTimeout(h); }, [taskCompletions, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('reconciliationRules', reconciliationRules), 500); return () => clearTimeout(h); }, [reconciliationRules, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('payees', payees), 500); return () => clearTimeout(h); }, [payees, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('users', users), 500); return () => clearTimeout(h); }, [users, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('businessProfile', businessProfile), 500); return () => clearTimeout(h); }, [businessProfile, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('businessDocuments', businessDocuments), 500); return () => clearTimeout(h); }, [businessDocuments, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('documentFolders', documentFolders), 500); return () => clearTimeout(h); }, [documentFolders, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('savedReports', savedReports), 500); return () => clearTimeout(h); }, [savedReports, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('chatSessions', chatSessions), 500); return () => clearTimeout(h); }, [chatSessions, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('savedDateRanges', savedDateRanges), 500); return () => clearTimeout(h); }, [savedDateRanges, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('amazonMetrics', amazonMetrics), 500); return () => clearTimeout(h); }, [amazonMetrics, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('youtubeMetrics', youtubeMetrics), 500); return () => clearTimeout(h); }, [youtubeMetrics, isLoading]);
-  useEffect(() => { if (isLoading) return; const h = setTimeout(() => api.save('youtubeChannels', youtubeChannels), 500); return () => clearTimeout(h); }, [youtubeChannels, isLoading]);
+  }, [systemSettings, isStructureLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('transactions', transactions), 1000); return () => clearTimeout(h); }, [transactions, isHeavyDataLoading]);
+  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('accounts', accounts), 500); return () => clearTimeout(h); }, [accounts, isStructureLoading]);
+  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('accountTypes', accountTypes), 500); return () => clearTimeout(h); }, [accountTypes, isStructureLoading]);
+  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('transactionTypes', transactionTypes), 500); return () => clearTimeout(h); }, [transactionTypes, isStructureLoading]);
+  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('categories', categories), 500); return () => clearTimeout(h); }, [categories, isStructureLoading]);
+  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('tags', tags), 500); return () => clearTimeout(h); }, [tags, isStructureLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('templates', templates), 500); return () => clearTimeout(h); }, [templates, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('scheduledEvents', scheduledEvents), 500); return () => clearTimeout(h); }, [scheduledEvents, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('tasks', tasks), 500); return () => clearTimeout(h); }, [tasks, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('taskCompletions', taskCompletions), 500); return () => clearTimeout(h); }, [taskCompletions, isHeavyDataLoading]);
+  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('reconciliationRules', reconciliationRules), 500); return () => clearTimeout(h); }, [reconciliationRules, isStructureLoading]);
+  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('payees', payees), 500); return () => clearTimeout(h); }, [payees, isStructureLoading]);
+  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('users', users), 500); return () => clearTimeout(h); }, [users, isStructureLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('businessProfile', businessProfile), 500); return () => clearTimeout(h); }, [businessProfile, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('businessDocuments', businessDocuments), 500); return () => clearTimeout(h); }, [businessDocuments, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('documentFolders', documentFolders), 500); return () => clearTimeout(h); }, [documentFolders, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('savedReports', savedReports), 500); return () => clearTimeout(h); }, [savedReports, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('chatSessions', chatSessions), 500); return () => clearTimeout(h); }, [chatSessions, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('savedDateRanges', savedDateRanges), 500); return () => clearTimeout(h); }, [savedDateRanges, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('amazonMetrics', amazonMetrics), 500); return () => clearTimeout(h); }, [amazonMetrics, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('youtubeMetrics', youtubeMetrics), 500); return () => clearTimeout(h); }, [youtubeMetrics, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('youtubeChannels', youtubeChannels), 500); return () => clearTimeout(h); }, [youtubeChannels, isHeavyDataLoading]);
 
   // Handlers
   const handleTransactionsAdded = (newlyAdded: Transaction[], newlyCreatedCategories: Category[]) => {
@@ -307,10 +343,18 @@ const App: React.FC = () => {
   const handleDeleteYouTubeChannel = (channelId: string) => setYoutubeChannels(prev => prev.filter(c => c.id !== channelId));
 
   const renderView = () => {
-    if (isLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Hydrating financial records..." /></div>;
+    // Show a small spinner for the central content if core structure is loaded but specific data is still coming
+    if (isStructureLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Initializing secure storage..." /></div>;
+    
     switch (currentView) {
-      case 'dashboard': return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
-      case 'transactions': return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onSaveReport={handleAddSavedReport} />;
+      case 'dashboard': 
+        if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Hydrating dashboard data..." /></div>;
+        return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
+      
+      case 'transactions': 
+        if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Loading transaction history..." /></div>;
+        return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onSaveReport={handleAddSavedReport} />;
+      
       case 'calendar': return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports': return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} savedDateRanges={savedDateRanges} setSavedDateRanges={setSavedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} />;
       case 'accounts': return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
@@ -346,6 +390,7 @@ const App: React.FC = () => {
       
       <div className="flex">
         <div className="hidden md:block">
+          {/* Sidebar renders even if data isn't fully loaded, using structural data */}
           <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} onChatToggle={() => setIsChatOpen(!isChatOpen)} isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} />
         </div>
         
