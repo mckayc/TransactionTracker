@@ -1,6 +1,6 @@
-
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType } from '../types';
 import { generateUUID } from '../utils';
+import * as XLSX from 'xlsx';
 
 declare const pdfjsLib: any;
 
@@ -27,6 +27,15 @@ const readFileAsText = (file: File): Promise<string> => {
         reader.onload = () => resolve(reader.result as string);
         reader.onerror = reject;
         reader.readAsText(file);
+    });
+};
+
+const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
     });
 };
 
@@ -80,7 +89,18 @@ const formatDate = (date: Date): string => {
 
 export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
     onProgress(`Reading ${file.name}...`);
-    const text = await readFileAsText(file);
+    let text = '';
+    
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        const buffer = await readFileAsArrayBuffer(file);
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        text = XLSX.utils.sheet_to_csv(worksheet);
+    } else {
+        text = await readFileAsText(file);
+    }
+
     const lines = text.split('\n');
     const metrics: AmazonMetric[] = [];
 
@@ -198,7 +218,18 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
 
 export const parseYouTubeReport = async (file: File, onProgress: (msg: string) => void): Promise<YouTubeMetric[]> => {
     onProgress(`Reading ${file.name}...`);
-    const text = await readFileAsText(file);
+    let text = '';
+    
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        const buffer = await readFileAsArrayBuffer(file);
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        text = XLSX.utils.sheet_to_csv(worksheet);
+    } else {
+        text = await readFileAsText(file);
+    }
+
     const lines = text.split('\n');
     const metrics: YouTubeMetric[] = [];
 
@@ -408,12 +439,23 @@ export const parseTransactionsFromFiles = async (
     
     for (const file of files) {
         onProgress(`Reading ${file.name}...`);
+        
         if (file.type === 'application/pdf') {
              console.warn("Local PDF parsing not fully implemented. Use AI mode for PDFs.");
              continue; 
         }
-        
-        const text = await readFileAsText(file);
+
+        let text = '';
+        if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+            const buffer = await readFileAsArrayBuffer(file);
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            text = XLSX.utils.sheet_to_csv(worksheet);
+        } else {
+            text = await readFileAsText(file);
+        }
+
         const lines = text.split('\n');
         const transactions = parseCSV(lines, accountId, transactionTypes, file.name);
         allTransactions.push(...transactions);

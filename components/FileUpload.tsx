@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useRef } from 'react';
 import { UploadIcon } from './Icons';
 import type { Account } from '../types';
@@ -9,6 +8,11 @@ interface FileUploadProps {
   accounts: Account[];
   useAi: boolean;
 }
+
+const EXCEL_MIME_TYPES = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel'
+];
 
 const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, accounts, useAi }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -40,7 +44,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
     if (disabled) return;
 
     const files = Array.from(e.dataTransfer.files).filter((file: File) => 
-      file.type === 'application/pdf' || file.type === 'text/csv'
+      file.type === 'application/pdf' || 
+      file.type === 'text/csv' || 
+      EXCEL_MIME_TYPES.includes(file.type)
     );
     if (files.length > 0) {
       setSelectedFiles(files);
@@ -50,7 +56,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       const files = Array.from(e.target.files).filter((file: File) => 
-        file.type === 'application/pdf' || file.type === 'text/csv'
+        file.type === 'application/pdf' || 
+        file.type === 'text/csv' || 
+        EXCEL_MIME_TYPES.includes(file.type)
       );
       setSelectedFiles(files);
     }
@@ -85,7 +93,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
         <input
           ref={fileInputRef}
           type="file"
-          accept="application/pdf,text/csv"
+          accept=".pdf,.csv,.xlsx,.xls,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
           multiple
           onChange={handleFileChange}
           className="hidden"
@@ -97,7 +105,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
             <span className="text-indigo-600">Click to upload</span> or drag and drop
           </p>
           <p className="text-sm">
-            {useAi ? 'AI processing for PDF & CSV' : 'Fast local processing for PDF & CSV'}
+            {useAi ? 'AI processing for PDF, Excel & CSV' : 'Fast local processing for Excel & CSV'}
           </p>
         </div>
       </div>

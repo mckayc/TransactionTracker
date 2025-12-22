@@ -1,6 +1,6 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage } from '../types';
+import * as XLSX from 'xlsx';
 
 declare const pdfjsLib: any;
 
@@ -35,12 +35,37 @@ const readFileAsText = (file: File): Promise<string> => {
     });
 };
 
+const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+    });
+};
+
 const fileToGenerativePart = async (file: File, onProgress: (msg: string) => void) => {
     // Handle CSV files as text
     if (file.type === 'text/csv') {
         onProgress(`Reading CSV ${file.name}...`);
         const textContent = await readFileAsText(file);
         return [{ text: `\n\n--- CSV Data from ${file.name} ---\n${textContent}` }];
+    }
+
+    // Handle Excel files as text (converted via XLSX)
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls') || file.type.includes('spreadsheet') || file.type.includes('excel')) {
+        onProgress(`Reading Excel ${file.name}...`);
+        const buffer = await readFileAsArrayBuffer(file);
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        let fullText = `\n\n--- Excel Workbook Data from ${file.name} ---\n`;
+        
+        workbook.SheetNames.forEach(sheetName => {
+            const worksheet = workbook.Sheets[sheetName];
+            const csv = XLSX.utils.sheet_to_csv(worksheet);
+            fullText += `\n[Sheet: ${sheetName}]\n${csv}\n`;
+        });
+        
+        return [{ text: fullText }];
     }
 
     // Handle PDFs as images
