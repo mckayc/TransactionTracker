@@ -89,7 +89,6 @@ const App: React.FC = () => {
   const [youtubeMetrics, setYoutubeMetrics] = useState<YouTubeMetric[]>([]);
   const [youtubeChannels, setYoutubeChannels] = useState<YouTubeChannel[]>([]);
   
-  // Financial Plan state
   const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
   const [financialPlan, setFinancialPlan] = useState<FinancialPlan | null>(null);
   
@@ -99,14 +98,11 @@ const App: React.FC = () => {
   const [initialTaskId, setInitialTaskId] = useState<string | undefined>(undefined);
   const [isChatOpen, setIsChatOpen] = useState(false);
 
-  // Progressive Loading Strategy
   useEffect(() => {
     document.body.classList.add('loaded');
 
     const loadCoreStructure = async () => {
       setIsStructureLoading(true);
-      
-      // Fetch small metadata keys in parallel
       const [
           settings, 
           loadedUsers, 
@@ -129,33 +125,25 @@ const App: React.FC = () => {
           api.get<TransactionType[]>('transactionTypes')
       ]);
 
-      // Handle Settings - API Key is managed exclusively via process.env.API_KEY
       setSystemSettings(settings || {});
 
-      // Handle Users
       let finalUsers: User[] = loadedUsers && loadedUsers.length > 0
           ? loadedUsers
           : [{ id: 'default-user', name: 'Primary User', isDefault: true }];
       setUsers(finalUsers);
 
-      // Handle Categories
       setCategories(loadedCategories && loadedCategories.length > 0 ? loadedCategories as Category[] : DEFAULT_CATEGORIES);
-      
-      // Handle other structure
       setTransactionTypes(loadedTypes || DEFAULT_TRANSACTION_TYPES);
       setTags(loadedTags || []);
       setPayees(loadedPayees || []);
       setReconciliationRules(loadedRules || []);
 
-      // Handle Accounts
       let finalAccountTypes = loadedAccountTypes || [{ id: 'default-bank', name: 'Bank', isDefault: true }, { id: 'default-cc', name: 'Credit Card', isDefault: true }];
       let finalAccounts = loadedAccounts || [{ id: 'default-account-other', name: 'Other', identifier: 'Default Account', accountTypeId: 'default-bank' }];
       setAccountTypes(finalAccountTypes);
       setAccounts(finalAccounts);
 
       setIsStructureLoading(false);
-
-      // Now load heavy data in background
       loadHeavyData(finalUsers.find(u => u.isDefault)?.id || finalUsers[0]?.id);
     };
 
@@ -219,7 +207,6 @@ const App: React.FC = () => {
 
     loadCoreStructure();
 
-    // Parse Deep Linking from URL
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get('view');
     const taskId = params.get('taskId');
@@ -228,8 +215,6 @@ const App: React.FC = () => {
 
   }, []);
 
-  // --- Denormalization Helper ---
-  // This ensures that human readable names are stored in the transaction object for backups
   const denormalize = useCallback((tx: Transaction): Transaction => {
     const account = accounts.find(a => a.id === tx.accountId);
     const category = categories.find(c => c.id === tx.categoryId);
@@ -249,7 +234,6 @@ const App: React.FC = () => {
     };
   }, [accounts, categories, payees, users, transactionTypes, tags]);
 
-  // AUTOMATED BACKUP LOGIC
   useEffect(() => {
       if (isHeavyDataLoading) return;
       const checkAndRunBackup = async () => {
@@ -293,11 +277,7 @@ const App: React.FC = () => {
       return () => clearTimeout(timeout);
   }, [isHeavyDataLoading, systemSettings.backupConfig, transactions, accounts, categories, tags]); 
 
-  // Persistence hooks - Removed API Key persistence to follow guidelines
-  useEffect(() => {
-      if (isStructureLoading) return;
-      api.save('systemSettings', systemSettings);
-  }, [systemSettings, isStructureLoading]);
+  useEffect(() => { if (isStructureLoading) return; api.save('systemSettings', systemSettings); }, [systemSettings, isStructureLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('transactions', transactions), 1000); return () => clearTimeout(h); }, [transactions, isHeavyDataLoading]);
   useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('accounts', accounts), 500); return () => clearTimeout(h); }, [accounts, isStructureLoading]);
   useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('accountTypes', accountTypes), 500); return () => clearTimeout(h); }, [accountTypes, isStructureLoading]);
@@ -323,10 +303,8 @@ const App: React.FC = () => {
   useEffect(() => { if (isHeavyDataLoading) return; api.save('financialGoals', financialGoals); }, [financialGoals, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; api.save('financialPlan', financialPlan); }, [financialPlan, isHeavyDataLoading]);
 
-  // Handlers with Denormalization
   const handleTransactionsAdded = (newlyAdded: Transaction[], newlyCreatedCategories: Category[]) => {
       if (newlyCreatedCategories.length > 0) setCategories(prev => [...prev, ...newlyCreatedCategories]);
-      
       const denormalized = newlyAdded.map(denormalize);
       if (denormalized.length > 0) setTransactions(prev => [...prev, ...denormalized].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   };
@@ -375,7 +353,6 @@ const App: React.FC = () => {
   const handleDeleteYouTubeChannel = (channelId: string) => setYoutubeChannels(prev => prev.filter(c => c.id !== channelId));
 
   const renderView = () => {
-    // Show a small spinner for the central content if core structure is loaded but specific data is still coming
     if (isStructureLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Initializing secure storage..." /></div>;
     
     switch (currentView) {
@@ -420,18 +397,14 @@ const App: React.FC = () => {
             </button>
         </div>
       </header>
-      
       <div className="flex">
         <div className="hidden md:block">
-          {/* Sidebar renders even if data isn't fully loaded, using structural data */}
           <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} onChatToggle={() => setIsChatOpen(!isChatOpen)} isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} />
         </div>
-        
         <div className={`md:hidden fixed inset-0 z-30 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <Sidebar currentView={currentView} onNavigate={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} transactions={transactions} onChatToggle={() => { setIsChatOpen(!isChatOpen); setIsSidebarOpen(false); }} />
         </div>
         {isSidebarOpen && <div className="md:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)}></div>}
-
         <main className={`flex-1 transition-all duration-300 ${isCollapsed ? 'md:pl-20' : 'md:pl-64'}`}>
           <div className="container mx-auto p-4 md:p-8 h-screen flex flex-col">
             {renderView()}

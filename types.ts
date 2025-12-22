@@ -198,7 +198,7 @@ export interface BackupConfig {
 }
 
 export interface SystemSettings {
-    apiKey?: string;
+    // apiKey removed - now strictly environment based
     backupConfig?: BackupConfig;
 }
 

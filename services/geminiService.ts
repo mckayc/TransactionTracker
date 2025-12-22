@@ -76,13 +76,15 @@ const fileToGenerativePart = async (file: File, onProgress: (msg: string) => voi
     const numPages = pdf.numPages;
     const imageParts = [];
 
+    // Optimization: limit to 5 pages and use a smaller scale to save memory
     const maxPages = 5;
     const pagesToProcess = Math.min(numPages, maxPages);
 
     for (let i = 1; i <= pagesToProcess; i++) {
         onProgress(`Processing page ${i} of ${pagesToProcess} from ${file.name}...`);
         const page = await pdf.getPage(i);
-        const viewport = page.getViewport({ scale: 2 });
+        // Reduced scale from 2 to 1.5 to significantly reduce memory footprint while keeping text clear
+        const viewport = page.getViewport({ scale: 1.5 });
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
         canvas.height = viewport.height;
@@ -94,13 +96,18 @@ const fileToGenerativePart = async (file: File, onProgress: (msg: string) => voi
 
         await page.render({ canvasContext: context, viewport: viewport }).promise;
 
-        const base64Data = canvas.toDataURL('image/jpeg').split(',')[1];
+        // Use 0.8 quality to further reduce payload size
+        const base64Data = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
         imageParts.push({
             inlineData: {
                 data: base64Data,
                 mimeType: 'image/jpeg'
             }
         });
+        
+        // Clean up canvas references
+        canvas.width = 0;
+        canvas.height = 0;
     }
     const parts = [
         { text: `\n\n--- Document Start: ${file.name} ---` },
@@ -167,17 +174,12 @@ const getResponseSchema = () => ({
     required: ['transactions']
 });
 
-const processApiResponse = (response: any, accountId: string, transactionTypes: TransactionType[], sourceName?: string): RawTransaction[] => {
-    const jsonText = response.text?.trim() || '';
-    if (!jsonText) {
-        throw new Error("AI returned an empty response.");
-    }
-    
+const parseJsonResponse = (text: string, accountId: string, transactionTypes: TransactionType[], sourceName?: string): RawTransaction[] => {
     const typeNameToIdMap = new Map(transactionTypes.map(t => [t.name.toLowerCase(), t.id]));
     const defaultExpenseId = transactionTypes.find(t => t.name === 'Other Expense')?.id || transactionTypes[0].id;
 
     try {
-        const parsedResponse = JSON.parse(jsonText);
+        const parsedResponse = JSON.parse(text);
         const transactions = parsedResponse.transactions || [];
         return transactions.map((tx: any) => ({
             date: tx.date,
@@ -191,32 +193,53 @@ const processApiResponse = (response: any, accountId: string, transactionTypes: 
             sourceFilename: tx.sourceFilename || sourceName,
         }));
     } catch (e) {
-        console.error("Failed to parse JSON response:", jsonText);
-        throw new Error("The AI returned data in an invalid format. Please try again.");
+        console.error("Failed to parse JSON response:", text);
+        throw new Error("The AI returned data in an invalid format.");
     }
 };
 
+/**
+ * Sequential File Extraction
+ * Fixed the crash by processing files one-by-one instead of in one massive batch.
+ */
 export const extractTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-    onProgress(`Preparing ${files.length} file(s) for analysis...`);
-
-    const generativeParts = (await Promise.all(files.map(file => fileToGenerativePart(file, onProgress)))).flat();
-    
-    onProgress('Sending data to AI for analysis. This may take a moment...');
-    
+    const totalFiles = files.length;
+    let allTransactions: RawTransaction[] = [];
     const ai = getAiClient();
-    const contents = { parts: [{ text: getBasePrompt(transactionTypes) }, ...generativeParts] };
+    const prompt = getBasePrompt(transactionTypes);
+    const schema = getResponseSchema();
 
-    const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview', 
-        contents,
-        config: {
-            responseMimeType: 'application/json',
-            responseSchema: getResponseSchema(),
-        },
-    });
+    for (let i = 0; i < totalFiles; i++) {
+        const file = files[i];
+        const fileCountMsg = totalFiles > 1 ? `(File ${i + 1} of ${totalFiles}) ` : '';
+        
+        try {
+            onProgress(`${fileCountMsg}Reading ${file.name}...`);
+            const fileParts = await fileToGenerativePart(file, (msg) => onProgress(`${fileCountMsg}${msg}`));
+            
+            onProgress(`${fileCountMsg}AI is analyzing ${file.name}...`);
+            
+            const response = await ai.models.generateContent({
+                model: 'gemini-3-flash-preview', 
+                contents: { parts: [{ text: prompt }, ...fileParts] },
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: schema,
+                },
+            });
+
+            const results = parseJsonResponse(response.text || '{}', accountId, transactionTypes, file.name);
+            allTransactions = [...allTransactions, ...results];
+        } catch (fileError) {
+            console.error(`Error processing ${file.name}:`, fileError);
+            // Don't crash the whole batch, just skip this file or report it
+            if (totalFiles === 1) throw fileError;
+            alert(`Could not extract data from ${file.name}. Moving to next file.`);
+        }
+    }
 
     onProgress('Finalizing results...');
-    return processApiResponse(response, accountId, transactionTypes);
+    return allTransactions;
 };
 
 export const extractTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
@@ -236,7 +259,7 @@ export const extractTransactionsFromText = async (text: string, accountId: strin
     });
 
     onProgress('Finalizing results...');
-    return processApiResponse(response, accountId, transactionTypes, 'Pasted Text');
+    return parseJsonResponse(response.text || '{}', accountId, transactionTypes, 'Pasted Text');
 };
 
 const sanitizeContextData = (contextData: any): string => {

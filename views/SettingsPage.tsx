@@ -1,11 +1,12 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan } from '../types';
-// Fixed: Using correct exported icon names and added missing DownloadIcon
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon } from '../components/Icons';
+// Added missing SparklesIcon to the imports
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { saveFile } from '../services/storageService';
+import { hasApiKey } from '../services/geminiService';
 
 interface SettingsPageProps {
     transactions: Transaction[];
@@ -30,7 +31,6 @@ interface SettingsPageProps {
     onCreateFolder: (folder: DocumentFolder) => void;
 }
 
-// Fixed: Using correct exported icon names (TasksIcon, ChatBubbleIcon)
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode }> = {
     transactions: { label: 'Transactions', icon: <TableIcon className="w-4 h-4" /> },
     accounts: { label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" /> },
@@ -49,9 +49,17 @@ const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode }> = 
     financialPlan: { label: 'Financial Plan', icon: <LightBulbIcon className="w-4 h-4" /> },
 };
 
-const Section: React.FC<{title: string, variant?: 'default' | 'danger', children: React.ReactNode}> = ({title, variant = 'default', children}) => (
-    <details className={`bg-white p-6 rounded-xl shadow-sm border ${variant === 'danger' ? 'border-red-200 open:ring-red-500' : 'border-slate-200 open:ring-indigo-500'}`} open>
-        <summary className={`text-xl font-bold cursor-pointer ${variant === 'danger' ? 'text-red-700' : 'text-slate-700'}`}>{title}</summary>
+const Section: React.FC<{title: string, variant?: 'default' | 'danger' | 'info', children: React.ReactNode}> = ({title, variant = 'default', children}) => (
+    <details className={`bg-white p-6 rounded-xl shadow-sm border ${
+        variant === 'danger' ? 'border-red-200 open:ring-red-500' : 
+        variant === 'info' ? 'border-indigo-200 open:ring-indigo-500' :
+        'border-slate-200 open:ring-indigo-500'
+    }`} open>
+        <summary className={`text-xl font-bold cursor-pointer ${
+            variant === 'danger' ? 'text-red-700' : 
+            variant === 'info' ? 'text-indigo-700' :
+            'text-slate-700'
+        }`}>{title}</summary>
         <div className="mt-4">
             {children}
         </div>
@@ -65,6 +73,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [newTypeName, setNewTypeName] = useState('');
     const [newTypeEffect, setNewTypeEffect] = useState<'income' | 'expense' | 'transfer' | 'investment'>('expense');
     const importFileRef = useRef<HTMLInputElement>(null);
+    const apiKeyActive = hasApiKey();
 
     // Export Selection State
     const [exportSelection, setExportSelection] = useState<Set<string>>(new Set(Object.keys(ENTITY_LABELS)));
@@ -143,7 +152,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             transactionTypes,
             businessProfile,
             documentFolders,
-            chatSessions: [], // Placeholder - actual is coming from App state via parent props if we added it
+            chatSessions: [], // Placeholder
             savedReports: [],
             savedDateRanges: [],
             amazonMetrics: [],
@@ -152,11 +161,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             financialPlan: null
         };
 
-        // Filter based on selection
         const filteredData: any = { 
             exportDate: fullData.exportDate, 
             version: fullData.version,
-            // Always include transactionTypes if transactions are included
             transactionTypes: fullData.transactionTypes,
             users: fullData.users
         };
@@ -246,14 +253,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         reader.onload = (event) => {
             try {
                 const json = JSON.parse(event.target?.result as string);
-                
-                // Identify what's in the file
                 const detectedKeys = Object.keys(ENTITY_LABELS).filter(key => json.hasOwnProperty(key));
-                
                 if (detectedKeys.length === 0) {
                     throw new Error("The selected file does not appear to contain any valid FinParser backup data.");
                 }
-
                 setRestoreData(json);
                 setRestoreSelection(new Set(detectedKeys));
                 setIsRestoreModalOpen(true);
@@ -266,15 +269,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleConfirmRestore = async () => {
         if (!restoreData || restoreSelection.size === 0) return;
-
-        if (!window.confirm("Warning: This will overwrite existing data for the selected entities. This cannot be undone. Proceed?")) {
-            return;
-        }
+        if (!window.confirm("Warning: This will overwrite existing data for the selected entities. This cannot be undone. Proceed?")) return;
 
         try {
             const savePromises: Promise<any>[] = [];
-            
-            // Fixed: Explicitly casting key to string to resolve 'unknown' error (line 286 area)
             for (const key of Array.from(restoreSelection)) {
                 const entityKey = key as string;
                 if (entityKey === 'templates') {
@@ -291,12 +289,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 }
             }
 
-            // Always ensure core metadata is synced if available
             if (restoreData.transactionTypes) savePromises.push(api.save('transactionTypes', restoreData.transactionTypes));
             if (restoreData.users) savePromises.push(api.save('users', restoreData.users));
 
             await Promise.all(savePromises);
-            
             alert("Data restored successfully! The application will now reload.");
             window.location.reload();
         } catch (err) {
@@ -326,6 +322,81 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
             
             <div className="space-y-6">
+                
+                {/* --- AI CONFIGURATION SECTION --- */}
+                <Section title="AI & Intelligence" variant="info">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                        <div className={`p-6 rounded-xl border transition-all ${apiKeyActive ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                            <div className="flex items-start gap-4">
+                                <div className={`p-3 rounded-full shadow-sm ${apiKeyActive ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
+                                    <RobotIcon className="w-8 h-8" />
+                                </div>
+                                <div className="flex-grow">
+                                    <h3 className={`text-lg font-bold ${apiKeyActive ? 'text-emerald-800' : 'text-amber-800'}`}>
+                                        AI Status: {apiKeyActive ? 'Active & Secure' : 'Configuration Required'}
+                                    </h3>
+                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                        {apiKeyActive 
+                                            ? "Your Gemini API Key is successfully configured in the environment. AI insights, document analysis, and the Tax Advisor are fully enabled."
+                                            : "AI capabilities are currently disabled because no API Key was found in your server environment."}
+                                    </p>
+                                    
+                                    {apiKeyActive ? (
+                                        <div className="mt-4 flex items-center gap-4">
+                                            <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 uppercase">
+                                                <ShieldCheckIcon className="w-4 h-4" />
+                                                Managed via Environment
+                                            </div>
+                                            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline flex items-center gap-1 font-bold">
+                                                Manage Key Studio <ExternalLinkIcon className="w-3 h-3" />
+                                            </a>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-6 space-y-4">
+                                            <div className="bg-white/60 p-4 rounded-lg border border-amber-300">
+                                                <h4 className="text-xs font-bold text-amber-900 uppercase flex items-center gap-2 mb-2">
+                                                    <WrenchIcon className="w-4 h-4"/> How to Enable
+                                                </h4>
+                                                <ol className="text-sm text-amber-900 space-y-3 list-decimal list-inside font-medium">
+                                                    <li>Get a free key from <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-600 underline">Google AI Studio</a>.</li>
+                                                    <li>Open your project's <code>.env</code> file (or <code>docker-compose.yml</code>).</li>
+                                                    <li>Add the following line:</li>
+                                                </ol>
+                                                <div className="mt-3 bg-slate-900 text-slate-100 p-3 rounded font-mono text-xs select-all shadow-inner">
+                                                    API_KEY=your_copied_key_here
+                                                </div>
+                                                <p className="text-xs text-amber-700 mt-4 italic">
+                                                    After adding the key, <strong>restart</strong> your application/container to apply changes.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                                <SparklesIcon className="w-5 h-5 text-indigo-600" />
+                                What AI can do for you:
+                            </h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {[
+                                    { title: 'Document Analysis', desc: 'Auto-extract transactions from PDFs and bank statements.' },
+                                    { title: 'Tax Advisor', desc: 'Ask complex tax questions based on your actual business data.' },
+                                    { title: 'Smart Auditor', desc: 'Find hidden transfers, splits, and miscategorized recurring bills.' },
+                                    { title: 'Wealth Coach', desc: 'Generate custom financial strategies based on spending patterns.' }
+                                ].map((feature, i) => (
+                                    <div key={i} className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                        <p className="text-sm font-bold text-slate-800">{feature.title}</p>
+                                        <p className="text-xs text-slate-500 mt-1">{feature.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </Section>
+
                 <Section title="Data & Backups">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         
@@ -481,8 +552,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                                     {Object.entries(ENTITY_LABELS).map(([key, { label, icon }]) => {
                                         if (!restoreData.hasOwnProperty(key)) return null;
-                                        
-                                        // Simple count detection
                                         let count = 0;
                                         const item = restoreData[key];
                                         if (Array.isArray(item)) count = item.length;
@@ -634,7 +703,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                         autoFocus
                                     />
                                     <div className="flex gap-2">
-                                        <button onClick={() => setPurgeStep('idle')} className="flex-1 px-3 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded">Abort</button>
+                                        <button onClick={() => setPurgeStep('idle')} className="flex-1 px-3 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded">Abort</button>
                                         <button 
                                             disabled={purgeText !== 'PURGE' || isPurging}
                                             onClick={handlePurgeDatabase}
