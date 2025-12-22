@@ -3,6 +3,7 @@ import path from 'path';
 import express from 'express';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
+import { GoogleGenAI } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,14 +20,11 @@ const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 
-// Initialize SQLite Database with performance optimizations
+// Initialize SQLite Database
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
-db.pragma('temp_store = MEMORY');
-db.pragma('cache_size = -64000'); // ~64MB cache
 
-// 1. Key-Value Store for JSON Data
 db.exec(`
   CREATE TABLE IF NOT EXISTS app_storage (
     key TEXT PRIMARY KEY,
@@ -34,7 +32,6 @@ db.exec(`
   )
 `);
 
-// 2. Metadata Store for Files
 db.exec(`
   CREATE TABLE IF NOT EXISTS files_meta (
     id TEXT PRIMARY KEY,
@@ -57,35 +54,16 @@ app.use(express.json({ limit: '100mb' }));
 app.use(express.raw({ type: '*/*', limit: '100mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-const getSafeFilename = (dir, filename) => {
-    let safeName = path.basename(filename).replace(/[^a-zA-Z0-9.\-_() ]/g, '_');
-    if (safeName.length === 0) safeName = 'unnamed_file';
-    const namePart = path.parse(safeName).name;
-    const extPart = path.parse(safeName).ext;
-    let finalName = safeName;
-    let counter = 1;
-    while (fs.existsSync(path.join(dir, finalName))) {
-        finalName = `${namePart} (${counter})${extPart}`;
-        counter++;
-    }
-    return finalName;
-};
-
 // JSON API Routes
 app.get('/api/data', (req, res) => {
   try {
     const rows = getAllAppStorage.all();
     const data = {};
     for (const row of rows) {
-      try {
-        data[row.key] = JSON.parse(row.value);
-      } catch (e) { data[row.key] = []; }
+      try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = []; }
     }
     res.json(data);
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Failed to read database' });
-  }
+  } catch (e) { res.status(500).json({ error: 'Failed to read database' }); }
 });
 
 app.get('/api/data/:key', (req, res) => {
@@ -94,9 +72,7 @@ app.get('/api/data/:key', (req, res) => {
         const row = getSpecificAppStorage.get(key);
         if (!row) return res.json(null);
         res.json(JSON.parse(row.value));
-    } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch specific key' });
-    }
+    } catch (e) { res.status(500).json({ error: 'Failed to fetch' }); }
 });
 
 app.post('/api/data/:key', (req, res) => {
@@ -104,29 +80,43 @@ app.post('/api/data/:key', (req, res) => {
   try {
     upsertAppStorage.run(key, JSON.stringify(req.body));
     res.json({ success: true });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: 'Failed to save data' });
-  }
+  } catch (e) { res.status(500).json({ error: 'Failed to save' }); }
 });
 
-// Admin Route: Factory Reset
-app.post('/api/admin/reset', (req, res) => {
+// AI Proxy Routes
+app.post('/api/ai/generate', async (req, res) => {
     try {
-        // 1. Wipe database tables
-        db.prepare('DELETE FROM app_storage').run();
-        db.prepare('DELETE FROM files_meta').run();
-
-        // 2. Wipe physical files
-        const files = fs.readdirSync(DOCUMENTS_DIR);
-        for (const file of files) {
-            fs.unlinkSync(path.join(DOCUMENTS_DIR, file));
-        }
-
-        res.json({ success: true, message: 'Database and storage purged successfully.' });
+        const { model, contents, config } = req.body;
+        if (!process.env.API_KEY) throw new Error("Server API_KEY is not configured.");
+        
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const response = await ai.models.generateContent({ model, contents, config });
+        res.json({ text: response.text, candidates: response.candidates });
     } catch (e) {
-        console.error('Reset error:', e);
-        res.status(500).json({ error: 'Failed to reset application data.' });
+        console.error("AI Error:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.post('/api/ai/stream', async (req, res) => {
+    try {
+        const { model, contents, config } = req.body;
+        if (!process.env.API_KEY) throw new Error("Server API_KEY is not configured.");
+
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const responseStream = await ai.models.generateContentStream({ model, contents, config });
+        
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+
+        for await (const chunk of responseStream) {
+            res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`);
+        }
+        res.end();
+    } catch (e) {
+        console.error("AI Stream Error:", e);
+        res.status(500).end();
     }
 });
 
@@ -138,29 +128,23 @@ app.post('/api/files/:id', (req, res) => {
   try {
     let buffer = req.body; 
     if (!Buffer.isBuffer(buffer)) {
-        if (typeof buffer === 'object' && buffer !== null) buffer = Buffer.from(JSON.stringify(buffer, null, 2));
-        else return res.status(400).json({ error: 'Invalid file data' });
+        if (typeof buffer === 'object' && buffer !== null) buffer = Buffer.from(JSON.stringify(buffer));
+        else return res.status(400).send('Invalid data');
     }
-    const diskFilename = getSafeFilename(DOCUMENTS_DIR, rawFilename);
+    const diskFilename = `${Date.now()}_${rawFilename.replace(/[^a-zA-Z0-9.]/g, '_')}`;
     fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), buffer);
     insertFileMeta.run(id, rawFilename, diskFilename, mimeType, buffer.length, new Date().toISOString());
-    res.json({ success: true, filename: diskFilename });
-  } catch (e) {
-    console.error(`Upload error:`, e);
-    res.status(500).send(`Failed to save file: ${e.message}`);
-  }
+    res.json({ success: true });
+  } catch (e) { res.status(500).send(e.message); }
 });
 
 app.get('/api/files/:id', (req, res) => {
   const { id } = req.params;
   try {
     const meta = getFileMeta.get(id);
-    if (!meta) return res.status(404).send('File not found');
-    const filePath = path.join(DOCUMENTS_DIR, meta.disk_filename);
-    if (!fs.existsSync(filePath)) return res.status(404).send('Content missing');
+    if (!meta) return res.status(404).send('Not found');
     res.setHeader('Content-Type', meta.mime_type);
-    res.setHeader('Content-Disposition', `inline; filename="${meta.original_name}"`);
-    res.sendFile(filePath);
+    res.sendFile(path.join(DOCUMENTS_DIR, meta.disk_filename));
   } catch (e) { res.status(500).send('Error'); }
 });
 
@@ -169,8 +153,7 @@ app.delete('/api/files/:id', (req, res) => {
   try {
     const meta = getFileMeta.get(id);
     if (meta) {
-        const filePath = path.join(DOCUMENTS_DIR, meta.disk_filename);
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        fs.unlinkSync(path.join(DOCUMENTS_DIR, meta.disk_filename));
         deleteFileMeta.run(id);
     }
     res.json({ success: true });
@@ -179,4 +162,4 @@ app.delete('/api/files/:id', (req, res) => {
 
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.listen(PORT, () => console.log(`Server on ${PORT}, Storage: ${DOCUMENTS_DIR}`));
+app.listen(PORT, () => console.log(`Server on ${PORT}`));
