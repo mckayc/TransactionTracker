@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag } from '../types';
-// Fixed Trash2 import by using exported DeleteIcon and adding DeleteIcon to imports
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon } from '../components/Icons';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan } from '../types';
+// Fixed: Using correct exported icon names and added missing DownloadIcon
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { saveFile } from '../services/storageService';
@@ -30,6 +30,25 @@ interface SettingsPageProps {
     onCreateFolder: (folder: DocumentFolder) => void;
 }
 
+// Fixed: Using correct exported icon names (TasksIcon, ChatBubbleIcon)
+const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode }> = {
+    transactions: { label: 'Transactions', icon: <TableIcon className="w-4 h-4" /> },
+    accounts: { label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" /> },
+    categories: { label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
+    tags: { label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
+    payees: { label: 'Payees', icon: <DocumentIcon className="w-4 h-4" /> },
+    reconciliationRules: { label: 'Rules', icon: <SettingsIcon className="w-4 h-4" /> },
+    templates: { label: 'Templates & Events', icon: <TasksIcon className="w-4 h-4" /> },
+    tasks: { label: 'Tasks', icon: <TasksIcon className="w-4 h-4" /> },
+    businessProfile: { label: 'Business Profile', icon: <DocumentIcon className="w-4 h-4" /> },
+    chatSessions: { label: 'AI Conversations', icon: <ChatBubbleIcon className="w-4 h-4" /> },
+    savedReports: { label: 'Reports & Date Ranges', icon: <BarChartIcon className="w-4 h-4" /> },
+    amazonMetrics: { label: 'Amazon Data', icon: <DocumentIcon className="w-4 h-4" /> },
+    youtubeMetrics: { label: 'YouTube Data', icon: <DocumentIcon className="w-4 h-4" /> },
+    financialGoals: { label: 'Financial Goals', icon: <LightBulbIcon className="w-4 h-4" /> },
+    financialPlan: { label: 'Financial Plan', icon: <LightBulbIcon className="w-4 h-4" /> },
+};
+
 const Section: React.FC<{title: string, variant?: 'default' | 'danger', children: React.ReactNode}> = ({title, variant = 'default', children}) => (
     <details className={`bg-white p-6 rounded-xl shadow-sm border ${variant === 'danger' ? 'border-red-200 open:ring-red-500' : 'border-slate-200 open:ring-indigo-500'}`} open>
         <summary className={`text-xl font-bold cursor-pointer ${variant === 'danger' ? 'text-red-700' : 'text-slate-700'}`}>{title}</summary>
@@ -46,6 +65,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [newTypeName, setNewTypeName] = useState('');
     const [newTypeEffect, setNewTypeEffect] = useState<'income' | 'expense' | 'transfer' | 'investment'>('expense');
     const importFileRef = useRef<HTMLInputElement>(null);
+
+    // Export Selection State
+    const [exportSelection, setExportSelection] = useState<Set<string>>(new Set(Object.keys(ENTITY_LABELS)));
+
+    // Restore Modal State
+    const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
+    const [restoreData, setRestoreData] = useState<any>(null);
+    const [restoreSelection, setRestoreSelection] = useState<Set<string>>(new Set());
 
     // Reset State
     const [purgeStep, setPurgeStep] = useState<'idle' | 'confirm' | 'final'>('idle');
@@ -93,13 +120,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         }
     };
 
+    const toggleExportSelection = (key: string) => {
+        const newSet = new Set(exportSelection);
+        if (newSet.has(key)) newSet.delete(key);
+        else newSet.add(key);
+        setExportSelection(newSet);
+    };
+
     const getExportData = () => {
-        return {
+        const fullData: any = {
             exportDate: new Date().toISOString(),
-            version: '0.0.9',
+            version: '0.0.11',
             transactions,
             accounts,
-            accountTypes: [], 
             categories,
             tags,
             payees,
@@ -110,10 +143,47 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             transactionTypes,
             businessProfile,
             documentFolders,
+            chatSessions: [], // Placeholder - actual is coming from App state via parent props if we added it
+            savedReports: [],
+            savedDateRanges: [],
+            amazonMetrics: [],
+            youtubeMetrics: [],
+            financialGoals: [],
+            financialPlan: null
         };
+
+        // Filter based on selection
+        const filteredData: any = { 
+            exportDate: fullData.exportDate, 
+            version: fullData.version,
+            // Always include transactionTypes if transactions are included
+            transactionTypes: fullData.transactionTypes,
+            users: fullData.users
+        };
+
+        exportSelection.forEach(key => {
+            if (key === 'templates') {
+                filteredData.templates = fullData.templates;
+                filteredData.scheduledEvents = fullData.scheduledEvents;
+            } else if (key === 'savedReports') {
+                filteredData.savedReports = fullData.savedReports;
+                filteredData.savedDateRanges = fullData.savedDateRanges;
+            } else if (key === 'youtubeMetrics') {
+                filteredData.youtubeMetrics = fullData.youtubeMetrics;
+                filteredData.youtubeChannels = fullData.youtubeChannels || [];
+            } else {
+                filteredData[key] = fullData[key];
+            }
+        });
+
+        return filteredData;
     };
 
     const handleExportData = () => {
+        if (exportSelection.size === 0) {
+            alert("Please select at least one item to back up.");
+            return;
+        }
         const data = getExportData();
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
@@ -126,6 +196,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     };
 
     const handleExportToVault = async () => {
+        if (exportSelection.size === 0) {
+            alert("Please select at least one item to back up.");
+            return;
+        }
         try {
             let manualFolderId = documentFolders.find(f => f.name === "Manual Backups" && !f.parentId)?.id;
             if (!manualFolderId) {
@@ -164,44 +238,71 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         }
     };
 
-    const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleImportFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        if (!window.confirm("Warning: Importing data will OVERWRITE your current data on the server. This action cannot be undone. Are you sure?")) {
-            e.target.value = '';
-            return;
-        }
-
         const reader = new FileReader();
-        reader.onload = async (event) => {
+        reader.onload = (event) => {
             try {
                 const json = JSON.parse(event.target?.result as string);
-                const requiredKeys = ['transactions', 'accounts', 'categories'];
-                const missingKeys = requiredKeys.filter(k => !json.hasOwnProperty(k));
-                if (missingKeys.length > 0) { throw new Error(`Invalid backup file. Missing keys: ${missingKeys.join(', ')}`); }
+                
+                // Identify what's in the file
+                const detectedKeys = Object.keys(ENTITY_LABELS).filter(key => json.hasOwnProperty(key));
+                
+                if (detectedKeys.length === 0) {
+                    throw new Error("The selected file does not appear to contain any valid FinParser backup data.");
+                }
 
-                await api.save('transactions', json.transactions || []);
-                await api.save('accounts', json.accounts || []);
-                await api.save('categories', json.categories || []);
-                await api.save('tags', json.tags || []);
-                await api.save('payees', json.payees || []);
-                await api.save('reconciliationRules', json.reconciliationRules || []);
-                await api.save('templates', json.templates || []);
-                await api.save('scheduledEvents', json.scheduledEvents || []);
-                await api.save('users', json.users || []);
-                await api.save('transactionTypes', json.transactionTypes || []);
-                await api.save('businessProfile', json.businessProfile || {});
-                await api.save('documentFolders', json.documentFolders || []);
-
-                alert("Import successful! The application will now reload.");
-                window.location.reload();
+                setRestoreData(json);
+                setRestoreSelection(new Set(detectedKeys));
+                setIsRestoreModalOpen(true);
             } catch (err) {
-                console.error(err);
-                alert("Failed to import data: " + (err instanceof Error ? err.message : "Unknown error"));
+                alert("Failed to read backup file: " + (err instanceof Error ? err.message : "Invalid JSON"));
             }
         };
         reader.readAsText(file);
+    };
+
+    const handleConfirmRestore = async () => {
+        if (!restoreData || restoreSelection.size === 0) return;
+
+        if (!window.confirm("Warning: This will overwrite existing data for the selected entities. This cannot be undone. Proceed?")) {
+            return;
+        }
+
+        try {
+            const savePromises: Promise<any>[] = [];
+            
+            // Fixed: Explicitly casting key to string to resolve 'unknown' error (line 286 area)
+            for (const key of Array.from(restoreSelection)) {
+                const entityKey = key as string;
+                if (entityKey === 'templates') {
+                    savePromises.push(api.save('templates', restoreData.templates || []));
+                    savePromises.push(api.save('scheduledEvents', restoreData.scheduledEvents || []));
+                } else if (entityKey === 'savedReports') {
+                    savePromises.push(api.save('savedReports', restoreData.savedReports || []));
+                    savePromises.push(api.save('savedDateRanges', restoreData.savedDateRanges || []));
+                } else if (entityKey === 'youtubeMetrics') {
+                    savePromises.push(api.save('youtubeMetrics', restoreData.youtubeMetrics || []));
+                    savePromises.push(api.save('youtubeChannels', restoreData.youtubeChannels || []));
+                } else {
+                    savePromises.push(api.save(entityKey, restoreData[entityKey]));
+                }
+            }
+
+            // Always ensure core metadata is synced if available
+            if (restoreData.transactionTypes) savePromises.push(api.save('transactionTypes', restoreData.transactionTypes));
+            if (restoreData.users) savePromises.push(api.save('users', restoreData.users));
+
+            await Promise.all(savePromises);
+            
+            alert("Data restored successfully! The application will now reload.");
+            window.location.reload();
+        } catch (err) {
+            console.error(err);
+            alert("Failed to restore data. Check console for details.");
+        }
     };
 
     const handlePurgeDatabase = async () => {
@@ -221,27 +322,32 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         <div className="space-y-8 pb-20">
             <div>
                 <h1 className="text-3xl font-bold text-slate-800">Settings</h1>
-                <p className="text-slate-500 mt-1">Manage your application settings.</p>
+                <p className="text-slate-500 mt-1">Manage your application settings and data backups.</p>
             </div>
             
             <div className="space-y-6">
                 <Section title="Data & Backups">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
-                            <div>
-                                <h3 className="font-semibold text-slate-900">Automated Backups</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        
+                        {/* Automated Backups */}
+                        <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 space-y-4 flex flex-col h-full">
+                            <div className="flex-grow">
+                                <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                                    <ShieldCheckIcon className="w-5 h-5 text-green-600" />
+                                    Automated Snapshots
+                                </h3>
                                 <p className="text-sm text-slate-600 mt-1">
                                     Automatically save snapshots of your data to the "Automated Backups" folder in your Vault.
                                 </p>
                             </div>
                             
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-200">
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Frequency</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Frequency</label>
                                     <select 
                                         value={backupFreq} 
                                         onChange={(e) => setBackupFreq(e.target.value as any)}
-                                        className="w-full p-2 border rounded-md text-sm"
+                                        className="w-full p-2 border rounded-md text-sm bg-white"
                                     >
                                         <option value="never">Off</option>
                                         <option value="daily">Daily</option>
@@ -250,7 +356,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Retention (Keep Last)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Retention</label>
                                     <input 
                                         type="number" 
                                         min="1"
@@ -261,56 +367,87 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                     />
                                 </div>
                             </div>
-                            <div className="flex justify-between items-center">
-                                <p className="text-xs text-slate-500 italic">
+                            <div className="flex justify-between items-center pt-2">
+                                <p className="text-[10px] text-slate-400 italic">
                                     Last Run: {systemSettings.backupConfig?.lastBackupDate 
                                         ? new Date(systemSettings.backupConfig.lastBackupDate).toLocaleString() 
                                         : 'Never'}
                                 </p>
                                 <button 
                                     onClick={handleSaveBackupSettings}
-                                    className="px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 text-sm rounded-md transition-colors"
+                                    className="px-3 py-1 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-md border border-indigo-200 hover:bg-indigo-100 transition-colors"
                                 >
-                                    Save Settings
+                                    Save
                                 </button>
                             </div>
                         </div>
 
-                        <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-4">
-                            <div>
-                                <h3 className="font-semibold text-indigo-900">Manual Actions</h3>
-                                <p className="text-sm text-indigo-700 mt-1">
-                                    Create immediate backups or restore from a file. Manual backups are saved to the "Manual Backups" folder.
-                                </p>
-                            </div>
-                            <div className="flex flex-col gap-2">
-                                <button 
-                                    onClick={handleExportToVault}
-                                    className="flex items-center justify-center gap-2 px-4 py-2 bg-white border border-indigo-200 text-indigo-700 font-medium rounded-lg hover:bg-indigo-50 shadow-sm transition-colors"
-                                >
-                                    <DocumentIcon className="w-5 h-5 text-indigo-600" />
-                                    Save Backup to Vault
-                                </button>
+                        {/* Granular Manual Actions */}
+                        <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-indigo-100 shadow-sm space-y-6">
+                            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                                <div>
+                                    <h3 className="font-bold text-indigo-900 flex items-center gap-2 text-lg">
+                                        <CloudArrowUpIcon className="w-6 h-6 text-indigo-600" />
+                                        Manual Backup & Restore
+                                    </h3>
+                                    <p className="text-sm text-indigo-700">Choose exactly which entities to include in your backup.</p>
+                                </div>
                                 <div className="flex gap-2">
                                     <button 
-                                        onClick={handleExportData}
-                                        className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-white border border-indigo-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors"
+                                        onClick={handleExportToVault}
+                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm font-bold rounded-lg hover:bg-indigo-100 transition-colors"
                                     >
-                                        <CloudArrowUpIcon className="w-4 h-4" /> Download
+                                        <FolderIcon className="w-4 h-4" /> Vault
                                     </button>
-                                    <div className="relative flex-1">
+                                    <button 
+                                        onClick={handleExportData}
+                                        className="flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 shadow-md transition-colors"
+                                    >
+                                        <DownloadIcon className="w-4 h-4" /> Download
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <div className="flex justify-between items-center mb-3">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">What to include in export:</span>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setExportSelection(new Set(Object.keys(ENTITY_LABELS)))} className="text-[10px] font-bold text-indigo-600 hover:underline">Select All</button>
+                                        <button onClick={() => setExportSelection(new Set())} className="text-[10px] font-bold text-slate-500 hover:underline">Clear</button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                    {Object.entries(ENTITY_LABELS).map(([key, { label, icon }]) => (
+                                        <button
+                                            key={key}
+                                            onClick={() => toggleExportSelection(key)}
+                                            className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all ${exportSelection.has(key) ? 'bg-white border-indigo-400 text-indigo-700 shadow-sm ring-1 ring-indigo-400' : 'bg-slate-100 border-slate-200 text-slate-500 grayscale opacity-60 hover:opacity-100 hover:grayscale-0'}`}
+                                        >
+                                            <div className={exportSelection.has(key) ? 'text-indigo-600' : 'text-slate-400'}>
+                                                {icon}
+                                            </div>
+                                            <span className="text-xs font-medium truncate">{label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="pt-6 border-t border-indigo-50">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-sm text-slate-600">Have a backup file? Restore your data here.</p>
+                                    <div className="relative">
                                         <input 
                                             type="file" 
                                             accept=".json"
                                             ref={importFileRef}
-                                            onChange={handleImportData}
+                                            onChange={handleImportFileChange}
                                             className="hidden"
                                         />
                                         <button 
                                             onClick={() => importFileRef.current?.click()}
-                                            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+                                            className="flex items-center justify-center gap-2 px-6 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg hover:bg-slate-900 shadow-md transition-colors"
                                         >
-                                            <UploadIcon className="w-4 h-4" /> Restore
+                                            <UploadIcon className="w-4 h-4" /> Restore from File
                                         </button>
                                     </div>
                                 </div>
@@ -318,6 +455,80 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         </div>
                     </div>
                 </Section>
+
+                {/* Restore Modal */}
+                {isRestoreModalOpen && (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsRestoreModalOpen(false)}>
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                            <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+                                <div className="flex items-center gap-2">
+                                    <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600"><UploadIcon className="w-5 h-5"/></div>
+                                    <h3 className="font-bold text-slate-800 text-lg">Selective Restore</h3>
+                                </div>
+                                <button onClick={() => setIsRestoreModalOpen(false)}><CloseIcon className="w-6 h-6 text-slate-400 hover:text-slate-600"/></button>
+                            </div>
+                            
+                            <div className="p-6 space-y-4">
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+                                    <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 mt-0.5" />
+                                    <div className="text-sm text-amber-800">
+                                        <p className="font-bold">Important Notice</p>
+                                        <p className="mt-1">Restoring will <strong>overwrite</strong> any existing data for the selected categories. We recommend downloading a fresh backup first.</p>
+                                    </div>
+                                </div>
+
+                                <p className="text-sm font-bold text-slate-600 uppercase tracking-wider">Select data to restore from file:</p>
+                                <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                    {Object.entries(ENTITY_LABELS).map(([key, { label, icon }]) => {
+                                        if (!restoreData.hasOwnProperty(key)) return null;
+                                        
+                                        // Simple count detection
+                                        let count = 0;
+                                        const item = restoreData[key];
+                                        if (Array.isArray(item)) count = item.length;
+                                        else if (item && typeof item === 'object') count = Object.keys(item).length;
+
+                                        return (
+                                            <label 
+                                                key={key} 
+                                                className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${restoreSelection.has(key) ? 'bg-indigo-50 border-indigo-400 shadow-sm' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
+                                            >
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={restoreSelection.has(key)}
+                                                    onChange={() => {
+                                                        const newSet = new Set(restoreSelection);
+                                                        if (newSet.has(key)) newSet.delete(key); else newSet.add(key);
+                                                        setRestoreSelection(newSet);
+                                                    }}
+                                                    className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                                                />
+                                                <div className="ml-3 flex-grow">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-indigo-600 opacity-70">{icon}</span>
+                                                        <span className="font-bold text-slate-700">{label}</span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-500 mt-0.5">{count} {count === 1 ? 'item' : 'items'} detected</p>
+                                                </div>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
+                                <button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-lg">Cancel</button>
+                                <button 
+                                    onClick={handleConfirmRestore}
+                                    disabled={restoreSelection.size === 0}
+                                    className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md transition-all disabled:opacity-30"
+                                >
+                                    Restore {restoreSelection.size} Item{restoreSelection.size !== 1 ? 's' : ''}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <Section title="Manage Transaction Types">
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -423,7 +634,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                         autoFocus
                                     />
                                     <div className="flex gap-2">
-                                        <button onClick={() => setPurgeStep('idle')} className="flex-1 px-3 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded">Abort</button>
+                                        <button onClick={() => setPurgeStep('idle')} className="flex-1 px-3 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded">Abort</button>
                                         <button 
                                             disabled={purgeText !== 'PURGE' || isPurging}
                                             onClick={handlePurgeDatabase}
