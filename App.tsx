@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel } from './types';
@@ -124,13 +125,8 @@ const App: React.FC = () => {
           api.get<TransactionType[]>('transactionTypes')
       ]);
 
-      // Handle Settings
-      let finalSettings = settings || {};
-      if (!finalSettings.apiKey) {
-          const localKey = localStorage.getItem('user_api_key');
-          if (localKey) finalSettings = { ...finalSettings, apiKey: localKey };
-      }
-      setSystemSettings(finalSettings);
+      // Handle Settings - API Key is managed exclusively via process.env.API_KEY
+      setSystemSettings(settings || {});
 
       // Handle Users
       let finalUsers: User[] = loadedUsers && loadedUsers.length > 0
@@ -266,11 +262,9 @@ const App: React.FC = () => {
       return () => clearTimeout(timeout);
   }, [isHeavyDataLoading, systemSettings.backupConfig, transactions, accounts, categories, tags]); 
 
-  // Persistence hooks
+  // Persistence hooks - Removed API Key persistence to follow guidelines
   useEffect(() => {
       if (isStructureLoading) return;
-      if (systemSettings.apiKey) localStorage.setItem('user_api_key', systemSettings.apiKey);
-      else localStorage.removeItem('user_api_key');
       api.save('systemSettings', systemSettings);
   }, [systemSettings, isStructureLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('transactions', transactions), 1000); return () => clearTimeout(h); }, [transactions, isHeavyDataLoading]);

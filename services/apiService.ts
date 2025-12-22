@@ -37,5 +37,17 @@ export const api = {
         } catch (error) {
             console.error(`API Save Error (${key}):`, error);
         }
+    },
+
+    resetDatabase: async (): Promise<boolean> => {
+        try {
+            const response = await fetch('/api/admin/reset', {
+                method: 'POST',
+            });
+            return response.ok;
+        } catch (error) {
+            console.error("API Reset Error:", error);
+            return false;
+        }
     }
 };

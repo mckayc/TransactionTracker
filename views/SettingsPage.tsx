@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon } from '../components/Icons';
+// Fixed Trash2 import by using exported DeleteIcon and adding DeleteIcon to imports
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { saveFile } from '../services/storageService';
@@ -29,9 +30,9 @@ interface SettingsPageProps {
     onCreateFolder: (folder: DocumentFolder) => void;
 }
 
-const Section: React.FC<{title: string, children: React.ReactNode}> = ({title, children}) => (
-    <details className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 open:ring-2 open:ring-indigo-500" open>
-        <summary className="text-xl font-bold text-slate-700 cursor-pointer">{title}</summary>
+const Section: React.FC<{title: string, variant?: 'default' | 'danger', children: React.ReactNode}> = ({title, variant = 'default', children}) => (
+    <details className={`bg-white p-6 rounded-xl shadow-sm border ${variant === 'danger' ? 'border-red-200 open:ring-red-500' : 'border-slate-200 open:ring-indigo-500'}`} open>
+        <summary className={`text-xl font-bold cursor-pointer ${variant === 'danger' ? 'text-red-700' : 'text-slate-700'}`}>{title}</summary>
         <div className="mt-4">
             {children}
         </div>
@@ -44,9 +45,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 }) => {
     const [newTypeName, setNewTypeName] = useState('');
     const [newTypeEffect, setNewTypeEffect] = useState<'income' | 'expense' | 'transfer' | 'investment'>('expense');
-    const [apiKey, setApiKey] = useState('');
-    const [apiKeySaved, setApiKeySaved] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
+
+    // Reset State
+    const [purgeStep, setPurgeStep] = useState<'idle' | 'confirm' | 'final'>('idle');
+    const [purgeText, setPurgeText] = useState('');
+    const [isPurging, setIsPurging] = useState(false);
 
     const usedTransactionTypes = useMemo(() => new Set(transactions.map(tx => tx.typeId)), [transactions]);
     
@@ -55,25 +59,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [retentionCount, setRetentionCount] = useState(5);
 
     useEffect(() => {
-        if (systemSettings.apiKey) {
-            setApiKey(systemSettings.apiKey);
-        }
         if (systemSettings.backupConfig) {
             setBackupFreq(systemSettings.backupConfig.frequency);
             setRetentionCount(systemSettings.backupConfig.retentionCount);
         } else {
-            // Default initialization
             setBackupFreq('never');
             setRetentionCount(5);
         }
     }, [systemSettings]);
-
-    const handleSaveApiKey = () => {
-        const newKey = apiKey.trim();
-        onUpdateSystemSettings({ ...systemSettings, apiKey: newKey });
-        setApiKeySaved(true);
-        setTimeout(() => setApiKeySaved(false), 2000);
-    };
 
     const handleSaveBackupSettings = () => {
         const newConfig = {
@@ -106,7 +99,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             version: '0.0.9',
             transactions,
             accounts,
-            accountTypes: [], // Legacy support mostly
+            accountTypes: [], 
             categories,
             tags,
             payees,
@@ -134,7 +127,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleExportToVault = async () => {
         try {
-            // 1. Ensure "Manual Backups" folder exists
             let manualFolderId = documentFolders.find(f => f.name === "Manual Backups" && !f.parentId)?.id;
             if (!manualFolderId) {
                 manualFolderId = generateUUID();
@@ -147,17 +139,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 onCreateFolder(newFolder);
             }
 
-            // 2. Create Backup File
             const data = getExportData();
             const jsonString = JSON.stringify(data, null, 2);
             const fileName = `Manual_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
             const file = new File([jsonString], fileName, { type: 'application/json' });
             const docId = generateUUID();
 
-            // 3. Upload to server
             await saveFile(docId, file);
 
-            // 4. Create Document Metadata
             const newDoc: BusinessDocument = {
                 id: docId,
                 name: fileName,
@@ -188,16 +177,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         reader.onload = async (event) => {
             try {
                 const json = JSON.parse(event.target?.result as string);
-                
-                // Validate keys roughly
                 const requiredKeys = ['transactions', 'accounts', 'categories'];
                 const missingKeys = requiredKeys.filter(k => !json.hasOwnProperty(k));
-                
-                if (missingKeys.length > 0) {
-                    throw new Error(`Invalid backup file. Missing keys: ${missingKeys.join(', ')}`);
-                }
+                if (missingKeys.length > 0) { throw new Error(`Invalid backup file. Missing keys: ${missingKeys.join(', ')}`); }
 
-                // Send data to API
                 await api.save('transactions', json.transactions || []);
                 await api.save('accounts', json.accounts || []);
                 await api.save('categories', json.categories || []);
@@ -213,7 +196,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
                 alert("Import successful! The application will now reload.");
                 window.location.reload();
-
             } catch (err) {
                 console.error(err);
                 alert("Failed to import data: " + (err instanceof Error ? err.message : "Unknown error"));
@@ -221,9 +203,22 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         };
         reader.readAsText(file);
     };
+
+    const handlePurgeDatabase = async () => {
+        setIsPurging(true);
+        const success = await api.resetDatabase();
+        if (success) {
+            alert("All data has been purged. Application will now reload to a clean state.");
+            window.location.reload();
+        } else {
+            alert("Failed to purge database. Check server logs for permissions or connection issues.");
+            setIsPurging(false);
+            setPurgeStep('idle');
+        }
+    };
     
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 pb-20">
             <div>
                 <h1 className="text-3xl font-bold text-slate-800">Settings</h1>
                 <p className="text-slate-500 mt-1">Manage your application settings.</p>
@@ -232,7 +227,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <div className="space-y-6">
                 <Section title="Data & Backups">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Backup Configuration */}
                         <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-4">
                             <div>
                                 <h3 className="font-semibold text-slate-900">Automated Backups</h3>
@@ -282,7 +276,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             </div>
                         </div>
 
-                        {/* Manual Actions */}
                         <div className="bg-indigo-50 p-4 rounded-lg border border-indigo-100 space-y-4">
                             <div>
                                 <h3 className="font-semibold text-indigo-900">Manual Actions</h3>
@@ -326,39 +319,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     </div>
                 </Section>
 
-                <Section title="API Key Configuration">
-                    <div className="space-y-4">
-                        <div>
-                            <h3 className="font-semibold text-slate-900">Google Gemini API Key</h3>
-                            <p className="text-sm text-slate-600 mt-1">
-                                This key enables AI features like document analysis and automatic categorization. It is stored securely in your database.
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <input 
-                                type="password" 
-                                value={apiKey} 
-                                onChange={(e) => setApiKey(e.target.value)}
-                                placeholder="Enter your API Key (starts with AIza...)"
-                                className="flex-grow p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                            />
-                            <button 
-                                onClick={handleSaveApiKey}
-                                className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 shadow-sm transition-colors flex items-center gap-2"
-                            >
-                                {apiKeySaved ? <CheckCircleIcon className="w-5 h-5" /> : null}
-                                {apiKeySaved ? 'Saved!' : 'Save Key'}
-                            </button>
-                        </div>
-                        {process.env.API_KEY && (
-                            <p className="text-xs text-green-700 font-medium flex items-center gap-1">
-                                <CheckCircleIcon className="w-3 h-3" />
-                                System API Key detected (from Docker ENV). The key above will take precedence if set.
-                            </p>
-                        )}
-                    </div>
-                </Section>
-
                 <Section title="Manage Transaction Types">
                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
@@ -399,7 +359,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                                 onClick={() => onRemoveTransactionType(type.id)} 
                                                 disabled={!canBeDeleted}
                                                 className="text-red-500 hover:text-red-700 disabled:text-slate-400 disabled:cursor-not-allowed font-medium text-sm"
-                                                title={type.isDefault ? "Cannot delete a default type." : isUsed ? "Cannot delete a type that is in use." : "Delete type"}
                                             >
                                                 Remove
                                             </button>
@@ -408,6 +367,72 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 </ul>
                             ) : (
                                 <p className="text-center text-slate-500 py-8">No transaction types found.</p>
+                            )}
+                        </div>
+                    </div>
+                </Section>
+
+                {/* --- DANGER ZONE --- */}
+                <Section title="Danger Zone" variant="danger">
+                    <div className="bg-red-50 p-6 rounded-xl border border-red-200 flex flex-col md:flex-row items-center gap-6">
+                        <div className="flex-grow">
+                            <h3 className="text-lg font-bold text-red-800 flex items-center gap-2">
+                                <ExclamationTriangleIcon className="w-6 h-6" />
+                                Factory Reset
+                            </h3>
+                            <p className="text-sm text-red-700 mt-2">
+                                This will permanently delete all transactions, accounts, categories, rules, and uploaded documents from your local server. 
+                                <strong> This action is irreversible.</strong>
+                            </p>
+                        </div>
+                        
+                        <div className="flex-shrink-0 w-full md:w-auto">
+                            {purgeStep === 'idle' && (
+                                <button 
+                                    onClick={() => setPurgeStep('confirm')}
+                                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 shadow-md transition-all"
+                                >
+                                    <DeleteIcon className="w-5 h-5" /> Purge Everything
+                                </button>
+                            )}
+
+                            {purgeStep === 'confirm' && (
+                                <div className="space-y-3 bg-white p-4 rounded-lg border border-red-300 shadow-lg animate-slide-up">
+                                    <p className="text-xs font-bold text-red-600 uppercase flex items-center gap-1">
+                                        <ShieldCheckIcon className="w-4 h-4"/> Step 1: Secure Data
+                                    </p>
+                                    <p className="text-xs text-slate-600">Please download a backup of your data before proceeding.</p>
+                                    <div className="flex gap-2">
+                                        <button onClick={handleExportData} className="flex-1 px-3 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded hover:bg-slate-200">Download Backup</button>
+                                        <button onClick={() => setPurgeStep('final')} className="flex-1 px-3 py-2 bg-indigo-600 text-white text-xs font-bold rounded hover:bg-indigo-700">I Have a Backup</button>
+                                    </div>
+                                    <button onClick={() => setPurgeStep('idle')} className="w-full text-xs text-slate-400 hover:text-slate-600 mt-2">Cancel</button>
+                                </div>
+                            )}
+
+                            {purgeStep === 'final' && (
+                                <div className="space-y-4 bg-white p-4 rounded-lg border border-red-500 shadow-xl animate-slide-up">
+                                    <p className="text-xs font-bold text-red-600 uppercase">Final Confirmation</p>
+                                    <p className="text-xs text-slate-600">Type <span className="font-mono font-bold text-red-600 select-all">PURGE</span> below to confirm.</p>
+                                    <input 
+                                        type="text" 
+                                        value={purgeText} 
+                                        onChange={(e) => setPurgeText(e.target.value.toUpperCase())}
+                                        placeholder="Type PURGE"
+                                        className="w-full p-2 border-red-300 text-center font-bold focus:ring-red-500 focus:border-red-500"
+                                        autoFocus
+                                    />
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setPurgeStep('idle')} className="flex-1 px-3 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded">Abort</button>
+                                        <button 
+                                            disabled={purgeText !== 'PURGE' || isPurging}
+                                            onClick={handlePurgeDatabase}
+                                            className="flex-1 px-3 py-2 bg-red-600 text-white text-xs font-bold rounded hover:bg-red-700 disabled:opacity-30"
+                                        >
+                                            {isPurging ? 'Purging...' : 'Delete Forever'}
+                                        </button>
+                                    </div>
+                                </div>
                             )}
                         </div>
                     </div>

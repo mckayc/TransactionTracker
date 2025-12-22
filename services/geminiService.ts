@@ -4,30 +4,24 @@ import type { RawTransaction, TransactionType, BusinessDocument, Transaction, Au
 
 declare const pdfjsLib: any;
 
+// API key is strictly obtained from environment variable per guidelines
 export const hasApiKey = (): boolean => {
     let envKey = '';
     try {
         envKey = process.env.API_KEY || '';
-    } catch (e) {
-        // process might not be defined in some environments if build replacement fails
-    }
-    const localKey = localStorage.getItem('user_api_key');
-    return (!!envKey && envKey.trim() !== '') || (!!localKey && localKey.trim() !== '');
+    } catch (e) {}
+    return (!!envKey && envKey.trim() !== '');
 };
 
-// Centralized function to get the AI client. 
+// Centralized function to get the AI client strictly from environment variables.
 const getAiClient = () => {
     let apiKey = '';
     try {
         apiKey = process.env.API_KEY || '';
     } catch (e) {}
     
-    if (!apiKey) {
-        apiKey = localStorage.getItem('user_api_key') || '';
-    }
-    
     if (!apiKey || apiKey.trim() === '') {
-        throw new Error("API Key is missing. Please check your environment variables or set it in Settings.");
+        throw new Error("API Key is missing. Please check your environment variables.");
     }
     return new GoogleGenAI({ apiKey });
 };
@@ -148,7 +142,8 @@ const getResponseSchema = () => ({
 });
 
 const processApiResponse = (response: any, accountId: string, transactionTypes: TransactionType[], sourceName?: string): RawTransaction[] => {
-    const jsonText = response.text.trim();
+    // text is a property, not a function
+    const jsonText = response.text?.trim() || '';
     if (!jsonText) {
         throw new Error("AI returned an empty response.");
     }
@@ -183,10 +178,11 @@ export const extractTransactionsFromFiles = async (files: File[], accountId: str
     onProgress('Sending data to AI for analysis. This may take a moment...');
     
     const ai = getAiClient();
-    const contents = [{ parts: [{ text: getBasePrompt(transactionTypes) }, ...generativeParts] }];
+    // Use modern model and correct content structure
+    const contents = { parts: [{ text: getBasePrompt(transactionTypes) }, ...generativeParts] };
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', // Switched to flash for stability
+        model: 'gemini-3-flash-preview', 
         contents,
         config: {
             responseMimeType: 'application/json',
@@ -203,10 +199,10 @@ export const extractTransactionsFromText = async (text: string, accountId: strin
 
     const ai = getAiClient();
     const prompt = getBasePrompt(transactionTypes);
-    const contents = [{ parts: [{ text: prompt }, { text: `\n\n--- User Pasted Data ---\n${text}` }] }];
+    const contents = { parts: [{ text: prompt }, { text: `\n\n--- User Pasted Data ---\n${text}` }] };
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents,
         config: {
             responseMimeType: 'application/json',
@@ -259,10 +255,10 @@ export const getAiFinancialAnalysis = async (question: string, contextData: obje
         ${safeJson}
     `;
 
-    const contents = [{ parts: [{ text: prompt }] }];
+    const contents = { parts: [{ text: prompt }] };
 
     const responseStream = await ai.models.generateContentStream({
-        model: 'gemini-2.5-flash', // Updated model
+        model: 'gemini-3-flash-preview', 
         contents,
     });
     
@@ -288,10 +284,10 @@ export const analyzeBusinessDocument = async (file: File, onProgress: (msg: stri
         4. "taxTips": An array of 1-3 actionable tips or next steps for a small business owner relevant to this document type. If it's an IRS letter, explain what to do. If it's an invoice, mention record keeping.
     `;
 
-    const contents = [{ parts: [{ text: prompt }, ...parts] }];
+    const contents = { parts: [{ text: prompt }, ...parts] };
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-pro-preview', 
         contents,
         config: {
             responseMimeType: 'application/json',
@@ -344,7 +340,7 @@ export const streamTaxAdvice = async (history: ChatMessage[], profile: BusinessP
     ];
 
     const responseStream = await ai.models.generateContentStream({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-pro-preview',
         contents: contents as any, 
     });
 
@@ -355,7 +351,7 @@ export const streamTaxAdvice = async (history: ChatMessage[], profile: BusinessP
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
     const ai = getAiClient();
     const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
     });
     return result.text || "I couldn't find an answer right now.";
@@ -368,7 +364,7 @@ export const getIndustryDeductions = async (industry: string): Promise<string[]>
         Return only a JSON array of strings.
     `;
     const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-pro-preview',
         contents: prompt,
         config: {
             responseMimeType: 'application/json',
@@ -460,15 +456,15 @@ export const auditTransactions = async (
         Transaction Types Map: ${JSON.stringify(Object.fromEntries(transactionTypes.map(t => [t.name, t.id])))}
     `;
 
-    const contents = [{ 
+    const contents = { 
         parts: [
             { text: prompt }, 
             { text: JSON.stringify(simplifiedTransactions) }
         ] 
-    }];
+    };
 
     const result = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3-pro-preview',
         contents,
         config: {
             responseMimeType: 'application/json',

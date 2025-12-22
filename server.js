@@ -88,7 +88,6 @@ app.get('/api/data', (req, res) => {
   }
 });
 
-// Faster route for specific key requests (e.g., just accounts or tags)
 app.get('/api/data/:key', (req, res) => {
     const { key } = req.params;
     try {
@@ -109,6 +108,26 @@ app.post('/api/data/:key', (req, res) => {
     console.error(e);
     res.status(500).json({ error: 'Failed to save data' });
   }
+});
+
+// Admin Route: Factory Reset
+app.post('/api/admin/reset', (req, res) => {
+    try {
+        // 1. Wipe database tables
+        db.prepare('DELETE FROM app_storage').run();
+        db.prepare('DELETE FROM files_meta').run();
+
+        // 2. Wipe physical files
+        const files = fs.readdirSync(DOCUMENTS_DIR);
+        for (const file of files) {
+            fs.unlinkSync(path.join(DOCUMENTS_DIR, file));
+        }
+
+        res.json({ success: true, message: 'Database and storage purged successfully.' });
+    } catch (e) {
+        console.error('Reset error:', e);
+        res.status(500).json({ error: 'Failed to reset application data.' });
+    }
 });
 
 // File API Routes
