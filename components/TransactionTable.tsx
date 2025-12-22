@@ -133,20 +133,20 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       let bValue: any = b[sortKey as keyof Transaction];
 
       if (sortKey === 'payeeId') {
-          aValue = payeeMap.get(a.payeeId || '')?.name || '';
-          bValue = payeeMap.get(b.payeeId || '')?.name || '';
+          aValue = a.payee || payeeMap.get(a.payeeId || '')?.name || '';
+          bValue = b.payee || payeeMap.get(b.payeeId || '')?.name || '';
       } else if (sortKey === 'categoryId') {
-          aValue = categoryMap.get(a.categoryId)?.name || '';
-          bValue = categoryMap.get(b.categoryId)?.name || '';
+          aValue = a.category || categoryMap.get(a.categoryId)?.name || '';
+          bValue = b.category || categoryMap.get(b.categoryId)?.name || '';
       } else if (sortKey === 'accountId') {
-          aValue = accountMap.get(a.accountId || '')?.name || '';
-          bValue = accountMap.get(b.accountId || '')?.name || '';
+          aValue = a.account || accountMap.get(a.accountId || '')?.name || '';
+          bValue = b.account || accountMap.get(b.accountId || '')?.name || '';
       } else if (sortKey === 'userId') {
-          aValue = userMap.get(a.userId || '') || '';
-          bValue = userMap.get(b.userId || '') || '';
+          aValue = a.user || userMap.get(a.userId || '') || '';
+          bValue = b.user || userMap.get(b.userId || '') || '';
       } else if (sortKey === 'typeId') {
-          aValue = transactionTypeMap.get(a.typeId)?.name || '';
-          bValue = transactionTypeMap.get(b.typeId)?.name || '';
+          aValue = a.type || transactionTypeMap.get(a.typeId)?.name || '';
+          bValue = b.type || transactionTypeMap.get(b.typeId)?.name || '';
       }
 
       if (aValue === undefined || aValue === null) aValue = '';
@@ -362,9 +362,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
   // Helper to render a single transaction row
   const renderRow = (transaction: Transaction, isChild: boolean = false, groupData?: GroupItem) => {
-        const type = transactionTypeMap.get(transaction.typeId);
-        const category = categoryMap.get(transaction.categoryId);
-        const categoryName = category?.name || 'Uncategorized';
+        const typeName = transaction.type || transactionTypeMap.get(transaction.typeId)?.name || 'N/A';
+        const categoryName = transaction.category || categoryMap.get(transaction.categoryId)?.name || 'Uncategorized';
+        const payeeName = transaction.payee || payeeMap.get(transaction.payeeId || '')?.name || '';
+        const userName = transaction.user || userMap.get(transaction.userId || '') || 'N/A';
+        const accountName = transaction.account || accountMap.get(transaction.accountId || '')?.name || 'N/A';
         
         const amountColor = getAmountColor(transaction.typeId);
         const amountPrefix = getAmountPrefix(transaction.typeId);
@@ -470,7 +472,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'payeeId' })} className="truncate max-w-[180px]" title={payeeMap.get(transaction.payeeId || '')?.name}>{payeeMap.get(transaction.payeeId || '')?.name || <span className="text-slate-400 italic">None</span>}</div>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'payeeId' })} className="truncate max-w-[180px]" title={payeeName}>{payeeName || <span className="text-slate-400 italic">None</span>}</div>
                     )}
                   </td>
               )}
@@ -521,7 +523,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                         </select>
                     ) : (
-                      <div onClick={() => setEditingCell({ id: transaction.id, field: 'accountId' })} className="truncate max-w-[150px]" title={accountMap.get(transaction.accountId || '')?.name}>{accountMap.get(transaction.accountId || '')?.name || 'N/A'}</div>
+                      <div onClick={() => setEditingCell({ id: transaction.id, field: 'accountId' })} className="truncate max-w-[150px]" title={accountName}>{accountName}</div>
                     )}
                   </td>
               )}
@@ -546,7 +548,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'userId' })} className="truncate max-w-[120px]">{userMap.get(transaction.userId || '') || 'N/A'}</div>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'userId' })} className="truncate max-w-[120px]">{userName}</div>
                     )}
                   </td>
               )}
@@ -559,7 +561,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'typeId' })} className="truncate max-w-[120px] capitalize">{type?.name || 'N/A'}</div>
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'typeId' })} className="truncate max-w-[120px] capitalize">{typeName}</div>
                     )}
                   </td>
               )}
@@ -608,7 +610,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       const isFullySelected = allChildIds.every(id => selectedTxIds.has(id));
       
       const primaryTx = group.primaryTx;
-      const type = transactionTypeMap.get(primaryTx.typeId);
+      const typeName = primaryTx.type || transactionTypeMap.get(primaryTx.typeId)?.name || 'Mix';
       
       const amountColor = getAmountColor(primaryTx.typeId);
       const amountPrefix = getAmountPrefix(primaryTx.typeId);
@@ -652,12 +654,12 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {visibleColumns.has('payee') && <td className="px-3 py-2 text-sm text-slate-500 italic">Multiple</td>}
               {visibleColumns.has('category') && <td className="px-3 py-2 text-sm text-slate-500 italic">Split / Multiple</td>}
               {visibleColumns.has('tags') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
-              {visibleColumns.has('account') && <td className="px-3 py-2 text-sm text-slate-500">{accountMap.get(primaryTx.accountId || '')?.name}</td>}
+              {visibleColumns.has('account') && <td className="px-3 py-2 text-sm text-slate-500">{primaryTx.account || accountMap.get(primaryTx.accountId || '')?.name}</td>}
               {visibleColumns.has('location') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
               {visibleColumns.has('user') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
               
               {visibleColumns.has('type') && (
-                  <td className="px-3 py-2 text-sm text-slate-600">{type?.name || 'Mix'}</td>
+                  <td className="px-3 py-2 text-sm text-slate-600">{typeName}</td>
               )}
 
               {visibleColumns.has('amount') && (

@@ -49,7 +49,7 @@ export interface RawTransaction {
     date: string;
     description: string;
     amount: number;
-    category: string;
+    category: string; // This is the name
     accountId: string;
     typeId: string;
     location?: string;
@@ -60,6 +60,13 @@ export interface RawTransaction {
     tagIds?: string[];
     notes?: string;
     categoryId?: string; 
+    
+    // Human-readable fields for backups
+    account?: string;
+    payee?: string;
+    user?: string;
+    type?: string;
+    tags?: string[];
 }
 
 export interface Transaction extends RawTransaction {

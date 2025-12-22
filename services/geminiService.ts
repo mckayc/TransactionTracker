@@ -168,7 +168,6 @@ const getResponseSchema = () => ({
 });
 
 const processApiResponse = (response: any, accountId: string, transactionTypes: TransactionType[], sourceName?: string): RawTransaction[] => {
-    // text is a property, not a function
     const jsonText = response.text?.trim() || '';
     if (!jsonText) {
         throw new Error("AI returned an empty response.");
@@ -188,6 +187,7 @@ const processApiResponse = (response: any, accountId: string, transactionTypes: 
             location: tx.location,
             accountId,
             typeId: typeNameToIdMap.get(tx.transactionType?.toLowerCase()) || defaultExpenseId,
+            type: tx.transactionType, // Embedded name
             sourceFilename: tx.sourceFilename || sourceName,
         }));
     } catch (e) {
@@ -204,7 +204,6 @@ export const extractTransactionsFromFiles = async (files: File[], accountId: str
     onProgress('Sending data to AI for analysis. This may take a moment...');
     
     const ai = getAiClient();
-    // Use modern model and correct content structure
     const contents = { parts: [{ text: getBasePrompt(transactionTypes) }, ...generativeParts] };
 
     const response = await ai.models.generateContent({
@@ -241,7 +240,6 @@ export const extractTransactionsFromText = async (text: string, accountId: strin
 };
 
 const sanitizeContextData = (contextData: any): string => {
-    // Create a simplified version of the data to avoid token limits and circular references
     try {
         const simplified = {
             transactions_count: contextData.transactions?.length || 0,
@@ -376,11 +374,9 @@ export const streamTaxAdvice = async (history: ChatMessage[], profile: BusinessP
 export const generateFinancialStrategy = async (transactions: Transaction[], goals: FinancialGoal[], categories: Category[]) => {
     const ai = getAiClient();
     
-    // Prepare a compact summary of spending habits
     const categoryMap = new Map(categories.map(c => [c.id, c.name]));
     const spendingSummary: Record<string, number> = {};
     
-    // Analyze last 6 months of transactions
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     
@@ -459,7 +455,6 @@ export const generateFinancialStrategy = async (transactions: Transaction[], goa
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
-// Legacy single-turn (keep for backward compatibility if needed)
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
     const ai = getAiClient();
     const result = await ai.models.generateContent({
@@ -503,14 +498,13 @@ export const auditTransactions = async (
 ): Promise<AuditFinding[]> => {
     const ai = getAiClient();
     
-    // Minimize data sent to AI to save tokens and improve speed
     const simplify = (tx: Transaction) => ({
         id: tx.id,
         date: tx.date,
         desc: tx.description,
         amt: tx.amount,
-        type: transactionTypes.find(t => t.id === tx.typeId)?.name,
-        cat: categories.find(c => c.id === tx.categoryId)?.name
+        type: tx.type || transactionTypes.find(t => t.id === tx.typeId)?.name,
+        cat: tx.category || categories.find(c => c.id === tx.categoryId)?.name
     });
 
     const simplifiedTransactions = transactions.map(simplify);
@@ -579,6 +573,7 @@ export const auditTransactions = async (
         model: 'gemini-3-pro-preview',
         contents,
         config: {
+            // responseMimeType is deprecated, use system instruction or text
             responseMimeType: 'application/json',
             responseSchema: {
                 type: Type.OBJECT,

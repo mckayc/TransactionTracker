@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
@@ -228,6 +228,27 @@ const App: React.FC = () => {
 
   }, []);
 
+  // --- Denormalization Helper ---
+  // This ensures that human readable names are stored in the transaction object for backups
+  const denormalize = useCallback((tx: Transaction): Transaction => {
+    const account = accounts.find(a => a.id === tx.accountId);
+    const category = categories.find(c => c.id === tx.categoryId);
+    const payee = payees.find(p => p.id === tx.payeeId);
+    const user = users.find(u => u.id === tx.userId);
+    const type = transactionTypes.find(t => t.id === tx.typeId);
+    const tagNames = tx.tagIds?.map(id => tags.find(t => t.id === id)?.name).filter(Boolean) as string[];
+
+    return {
+        ...tx,
+        account: account?.name || tx.account,
+        category: category?.name || tx.category,
+        payee: payee?.name || tx.payee,
+        user: user?.name || tx.user,
+        type: type?.name || tx.type,
+        tags: tagNames?.length > 0 ? tagNames : tx.tags
+    };
+  }, [accounts, categories, payees, users, transactionTypes, tags]);
+
   // AUTOMATED BACKUP LOGIC
   useEffect(() => {
       if (isHeavyDataLoading) return;
@@ -302,14 +323,19 @@ const App: React.FC = () => {
   useEffect(() => { if (isHeavyDataLoading) return; api.save('financialGoals', financialGoals); }, [financialGoals, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; api.save('financialPlan', financialPlan); }, [financialPlan, isHeavyDataLoading]);
 
-  // Handlers
+  // Handlers with Denormalization
   const handleTransactionsAdded = (newlyAdded: Transaction[], newlyCreatedCategories: Category[]) => {
       if (newlyCreatedCategories.length > 0) setCategories(prev => [...prev, ...newlyCreatedCategories]);
-      if (newlyAdded.length > 0) setTransactions(prev => [...prev, ...newlyAdded].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      
+      const denormalized = newlyAdded.map(denormalize);
+      if (denormalized.length > 0) setTransactions(prev => [...prev, ...denormalized].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   };
-  const handleAddTransaction = (newTransaction: Transaction) => setTransactions(prev => [...prev, newTransaction].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  const handleUpdateTransaction = (updatedTransaction: Transaction) => setTransactions(prev => prev.map(tx => tx.id === updatedTransaction.id ? updatedTransaction : tx).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  const handleUpdateTransactions = (updatedTransactions: Transaction[]) => { const updatedTxMap = new Map(updatedTransactions.map(tx => [tx.id, tx])); setTransactions(prev => prev.map(tx => updatedTxMap.has(tx.id) ? updatedTxMap.get(tx.id)! : tx).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())); };
+  const handleAddTransaction = (newTransaction: Transaction) => setTransactions(prev => [...prev, denormalize(newTransaction)].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+  const handleUpdateTransaction = (updatedTransaction: Transaction) => setTransactions(prev => prev.map(tx => tx.id === updatedTransaction.id ? denormalize(updatedTransaction) : tx).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+  const handleUpdateTransactions = (updatedTransactions: Transaction[]) => { 
+      const denormalizedMap = new Map(updatedTransactions.map(tx => [tx.id, denormalize(tx)])); 
+      setTransactions(prev => prev.map(tx => denormalizedMap.has(tx.id) ? denormalizedMap.get(tx.id)! : tx).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())); 
+  };
   const handleDeleteTransaction = (transactionId: string) => setTransactions(prev => prev.filter(tx => tx.id !== transactionId));
   const handleDeleteTransactions = (transactionIds: string[]) => { const idsToDelete = new Set(transactionIds); setTransactions(prev => prev.filter(tx => !idsToDelete.has(tx.id))); };
   const handleAddAccount = (account: Account) => setAccounts(prev => [...prev, account]);

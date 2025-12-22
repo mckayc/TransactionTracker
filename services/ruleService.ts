@@ -4,7 +4,6 @@ import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Ac
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
     let txValue: any;
     
-    // Defensive check for partial/legacy objects
     if (!condition || !condition.field) return true;
 
     if (condition.field === 'description') {
@@ -34,9 +33,8 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
         if (condition.operator === 'equals') {
             return txAccountId === String(condition.value);
         } else {
-            // Name-based matching
             const account = accounts.find(a => a.id === txAccountId);
-            const accountName = (account?.name || '').toLowerCase();
+            const accountName = (account?.name || tx.account || '').toLowerCase();
             const condValue = String(condition.value || '').toLowerCase();
             
             if (condition.operator === 'contains') return accountName.includes(condValue);
@@ -48,22 +46,17 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
 };
 
 const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule, accounts: Account[]): boolean => {
-    // 1. Check for modern condition structure (Linear Evaluation)
     if (rule.conditions && rule.conditions.length > 0) {
-        
-        // Start with the first condition
-        // Note: We filter out any recursive RuleGroups if they slipped in from old data
         const validConditions = rule.conditions.filter(c => 'field' in c) as RuleCondition[];
         
         if (validConditions.length === 0) return true;
 
         let result = evaluateCondition(tx, validConditions[0], accounts);
 
-        // Iterate through the rest, applying the logic defined in the PREVIOUS condition
         for (let i = 0; i < validConditions.length - 1; i++) {
             const currentCond = validConditions[i];
             const nextCond = validConditions[i + 1];
-            const logic = currentCond.nextLogic || 'AND'; // Default to AND if missing
+            const logic = currentCond.nextLogic || 'AND';
 
             const nextResult = evaluateCondition(tx, nextCond, accounts);
 
@@ -77,20 +70,17 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule,
         return result;
     }
 
-    // 2. Fallback to legacy simple conditions
-    // Description
+    // Fallback to legacy
     if (rule.descriptionContains) {
         if (!tx.description.toLowerCase().includes(rule.descriptionContains.toLowerCase())) {
             return false;
         }
     }
-    // Account
     if (rule.accountId) {
         if (tx.accountId !== rule.accountId) {
             return false;
         }
     }
-    // Amount
     if (rule.amountEquals !== undefined && rule.amountEquals !== null) {
         if (Math.abs(tx.amount - rule.amountEquals) >= 0.01) {
             return false;
@@ -112,12 +102,11 @@ export const applyRulesToTransactions = (
   return rawTransactions.map(tx => {
     let modifiedTx: RawTransaction & { categoryId?: string } = { ...tx };
     
-    // Find the first rule that matches this transaction
     for (const rule of rules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
-        // A rule matches, apply actions
         if (rule.setCategoryId) {
           modifiedTx.categoryId = rule.setCategoryId;
+          // Note: App.tsx denormalize will handle setting the actual category name
         }
         if (rule.setPayeeId) {
           modifiedTx.payeeId = rule.setPayeeId;
@@ -126,7 +115,6 @@ export const applyRulesToTransactions = (
           modifiedTx.typeId = rule.setTransactionTypeId;
         }
         if (rule.setDescription) {
-            // Save original description if not already saved
             if (!modifiedTx.originalDescription) {
                 modifiedTx.originalDescription = modifiedTx.description;
             }
@@ -137,12 +125,10 @@ export const applyRulesToTransactions = (
             rule.assignTagIds.forEach(id => currentTags.add(id));
             modifiedTx.tagIds = Array.from(currentTags);
         }
-        // First matching rule wins, so we break
         return modifiedTx;
       }
     }
     
-    // If no rule matches, return the transaction as is
     return modifiedTx;
   });
 };
