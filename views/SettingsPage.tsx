@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon } from '../components/Icons';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan } from '../types';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { saveFile } from '../services/storageService';
@@ -23,6 +23,8 @@ interface SettingsPageProps {
     rules: ReconciliationRule[];
     templates: Template[];
     scheduledEvents: ScheduledEvent[];
+    tasks: TaskItem[];
+    taskCompletions: TaskCompletions;
     users: User[];
     businessProfile: BusinessProfile;
     documentFolders: DocumentFolder[];
@@ -46,7 +48,8 @@ const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode }> = 
     tags: { label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
     payees: { label: 'Payees', icon: <DocumentIcon className="w-4 h-4" /> },
     reconciliationRules: { label: 'Rules', icon: <SettingsIcon className="w-4 h-4" /> },
-    templates: { label: 'Templates & Events', icon: <TasksIcon className="w-4 h-4" /> },
+    templates: { label: 'Checklist Templates', icon: <TasksIcon className="w-4 h-4" /> },
+    tasks: { label: 'Tasks', icon: <ChecklistIcon className="w-4 h-4" /> },
     businessProfile: { label: 'Business Profile', icon: <DocumentIcon className="w-4 h-4" /> },
     savedReports: { label: 'Reports', icon: <BarChartIcon className="w-4 h-4" /> },
     amazonMetrics: { label: 'Amazon', icon: <DocumentIcon className="w-4 h-4" /> },
@@ -73,7 +76,7 @@ const Section: React.FC<{title: string, variant?: 'default' | 'danger' | 'info',
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ 
     transactions, transactionTypes, onAddTransactionType, onRemoveTransactionType, systemSettings, onUpdateSystemSettings,
-    accounts, categories, tags, payees, rules, templates, scheduledEvents, users, businessProfile, documentFolders, onAddDocument, onCreateFolder,
+    accounts, categories, tags, payees, rules, templates, scheduledEvents, tasks, taskCompletions, users, businessProfile, documentFolders, onAddDocument, onCreateFolder,
     savedReports, savedDateRanges, amazonMetrics, youtubeMetrics, youtubeChannels, financialGoals, financialPlan
 }) => {
     const [newTypeName, setNewTypeName] = useState('');
@@ -171,6 +174,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         if (exportSelection.has('templates')) {
             data.templates = templates;
             data.scheduledEvents = scheduledEvents;
+        }
+
+        if (exportSelection.has('tasks')) {
+            data.tasks = tasks;
+            data.taskCompletions = taskCompletions;
         }
 
         if (exportSelection.has('savedReports')) {
@@ -295,6 +303,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 if (entityKey === 'templates') {
                     savePromises.push(api.save('templates', restoreData.templates || []));
                     savePromises.push(api.save('scheduledEvents', restoreData.scheduledEvents || []));
+                } else if (entityKey === 'tasks') {
+                    savePromises.push(api.save('tasks', restoreData.tasks || []));
+                    savePromises.push(api.save('taskCompletions', restoreData.taskCompletions || {}));
                 } else if (entityKey === 'savedReports') {
                     savePromises.push(api.save('savedReports', restoreData.savedReports || []));
                     savePromises.push(api.save('savedDateRanges', restoreData.savedDateRanges || []));
@@ -715,7 +726,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                         autoFocus
                                     />
                                     <div className="flex gap-2">
-                                        <button onClick={() => setPurgeStep('idle')} className="flex-1 px-3 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded">Abort</button>
+                                        <button onClick={() => setPurgeStep('idle')} className="flex-1 px-3 py-2 bg-slate-100 text-slate-700 text-xs font-bold rounded">Abort</button>
                                         <button 
                                             disabled={purgeText !== 'PURGE' || isPurging}
                                             onClick={handlePurgeDatabase}

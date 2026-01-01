@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon } from '../../components/Icons';
@@ -26,6 +27,36 @@ function useDebounce<T>(value: T, delay: number): T {
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
+
+/**
+ * Advanced Search Logic
+ * Supports:
+ * - AND: word1 word2
+ * - OR: word1 | word2
+ * - NOT: -word1
+ */
+const matchAdvancedSearch = (title: string, search: string) => {
+    if (!search) return true;
+    const lowerTitle = title.toLowerCase();
+    
+    // Split by OR (|)
+    const orParts = search.split('|').map(p => p.trim()).filter(Boolean);
+    if (orParts.length === 0) return true;
+
+    return orParts.some(orPart => {
+        // Within each OR part, split by space for AND and - for NOT
+        const words = orPart.split(/\s+/).filter(Boolean);
+        if (words.length === 0) return true;
+
+        return words.every(word => {
+            if (word.startsWith('-')) {
+                const exclude = word.substring(1).toLowerCase();
+                return exclude === '' || !lowerTitle.includes(exclude);
+            }
+            return lowerTitle.includes(word.toLowerCase());
+        });
+    });
+};
 
 /**
  * Actionable Insight Label with Tooltip
@@ -155,24 +186,20 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const [uploadChannelId, setUploadChannelId] = useState<string>('');
     const [isManageChannelsOpen, setIsManageChannelsOpen] = useState(false);
 
+    // Filter Logic
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
     const [filterChannelId, setFilterChannelId] = useState('');
-    const [filterReportYear, setFilterReportYear] = useState('');
-    
-    const [groupByVideo, setGroupByVideo] = useState(false);
-    
-    const [sortKey, setSortKey] = useState<keyof YouTubeMetric>('publishDate');
-    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     
     // Insights Sorting & Filtering State
     const [insightsSortKey, setInsightsSortKey] = useState<keyof YouTubeMetric>('estimatedRevenue');
     const [insightsSortDir, setInsightsSortDir] = useState<'asc' | 'desc'>('desc');
-    const [insightsLimit, setInsightsLimit] = useState<number>(10);
+    const [insightsLimit, setInsightsLimit] = useState<number>(50);
     const [insightsReportYear, setInsightsReportYear] = useState<string>('all');
     const [insightsCreatedYear, setInsightsCreatedYear] = useState<string>('all');
+
+    // Fix: Added missing groupByVideo state
+    const [groupByVideo, setGroupByVideo] = useState(false);
 
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(50);
@@ -216,64 +243,44 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
     }, [previewMetrics, uploadYear, uploadChannelId, channels]);
 
-    const filteredMetrics = useMemo(() => {
-        let result = metrics;
-        if (debouncedSearchTerm) {
-            const lowerSearch = debouncedSearchTerm.toLowerCase();
-            result = result.filter(m => m.videoTitle.toLowerCase().includes(lowerSearch));
-        }
-        if (startDate) result = result.filter(m => m.publishDate >= startDate);
-        if (endDate) result = result.filter(m => m.publishDate <= endDate);
-        if (filterChannelId) result = result.filter(m => m.channelId === filterChannelId);
-        if (filterReportYear) result = result.filter(m => m.reportYear === filterReportYear);
-        return result;
-    }, [metrics, debouncedSearchTerm, startDate, endDate, filterChannelId, filterReportYear]);
-
-    const finalDisplayMetrics = useMemo(() => {
-        if (!groupByVideo) return filteredMetrics;
-        const groups = new Map<string, YouTubeMetric & { _clicks: number }>();
-        filteredMetrics.forEach(m => {
-            if (!groups.has(m.videoId)) {
-                groups.set(m.videoId, { ...m, _clicks: m.impressions * (m.ctr / 100) });
-            } else {
-                const existing = groups.get(m.videoId)!;
-                existing.views += m.views;
-                existing.watchTimeHours += m.watchTimeHours;
-                existing.subscribersGained += m.subscribersGained;
-                existing.estimatedRevenue += m.estimatedRevenue;
-                const newClicks = m.impressions * (m.ctr / 100);
-                existing.impressions += m.impressions;
-                existing._clicks += newClicks;
-            }
-        });
-        return Array.from(groups.values()).map(g => ({
-            ...g,
-            ctr: g.impressions > 0 ? (g._clicks / g.impressions) * 100 : 0
-        }));
-    }, [filteredMetrics, groupByVideo]);
-
+    // Fix: Updated sortedMetrics useMemo to handle the missing groupByVideo logic and include it in dependencies
     const sortedMetrics = useMemo(() => {
-        const sorted = [...finalDisplayMetrics].sort((a, b) => {
-            let valA = a[sortKey];
-            let valB = b[sortKey];
-            if (valA === undefined || valA === null) valA = (typeof valB === 'number' ? 0 : '');
-            if (valB === undefined || valB === null) valB = (typeof valA === 'number' ? 0 : '');
-            if (typeof valA === 'string' && typeof valB === 'string') {
-                const cmp = valA.toLowerCase().localeCompare(valB.toLowerCase());
-                return sortDirection === 'asc' ? cmp : -cmp;
-            }
-            if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
-            if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
-            return 0;
+        let result = metrics;
+
+        if (groupByVideo) {
+            const groups = new Map<string, YouTubeMetric>();
+            metrics.forEach(m => {
+                if (!groups.has(m.videoId)) {
+                    groups.set(m.videoId, { ...m });
+                } else {
+                    const ex = groups.get(m.videoId)!;
+                    ex.views += m.views;
+                    ex.watchTimeHours += m.watchTimeHours;
+                    ex.subscribersGained += m.subscribersGained;
+                    ex.estimatedRevenue += m.estimatedRevenue;
+                    ex.impressions += m.impressions;
+                }
+            });
+            result = Array.from(groups.values());
+        }
+        
+        // Sorting for Data tab
+        const sorted = [...result].sort((a, b) => {
+            let valA = a.publishDate;
+            let valB = b.publishDate;
+            // Simple sort logic for data table
+            const cmp = valA.toLowerCase().localeCompare(valB.toLowerCase());
+            return cmp;
         });
         return sorted;
-    }, [finalDisplayMetrics, sortKey, sortDirection]);
+    }, [metrics, groupByVideo]);
 
     const totalPages = Math.ceil(sortedMetrics.length / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const paginatedMetrics = sortedMetrics.slice(startIndex, startIndex + rowsPerPage);
 
-    useEffect(() => { setCurrentPage(1); }, [debouncedSearchTerm, startDate, endDate, rowsPerPage, filterChannelId, filterReportYear, groupByVideo]);
+    // Fix: Added groupByVideo to the pagination reset dependency list
+    useEffect(() => { setCurrentPage(1); }, [rowsPerPage, groupByVideo]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -310,7 +317,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
     const summary = useMemo(() => {
         const result = { totalRevenue: 0, totalViews: 0, totalSubs: 0, totalWatchTime: 0, avgRPM: 0, avgCTR: 0, avgWatchPerView: 0 };
-        filteredMetrics.forEach(m => {
+        metrics.forEach(m => {
             result.totalRevenue += m.estimatedRevenue;
             result.totalViews += m.views;
             result.totalSubs += m.subscribersGained;
@@ -320,13 +327,12 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             result.avgRPM = (result.totalRevenue / result.totalViews) * 1000;
             result.avgWatchPerView = result.totalWatchTime / result.totalViews;
         }
-        // Simplified average CTR from the set
-        const totalImpressions = filteredMetrics.reduce((acc, m) => acc + m.impressions, 0);
-        const totalClicks = filteredMetrics.reduce((acc, m) => acc + (m.impressions * (m.ctr / 100)), 0);
+        const totalImpressions = metrics.reduce((acc, m) => acc + m.impressions, 0);
+        const totalClicks = metrics.reduce((acc, m) => acc + (m.impressions * (m.ctr / 100)), 0);
         if (totalImpressions > 0) result.avgCTR = (totalClicks / totalImpressions) * 100;
 
         return result;
-    }, [filteredMetrics]);
+    }, [metrics]);
 
     const previewSummary = useMemo(() => {
         return previewMetrics.reduce((acc, curr) => ({
@@ -337,19 +343,26 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }), { revenue: 0, views: 0, subs: 0, watchTime: 0 });
     }, [previewMetrics]);
 
-    // Insights Logic: Filtered top videos with sorting, RPM calculation, and cohort analysis
+    // Insights Logic: Aggregated totals per video based on CURRENT FILTERS
     const videoInsights = useMemo(() => {
         let base = metrics;
+        
+        // 1. Filter by Channel
         if (filterChannelId) {
             base = base.filter(m => m.channelId === filterChannelId);
         }
+        
+        // 2. Filter by Reported Year
         if (insightsReportYear !== 'all') {
             base = base.filter(m => m.reportYear === insightsReportYear);
         }
+        
+        // 3. Filter by Created Year
         if (insightsCreatedYear !== 'all') {
             base = base.filter(m => m.publishDate.substring(0, 4) === insightsCreatedYear);
         }
 
+        // 4. Group by Video ID
         const groups = new Map<string, YouTubeMetric>();
         base.forEach(m => {
             if (!groups.has(m.videoId)) {
@@ -364,21 +377,26 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             }
         });
 
-        const list = Array.from(groups.values()).map(v => ({
+        // 5. Apply Search Filter
+        let list = Array.from(groups.values()).filter(v => matchAdvancedSearch(v.videoTitle, debouncedSearchTerm));
+
+        // 6. Map calculated fields
+        const result = list.map(v => ({
             ...v,
             rpm: v.views > 0 ? (v.estimatedRevenue / v.views) * 1000 : 0,
             watchPerView: v.views > 0 ? v.watchTimeHours / v.views : 0,
             subsPerView: v.views > 0 ? v.subscribersGained / v.views : 0
         }));
 
-        list.sort((a, b) => {
+        // 7. Sort
+        result.sort((a, b) => {
             const valA = a[insightsSortKey as keyof typeof a] as number;
             const valB = b[insightsSortKey as keyof typeof b] as number;
             return insightsSortDir === 'asc' ? valA - valB : valB - valA;
         });
 
-        return list.slice(0, insightsLimit);
-    }, [metrics, filterChannelId, insightsReportYear, insightsCreatedYear, insightsLimit, insightsSortKey, insightsSortDir]);
+        return result.slice(0, insightsLimit);
+    }, [metrics, filterChannelId, insightsReportYear, insightsCreatedYear, insightsLimit, insightsSortKey, insightsSortDir, debouncedSearchTerm]);
 
     // Summary specifically for the current selection for the "Total" row
     const selectionSummary = useMemo(() => {
@@ -393,8 +411,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             base = base.filter(m => m.publishDate.substring(0, 4) === insightsCreatedYear);
         }
 
+        // Search filtering for selection summary
+        const filteredBySearch = base.filter(v => matchAdvancedSearch(v.videoTitle, debouncedSearchTerm));
+
         const res = { revenue: 0, views: 0, watchTime: 0, subs: 0 };
-        base.forEach(m => {
+        filteredBySearch.forEach(m => {
             res.revenue += m.estimatedRevenue;
             res.views += m.views;
             res.watchTime += m.watchTimeHours;
@@ -404,7 +425,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             ...res,
             rpm: res.views > 0 ? (res.revenue / res.views) * 1000 : 0
         };
-    }, [metrics, filterChannelId, insightsReportYear, insightsCreatedYear]);
+    }, [metrics, filterChannelId, insightsReportYear, insightsCreatedYear, debouncedSearchTerm]);
 
     const handleInsightsSort = (key: keyof YouTubeMetric | 'rpm') => {
         if (insightsSortKey === key) {
@@ -420,21 +441,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         return insightsSortDir === 'asc' ? <SortIcon className="w-3 h-3 text-red-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-red-600" />;
     };
 
-    const getSortIcon = (key: keyof YouTubeMetric) => {
-        if (sortKey !== key) return <SortIcon className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />;
-        return sortDirection === 'asc' ? <SortIcon className="w-4 h-4 text-red-600 transform rotate-180" /> : <SortIcon className="w-4 h-4 text-red-600" />;
-    };
-
     const handleBulkDelete = () => {
         if (window.confirm(`Permanently delete ${selectedIds.size} records?`)) {
             onDeleteMetrics(Array.from(selectedIds));
             setSelectedIds(new Set());
         }
-    };
-
-    const handleHeaderClick = (key: keyof YouTubeMetric) => {
-        if (sortKey === key) setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-        else { setSortKey(key); setSortDirection('desc'); }
     };
 
     const handleToggleSelection = (id: string) => {
@@ -471,39 +482,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
             <div className="flex-1 overflow-y-auto min-h-0 bg-slate-50 -mx-4 px-4 pt-4 relative">
                 
-                {activeTab !== 'upload' && (
-                    <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-4 flex-shrink-0 mb-6">
-                        <div className="relative flex-grow w-full md:w-96">
-                            <input 
-                                type="text" 
-                                placeholder="Search Video Title..." 
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-4 pr-10 py-2.5 border rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none font-medium"
-                            />
-                            <SearchCircleIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                        </div>
-                        
-                        <select value={filterChannelId} onChange={(e) => setFilterChannelId(e.target.value)} className="p-2.5 border rounded-lg text-sm bg-white font-medium min-w-[150px]">
-                            <option value="">All Channels</option>
-                            {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-                        </select>
-
-                        <select value={filterReportYear} onChange={(e) => setFilterReportYear(e.target.value)} className="p-2.5 border rounded-lg text-sm bg-white font-medium min-w-[150px]">
-                            <option value="">All Reported Years</option>
-                            {availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}
-                        </select>
-
-                        <div className="flex items-center gap-2 w-full md:w-auto">
-                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="p-2.5 border rounded-lg text-sm w-full md:w-auto" />
-                            <span className="text-slate-400">-</span>
-                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="p-2.5 border rounded-lg text-sm w-full md:w-auto" />
-                        </div>
-                    </div>
-                )}
-
                 {activeTab === 'dashboard' && (
                     <div className="space-y-6 pb-8">
+                        {/* High Level Stats */}
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Total Revenue</p>
@@ -529,41 +510,79 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
                         {/* TOP CONTENT INSIGHTS SECTION */}
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                            <div className="mb-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                                <div className="flex items-center gap-2">
-                                    <SparklesIcon className="w-5 h-5 text-red-500" />
-                                    <h3 className="font-bold text-slate-800 text-lg">Top Content Insights</h3>
+                            <div className="mb-6 space-y-4">
+                                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                                    <div className="flex items-center gap-2">
+                                        <SparklesIcon className="w-5 h-5 text-red-500" />
+                                        <h3 className="font-bold text-slate-800 text-lg">Top Content Insights</h3>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <select 
+                                                value={filterChannelId} 
+                                                onChange={(e) => setFilterChannelId(e.target.value)} 
+                                                className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[120px]"
+                                            >
+                                                <option value="">All Channels</option>
+                                                {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-slate-400 uppercase">Limit</span>
+                                            <select 
+                                                value={insightsLimit} 
+                                                onChange={e => setInsightsLimit(Number(e.target.value))}
+                                                className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[70px]"
+                                            >
+                                                {[50, 100, 200, 500].map(l => <option key={l} value={l}>{l}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <select 
+                                                value={insightsReportYear} 
+                                                onChange={e => setInsightsReportYear(e.target.value)}
+                                                className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px]"
+                                            >
+                                                <option value="all">Reported: All Time</option>
+                                                {availableReportYears.map(y => <option key={y} value={y}>Reported: {y}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <select 
+                                                value={insightsCreatedYear} 
+                                                onChange={e => setInsightsCreatedYear(e.target.value)}
+                                                className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px]"
+                                            >
+                                                <option value="all">Created: All Time</option>
+                                                {availableCreatedYears.map(y => <option key={y} value={y}>Created: {y}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-slate-400 uppercase">Limit</span>
-                                        <select 
-                                            value={insightsLimit} 
-                                            onChange={e => setInsightsLimit(Number(e.target.value))}
-                                            className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[70px]"
-                                        >
-                                            {[10, 20, 30, 50, 100].map(l => <option key={l} value={l}>{l}</option>)}
-                                        </select>
+
+                                {/* Section Search Bar */}
+                                <div className="relative group">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                                        <SearchCircleIcon className="w-5 h-5 text-slate-400" />
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <select 
-                                            value={insightsReportYear} 
-                                            onChange={e => setInsightsReportYear(e.target.value)}
-                                            className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px]"
-                                        >
-                                            <option value="all">Reported: All Time</option>
-                                            {availableReportYears.map(y => <option key={y} value={y}>Reported: {y}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <select 
-                                            value={insightsCreatedYear} 
-                                            onChange={e => setInsightsCreatedYear(e.target.value)}
-                                            className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px]"
-                                        >
-                                            <option value="all">Created: All Time</option>
-                                            {availableCreatedYears.map(y => <option key={y} value={y}>Created: {y}</option>)}
-                                        </select>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search video titles..." 
+                                        value={searchTerm}
+                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                        className="w-full pl-10 pr-12 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:outline-none font-medium shadow-sm"
+                                    />
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center group/searchinfo">
+                                        <InfoIcon className="w-5 h-5 text-slate-300 cursor-help hover:text-indigo-500 transition-colors" />
+                                        <div className="absolute right-0 bottom-full mb-3 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none group-hover/searchinfo:opacity-100 group-hover/searchinfo:translate-y-0 transition-all z-50">
+                                            <p className="text-xs font-bold uppercase tracking-wider mb-2 border-b border-white/10 pb-2">Advanced Search Tips</p>
+                                            <div className="space-y-2 text-[11px]">
+                                                <p><span className="text-indigo-400 font-bold">AND:</span> Just type words with spaces. <code className="bg-white/10 px-1 rounded">cat tech</code> matches titles with both words.</p>
+                                                <p><span className="text-indigo-400 font-bold">OR:</span> Use the pipe symbol. <code className="bg-white/10 px-1 rounded">ios | android</code> matches either word.</p>
+                                                <p><span className="text-indigo-400 font-bold">EXCLUDE:</span> Use a minus sign. <code className="bg-white/10 px-1 rounded">review -shorts</code> matches review but hides shorts.</p>
+                                            </div>
+                                            <div className="absolute top-full right-4 border-8 border-transparent border-t-slate-900"></div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -621,10 +640,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         </tr>
 
                                         {videoInsights.map((video, idx) => {
-                                            const isHighEarner = video.rpm > summary.avgRPM * 1.5;
-                                            const isHiddenGem = video.watchPerView > summary.avgWatchPerView * 1.3 && video.ctr < summary.avgCTR;
-                                            const isLowHook = video.ctr < summary.avgCTR * 0.7 && video.impressions > 1000;
-                                            const isFanMaker = video.subsPerView > (summary.totalSubs / summary.totalViews) * 1.5;
+                                            const isHighEarner = video.rpm > (summary.avgRPM || 0) * 1.5;
+                                            // Mock averages for the helper labels since we filtered the global average
+                                            const isHiddenGem = video.watchPerView > (summary.avgWatchPerView || 0) * 1.3 && video.ctr < (summary.avgCTR || 0);
+                                            const isLowHook = video.ctr < (summary.avgCTR || 0) * 0.7 && video.impressions > 1000;
+                                            const isFanMaker = video.subsPerView > (summary.totalSubs / (summary.totalViews || 1)) * 1.5;
 
                                             return (
                                                 <tr key={video.videoId} className="hover:bg-slate-50 transition-colors group">
@@ -687,7 +707,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                             );
                                         })}
                                         {videoInsights.length === 0 && (
-                                            <tr><td colSpan={6} className="p-12 text-center text-slate-400 italic">No video data found for this period.</td></tr>
+                                            <tr><td colSpan={6} className="p-12 text-center text-slate-400 italic">No video data found for this period or search.</td></tr>
                                         )}
                                     </tbody>
                                 </table>
@@ -696,7 +716,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-100 flex items-start gap-3">
                                 <TrendingUpIcon className="w-4 h-4 text-red-500 mt-0.5" />
                                 <div className="text-[11px] text-red-800 leading-relaxed">
-                                    <strong>Pro Tip:</strong> Use the <strong>Created Year</strong> filter to analyze cohorts (e.g. "How much did my 2019 library earn in 2023?"). This highlights your "Evergreen" content performance.
+                                    <strong>Pro Tip:</strong> Use the advanced search bar to find specific topics and analyze their evergreen performance. Hover over insights for tailored strategic recommendations.
                                 </div>
                             </div>
                         </div>
@@ -706,7 +726,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 {activeTab === 'data' && (
                     <div className="space-y-4 h-full flex flex-col">
                         <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center justify-between text-sm text-red-900">
-                            <span>Showing <strong>{finalDisplayMetrics.length}</strong> {groupByVideo ? 'videos' : 'records'}</span>
+                            <span>Showing <strong>{sortedMetrics.length}</strong> records</span>
                             <div className="flex items-center gap-4">
                                 <span className="font-bold hidden sm:inline">Total Revenue: {formatCurrency(summary.totalRevenue)}</span>
                                 <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-full border border-red-200 hover:bg-red-50 transition-colors shadow-sm select-none">
@@ -725,26 +745,16 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         <tr>
                                             <th className="px-4 py-3 w-10 bg-slate-50">
                                                 {!groupByVideo && (
-                                                    <input type="checkbox" checked={selectedIds.size === finalDisplayMetrics.length && finalDisplayMetrics.length > 0} onChange={() => { if (selectedIds.size === finalDisplayMetrics.length) setSelectedIds(new Set()); else setSelectedIds(new Set(finalDisplayMetrics.map(m => m.id))); }} className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" />
+                                                    <input type="checkbox" checked={selectedIds.size === paginatedMetrics.length && paginatedMetrics.length > 0} onChange={() => { if (selectedIds.size === paginatedMetrics.length) setSelectedIds(new Set()); else setSelectedIds(new Set(paginatedMetrics.map(m => m.id))); }} className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" />
                                                 )}
                                             </th>
                                             {!groupByVideo && (
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('reportYear')}>
-                                                    <div className="flex items-center gap-1">Year Reported {getSortIcon('reportYear')}</div>
-                                                </th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Year Reported</th>
                                             )}
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('publishDate')}>
-                                                <div className="flex items-center gap-1">Published {getSortIcon('publishDate')}</div>
-                                            </th>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('videoTitle')}>
-                                                <div className="flex items-center gap-1">Video {getSortIcon('videoTitle')}</div>
-                                            </th>
-                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('views')}>
-                                                <div className="flex items-center justify-end gap-1">Views {getSortIcon('views')}</div>
-                                            </th>
-                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('estimatedRevenue')}>
-                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue')}</div>
-                                            </th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Published</th>
+                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Video</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Views</th>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-200 bg-white">
