@@ -167,11 +167,12 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const [sortKey, setSortKey] = useState<keyof YouTubeMetric>('publishDate');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     
-    // Insights Sorting State
+    // Insights Sorting & Filtering State
     const [insightsSortKey, setInsightsSortKey] = useState<keyof YouTubeMetric>('estimatedRevenue');
     const [insightsSortDir, setInsightsSortDir] = useState<'asc' | 'desc'>('desc');
     const [insightsLimit, setInsightsLimit] = useState<number>(10);
-    const [insightsYear, setInsightsYear] = useState<string>('all');
+    const [insightsReportYear, setInsightsReportYear] = useState<string>('all');
+    const [insightsCreatedYear, setInsightsCreatedYear] = useState<string>('all');
 
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(50);
@@ -186,10 +187,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         return Array.from(yearsSet).sort().reverse();
     }, [metrics]);
 
-    const availableRevenueYears = useMemo(() => {
+    const availableCreatedYears = useMemo(() => {
         const yearsSet = new Set<string>();
         metrics.forEach(m => {
-            if (m.publishDate) yearsSet.add(m.publishDate.substring(0, 4));
+            if (m.publishDate) {
+                const y = m.publishDate.substring(0, 4);
+                if (y.length === 4) yearsSet.add(y);
+            }
         });
         return Array.from(yearsSet).sort().reverse();
     }, [metrics]);
@@ -216,7 +220,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         let result = metrics;
         if (debouncedSearchTerm) {
             const lowerSearch = debouncedSearchTerm.toLowerCase();
-            result = result.filter(m => m.videoTitle.toLowerCase().includes(lowerSearch) || m.videoId.toLowerCase().includes(lowerSearch));
+            result = result.filter(m => m.videoTitle.toLowerCase().includes(lowerSearch));
         }
         if (startDate) result = result.filter(m => m.publishDate >= startDate);
         if (endDate) result = result.filter(m => m.publishDate <= endDate);
@@ -333,11 +337,17 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }), { revenue: 0, views: 0, subs: 0, watchTime: 0 });
     }, [previewMetrics]);
 
-    // Insights Logic: Filtered top videos with sorting and RPM calculation
+    // Insights Logic: Filtered top videos with sorting, RPM calculation, and cohort analysis
     const videoInsights = useMemo(() => {
         let base = metrics;
-        if (insightsYear !== 'all') {
-            base = base.filter(m => m.reportYear === insightsYear);
+        if (filterChannelId) {
+            base = base.filter(m => m.channelId === filterChannelId);
+        }
+        if (insightsReportYear !== 'all') {
+            base = base.filter(m => m.reportYear === insightsReportYear);
+        }
+        if (insightsCreatedYear !== 'all') {
+            base = base.filter(m => m.publishDate.substring(0, 4) === insightsCreatedYear);
         }
 
         const groups = new Map<string, YouTubeMetric>();
@@ -368,14 +378,21 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         });
 
         return list.slice(0, insightsLimit);
-    }, [metrics, insightsYear, insightsLimit, insightsSortKey, insightsSortDir]);
+    }, [metrics, filterChannelId, insightsReportYear, insightsCreatedYear, insightsLimit, insightsSortKey, insightsSortDir]);
 
-    // Summary specifically for the current year selection for the "Total" row
-    const yearSummary = useMemo(() => {
+    // Summary specifically for the current selection for the "Total" row
+    const selectionSummary = useMemo(() => {
         let base = metrics;
-        if (insightsYear !== 'all') {
-            base = base.filter(m => m.reportYear === insightsYear);
+        if (filterChannelId) {
+            base = base.filter(m => m.channelId === filterChannelId);
         }
+        if (insightsReportYear !== 'all') {
+            base = base.filter(m => m.reportYear === insightsReportYear);
+        }
+        if (insightsCreatedYear !== 'all') {
+            base = base.filter(m => m.publishDate.substring(0, 4) === insightsCreatedYear);
+        }
+
         const res = { revenue: 0, views: 0, watchTime: 0, subs: 0 };
         base.forEach(m => {
             res.revenue += m.estimatedRevenue;
@@ -387,7 +404,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             ...res,
             rpm: res.views > 0 ? (res.revenue / res.views) * 1000 : 0
         };
-    }, [metrics, insightsYear]);
+    }, [metrics, filterChannelId, insightsReportYear, insightsCreatedYear]);
 
     const handleInsightsSort = (key: keyof YouTubeMetric | 'rpm') => {
         if (insightsSortKey === key) {
@@ -413,17 +430,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             onDeleteMetrics(Array.from(selectedIds));
             setSelectedIds(new Set());
         }
-    };
-
-    const setDateRange = (type: 'thisYear' | 'lastYear' | 'thisMonth' | 'lastMonth') => {
-        const now = new Date();
-        let start, end;
-        if (type === 'thisYear') { start = new Date(now.getFullYear(), 0, 1); end = new Date(now.getFullYear(), 11, 31); }
-        else if (type === 'lastYear') { start = new Date(now.getFullYear() - 1, 0, 1); end = new Date(now.getFullYear() - 1, 11, 31); }
-        else if (type === 'thisMonth') { start = new Date(now.getFullYear(), now.getMonth(), 1); end = new Date(now.getFullYear(), now.getMonth() + 1, 0); }
-        else { start = new Date(now.getFullYear(), now.getMonth() - 1, 1); end = new Date(now.getFullYear(), now.getMonth(), 0); }
-        setStartDate(start.toISOString().split('T')[0]);
-        setEndDate(end.toISOString().split('T')[0]);
     };
 
     const handleHeaderClick = (key: keyof YouTubeMetric) => {
@@ -467,36 +473,31 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 
                 {activeTab !== 'upload' && (
                     <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row items-center gap-4 flex-shrink-0 mb-6">
-                        <div className="relative flex-grow w-full md:w-auto">
-                            <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <div className="relative flex-grow w-full md:w-96">
                             <input 
                                 type="text" 
                                 placeholder="Search Video Title..." 
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none"
+                                className="w-full pl-4 pr-10 py-2.5 border rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none font-medium"
                             />
+                            <SearchCircleIcon className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                         </div>
                         
-                        <select value={filterChannelId} onChange={(e) => setFilterChannelId(e.target.value)} className="p-2 border rounded-lg text-sm bg-white">
+                        <select value={filterChannelId} onChange={(e) => setFilterChannelId(e.target.value)} className="p-2.5 border rounded-lg text-sm bg-white font-medium min-w-[150px]">
                             <option value="">All Channels</option>
                             {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
                         </select>
 
-                        <select value={filterReportYear} onChange={(e) => setFilterReportYear(e.target.value)} className="p-2 border rounded-lg text-sm bg-white">
+                        <select value={filterReportYear} onChange={(e) => setFilterReportYear(e.target.value)} className="p-2.5 border rounded-lg text-sm bg-white font-medium min-w-[150px]">
                             <option value="">All Reported Years</option>
                             {availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}
                         </select>
 
                         <div className="flex items-center gap-2 w-full md:w-auto">
-                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="p-2 border rounded-lg text-sm w-full md:w-auto" />
+                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="p-2.5 border rounded-lg text-sm w-full md:w-auto" />
                             <span className="text-slate-400">-</span>
-                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="p-2 border rounded-lg text-sm w-full md:w-auto" />
-                        </div>
-
-                        <div className="flex gap-2">
-                            <button onClick={() => setDateRange('thisMonth')} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-md font-medium text-slate-600">This Month</button>
-                            <button onClick={() => setDateRange('thisYear')} className="text-xs bg-slate-100 hover:bg-slate-200 px-3 py-2 rounded-md font-medium text-slate-600">This Year</button>
+                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="p-2.5 border rounded-lg text-sm w-full md:w-auto" />
                         </div>
                     </div>
                 )}
@@ -526,7 +527,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             </div>
                         </div>
 
-                        {/* NEW INSIGHTS SECTION */}
+                        {/* TOP CONTENT INSIGHTS SECTION */}
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                             <div className="mb-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                                 <div className="flex items-center gap-2">
@@ -536,7 +537,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-bold text-slate-400 uppercase">Limit</span>
-                                        {/* BUG FIX: Increased padding-right and added min-width to ensure icon doesn't overlap text */}
                                         <select 
                                             value={insightsLimit} 
                                             onChange={e => setInsightsLimit(Number(e.target.value))}
@@ -546,14 +546,23 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         </select>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-xs font-bold text-slate-400 uppercase">Year</span>
                                         <select 
-                                            value={insightsYear} 
-                                            onChange={e => setInsightsYear(e.target.value)}
-                                            className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[120px]"
+                                            value={insightsReportYear} 
+                                            onChange={e => setInsightsReportYear(e.target.value)}
+                                            className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px]"
                                         >
-                                            <option value="all">All Time</option>
-                                            {availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                            <option value="all">Reported: All Time</option>
+                                            {availableReportYears.map(y => <option key={y} value={y}>Reported: {y}</option>)}
+                                        </select>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <select 
+                                            value={insightsCreatedYear} 
+                                            onChange={e => setInsightsCreatedYear(e.target.value)}
+                                            className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px]"
+                                        >
+                                            <option value="all">Created: All Time</option>
+                                            {availableCreatedYears.map(y => <option key={y} value={y}>Created: {y}</option>)}
                                         </select>
                                     </div>
                                 </div>
@@ -597,19 +606,18 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-slate-100">
-                                        {/* TOTALS ROW (Top of video content) */}
+                                        {/* TOTALS ROW */}
                                         <tr className="bg-slate-50/80 font-bold border-b-2 border-slate-200">
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="text-xs text-slate-500 uppercase tracking-widest">Total for Period</span>
-                                                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded uppercase">{insightsYear === 'all' ? 'All Time' : insightsYear}</span>
+                                                    <span className="text-xs text-slate-500 uppercase tracking-widest">Total for Current Filters</span>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 text-right text-sm text-slate-800 font-mono">{formatNumber(yearSummary.views)}</td>
-                                            <td className="px-4 py-3 text-right text-sm text-slate-800 font-mono">{formatNumber(yearSummary.watchTime)}h</td>
-                                            <td className="px-4 py-3 text-right text-sm text-slate-800 font-mono">{formatNumber(yearSummary.subs)}</td>
-                                            <td className="px-4 py-3 text-right text-xs text-slate-500 font-mono">{formatCurrency(yearSummary.rpm)}</td>
-                                            <td className="px-4 py-3 text-right text-sm text-green-700 font-mono">{formatCurrency(yearSummary.revenue)}</td>
+                                            <td className="px-4 py-3 text-right text-sm text-slate-800 font-mono">{formatNumber(selectionSummary.views)}</td>
+                                            <td className="px-4 py-3 text-right text-sm text-slate-800 font-mono">{formatNumber(selectionSummary.watchTime)}h</td>
+                                            <td className="px-4 py-3 text-right text-sm text-slate-800 font-mono">{formatNumber(selectionSummary.subs)}</td>
+                                            <td className="px-4 py-3 text-right text-xs text-slate-500 font-mono">{formatCurrency(selectionSummary.rpm)}</td>
+                                            <td className="px-4 py-3 text-right text-sm text-green-700 font-mono">{formatCurrency(selectionSummary.revenue)}</td>
                                         </tr>
 
                                         {videoInsights.map((video, idx) => {
@@ -624,7 +632,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                         <div className="flex items-center gap-3">
                                                             <span className="text-[10px] font-mono text-slate-300 group-hover:text-red-300">{idx + 1}</span>
                                                             <div className="min-w-0">
-                                                                <div className="text-sm font-bold text-slate-700 truncate" title={video.videoTitle}>{video.videoTitle}</div>
+                                                                <div className="text-sm font-bold text-slate-700 truncate" title={video.videoTitle}>
+                                                                    <span className="text-slate-400 mr-2 font-mono">({video.publishDate})</span>
+                                                                    {video.videoTitle}
+                                                                </div>
                                                                 <div className="flex flex-wrap items-center gap-1.5 mt-1">
                                                                     <span className="text-[10px] text-slate-400 font-mono mr-1">{video.videoId}</span>
                                                                     
@@ -685,7 +696,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-100 flex items-start gap-3">
                                 <TrendingUpIcon className="w-4 h-4 text-red-500 mt-0.5" />
                                 <div className="text-[11px] text-red-800 leading-relaxed">
-                                    <strong>Pro Tip:</strong> Hover over the insights labels for specific strategy recommendations. Use the <strong>"Total"</strong> row to see how much this subset of content contributes to your overall annual performance.
+                                    <strong>Pro Tip:</strong> Use the <strong>Created Year</strong> filter to analyze cohorts (e.g. "How much did my 2019 library earn in 2023?"). This highlights your "Evergreen" content performance.
                                 </div>
                             </div>
                         </div>
@@ -744,7 +755,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                 </td>
                                                 {!groupByVideo && <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.reportYear || '-'}</td>}
                                                 <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.publishDate}{m.channelId && <div className="text-[10px] text-indigo-600">{channelMap.get(m.channelId)}</div>}</td>
-                                                <td className="px-4 py-2 text-sm text-slate-800"><div className="line-clamp-1 max-w-md" title={m.videoTitle}>{m.videoTitle}</div>{groupByVideo && <div className="text-xs text-slate-400 mt-0.5">{m.videoId}</div>}</td>
+                                                <td className="px-4 py-2 text-sm text-slate-800">
+                                                    <div className="line-clamp-1 max-w-md" title={m.videoTitle}>
+                                                        <span className="text-slate-400 mr-2 font-mono">({m.publishDate})</span>
+                                                        {m.videoTitle}
+                                                    </div>
+                                                    {groupByVideo && <div className="text-xs text-slate-400 mt-0.5">{m.videoId}</div>}
+                                                </td>
                                                 <td className="px-4 py-2 text-right text-sm text-slate-600">{formatNumber(m.views)}</td>
                                                 <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.estimatedRevenue)}</td>
                                             </tr>
