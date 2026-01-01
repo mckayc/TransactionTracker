@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan } from '../types';
-// Added missing SparklesIcon to the imports
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
@@ -29,6 +28,15 @@ interface SettingsPageProps {
     documentFolders: DocumentFolder[];
     onAddDocument: (doc: BusinessDocument) => void;
     onCreateFolder: (folder: DocumentFolder) => void;
+    
+    // Additional data for full backups
+    savedReports: SavedReport[];
+    savedDateRanges: CustomDateRange[];
+    amazonMetrics: AmazonMetric[];
+    youtubeMetrics: YouTubeMetric[];
+    youtubeChannels: YouTubeChannel[];
+    financialGoals: FinancialGoal[];
+    financialPlan: FinancialPlan | null;
 }
 
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode }> = {
@@ -39,14 +47,11 @@ const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode }> = 
     payees: { label: 'Payees', icon: <DocumentIcon className="w-4 h-4" /> },
     reconciliationRules: { label: 'Rules', icon: <SettingsIcon className="w-4 h-4" /> },
     templates: { label: 'Templates & Events', icon: <TasksIcon className="w-4 h-4" /> },
-    tasks: { label: 'Tasks', icon: <TasksIcon className="w-4 h-4" /> },
     businessProfile: { label: 'Business Profile', icon: <DocumentIcon className="w-4 h-4" /> },
-    chatSessions: { label: 'AI Conversations', icon: <ChatBubbleIcon className="w-4 h-4" /> },
-    savedReports: { label: 'Reports & Date Ranges', icon: <BarChartIcon className="w-4 h-4" /> },
-    amazonMetrics: { label: 'Amazon Data', icon: <DocumentIcon className="w-4 h-4" /> },
-    youtubeMetrics: { label: 'YouTube Data', icon: <DocumentIcon className="w-4 h-4" /> },
-    financialGoals: { label: 'Financial Goals', icon: <LightBulbIcon className="w-4 h-4" /> },
-    financialPlan: { label: 'Financial Plan', icon: <LightBulbIcon className="w-4 h-4" /> },
+    savedReports: { label: 'Reports', icon: <BarChartIcon className="w-4 h-4" /> },
+    amazonMetrics: { label: 'Amazon', icon: <DocumentIcon className="w-4 h-4" /> },
+    youtubeMetrics: { label: 'YouTube', icon: <DocumentIcon className="w-4 h-4" /> },
+    financialGoals: { label: 'Goals', icon: <LightBulbIcon className="w-4 h-4" /> },
 };
 
 const Section: React.FC<{title: string, variant?: 'default' | 'danger' | 'info', children: React.ReactNode}> = ({title, variant = 'default', children}) => (
@@ -68,29 +73,26 @@ const Section: React.FC<{title: string, variant?: 'default' | 'danger' | 'info',
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ 
     transactions, transactionTypes, onAddTransactionType, onRemoveTransactionType, systemSettings, onUpdateSystemSettings,
-    accounts, categories, tags, payees, rules, templates, scheduledEvents, users, businessProfile, documentFolders, onAddDocument, onCreateFolder
+    accounts, categories, tags, payees, rules, templates, scheduledEvents, users, businessProfile, documentFolders, onAddDocument, onCreateFolder,
+    savedReports, savedDateRanges, amazonMetrics, youtubeMetrics, youtubeChannels, financialGoals, financialPlan
 }) => {
     const [newTypeName, setNewTypeName] = useState('');
     const [newTypeEffect, setNewTypeEffect] = useState<'income' | 'expense' | 'transfer' | 'investment'>('expense');
     const importFileRef = useRef<HTMLInputElement>(null);
     const apiKeyActive = hasApiKey();
 
-    // Export Selection State
     const [exportSelection, setExportSelection] = useState<Set<string>>(new Set(Object.keys(ENTITY_LABELS)));
 
-    // Restore Modal State
     const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
     const [restoreData, setRestoreData] = useState<any>(null);
     const [restoreSelection, setRestoreSelection] = useState<Set<string>>(new Set());
 
-    // Reset State
     const [purgeStep, setPurgeStep] = useState<'idle' | 'confirm' | 'final'>('idle');
     const [purgeText, setPurgeText] = useState('');
     const [isPurging, setIsPurging] = useState(false);
 
     const usedTransactionTypes = useMemo(() => new Set(transactions.map(tx => tx.typeId)), [transactions]);
     
-    // Backup Settings State
     const [backupFreq, setBackupFreq] = useState<'daily' | 'weekly' | 'monthly' | 'never'>('never');
     const [retentionCount, setRetentionCount] = useState(5);
 
@@ -137,53 +139,56 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     };
 
     const getExportData = () => {
-        const fullData: any = {
+        const data: any = {
             exportDate: new Date().toISOString(),
-            version: '0.0.11',
-            transactions,
-            accounts,
-            categories,
-            tags,
-            payees,
-            reconciliationRules: rules,
-            templates,
-            scheduledEvents,
-            users,
+            version: '0.0.30',
+            // Default core types
             transactionTypes,
-            businessProfile,
-            documentFolders,
-            chatSessions: [], // Placeholder
-            savedReports: [],
-            savedDateRanges: [],
-            amazonMetrics: [],
-            youtubeMetrics: [],
-            financialGoals: [],
-            financialPlan: null
+            users
         };
 
-        const filteredData: any = { 
-            exportDate: fullData.exportDate, 
-            version: fullData.version,
-            transactionTypes: fullData.transactionTypes,
-            users: fullData.users
-        };
+        if (exportSelection.has('transactions')) data.transactions = transactions;
+        if (exportSelection.has('accounts')) data.accounts = accounts;
+        if (exportSelection.has('categories')) data.categories = categories;
+        if (exportSelection.has('tags')) data.tags = tags;
+        if (exportSelection.has('payees')) data.payees = payees;
+        if (exportSelection.has('reconciliationRules')) data.reconciliationRules = rules;
+        if (exportSelection.has('businessProfile')) data.businessProfile = businessProfile;
+        if (exportSelection.has('financialGoals')) data.financialGoals = financialGoals;
+        
+        if (exportSelection.has('templates')) {
+            data.templates = templates;
+            data.scheduledEvents = scheduledEvents;
+        }
 
-        exportSelection.forEach(key => {
-            if (key === 'templates') {
-                filteredData.templates = fullData.templates;
-                filteredData.scheduledEvents = fullData.scheduledEvents;
-            } else if (key === 'savedReports') {
-                filteredData.savedReports = fullData.savedReports;
-                filteredData.savedDateRanges = fullData.savedDateRanges;
-            } else if (key === 'youtubeMetrics') {
-                filteredData.youtubeMetrics = fullData.youtubeMetrics;
-                filteredData.youtubeChannels = fullData.youtubeChannels || [];
-            } else {
-                filteredData[key] = fullData[key];
-            }
-        });
+        if (exportSelection.has('savedReports')) {
+            data.savedReports = savedReports;
+            data.savedDateRanges = savedDateRanges;
+        }
 
-        return filteredData;
+        if (exportSelection.has('amazonMetrics')) {
+            data.amazonMetrics = amazonMetrics;
+        }
+
+        if (exportSelection.has('youtubeMetrics')) {
+            data.youtubeMetrics = youtubeMetrics;
+            data.youtubeChannels = youtubeChannels;
+        }
+
+        return data;
+    };
+
+    const generateBackupFilename = () => {
+        const date = new Date().toISOString().split('T')[0];
+        if (exportSelection.size === Object.keys(ENTITY_LABELS).length) {
+            return `finparser-full-backup-${date}.json`;
+        }
+        const entities = Array.from(exportSelection)
+            .map(key => key.replace('Metrics', '').replace('reconciliation', '').toLowerCase())
+            .slice(0, 3)
+            .join('-');
+        const suffix = exportSelection.size > 3 ? `-and-${exportSelection.size - 3}-more` : '';
+        return `finparser-backup-${entities}${suffix}-${date}.json`;
     };
 
     const handleExportData = () => {
@@ -196,7 +201,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `finparser-backup-${new Date().toISOString().split('T')[0]}.json`;
+        link.download = generateBackupFilename();
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -222,7 +227,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
             const data = getExportData();
             const jsonString = JSON.stringify(data, null, 2);
-            const fileName = `Manual_Backup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+            const fileName = generateBackupFilename();
             const file = new File([jsonString], fileName, { type: 'application/json' });
             const docId = generateUUID();
 
@@ -323,7 +328,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             
             <div className="space-y-6">
                 
-                {/* --- AI CONFIGURATION SECTION --- */}
                 <Section title="AI & Intelligence" variant="info">
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                         <div className={`p-6 rounded-xl border transition-all ${apiKeyActive ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
@@ -400,7 +404,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <Section title="Data & Backups">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         
-                        {/* Automated Backups */}
                         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 space-y-4 flex flex-col h-full">
                             <div className="flex-grow">
                                 <h3 className="font-bold text-slate-900 flex items-center gap-2">
@@ -453,7 +456,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             </div>
                         </div>
 
-                        {/* Granular Manual Actions */}
                         <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-indigo-100 shadow-sm space-y-6">
                             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                                 <div>
@@ -527,7 +529,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     </div>
                 </Section>
 
-                {/* Restore Modal */}
                 {isRestoreModalOpen && (
                     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setIsRestoreModalOpen(false)}>
                         <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
@@ -652,7 +653,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     </div>
                 </Section>
 
-                {/* --- DANGER ZONE --- */}
                 <Section title="Danger Zone" variant="danger">
                     <div className="bg-red-50 p-6 rounded-xl border border-red-200 flex flex-col md:flex-row items-center gap-6">
                         <div className="flex-grow">

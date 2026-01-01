@@ -28,7 +28,6 @@ function useDebounce<T>(value: T, delay: number): T {
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
 
-// Simple SVG Bar Chart Component
 const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color: string }> = ({ data, color }) => {
     if (data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data for selected period</div>;
 
@@ -36,7 +35,7 @@ const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color
     const barWidth = 100 / data.length;
 
     return (
-        <div className="h-48 flex items-end gap-1 pt-6 pb-2">
+        <div className="h-64 flex items-end gap-1 pt-8 pb-4">
             {data.map((d, i) => {
                 const heightPct = maxValue > 0 ? (d.value / maxValue) * 100 : 0;
                 return (
@@ -45,14 +44,12 @@ const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color
                             className={`w-full rounded-t-sm transition-all duration-500 ${color} opacity-80 hover:opacity-100`}
                             style={{ height: `${Math.max(heightPct, 2)}%` }}
                         ></div>
-                        {/* Tooltip */}
-                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-800 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10 shadow-lg">
-                            <div className="font-bold">{d.label}</div>
-                            <div>{formatCurrency(d.value)}</div>
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-800 text-white text-[10px] rounded px-2 py-1 whitespace-nowrap z-20 shadow-lg">
+                            <div className="font-bold border-b border-slate-600 mb-1">{d.label}</div>
+                            <div className="text-red-300">{formatCurrency(d.value)}</div>
                         </div>
-                        {/* X Axis Label (only if few bars or specific intervals) */}
-                        <div className="text-[10px] text-slate-400 text-center mt-1 truncate w-full overflow-hidden">
-                            {d.label.split('-')[1]}
+                        <div className="text-[9px] text-slate-400 text-center mt-2 truncate w-full overflow-hidden leading-tight h-8">
+                            {d.label.includes('-') ? d.label.split('-')[1] : d.label}
                         </div>
                     </div>
                 );
@@ -142,12 +139,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Upload Context State
     const [uploadYear, setUploadYear] = useState<string>('');
     const [uploadChannelId, setUploadChannelId] = useState<string>('');
     const [isManageChannelsOpen, setIsManageChannelsOpen] = useState(false);
 
-    // Filter & Sort
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [startDate, setStartDate] = useState('');
@@ -155,28 +150,22 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const [filterChannelId, setFilterChannelId] = useState('');
     const [filterReportYear, setFilterReportYear] = useState('');
     
-    // Aggregation Toggle
     const [groupByVideo, setGroupByVideo] = useState(false);
     
     const [sortKey, setSortKey] = useState<keyof YouTubeMetric>('publishDate');
     const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
     const [productSortKey, setProductSortKey] = useState<'estimatedRevenue' | 'views' | 'subscribersGained' | 'watchTimeHours'>('estimatedRevenue');
 
-    // Chart Settings
-    const [revenueChartYear, setRevenueChartYear] = useState<string>('');
+    const [revenueChartYear, setRevenueChartYear] = useState<string>('all');
 
-    // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(50);
 
-    // Top Videos Pagination
     const [topVideosPage, setTopVideosPage] = useState(1);
     const [topVideosPerPage, setTopVideosPerPage] = useState(10);
 
-    // Years for dropdown (2000-2050)
     const years = useMemo(() => Array.from({length: 51}, (_, i) => (2000 + i).toString()).reverse(), []);
 
-    // Unique Report Years available in data
     const availableReportYears = useMemo(() => {
         const yearsSet = new Set<string>();
         metrics.forEach(m => {
@@ -185,7 +174,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         return Array.from(yearsSet).sort().reverse();
     }, [metrics]);
 
-    // Available Years for Revenue Chart (based on publish date)
     const availableRevenueYears = useMemo(() => {
         const yearsSet = new Set<string>();
         metrics.forEach(m => {
@@ -194,17 +182,8 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         return Array.from(yearsSet).sort().reverse();
     }, [metrics]);
 
-    // Set default revenue chart year
-    useEffect(() => {
-        if (!revenueChartYear && availableRevenueYears.length > 0) {
-            setRevenueChartYear(availableRevenueYears[0]);
-        }
-    }, [availableRevenueYears, revenueChartYear]);
-
-    // Guess Year & Channel Effect
     useEffect(() => {
         if (previewMetrics.length > 0) {
-            // 1. Guess Year: Find the MOST RECENT year in the data (max of publish dates)
             if (!uploadYear) {
                 let maxYear = 0;
                 previewMetrics.forEach(m => {
@@ -215,8 +194,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 });
                 if (maxYear > 0) setUploadYear(maxYear.toString());
             }
-
-            // 2. Guess Channel if only one exists
             if (!uploadChannelId && channels.length === 1) {
                 setUploadChannelId(channels[0].id);
             }
@@ -225,85 +202,50 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
     const filteredMetrics = useMemo(() => {
         let result = metrics;
-
         if (debouncedSearchTerm) {
             const lowerSearch = debouncedSearchTerm.toLowerCase();
             result = result.filter(m => m.videoTitle.toLowerCase().includes(lowerSearch) || m.videoId.toLowerCase().includes(lowerSearch));
         }
-
-        if (startDate) {
-            result = result.filter(m => m.publishDate >= startDate);
-        }
-        if (endDate) {
-            result = result.filter(m => m.publishDate <= endDate);
-        }
-        
-        if (filterChannelId) {
-            result = result.filter(m => m.channelId === filterChannelId);
-        }
-
-        if (filterReportYear) {
-            result = result.filter(m => m.reportYear === filterReportYear);
-        }
-        
+        if (startDate) result = result.filter(m => m.publishDate >= startDate);
+        if (endDate) result = result.filter(m => m.publishDate <= endDate);
+        if (filterChannelId) result = result.filter(m => m.channelId === filterChannelId);
+        if (filterReportYear) result = result.filter(m => m.reportYear === filterReportYear);
         return result;
     }, [metrics, debouncedSearchTerm, startDate, endDate, filterChannelId, filterReportYear]);
 
-    // Apply Grouping if enabled
     const finalDisplayMetrics = useMemo(() => {
         if (!groupByVideo) return filteredMetrics;
-
-        // Aggregate metrics by Video ID
         const groups = new Map<string, YouTubeMetric & { _clicks: number }>();
-        
         filteredMetrics.forEach(m => {
             if (!groups.has(m.videoId)) {
-                // Initialize with first record found
-                groups.set(m.videoId, { 
-                    ...m, 
-                    // Store intermediate clicks for weighted CTR calculation
-                    _clicks: m.impressions * (m.ctr / 100) 
-                });
+                groups.set(m.videoId, { ...m, _clicks: m.impressions * (m.ctr / 100) });
             } else {
                 const existing = groups.get(m.videoId)!;
                 existing.views += m.views;
                 existing.watchTimeHours += m.watchTimeHours;
                 existing.subscribersGained += m.subscribersGained;
                 existing.estimatedRevenue += m.estimatedRevenue;
-                
-                // Add new clicks/impressions
                 const newClicks = m.impressions * (m.ctr / 100);
                 existing.impressions += m.impressions;
                 existing._clicks += newClicks;
-                
-                // Keep the earliest publish date if mixed? Usually same video has same publish date.
-                // We'll trust the initial one.
             }
         });
-
-        // Finalize CTR calculation
         return Array.from(groups.values()).map(g => ({
             ...g,
             ctr: g.impressions > 0 ? (g._clicks / g.impressions) * 100 : 0
         }));
-
     }, [filteredMetrics, groupByVideo]);
 
-    // Apply Sorting to the finalized list (grouped or flat)
     const sortedMetrics = useMemo(() => {
         const sorted = [...finalDisplayMetrics].sort((a, b) => {
             let valA = a[sortKey];
             let valB = b[sortKey];
-            
-            // Normalize undefined/null
             if (valA === undefined || valA === null) valA = (typeof valB === 'number' ? 0 : '');
             if (valB === undefined || valB === null) valB = (typeof valA === 'number' ? 0 : '');
-
             if (typeof valA === 'string' && typeof valB === 'string') {
                 const cmp = valA.toLowerCase().localeCompare(valB.toLowerCase());
                 return sortDirection === 'asc' ? cmp : -cmp;
             }
-
             if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
             if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
             return 0;
@@ -315,21 +257,16 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const startIndex = (currentPage - 1) * rowsPerPage;
     const paginatedMetrics = sortedMetrics.slice(startIndex, startIndex + rowsPerPage);
 
-    // Reset pagination
     useEffect(() => { setCurrentPage(1); }, [debouncedSearchTerm, startDate, endDate, rowsPerPage, filterChannelId, filterReportYear, groupByVideo]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-
         setIsUploading(true);
         try {
             const newMetrics = await parseYouTubeReport(file, (msg) => console.log(msg));
-            if (newMetrics.length > 0) {
-                setPreviewMetrics(newMetrics);
-            } else {
-                alert("No valid records found in file.");
-            }
+            if (newMetrics.length > 0) setPreviewMetrics(newMetrics);
+            else alert("No valid records found in file.");
         } catch (error) {
             console.error(error);
             alert(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -340,12 +277,8 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     };
 
     const confirmImport = () => {
-        if (!uploadChannelId) {
-            alert("Please select a Channel for this data.");
-            return;
-        }
+        if (!uploadChannelId) { alert("Please select a Channel for this data."); return; }
         if (previewMetrics.length > 0) {
-            // Apply selected channel ID and Report Year to all imported metrics
             const metricsWithChannel = previewMetrics.map(m => ({
                 ...m,
                 channelId: uploadChannelId,
@@ -354,32 +287,20 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             onAddMetrics(metricsWithChannel);
             setPreviewMetrics([]);
             setUploadYear('');
-            // Keep channel ID selected for convenience
             alert(`Successfully imported ${previewMetrics.length} records.`);
             setActiveTab('dashboard');
         }
     };
 
     const summary = useMemo(() => {
-        const result = {
-            totalRevenue: 0,
-            totalViews: 0,
-            totalSubs: 0,
-            totalWatchTime: 0,
-            avgRPM: 0
-        };
+        const result = { totalRevenue: 0, totalViews: 0, totalSubs: 0, totalWatchTime: 0, avgRPM: 0 };
         filteredMetrics.forEach(m => {
             result.totalRevenue += m.estimatedRevenue;
             result.totalViews += m.views;
             result.totalSubs += m.subscribersGained;
             result.totalWatchTime += m.watchTimeHours;
         });
-        
-        // RPM = (Revenue / Views) * 1000
-        if (result.totalViews > 0) {
-            result.avgRPM = (result.totalRevenue / result.totalViews) * 1000;
-        }
-
+        if (result.totalViews > 0) result.avgRPM = (result.totalRevenue / result.totalViews) * 1000;
         return result;
     }, [filteredMetrics]);
 
@@ -392,11 +313,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }), { revenue: 0, views: 0, subs: 0, watchTime: 0 });
     }, [previewMetrics]);
 
-    // Chart Data: Aggregated Revenue by Publish Month, filtered by selected year
     const revenueByMonth = useMemo(() => {
         const grouped = new Map<string, number>();
-        // Fill all 12 months with 0
-        if (revenueChartYear) {
+        
+        if (revenueChartYear !== 'all' && revenueChartYear) {
             for (let i = 1; i <= 12; i++) {
                 const month = i.toString().padStart(2, '0');
                 grouped.set(`${revenueChartYear}-${month}`, 0);
@@ -404,10 +324,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
 
         filteredMetrics.forEach(m => {
+            if (!m.publishDate) return;
             const year = m.publishDate.substring(0, 4);
-            if (revenueChartYear && year !== revenueChartYear) return;
-
-            const monthKey = m.publishDate.substring(0, 7); // YYYY-MM
+            if (revenueChartYear !== 'all' && year !== revenueChartYear) return;
+            const monthKey = m.publishDate.substring(0, 7);
             grouped.set(monthKey, (grouped.get(monthKey) || 0) + m.estimatedRevenue);
         });
         
@@ -416,49 +336,57 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             .map(([date, value]) => ({ label: date, value }));
     }, [filteredMetrics, revenueChartYear]);
 
-    // Aggregate by Year
     const yearStats = useMemo(() => {
         const grouped = new Map<string, { revenue: number, views: number, subs: number, impressions: number, clicks: number }>();
-        
         filteredMetrics.forEach(m => {
             const year = m.publishDate.substring(0, 4);
-            if (!grouped.has(year)) {
-                grouped.set(year, { revenue: 0, views: 0, subs: 0, impressions: 0, clicks: 0 });
-            }
+            if (!grouped.has(year)) grouped.set(year, { revenue: 0, views: 0, subs: 0, impressions: 0, clicks: 0 });
             const data = grouped.get(year)!;
             data.revenue += m.estimatedRevenue;
             data.views += m.views;
             data.subs += m.subscribersGained;
             data.impressions += m.impressions;
-            // Estimated clicks based on impression * ctr%
             data.clicks += (m.impressions * (m.ctr / 100)); 
         });
-
-        return Array.from(grouped.entries())
-            .sort((a, b) => b[0].localeCompare(a[0])) // Descending Year
-            .map(([year, d]) => ({
-                year,
-                ...d,
-                avgCtr: d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0
-            }));
+        return Array.from(grouped.entries()).sort((a, b) => b[0].localeCompare(a[0])).map(([year, d]) => ({
+            year, ...d, avgCtr: d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0
+        }));
     }, [filteredMetrics]);
 
-    // Top Videos with Pagination
     const topVideosSorted = useMemo(() => {
-        return [...filteredMetrics]
-            .sort((a, b) => b[productSortKey] - a[productSortKey]);
+        return [...filteredMetrics].sort((a, b) => b[productSortKey] - a[productSortKey]);
     }, [filteredMetrics, productSortKey]);
 
     const topVideosTotalPages = Math.ceil(topVideosSorted.length / topVideosPerPage);
     const topVideosStartIndex = (topVideosPage - 1) * topVideosPerPage;
     const topVideosPaginated = topVideosSorted.slice(topVideosStartIndex, topVideosStartIndex + topVideosPerPage);
 
-    // Reset Top Videos pagination when filter changes
-    useEffect(() => {
-        setTopVideosPage(1);
-    }, [filteredMetrics, productSortKey, topVideosPerPage]);
+    useEffect(() => { setTopVideosPage(1); }, [filteredMetrics, productSortKey, topVideosPerPage]);
 
+    // Fix: Added setDateRange to handle date presets
+    const setDateRange = (type: 'thisYear' | 'lastYear' | 'thisMonth' | 'lastMonth') => {
+        const now = new Date();
+        let start, end;
+        
+        if (type === 'thisYear') {
+            start = new Date(now.getFullYear(), 0, 1);
+            end = new Date(now.getFullYear(), 11, 31);
+        } else if (type === 'lastYear') {
+            start = new Date(now.getFullYear() - 1, 0, 1);
+            end = new Date(now.getFullYear() - 1, 11, 31);
+        } else if (type === 'thisMonth') {
+            start = new Date(now.getFullYear(), now.getMonth(), 1);
+            end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        } else {
+            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            end = new Date(now.getFullYear(), now.getMonth(), 0);
+        }
+        
+        setStartDate(start.toISOString().split('T')[0]);
+        setEndDate(end.toISOString().split('T')[0]);
+    };
 
+    // Fix: Added handleHeaderClick to handle column sorting
     const handleHeaderClick = (key: keyof YouTubeMetric) => {
         if (sortKey === key) {
             setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -468,9 +396,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
     };
 
+    // Fix: Added getSortIcon to display sort indicators
     const getSortIcon = (key: keyof YouTubeMetric) => {
         if (sortKey !== key) return <SortIcon className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />;
-        return sortDirection === 'asc' ? <SortIcon className="w-4 h-4 text-red-600 transform rotate-180" /> : <SortIcon className="w-4 h-4 text-red-600" />;
+        return sortDirection === 'asc' ? <SortIcon className="w-4 h-4 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-4 h-4 text-indigo-600" />;
     };
 
     const handleToggleSelection = (id: string) => {
@@ -492,29 +421,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             onDeleteMetrics(allIds);
             setSelectedIds(new Set());
         }
-    };
-
-    // Date Range Presets
-    const setDateRange = (type: 'thisYear' | 'lastYear' | 'thisMonth' | 'lastMonth') => {
-        const now = new Date();
-        let start, end;
-        
-        if (type === 'thisYear') {
-            start = new Date(now.getFullYear(), 0, 1);
-            end = new Date(now.getFullYear(), 11, 31);
-        } else if (type === 'lastYear') {
-            start = new Date(now.getFullYear() - 1, 0, 1);
-            end = new Date(now.getFullYear() - 1, 11, 31);
-        } else if (type === 'thisMonth') {
-            start = new Date(now.getFullYear(), now.getMonth(), 1);
-            end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        } else {
-            start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-            end = new Date(now.getFullYear(), now.getMonth(), 0);
-        }
-        
-        setStartDate(start.toISOString().split('T')[0]);
-        setEndDate(end.toISOString().split('T')[0]);
     };
 
     const channelMap = useMemo(() => new Map(channels.map(c => [c.id, c.name])), [channels]);
@@ -551,7 +457,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             />
                         </div>
                         
-                        {/* Channel Filter */}
                         <select 
                             value={filterChannelId} 
                             onChange={(e) => setFilterChannelId(e.target.value)}
@@ -561,7 +466,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
                         </select>
 
-                        {/* Report Year Filter */}
                         <select 
                             value={filterReportYear} 
                             onChange={(e) => setFilterReportYear(e.target.value)}
@@ -572,19 +476,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                         </select>
 
                         <div className="flex items-center gap-2 w-full md:w-auto">
-                            <input 
-                                type="date" 
-                                value={startDate} 
-                                onChange={(e) => setStartDate(e.target.value)} 
-                                className="p-2 border rounded-lg text-sm w-full md:w-auto" 
-                            />
+                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="p-2 border rounded-lg text-sm w-full md:w-auto" />
                             <span className="text-slate-400">-</span>
-                            <input 
-                                type="date" 
-                                value={endDate} 
-                                onChange={(e) => setEndDate(e.target.value)} 
-                                className="p-2 border rounded-lg text-sm w-full md:w-auto" 
-                            />
+                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="p-2 border rounded-lg text-sm w-full md:w-auto" />
                         </div>
 
                         <div className="flex gap-2">
@@ -598,7 +492,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
                 {activeTab === 'dashboard' && (
                     <div className="space-y-6 pb-8">
-                        {/* Summary Cards */}
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Total Revenue</p>
@@ -611,7 +504,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Avg RPM</p>
                                 <p className="text-2xl font-bold text-slate-800 mt-1">{formatCurrency(summary.avgRPM)}</p>
-                                <p className="text-[10px] text-slate-400">per 1k views</p>
                             </div>
                             <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                 <p className="text-xs font-bold text-slate-400 uppercase">Total Subscribers</p>
@@ -623,60 +515,24 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             </div>
                         </div>
 
-                        {/* Yearly Performance Table */}
-                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                            <div className="p-4 border-b border-slate-100">
-                                <h3 className="font-bold text-slate-700">Yearly Performance</h3>
-                            </div>
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-slate-200">
-                                    <thead className="bg-slate-50">
-                                        <tr>
-                                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Year Published</th>
-                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
-                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Views</th>
-                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Subs</th>
-                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase">Avg CTR</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-200">
-                                        {yearStats.map((stat) => (
-                                            <tr key={stat.year} className="hover:bg-slate-50">
-                                                <td className="px-4 py-3 text-sm font-bold text-slate-800">{stat.year}</td>
-                                                <td className="px-4 py-3 text-right text-sm font-medium text-green-600">{formatCurrency(stat.revenue)}</td>
-                                                <td className="px-4 py-3 text-right text-sm text-slate-600">{formatNumber(stat.views)}</td>
-                                                <td className="px-4 py-3 text-right text-sm text-slate-600">{formatNumber(stat.subs)}</td>
-                                                <td className="px-4 py-3 text-right text-sm text-slate-600">{stat.avgCtr.toFixed(2)}%</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        {/* Visual Chart - Revenue by Publish Date */}
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                             <div className="mb-4 flex flex-col sm:flex-row justify-between sm:items-center">
                                 <div>
                                     <h3 className="font-bold text-slate-700">Revenue by Publish Month</h3>
-                                    <p className="text-xs text-slate-500">Cumulative estimated revenue for videos published in {revenueChartYear || 'selected year'}.</p>
+                                    <p className="text-xs text-slate-500">Cumulative estimated revenue for videos published in {revenueChartYear === 'all' ? 'All Time' : revenueChartYear}.</p>
                                 </div>
                                 <select 
                                     value={revenueChartYear} 
                                     onChange={(e) => setRevenueChartYear(e.target.value)}
                                     className="mt-2 sm:mt-0 p-1.5 border rounded-lg text-sm bg-slate-50 text-slate-700"
                                 >
-                                    {availableRevenueYears.length > 0 ? (
-                                        availableRevenueYears.map(year => <option key={year} value={year}>{year}</option>)
-                                    ) : (
-                                        <option value="">No Data</option>
-                                    )}
+                                    <option value="all">All Time</option>
+                                    {availableRevenueYears.map(year => <option key={year} value={year}>{year}</option>)}
                                 </select>
                             </div>
                             <SimpleBarChart data={revenueByMonth} color="bg-red-500" />
                         </div>
 
-                        {/* Top Videos Table */}
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                             <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                                 <h3 className="font-bold text-slate-700">Top Performing Videos</h3>
@@ -714,92 +570,27 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                 <td className="px-4 py-3 text-right text-sm font-bold text-green-600">{formatCurrency(video.estimatedRevenue)}</td>
                                             </tr>
                                         ))}
-                                        {topVideosPaginated.length === 0 && (
-                                            <tr><td colSpan={4} className="p-8 text-center text-slate-400">No data available.</td></tr>
-                                        )}
                                     </tbody>
                                 </table>
                             </div>
-                            
-                            {/* Top Videos Pagination Controls */}
-                            {topVideosTotalPages > 1 && (
-                                <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3">
-                                    <div className="flex items-center text-sm text-slate-600">
-                                        <span className="mr-2 hidden sm:inline">Rows:</span>
-                                        <select 
-                                            value={topVideosPerPage} 
-                                            onChange={(e) => {
-                                                setTopVideosPerPage(Number(e.target.value));
-                                                setTopVideosPage(1);
-                                            }}
-                                            className="p-1 border rounded text-xs bg-white focus:ring-indigo-500 w-16"
-                                        >
-                                            <option value={10}>10</option>
-                                            <option value={30}>30</option>
-                                            <option value={50}>50</option>
-                                            <option value={100}>100</option>
-                                            <option value={200}>200</option>
-                                        </select>
-                                        <span className="mx-4 text-slate-400 hidden sm:inline">|</span>
-                                        <span className="hidden sm:inline">
-                                            {topVideosStartIndex + 1}-{Math.min(topVideosStartIndex + topVideosPerPage, topVideosSorted.length)} of {topVideosSorted.length}
-                                        </span>
-                                    </div>
-                                    
-                                    <div className="flex items-center gap-2">
-                                        <button 
-                                            onClick={() => setTopVideosPage(p => Math.max(1, p - 1))}
-                                            disabled={topVideosPage === 1}
-                                            className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
-                                        >
-                                            <ChevronLeftIcon className="w-5 h-5 text-slate-600" />
-                                        </button>
-                                        <span className="text-sm font-medium text-slate-700 min-w-[3rem] text-center">
-                                            Page {topVideosPage} of {topVideosTotalPages}
-                                        </span>
-                                        <button 
-                                            onClick={() => setTopVideosPage(p => Math.min(topVideosTotalPages, p + 1))}
-                                            disabled={topVideosPage === topVideosTotalPages}
-                                            className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
-                                        >
-                                            <ChevronRightIcon className="w-5 h-5 text-slate-600" />
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </div>
                 )}
 
                 {activeTab === 'data' && (
                     <div className="space-y-4 h-full flex flex-col">
-                        
-                        {/* Summary Bar for Data Table */}
                         <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center justify-between text-sm text-red-900">
                             <span>Showing <strong>{finalDisplayMetrics.length}</strong> {groupByVideo ? 'videos' : 'records'}</span>
                             <div className="flex items-center gap-4">
                                 <span className="font-bold hidden sm:inline">Total Revenue: {formatCurrency(summary.totalRevenue)}</span>
                                 <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-full border border-red-200 hover:bg-red-50 transition-colors shadow-sm select-none">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={groupByVideo} 
-                                        onChange={() => setGroupByVideo(!groupByVideo)} 
-                                        className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer"
-                                    />
+                                    <input type="checkbox" checked={groupByVideo} onChange={() => setGroupByVideo(!groupByVideo)} className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer" />
                                     <span className="text-xs font-bold text-red-700 uppercase">Group by Video</span>
                                 </label>
                             </div>
                         </div>
 
-                        {/* Delete All Button */}
-                        <div className="flex justify-end">
-                             <button 
-                                onClick={handleDeleteAll} 
-                                className="text-red-600 hover:text-red-700 text-xs font-bold flex items-center gap-1 px-3 py-1 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap"
-                            >
-                                <DeleteIcon className="w-3 h-3" /> Delete All Data
-                            </button>
-                        </div>
+                        <div className="flex justify-end"><button onClick={handleDeleteAll} className="text-red-600 hover:text-red-700 text-xs font-bold flex items-center gap-1 px-3 py-1 hover:bg-red-50 rounded-lg transition-colors whitespace-nowrap"><DeleteIcon className="w-3 h-3" /> Delete All Data</button></div>
 
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0 overflow-hidden relative">
                             <div className="overflow-auto flex-grow">
@@ -808,15 +599,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         <tr>
                                             <th className="px-4 py-3 w-10 bg-slate-50">
                                                 {!groupByVideo && (
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedIds.size === finalDisplayMetrics.length && finalDisplayMetrics.length > 0}
-                                                        onChange={() => {
-                                                            if (selectedIds.size === finalDisplayMetrics.length) setSelectedIds(new Set());
-                                                            else setSelectedIds(new Set(finalDisplayMetrics.map(m => m.id)));
-                                                        }}
-                                                        className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
-                                                    />
+                                                    <input type="checkbox" checked={selectedIds.size === finalDisplayMetrics.length && finalDisplayMetrics.length > 0} onChange={() => { if (selectedIds.size === finalDisplayMetrics.length) setSelectedIds(new Set()); else setSelectedIds(new Set(finalDisplayMetrics.map(m => m.id))); }} className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" />
                                                 )}
                                             </th>
                                             {!groupByVideo && (
@@ -825,7 +608,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                 </th>
                                             )}
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('publishDate')}>
-                                                <div className="flex items-center gap-1">Year Published {getSortIcon('publishDate')}</div>
+                                                <div className="flex items-center gap-1">Published {getSortIcon('publishDate')}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleHeaderClick('videoTitle')}>
                                                 <div className="flex items-center gap-1">Video {getSortIcon('videoTitle')}</div>
@@ -842,28 +625,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         {paginatedMetrics.map((m) => (
                                             <tr key={m.id} className={!groupByVideo && selectedIds.has(m.id) ? "bg-red-50" : "hover:bg-slate-50 transition-colors"}>
                                                 <td className="px-4 py-2 text-center">
-                                                    {!groupByVideo && (
-                                                        <input 
-                                                            type="checkbox" 
-                                                            checked={selectedIds.has(m.id)} 
-                                                            onChange={() => handleToggleSelection(m.id)}
-                                                            className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer"
-                                                        />
-                                                    )}
+                                                    {!groupByVideo && <input type="checkbox" checked={selectedIds.has(m.id)} onChange={() => handleToggleSelection(m.id)} className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" />}
                                                 </td>
-                                                {!groupByVideo && (
-                                                    <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">
-                                                        {m.reportYear || '-'}
-                                                    </td>
-                                                )}
-                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">
-                                                    {m.publishDate}
-                                                    {m.channelId && <div className="text-xs text-indigo-600">{channelMap.get(m.channelId)}</div>}
-                                                </td>
-                                                <td className="px-4 py-2 text-sm text-slate-800">
-                                                    <div className="line-clamp-1 max-w-md" title={m.videoTitle}>{m.videoTitle}</div>
-                                                    {groupByVideo && <div className="text-xs text-slate-400 mt-0.5">{m.videoId}</div>}
-                                                </td>
+                                                {!groupByVideo && <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.reportYear || '-'}</td>}
+                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.publishDate}{m.channelId && <div className="text-[10px] text-indigo-600">{channelMap.get(m.channelId)}</div>}</td>
+                                                <td className="px-4 py-2 text-sm text-slate-800"><div className="line-clamp-1 max-w-md" title={m.videoTitle}>{m.videoTitle}</div>{groupByVideo && <div className="text-xs text-slate-400 mt-0.5">{m.videoId}</div>}</td>
                                                 <td className="px-4 py-2 text-right text-sm text-slate-600">{formatNumber(m.views)}</td>
                                                 <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.estimatedRevenue)}</td>
                                             </tr>
@@ -871,27 +637,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                     </tbody>
                                 </table>
                             </div>
-                            {totalPages > 1 && (
-                                <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 sticky bottom-0 z-20">
-                                    <div className="text-sm text-slate-600">{startIndex + 1}-{Math.min(startIndex + rowsPerPage, sortedMetrics.length)} of {sortedMetrics.length}</div>
-                                    <div className="flex items-center gap-2">
-                                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronLeftIcon className="w-5 h-5 text-slate-600" /></button>
-                                        <span className="text-sm font-medium text-slate-700">Page {currentPage}</span>
-                                        <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronRightIcon className="w-5 h-5 text-slate-600" /></button>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </div>
                 )}
 
                 {activeTab === 'upload' && (
                     <div className="h-full space-y-6">
-                        
-                        {/* 1. Configuration & Upload */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                            
-                            {/* Upload Area */}
                             <div className="space-y-4">
                                 <div className="flex flex-col items-center justify-center bg-white rounded-xl border-2 border-dashed border-slate-300 p-8">
                                     <div className="bg-red-50 p-4 rounded-full mb-4"><CloudArrowUpIcon className="w-8 h-8 text-red-500" /></div>
@@ -901,49 +653,29 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         {isUploading ? 'Parsing...' : 'Choose File'}
                                     </button>
                                 </div>
-
-                                {/* Context Selectors */}
                                 <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-4">
                                     <h4 className="font-bold text-slate-700 border-b pb-2">Import Context</h4>
-                                    
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">YouTube Channel <span className="text-red-500">*</span></label>
                                         <div className="flex gap-2">
-                                            <select 
-                                                value={uploadChannelId} 
-                                                onChange={(e) => setUploadChannelId(e.target.value)} 
-                                                className="w-full p-2 border rounded-md text-sm"
-                                            >
+                                            <select value={uploadChannelId} onChange={(e) => setUploadChannelId(e.target.value)} className="w-full p-2 border rounded-md text-sm">
                                                 <option value="">Select Channel...</option>
                                                 {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
                                             </select>
-                                            <button onClick={() => setIsManageChannelsOpen(true)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded border text-slate-600" title="Manage Channels">
-                                                <EditIcon className="w-4 h-4" />
-                                            </button>
+                                            <button onClick={() => setIsManageChannelsOpen(true)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded border text-slate-600"><EditIcon className="w-4 h-4" /></button>
                                         </div>
-                                        {channels.length === 0 && <p className="text-xs text-red-500 mt-1">Please add a channel to continue.</p>}
                                     </div>
-
                                     <div>
                                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Year (Optional)</label>
-                                        <select 
-                                            value={uploadYear} 
-                                            onChange={(e) => setUploadYear(e.target.value)} 
-                                            className="w-full p-2 border rounded-md text-sm"
-                                        >
+                                        <select value={uploadYear} onChange={(e) => setUploadYear(e.target.value)} className="w-full p-2 border rounded-md text-sm">
                                             <option value="">Auto-Detect from File</option>
                                             {years.map(y => <option key={y} value={y}>{y}</option>)}
                                         </select>
                                     </div>
                                 </div>
                             </div>
-
-                            {/* Instructions */}
                             <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                                    <ExternalLinkIcon className="w-5 h-5 text-indigo-600" />
-                                    How to Export
-                                </h3>
+                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><ExternalLinkIcon className="w-5 h-5 text-indigo-600" />How to Export</h3>
                                 <p className="text-sm text-slate-600 mb-2">Follow these exact steps:</p>
                                 <ol className="space-y-3 list-decimal list-inside text-sm text-slate-600 font-medium">
                                     <li>Go to <a href="https://studio.youtube.com/" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">YouTube Studio</a>.</li>
@@ -951,66 +683,22 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                     <li>Click <strong>Advanced Mode</strong> (top right).</li>
                                     <li>Select the <strong>Year</strong> in the date dropdown (top right).</li>
                                     <li>Click <strong>Export current view</strong> (top right) and choose <strong>Comma-separated values (.csv)</strong>.</li>
-                                    <li>Upload that file here.</li>
                                 </ol>
                             </div>
                         </div>
 
-                        {/* Preview Area */}
                         {previewMetrics.length > 0 && (
                             <div className="flex flex-col space-y-4 pt-4 border-t">
                                 <div className="bg-red-50 border border-red-200 p-4 rounded-xl flex flex-col gap-4">
                                     <div className="flex items-start gap-3">
                                         <div className="p-2 bg-red-100 rounded-full text-red-600"><CheckCircleIcon className="w-6 h-6" /></div>
-                                        <div>
-                                            <h3 className="font-bold text-red-900 text-lg">Ready to Import</h3>
-                                            <p className="text-red-700 text-sm">Found <strong>{previewMetrics.length}</strong> records.</p>
-                                            {uploadYear && <p className="text-xs text-red-600 mt-1 font-bold">Detected/Selected Year: {uploadYear}</p>}
-                                        </div>
+                                        <div><h3 className="font-bold text-red-900 text-lg">Ready to Import</h3><p className="text-red-700 text-sm">Found <strong>{previewMetrics.length}</strong> records.</p></div>
                                     </div>
                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full pt-2 border-t border-red-200/50">
-                                        <div>
-                                            <p className="text-xs font-bold text-red-800 uppercase opacity-70">Total Revenue</p>
-                                            <p className="text-lg font-bold text-red-900">{formatCurrency(previewSummary.revenue)}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-red-800 uppercase opacity-70">Total Views</p>
-                                            <p className="text-lg font-bold text-red-900">{formatNumber(previewSummary.views)}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-red-800 uppercase opacity-70">Subscribers</p>
-                                            <p className="text-lg font-bold text-red-900">{formatNumber(previewSummary.subs)}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-red-800 uppercase opacity-70">Watch Time</p>
-                                            <p className="text-lg font-bold text-red-900">{formatNumber(previewSummary.watchTime)} hrs</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex-1 bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm flex flex-col max-h-96">
-                                    <div className="flex-1 overflow-auto">
-                                        <table className="min-w-full divide-y divide-slate-200">
-                                            <thead className="bg-white sticky top-0 shadow-sm">
-                                                <tr>
-                                                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Publish Date</th>
-                                                    <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Title</th>
-                                                    <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Views</th>
-                                                    <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Subs</th>
-                                                    <th className="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase">Revenue</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-200">
-                                                {previewMetrics.slice(0, 1000).map(m => (
-                                                    <tr key={m.id}>
-                                                        <td className="px-4 py-2 text-xs text-slate-600">{m.publishDate}</td>
-                                                        <td className="px-4 py-2 text-xs text-slate-800 truncate max-w-xs">{m.videoTitle}</td>
-                                                        <td className="px-4 py-2 text-xs text-right text-slate-600">{formatNumber(m.views)}</td>
-                                                        <td className="px-4 py-2 text-xs text-right text-slate-600">{formatNumber(m.subscribersGained)}</td>
-                                                        <td className="px-4 py-2 text-xs text-right font-medium text-green-600">{formatCurrency(m.estimatedRevenue)}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
+                                        <div><p className="text-xs font-bold text-red-800 uppercase opacity-70">Revenue</p><p className="text-lg font-bold text-red-900">{formatCurrency(previewSummary.revenue)}</p></div>
+                                        <div><p className="text-xs font-bold text-red-800 uppercase opacity-70">Views</p><p className="text-lg font-bold text-red-900">{formatNumber(previewSummary.views)}</p></div>
+                                        <div><p className="text-xs font-bold text-red-800 uppercase opacity-70">Subs</p><p className="text-lg font-bold text-red-900">{formatNumber(previewSummary.subs)}</p></div>
+                                        <div><p className="text-xs font-bold text-red-800 uppercase opacity-70">Watch Time</p><p className="text-lg font-bold text-red-900">{formatNumber(previewSummary.watchTime)} hrs</p></div>
                                     </div>
                                 </div>
                                 <div className="flex justify-end gap-3 pt-2">
@@ -1023,23 +711,24 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 )}
             </div>
 
+            {/* Bulk Action Bar */}
             {selectedIds.size > 0 && activeTab === 'data' && (
                 <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-900 text-white px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-6 animate-slide-up">
                     <div className="flex items-center gap-3 border-r border-slate-700 pr-4">
                         <span className="font-medium text-sm">{selectedIds.size} selected</span>
-                        <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-white transition-colors p-1 rounded-full hover:bg-slate-800"><CloseIcon className="w-4 h-4" /></button>
+                        <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-white transition-colors p-1 rounded-full hover:bg-slate-800">
+                            <CloseIcon className="w-4 h-4" />
+                        </button>
                     </div>
-                    <button onClick={handleBulkDelete} className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-500 rounded-full transition-colors shadow-sm"><DeleteIcon className="w-4 h-4"/> Delete Selected</button>
+                    <button
+                        onClick={handleBulkDelete}
+                        className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-red-600 hover:bg-red-500 rounded-full transition-colors shadow-sm"
+                    >
+                        <DeleteIcon className="w-4 h-4"/>
+                        Delete Selected
+                    </button>
                 </div>
             )}
-
-            <ManageChannelsModal 
-                isOpen={isManageChannelsOpen}
-                onClose={() => setIsManageChannelsOpen(false)}
-                channels={channels}
-                onSave={onSaveChannel}
-                onDelete={onDeleteChannel}
-            />
         </div>
     );
 };

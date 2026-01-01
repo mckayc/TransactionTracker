@@ -34,7 +34,6 @@ const DEFAULT_CATEGORIES: Category[] = [
     "Groceries", "Dining", "Shopping", "Travel", "Entertainment", "Utilities", "Health", "Services", "Transportation", "Income", "Other"
 ].map(name => ({ id: `default-${name.toLowerCase().replace(' ', '-')}`, name, parentId: undefined }));
 
-
 const DEFAULT_TRANSACTION_TYPES: TransactionType[] = [
     { id: 'default-expense-purchase', name: 'Purchase', balanceEffect: 'expense', isDefault: true },
     { id: 'default-expense-bill', name: 'Bill Payment', balanceEffect: 'expense', isDefault: true },
@@ -59,7 +58,6 @@ const DEFAULT_TRANSACTION_TYPES: TransactionType[] = [
     { id: 'default-investment-other', name: 'Other Investment', balanceEffect: 'investment', isDefault: true },
     { id: 'default-donation-other', name: 'Other Donation', balanceEffect: 'donation', isDefault: true },
 ];
-
 
 const App: React.FC = () => {
   const [isStructureLoading, setIsStructureLoading] = useState(true);
@@ -100,20 +98,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     document.body.classList.add('loaded');
-
     const loadCoreStructure = async () => {
       setIsStructureLoading(true);
-      const [
-          settings, 
-          loadedUsers, 
-          loadedAccounts, 
-          loadedAccountTypes, 
-          loadedCategories, 
-          loadedTags, 
-          loadedPayees, 
-          loadedRules, 
-          loadedTypes
-      ] = await Promise.all([
+      const [settings, loadedUsers, loadedAccounts, loadedAccountTypes, loadedCategories, loadedTags, loadedPayees, loadedRules, loadedTypes] = await Promise.all([
           api.get<SystemSettings>('systemSettings'),
           api.get<User[]>('users'),
           api.get<Account[]>('accounts'),
@@ -124,49 +111,24 @@ const App: React.FC = () => {
           api.get<ReconciliationRule[]>('reconciliationRules'),
           api.get<TransactionType[]>('transactionTypes')
       ]);
-
       setSystemSettings(settings || {});
-
-      let finalUsers: User[] = loadedUsers && loadedUsers.length > 0
-          ? loadedUsers
-          : [{ id: 'default-user', name: 'Primary User', isDefault: true }];
+      let finalUsers: User[] = loadedUsers && loadedUsers.length > 0 ? loadedUsers : [{ id: 'default-user', name: 'Primary User', isDefault: true }];
       setUsers(finalUsers);
-
       setCategories(loadedCategories && loadedCategories.length > 0 ? loadedCategories as Category[] : DEFAULT_CATEGORIES);
       setTransactionTypes(loadedTypes || DEFAULT_TRANSACTION_TYPES);
       setTags(loadedTags || []);
       setPayees(loadedPayees || []);
       setReconciliationRules(loadedRules || []);
-
       let finalAccountTypes = loadedAccountTypes || [{ id: 'default-bank', name: 'Bank', isDefault: true }, { id: 'default-cc', name: 'Credit Card', isDefault: true }];
       let finalAccounts = loadedAccounts || [{ id: 'default-account-other', name: 'Other', identifier: 'Default Account', accountTypeId: 'default-bank' }];
       setAccountTypes(finalAccountTypes);
       setAccounts(finalAccounts);
-
       setIsStructureLoading(false);
       loadHeavyData(finalUsers.find(u => u.isDefault)?.id || finalUsers[0]?.id);
     };
-
     const loadHeavyData = async (defaultUserId: string) => {
         setIsHeavyDataLoading(true);
-        const [
-            txs, 
-            templates, 
-            events, 
-            tasks, 
-            completions, 
-            profile, 
-            docs, 
-            folders, 
-            reports, 
-            chats, 
-            ranges, 
-            amazon, 
-            youtubeM, 
-            youtubeC,
-            goals,
-            plan
-        ] = await Promise.all([
+        const [txs, templates, events, tasks, completions, profile, docs, folders, reports, chats, ranges, amazon, youtubeM, youtubeC, goals, plan] = await Promise.all([
             api.get<Transaction[]>('transactions'),
             api.get<Template[]>('templates'),
             api.get<ScheduledEvent[]>('scheduledEvents'),
@@ -184,7 +146,6 @@ const App: React.FC = () => {
             api.get<FinancialGoal[]>('financialGoals'),
             api.get<FinancialPlan>('financialPlan')
         ]);
-
         setTransactions(txs || []);
         setTemplates(templates || []);
         setScheduledEvents(events || []);
@@ -201,18 +162,14 @@ const App: React.FC = () => {
         setYoutubeChannels(youtubeC || []);
         setFinancialGoals(goals || []);
         setFinancialPlan(plan || null);
-
         setIsHeavyDataLoading(false);
     };
-
     loadCoreStructure();
-
     const params = new URLSearchParams(window.location.search);
     const viewParam = params.get('view');
     const taskId = params.get('taskId');
     if (viewParam) setCurrentView(viewParam as View);
     if (taskId) setInitialTaskId(taskId);
-
   }, []);
 
   const denormalize = useCallback((tx: Transaction): Transaction => {
@@ -222,16 +179,7 @@ const App: React.FC = () => {
     const user = users.find(u => u.id === tx.userId);
     const type = transactionTypes.find(t => t.id === tx.typeId);
     const tagNames = tx.tagIds?.map(id => tags.find(t => t.id === id)?.name).filter(Boolean) as string[];
-
-    return {
-        ...tx,
-        account: account?.name || tx.account,
-        category: category?.name || tx.category,
-        payee: payee?.name || tx.payee,
-        user: user?.name || tx.user,
-        type: type?.name || tx.type,
-        tags: tagNames?.length > 0 ? tagNames : tx.tags
-    };
+    return { ...tx, account: account?.name || tx.account, category: category?.name || tx.category, payee: payee?.name || tx.payee, user: user?.name || tx.user, type: type?.name || tx.type, tags: tagNames?.length > 0 ? tagNames : tx.tags };
   }, [accounts, categories, payees, users, transactionTypes, tags]);
 
   useEffect(() => {
@@ -246,7 +194,7 @@ const App: React.FC = () => {
           let shouldRun = (config.frequency === 'daily' && daysSinceLast >= 1) || (config.frequency === 'weekly' && daysSinceLast >= 7) || (config.frequency === 'monthly' && daysSinceLast >= 30);
           if (shouldRun) {
               try {
-                  const exportData = { exportDate: new Date().toISOString(), version: '0.0.10-auto', transactions, accounts, accountTypes, categories, tags, payees, reconciliationRules, templates, scheduledEvents, users, transactionTypes, businessProfile, documentFolders, savedReports, chatSessions, savedDateRanges, amazonMetrics, youtubeMetrics, youtubeChannels, financialGoals, financialPlan };
+                  const exportData = { exportDate: new Date().toISOString(), version: '0.0.30-auto', transactions, accounts, accountTypes, categories, tags, payees, reconciliationRules, templates, scheduledEvents, users, transactionTypes, businessProfile, documentFolders, savedReports, chatSessions, savedDateRanges, amazonMetrics, youtubeMetrics, youtubeChannels, financialGoals, financialPlan };
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
                   const file = new File([JSON.stringify(exportData, null, 2)], fileName, { type: 'application/json' });
                   let autoFolder = documentFolders.find(f => f.name === "Automated Backups" && !f.parentId);
@@ -263,13 +211,6 @@ const App: React.FC = () => {
                   setBusinessDocuments(prev => [...prev, newDoc]);
                   const newConfig: BackupConfig = { ...config, lastBackupDate: new Date().toISOString() };
                   setSystemSettings(prev => ({ ...prev, backupConfig: newConfig }));
-                  const backups = [...businessDocuments, newDoc].filter(d => d.parentId === autoFolderId).sort((a, b) => b.name.localeCompare(a.name));
-                  if (backups.length > config.retentionCount) {
-                      const toDelete = backups.slice(config.retentionCount);
-                      for (const doc of toDelete) await deleteFile(doc.id);
-                      const idsToDelete = new Set(toDelete.map(d => d.id));
-                      setBusinessDocuments(prev => prev.filter(d => !idsToDelete.has(d.id)));
-                  }
               } catch (e) { console.error("Automated backup failed:", e); }
           }
       };
@@ -354,16 +295,9 @@ const App: React.FC = () => {
 
   const renderView = () => {
     if (isStructureLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Initializing secure storage..." /></div>;
-    
     switch (currentView) {
-      case 'dashboard': 
-        if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Hydrating dashboard data..." /></div>;
-        return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
-      
-      case 'transactions': 
-        if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Loading transaction history..." /></div>;
-        return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onSaveReport={handleAddSavedReport} />;
-      
+      case 'dashboard': if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Hydrating dashboard data..." /></div>; return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
+      case 'transactions': if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Loading transaction history..." /></div>; return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onSaveReport={handleAddSavedReport} />;
       case 'calendar': return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports': return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} savedDateRanges={savedDateRanges} setSavedDateRanges={setSavedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} />;
       case 'accounts': return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
@@ -372,7 +306,7 @@ const App: React.FC = () => {
       case 'categories': return <CategoriesPage categories={categories} onSaveCategory={handleSaveCategory} onDeleteCategory={handleDeleteCategory} transactions={transactions}/>;
       case 'tags': return <TagsPage tags={tags} onSaveTag={handleSaveTag} onDeleteTag={handleDeleteTag} />;
       case 'rules': return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} />;
-      case 'settings': return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} tags={tags} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} users={users} businessProfile={businessProfile} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
+      case 'settings': return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} tags={tags} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} users={users} businessProfile={businessProfile} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} savedReports={savedReports} savedDateRanges={savedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels} financialGoals={financialGoals} financialPlan={financialPlan} />;
       case 'tasks': return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
       case 'hub': return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} chatSessions={chatSessions} onUpdateChatSessions={setChatSessions} transactions={transactions} accounts={accounts} categories={categories} />;
       case 'documents': return <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
@@ -386,34 +320,15 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
-      <header className="md:hidden bg-white shadow-sm sticky top-0 z-10">
-        <div className="container mx-auto px-4 h-16 flex items-center justify-between">
-           <div className="flex items-center space-x-3">
-                <span className="text-2xl filter drop-shadow-sm">💰</span>
-                <h1 className="text-base font-bold text-slate-800 uppercase tracking-wide">FinParser</h1>
-            </div>
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-                {isSidebarOpen ? <CloseIcon className="w-6 h-6" /> : <MenuIcon className="w-6 h-6" />}
-            </button>
-        </div>
-      </header>
+      <header className="md:hidden bg-white shadow-sm sticky top-0 z-10"><div className="container mx-auto px-4 h-16 flex items-center justify-between"><div className="flex items-center space-x-3"><span className="text-2xl filter drop-shadow-sm">💰</span><h1 className="text-base font-bold text-slate-800 uppercase tracking-wide">FinParser</h1></div><button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>{isSidebarOpen ? <CloseIcon className="w-6 h-6" /> : <MenuIcon className="w-6 h-6" />}</button></div></header>
       <div className="flex">
-        <div className="hidden md:block">
-          <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} onChatToggle={() => setIsChatOpen(!isChatOpen)} isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} />
-        </div>
-        <div className={`md:hidden fixed inset-0 z-30 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-          <Sidebar currentView={currentView} onNavigate={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} transactions={transactions} onChatToggle={() => { setIsChatOpen(!isChatOpen); setIsSidebarOpen(false); }} />
-        </div>
+        <div className="hidden md:block"><Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} onChatToggle={() => setIsChatOpen(!isChatOpen)} isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} /></div>
+        <div className={`md:hidden fixed inset-0 z-30 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}><Sidebar currentView={currentView} onNavigate={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} transactions={transactions} onChatToggle={() => { setIsChatOpen(!isChatOpen); setIsSidebarOpen(false); }} /></div>
         {isSidebarOpen && <div className="md:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)}></div>}
-        <main className={`flex-1 transition-all duration-300 ${isCollapsed ? 'md:pl-20' : 'md:pl-64'}`}>
-          <div className="container mx-auto p-4 md:p-8 h-screen flex flex-col">
-            {renderView()}
-          </div>
-        </main>
+        <main className={`flex-1 transition-all duration-300 ${isCollapsed ? 'md:pl-20' : 'md:pl-64'}`}><div className="container mx-auto p-4 md:p-8 h-screen flex flex-col">{renderView()}</div></main>
       </div>
       <Chatbot isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} contextData={{ transactions, accounts, templates, scheduledEvents, tasks, businessProfile, businessDocuments }} />
     </div>
   );
 };
-
 export default App;
