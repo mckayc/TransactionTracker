@@ -28,6 +28,8 @@ function useDebounce<T>(value: T, delay: number): T {
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color: string }> = ({ data, color }) => {
     if (data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data for selected period</div>;
 
@@ -46,7 +48,7 @@ const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color
                         ></div>
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-800 text-white text-[10px] rounded px-2 py-1 whitespace-nowrap z-20 shadow-lg">
                             <div className="font-bold border-b border-slate-600 mb-1">{d.label}</div>
-                            <div className="text-red-300">{formatCurrency(d.value)}</div>
+                            <div className="text-red-300 font-mono">{formatCurrency(d.value)}</div>
                         </div>
                         <div className="text-[9px] text-slate-400 text-center mt-2 truncate w-full overflow-hidden leading-tight h-8">
                             {d.label.includes('-') ? d.label.split('-')[1] : d.label}
@@ -315,25 +317,35 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
     const revenueByMonth = useMemo(() => {
         const grouped = new Map<string, number>();
+        const isAllTime = revenueChartYear === 'all';
         
-        if (revenueChartYear !== 'all' && revenueChartYear) {
+        if (isAllTime) {
+            // Group by Month Name for 12 months summary
+            MONTH_NAMES.forEach(m => grouped.set(m, 0));
+            filteredMetrics.forEach(m => {
+                if (!m.publishDate) return;
+                const monthIndex = parseInt(m.publishDate.substring(5, 7)) - 1;
+                const monthName = MONTH_NAMES[monthIndex];
+                grouped.set(monthName, (grouped.get(monthName) || 0) + m.estimatedRevenue);
+            });
+            return Array.from(grouped.entries()).map(([label, value]) => ({ label, value }));
+        } else {
+            // Group by specific Year's months (YYYY-MM)
             for (let i = 1; i <= 12; i++) {
                 const month = i.toString().padStart(2, '0');
                 grouped.set(`${revenueChartYear}-${month}`, 0);
             }
+            filteredMetrics.forEach(m => {
+                if (!m.publishDate) return;
+                const year = m.publishDate.substring(0, 4);
+                if (year !== revenueChartYear) return;
+                const monthKey = m.publishDate.substring(0, 7);
+                grouped.set(monthKey, (grouped.get(monthKey) || 0) + m.estimatedRevenue);
+            });
+            return Array.from(grouped.entries())
+                .sort((a, b) => a[0].localeCompare(b[0]))
+                .map(([date, value]) => ({ label: date, value }));
         }
-
-        filteredMetrics.forEach(m => {
-            if (!m.publishDate) return;
-            const year = m.publishDate.substring(0, 4);
-            if (revenueChartYear !== 'all' && year !== revenueChartYear) return;
-            const monthKey = m.publishDate.substring(0, 7);
-            grouped.set(monthKey, (grouped.get(monthKey) || 0) + m.estimatedRevenue);
-        });
-        
-        return Array.from(grouped.entries())
-            .sort((a, b) => a[0].localeCompare(b[0]))
-            .map(([date, value]) => ({ label: date, value }));
     }, [filteredMetrics, revenueChartYear]);
 
     const yearStats = useMemo(() => {
@@ -363,7 +375,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
     useEffect(() => { setTopVideosPage(1); }, [filteredMetrics, productSortKey, topVideosPerPage]);
 
-    // Fix: Added setDateRange to handle date presets
     const setDateRange = (type: 'thisYear' | 'lastYear' | 'thisMonth' | 'lastMonth') => {
         const now = new Date();
         let start, end;
@@ -386,7 +397,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         setEndDate(end.toISOString().split('T')[0]);
     };
 
-    // Fix: Added handleHeaderClick to handle column sorting
     const handleHeaderClick = (key: keyof YouTubeMetric) => {
         if (sortKey === key) {
             setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -396,7 +406,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
     };
 
-    // Fix: Added getSortIcon to display sort indicators
     const getSortIcon = (key: keyof YouTubeMetric) => {
         if (sortKey !== key) return <SortIcon className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />;
         return sortDirection === 'asc' ? <SortIcon className="w-4 h-4 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-4 h-4 text-indigo-600" />;
@@ -519,7 +528,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             <div className="mb-4 flex flex-col sm:flex-row justify-between sm:items-center">
                                 <div>
                                     <h3 className="font-bold text-slate-700">Revenue by Publish Month</h3>
-                                    <p className="text-xs text-slate-500">Cumulative estimated revenue for videos published in {revenueChartYear === 'all' ? 'All Time' : revenueChartYear}.</p>
+                                    <p className="text-xs text-slate-500">
+                                        {revenueChartYear === 'all' 
+                                            ? 'Cumulative estimated revenue grouped by month across all time.' 
+                                            : `Cumulative estimated revenue for videos published in ${revenueChartYear}.`}
+                                    </p>
                                 </div>
                                 <select 
                                     value={revenueChartYear} 

@@ -141,13 +141,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const getExportData = () => {
         const data: any = {
             exportDate: new Date().toISOString(),
-            version: '0.0.30',
+            version: '0.0.41',
             // Default core types
             transactionTypes,
             users
         };
 
-        if (exportSelection.has('transactions')) data.transactions = transactions;
+        if (exportSelection.has('transactions')) {
+            // Add human-readable names to transactions for backup clarity
+            data.transactions = transactions.map(tx => ({
+                ...tx,
+                _account_name: accounts.find(a => a.id === tx.accountId)?.name,
+                _category_name: categories.find(c => c.id === tx.categoryId)?.name,
+                _payee_name: payees.find(p => p.id === tx.payeeId)?.name,
+                _user_name: users.find(u => u.id === tx.userId)?.name,
+                _type_name: transactionTypes.find(t => t.id === tx.typeId)?.name
+            }));
+        }
+
         if (exportSelection.has('accounts')) data.accounts = accounts;
         if (exportSelection.has('categories')) data.categories = categories;
         if (exportSelection.has('tags')) data.tags = tags;
