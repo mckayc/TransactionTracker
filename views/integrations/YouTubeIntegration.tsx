@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon } from '../../components/Icons';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon } from '../../components/Icons';
 import { parseYouTubeReport } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
 
@@ -26,6 +26,49 @@ function useDebounce<T>(value: T, delay: number): T {
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
+
+/**
+ * Actionable Insight Label with Tooltip
+ */
+const InsightLabel: React.FC<{ 
+    type: 'high-earner' | 'hidden-gem' | 'low-hook' | 'fan-maker'; 
+    title: string;
+    details: string;
+    action: string;
+}> = ({ type, title, details, action }) => {
+    const colors = {
+        'high-earner': 'bg-green-100 text-green-700 border-green-200',
+        'hidden-gem': 'bg-purple-100 text-purple-700 border-purple-200',
+        'low-hook': 'bg-red-100 text-red-700 border-red-200',
+        'fan-maker': 'bg-indigo-100 text-indigo-700 border-indigo-200'
+    };
+
+    return (
+        <div className="relative group/insight inline-block">
+            <span className={`text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase cursor-help transition-all hover:scale-105 ${colors[type]}`}>
+                {title}
+            </span>
+            
+            {/* Tooltip Info Graphic */}
+            <div className="absolute bottom-full left-0 mb-2 w-64 p-4 bg-slate-900 text-white rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none group-hover/insight:opacity-100 group-hover/insight:translate-y-0 transition-all z-50">
+                <div className="flex items-center gap-2 mb-2 border-b border-white/10 pb-2">
+                    <LightBulbIcon className="w-4 h-4 text-yellow-400" />
+                    <span className="text-xs font-bold uppercase tracking-wider">{title} Analysis</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed mb-3">
+                    {details}
+                </p>
+                <div className="bg-white/10 p-2 rounded-lg border border-white/5">
+                    <p className="text-[10px] font-bold text-indigo-300 uppercase mb-1">Recommended Action</p>
+                    <p className="text-[11px] text-white font-medium italic">
+                        "{action}"
+                    </p>
+                </div>
+                <div className="absolute top-full left-4 border-8 border-transparent border-t-slate-900"></div>
+            </div>
+        </div>
+    );
+};
 
 const ManageChannelsModal: React.FC<{ 
     isOpen: boolean; 
@@ -262,14 +305,22 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     };
 
     const summary = useMemo(() => {
-        const result = { totalRevenue: 0, totalViews: 0, totalSubs: 0, totalWatchTime: 0, avgRPM: 0 };
+        const result = { totalRevenue: 0, totalViews: 0, totalSubs: 0, totalWatchTime: 0, avgRPM: 0, avgCTR: 0, avgWatchPerView: 0 };
         filteredMetrics.forEach(m => {
             result.totalRevenue += m.estimatedRevenue;
             result.totalViews += m.views;
             result.totalSubs += m.subscribersGained;
             result.totalWatchTime += m.watchTimeHours;
         });
-        if (result.totalViews > 0) result.avgRPM = (result.totalRevenue / result.totalViews) * 1000;
+        if (result.totalViews > 0) {
+            result.avgRPM = (result.totalRevenue / result.totalViews) * 1000;
+            result.avgWatchPerView = result.totalWatchTime / result.totalViews;
+        }
+        // Simplified average CTR from the set
+        const totalImpressions = filteredMetrics.reduce((acc, m) => acc + m.impressions, 0);
+        const totalClicks = filteredMetrics.reduce((acc, m) => acc + (m.impressions * (m.ctr / 100)), 0);
+        if (totalImpressions > 0) result.avgCTR = (totalClicks / totalImpressions) * 100;
+
         return result;
     }, [filteredMetrics]);
 
@@ -299,12 +350,15 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 ex.watchTimeHours += m.watchTimeHours;
                 ex.subscribersGained += m.subscribersGained;
                 ex.estimatedRevenue += m.estimatedRevenue;
+                ex.impressions += m.impressions;
             }
         });
 
         const list = Array.from(groups.values()).map(v => ({
             ...v,
-            rpm: v.views > 0 ? (v.estimatedRevenue / v.views) * 1000 : 0
+            rpm: v.views > 0 ? (v.estimatedRevenue / v.views) * 1000 : 0,
+            watchPerView: v.views > 0 ? v.watchTimeHours / v.views : 0,
+            subsPerView: v.views > 0 ? v.subscribersGained / v.views : 0
         }));
 
         list.sort((a, b) => {
@@ -315,6 +369,25 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
         return list.slice(0, insightsLimit);
     }, [metrics, insightsYear, insightsLimit, insightsSortKey, insightsSortDir]);
+
+    // Summary specifically for the current year selection for the "Total" row
+    const yearSummary = useMemo(() => {
+        let base = metrics;
+        if (insightsYear !== 'all') {
+            base = base.filter(m => m.reportYear === insightsYear);
+        }
+        const res = { revenue: 0, views: 0, watchTime: 0, subs: 0 };
+        base.forEach(m => {
+            res.revenue += m.estimatedRevenue;
+            res.views += m.views;
+            res.watchTime += m.watchTimeHours;
+            res.subs += m.subscribersGained;
+        });
+        return {
+            ...res,
+            rpm: res.views > 0 ? (res.revenue / res.views) * 1000 : 0
+        };
+    }, [metrics, insightsYear]);
 
     const handleInsightsSort = (key: keyof YouTubeMetric | 'rpm') => {
         if (insightsSortKey === key) {
@@ -330,6 +403,18 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         return insightsSortDir === 'asc' ? <SortIcon className="w-3 h-3 text-red-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-red-600" />;
     };
 
+    const getSortIcon = (key: keyof YouTubeMetric) => {
+        if (sortKey !== key) return <SortIcon className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />;
+        return sortDirection === 'asc' ? <SortIcon className="w-4 h-4 text-red-600 transform rotate-180" /> : <SortIcon className="w-4 h-4 text-red-600" />;
+    };
+
+    const handleBulkDelete = () => {
+        if (window.confirm(`Permanently delete ${selectedIds.size} records?`)) {
+            onDeleteMetrics(Array.from(selectedIds));
+            setSelectedIds(new Set());
+        }
+    };
+
     const setDateRange = (type: 'thisYear' | 'lastYear' | 'thisMonth' | 'lastMonth') => {
         const now = new Date();
         let start, end;
@@ -339,20 +424,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         else { start = new Date(now.getFullYear(), now.getMonth() - 1, 1); end = new Date(now.getFullYear(), now.getMonth(), 0); }
         setStartDate(start.toISOString().split('T')[0]);
         setEndDate(end.toISOString().split('T')[0]);
-    };
-
-    // Fix: Added missing getSortIcon function for the data table
-    const getSortIcon = (key: keyof YouTubeMetric) => {
-        if (sortKey !== key) return <SortIcon className="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />;
-        return sortDirection === 'asc' ? <SortIcon className="w-4 h-4 text-red-600 transform rotate-180" /> : <SortIcon className="w-4 h-4 text-red-600" />;
-    };
-
-    // Fix: Added missing handleBulkDelete function for the data table
-    const handleBulkDelete = () => {
-        if (window.confirm(`Permanently delete ${selectedIds.size} records?`)) {
-            onDeleteMetrics(Array.from(selectedIds));
-            setSelectedIds(new Set());
-        }
     };
 
     const handleHeaderClick = (key: keyof YouTubeMetric) => {
@@ -465,10 +536,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs font-bold text-slate-400 uppercase">Limit</span>
+                                        {/* BUG FIX: Increased padding-right and added min-width to ensure icon doesn't overlap text */}
                                         <select 
                                             value={insightsLimit} 
                                             onChange={e => setInsightsLimit(Number(e.target.value))}
-                                            className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold"
+                                            className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[70px]"
                                         >
                                             {[10, 20, 30, 50, 100].map(l => <option key={l} value={l}>{l}</option>)}
                                         </select>
@@ -478,7 +550,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         <select 
                                             value={insightsYear} 
                                             onChange={e => setInsightsYear(e.target.value)}
-                                            className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold"
+                                            className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[120px]"
                                         >
                                             <option value="all">All Time</option>
                                             {availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}
@@ -525,27 +597,84 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                         </tr>
                                     </thead>
                                     <tbody className="bg-white divide-y divide-slate-100">
-                                        {videoInsights.map((video, idx) => (
-                                            <tr key={video.videoId} className="hover:bg-slate-50 transition-colors group">
-                                                <td className="px-4 py-3 max-w-md">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="text-[10px] font-mono text-slate-300 group-hover:text-red-300">{idx + 1}</span>
-                                                        <div className="min-w-0">
-                                                            <div className="text-sm font-bold text-slate-700 truncate" title={video.videoTitle}>{video.videoTitle}</div>
-                                                            <div className="flex items-center gap-2 mt-0.5">
-                                                                <span className="text-[10px] text-slate-400 font-mono">{video.videoId}</span>
-                                                                {video.rpm > summary.avgRPM * 1.5 && <span className="text-[9px] bg-green-100 text-green-700 px-1 rounded font-bold uppercase">High Earner</span>}
+                                        {/* TOTALS ROW (Top of video content) */}
+                                        <tr className="bg-slate-50/80 font-bold border-b-2 border-slate-200">
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-slate-500 uppercase tracking-widest">Total for Period</span>
+                                                    <span className="text-[10px] bg-slate-200 text-slate-600 px-1.5 rounded uppercase">{insightsYear === 'all' ? 'All Time' : insightsYear}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 text-right text-sm text-slate-800 font-mono">{formatNumber(yearSummary.views)}</td>
+                                            <td className="px-4 py-3 text-right text-sm text-slate-800 font-mono">{formatNumber(yearSummary.watchTime)}h</td>
+                                            <td className="px-4 py-3 text-right text-sm text-slate-800 font-mono">{formatNumber(yearSummary.subs)}</td>
+                                            <td className="px-4 py-3 text-right text-xs text-slate-500 font-mono">{formatCurrency(yearSummary.rpm)}</td>
+                                            <td className="px-4 py-3 text-right text-sm text-green-700 font-mono">{formatCurrency(yearSummary.revenue)}</td>
+                                        </tr>
+
+                                        {videoInsights.map((video, idx) => {
+                                            const isHighEarner = video.rpm > summary.avgRPM * 1.5;
+                                            const isHiddenGem = video.watchPerView > summary.avgWatchPerView * 1.3 && video.ctr < summary.avgCTR;
+                                            const isLowHook = video.ctr < summary.avgCTR * 0.7 && video.impressions > 1000;
+                                            const isFanMaker = video.subsPerView > (summary.totalSubs / summary.totalViews) * 1.5;
+
+                                            return (
+                                                <tr key={video.videoId} className="hover:bg-slate-50 transition-colors group">
+                                                    <td className="px-4 py-3 max-w-md">
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-[10px] font-mono text-slate-300 group-hover:text-red-300">{idx + 1}</span>
+                                                            <div className="min-w-0">
+                                                                <div className="text-sm font-bold text-slate-700 truncate" title={video.videoTitle}>{video.videoTitle}</div>
+                                                                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                                                    <span className="text-[10px] text-slate-400 font-mono mr-1">{video.videoId}</span>
+                                                                    
+                                                                    {isHighEarner && (
+                                                                        <InsightLabel 
+                                                                            type="high-earner" 
+                                                                            title="High Earner" 
+                                                                            details="This video has an RPM significantly higher than your average. It's highly optimized for high-value keywords or high-paying ads."
+                                                                            action="Consider creating a series around this specific topic to maximize channel revenue."
+                                                                        />
+                                                                    )}
+                                                                    
+                                                                    {isHiddenGem && (
+                                                                        <InsightLabel 
+                                                                            type="hidden-gem" 
+                                                                            title="Hidden Gem" 
+                                                                            details="Viewers are staying longer than average, but the Click-Through Rate is low. Your content is solid, but your packaging is failing."
+                                                                            action="Update the thumbnail and title immediately. A better hook could double this video's reach."
+                                                                        />
+                                                                    )}
+
+                                                                    {isLowHook && (
+                                                                        <InsightLabel 
+                                                                            type="low-hook" 
+                                                                            title="Hook Needed" 
+                                                                            details="The Click-Through Rate (CTR) is very low compared to your channel average. The algorithm is showing it, but people aren't clicking."
+                                                                            action="Run an A/B test on a new thumbnail with higher contrast or a more intriguing focal point."
+                                                                        />
+                                                                    )}
+
+                                                                    {isFanMaker && (
+                                                                        <InsightLabel 
+                                                                            type="fan-maker" 
+                                                                            title="Fan Maker" 
+                                                                            details="This video converts viewers to subscribers at a very high rate. It builds high trust or provides extreme value."
+                                                                            action="Link your high-view, low-sub videos to this one via end screens to grow your audience faster."
+                                                                        />
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-4 py-3 text-right text-sm text-slate-600 font-mono">{formatNumber(video.views)}</td>
-                                                <td className="px-4 py-3 text-right text-sm text-slate-600 font-mono">{formatNumber(video.watchTimeHours)}h</td>
-                                                <td className="px-4 py-3 text-right text-sm text-slate-600 font-mono">{formatNumber(video.subscribersGained)}</td>
-                                                <td className="px-4 py-3 text-right text-xs font-bold text-slate-400 font-mono">{formatCurrency(video.rpm)}</td>
-                                                <td className="px-4 py-3 text-right text-sm font-bold text-green-600 font-mono">{formatCurrency(video.estimatedRevenue)}</td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right text-sm text-slate-600 font-mono">{formatNumber(video.views)}</td>
+                                                    <td className="px-4 py-3 text-right text-sm text-slate-600 font-mono">{formatNumber(video.watchTimeHours)}h</td>
+                                                    <td className="px-4 py-3 text-right text-sm text-slate-600 font-mono">{formatNumber(video.subscribersGained)}</td>
+                                                    <td className="px-4 py-3 text-right text-xs font-bold text-slate-400 font-mono">{formatCurrency(video.rpm)}</td>
+                                                    <td className="px-4 py-3 text-right text-sm font-bold text-green-600 font-mono">{formatCurrency(video.estimatedRevenue)}</td>
+                                                </tr>
+                                            );
+                                        })}
                                         {videoInsights.length === 0 && (
                                             <tr><td colSpan={6} className="p-12 text-center text-slate-400 italic">No video data found for this period.</td></tr>
                                         )}
@@ -556,7 +685,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                             <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-100 flex items-start gap-3">
                                 <TrendingUpIcon className="w-4 h-4 text-red-500 mt-0.5" />
                                 <div className="text-[11px] text-red-800 leading-relaxed">
-                                    <strong>Pro Tip:</strong> Look for videos with high <strong>RPM</strong> but low views; these are prime candidates for updated thumbnails or search optimization as they convert views to revenue most efficiently.
+                                    <strong>Pro Tip:</strong> Hover over the insights labels for specific strategy recommendations. Use the <strong>"Total"</strong> row to see how much this subset of content contributes to your overall annual performance.
                                 </div>
                             </div>
                         </div>
