@@ -1,5 +1,3 @@
-
-
 import { 
     Upload, Download, Save, CheckCircle, AlertTriangle, LayoutDashboard, 
     Table, Calendar, CreditCard, Settings, ListTodo, ClipboardList, Repeat, 
@@ -9,7 +7,7 @@ import {
     Search, Wrench, Info, Eye, EyeOff, Folder, GripVertical, 
     ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Heart, Printer, 
     ShieldCheck, Scissors, UsersRound, Puzzle, Box, BarChart3, ArrowRight,
-    Youtube, Video
+    Youtube, Video, TrendingUp
 } from 'lucide-react';
 
 export const UploadIcon = Upload;
@@ -70,3 +68,4 @@ export const BarChartIcon = BarChart3;
 export const ArrowRightIcon = ArrowRight;
 export const YoutubeIcon = Youtube;
 export const VideoIcon = Video;
+export const TrendingUpIcon = TrendingUp;
