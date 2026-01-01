@@ -141,21 +141,22 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const getExportData = () => {
         const data: any = {
             exportDate: new Date().toISOString(),
-            version: '0.0.41',
+            version: '0.0.42',
             // Default core types
             transactionTypes,
             users
         };
 
+        // Helper to add human-readable descriptions to the backup JSON
         if (exportSelection.has('transactions')) {
-            // Add human-readable names to transactions for backup clarity
             data.transactions = transactions.map(tx => ({
                 ...tx,
                 _account_name: accounts.find(a => a.id === tx.accountId)?.name,
                 _category_name: categories.find(c => c.id === tx.categoryId)?.name,
                 _payee_name: payees.find(p => p.id === tx.payeeId)?.name,
                 _user_name: users.find(u => u.id === tx.userId)?.name,
-                _type_name: transactionTypes.find(t => t.id === tx.typeId)?.name
+                _type_name: transactionTypes.find(t => t.id === tx.typeId)?.name,
+                _tag_names: tx.tagIds?.map(id => tags.find(t => t.id === id)?.name).filter(Boolean)
             }));
         }
 
@@ -444,8 +445,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Retention</label>
                                     <input 
                                         type="number" 
-                                        min="1"
-                                        max="50"
+                                        min="1" 
+                                        max="50" 
                                         value={retentionCount} 
                                         onChange={(e) => setRetentionCount(parseInt(e.target.value) || 1)}
                                         className="w-full p-2 border rounded-md text-sm"
@@ -474,7 +475,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                         <CloudArrowUpIcon className="w-6 h-6 text-indigo-600" />
                                         Manual Backup & Restore
                                     </h3>
-                                    <p className="text-sm text-indigo-700">Choose exactly which entities to include in your backup.</p>
+                                    <p className="text-sm text-indigo-700">Choose exactly which entities to include in your backup. Human-readable names will be appended to IDs for easy reading.</p>
                                 </div>
                                 <div className="flex gap-2">
                                     <button 

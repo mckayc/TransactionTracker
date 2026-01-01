@@ -34,7 +34,6 @@ const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color
     if (data.length === 0) return <div className="h-48 flex items-center justify-center text-slate-400 text-sm">No data for selected period</div>;
 
     const maxValue = Math.max(...data.map(d => d.value));
-    const barWidth = 100 / data.length;
 
     return (
         <div className="h-64 flex items-end gap-1 pt-8 pb-4">
@@ -46,12 +45,14 @@ const SimpleBarChart: React.FC<{ data: { label: string; value: number }[]; color
                             className={`w-full rounded-t-sm transition-all duration-500 ${color} opacity-80 hover:opacity-100`}
                             style={{ height: `${Math.max(heightPct, 2)}%` }}
                         ></div>
+                        {/* Display Amount above bar on hover */}
                         <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-slate-800 text-white text-[10px] rounded px-2 py-1 whitespace-nowrap z-20 shadow-lg">
                             <div className="font-bold border-b border-slate-600 mb-1">{d.label}</div>
                             <div className="text-red-300 font-mono">{formatCurrency(d.value)}</div>
                         </div>
+                        {/* Label below bar */}
                         <div className="text-[9px] text-slate-400 text-center mt-2 truncate w-full overflow-hidden leading-tight h-8">
-                            {d.label.includes('-') ? d.label.split('-')[1] : d.label}
+                            {d.label.includes('-') ? d.label.split('-')[1] : d.label.substring(0, 3)}
                         </div>
                     </div>
                 );
@@ -320,7 +321,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         const isAllTime = revenueChartYear === 'all';
         
         if (isAllTime) {
-            // Group by Month Name for 12 months summary
+            // Group by Month Name (Jan-Dec) for "All Time" summary
             MONTH_NAMES.forEach(m => grouped.set(m, 0));
             filteredMetrics.forEach(m => {
                 if (!m.publishDate) return;
@@ -347,23 +348,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 .map(([date, value]) => ({ label: date, value }));
         }
     }, [filteredMetrics, revenueChartYear]);
-
-    const yearStats = useMemo(() => {
-        const grouped = new Map<string, { revenue: number, views: number, subs: number, impressions: number, clicks: number }>();
-        filteredMetrics.forEach(m => {
-            const year = m.publishDate.substring(0, 4);
-            if (!grouped.has(year)) grouped.set(year, { revenue: 0, views: 0, subs: 0, impressions: 0, clicks: 0 });
-            const data = grouped.get(year)!;
-            data.revenue += m.estimatedRevenue;
-            data.views += m.views;
-            data.subs += m.subscribersGained;
-            data.impressions += m.impressions;
-            data.clicks += (m.impressions * (m.ctr / 100)); 
-        });
-        return Array.from(grouped.entries()).sort((a, b) => b[0].localeCompare(a[0])).map(([year, d]) => ({
-            year, ...d, avgCtr: d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0
-        }));
-    }, [filteredMetrics]);
 
     const topVideosSorted = useMemo(() => {
         return [...filteredMetrics].sort((a, b) => b[productSortKey] - a[productSortKey]);
