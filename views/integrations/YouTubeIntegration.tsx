@@ -249,28 +249,61 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             if (newMetrics.length > 0) {
                 setPreviewMetrics(newMetrics);
                 
-                // --- DETECT FROM FILENAME ---
+                // --- IMPROVED DETECTION FROM FILENAME ---
                 const fileName = file.name;
                 let detectedYear = '';
                 let detectedChannelId = '';
 
-                // 1. Look for 4-digit year (e.g. 2024, 2025)
-                const yearMatch = fileName.match(/\b(20\d{2})\b/);
-                if (yearMatch) {
-                    detectedYear = yearMatch[1];
-                }
-
-                // 2. Look for channel name in filename if it follows "Table data - ChannelName - ..."
-                const channelPartMatch = fileName.match(/Table data - ([^-]+) -/i);
-                if (channelPartMatch) {
-                    const channelName = channelPartMatch[1].trim().toLowerCase();
-                    const matchedChannel = channels.find(c => c.name.toLowerCase() === channelName);
-                    if (matchedChannel) {
-                        detectedChannelId = matchedChannel.id;
+                // 1. Look for date range pattern YYYY-MM-DD_YYYY-MM-DD (matches the "2018-01-01_2019-01-01 Super English Kid" format)
+                const dateRangeMatch = fileName.match(/(\d{4})-\d{2}-\d{2}_(\d{4})-\d{2}-\d{2}/);
+                if (dateRangeMatch) {
+                    detectedYear = dateRangeMatch[1]; // Use the start year
+                } else {
+                    // Fallback to any 4-digit year if no range
+                    const yearMatch = fileName.match(/\b(20\d{2})\b/);
+                    if (yearMatch) {
+                        detectedYear = yearMatch[1];
                     }
                 }
 
-                // --- FALLBACK LOGIC ---
+                // 2. Channel Detection - check common naming patterns
+                const channelCleanPatterns = [
+                    /Table data - ([^-]+) -/i,             // Standard YT export
+                    /_\d{4}-\d{2}-\d{2}\s+(.+)\.csv/i,      // Format: _YYYY-MM-DD Channel Name.csv
+                    /(\d{4}-\d{2}-\d{2}_){2}\s*(.+)\.csv/i  // Format: YYYY-MM-DD_YYYY-MM-DD ChannelName.csv
+                ];
+
+                let extractedName = '';
+                for (const pattern of channelCleanPatterns) {
+                    const match = fileName.match(pattern);
+                    if (match) {
+                        extractedName = match[match.length - 1].trim();
+                        break;
+                    }
+                }
+
+                // Fuzzy matching: strip spaces and lowercase to compare extracted vs existing
+                const findChannelFuzzy = (name: string) => {
+                    const stripped = name.toLowerCase().replace(/\s+/g, '');
+                    return channels.find(c => c.name.toLowerCase().replace(/\s+/g, '') === stripped);
+                };
+
+                if (extractedName) {
+                    const matched = findChannelFuzzy(extractedName);
+                    if (matched) detectedChannelId = matched.id;
+                }
+
+                // 3. Fallback: Search all existing channel names in the raw filename
+                if (!detectedChannelId) {
+                    const matched = channels.find(c => {
+                        const strippedName = c.name.toLowerCase().replace(/\s+/g, '');
+                        const strippedFileName = fileName.toLowerCase().replace(/\s+/g, '');
+                        return strippedFileName.includes(strippedName);
+                    });
+                    if (matched) detectedChannelId = matched.id;
+                }
+
+                // --- FALLBACK LOGIC FOR YEAR ---
                 // If year not found in filename, find the record with the most recent publish date
                 if (!detectedYear) {
                     const latestRecord = [...newMetrics].sort((a, b) => {
