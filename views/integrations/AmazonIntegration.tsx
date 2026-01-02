@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, AmazonReportType, AmazonVideo } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
+// Add ChevronDownIcon to imports
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
 import { parseAmazonReport, parseAmazonVideos } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
 
@@ -88,6 +89,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [dataSortKey, setDataSortKey] = useState<keyof AmazonMetric>('date');
     const [dataSortDir, setDataSortDir] = useState<'asc' | 'desc'>('desc');
     const [dataCreatedYearFilter, setDataCreatedYearFilter] = useState<string>('all');
+    const [isMergedAsins, setIsMergedAsins] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(100);
 
@@ -97,10 +99,21 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [matchingMatches, setMatchingMatches] = useState<MatchResult[]>([]);
     const [isScanningMatches, setIsScanningMatches] = useState(false);
     const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set());
-    const [batchSize, setBatchSize] = useState(100);
+    const [batchSize, setBatchSize] = useState(1000);
     const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
     const [matchModalPage, setMatchModalPage] = useState(1);
     const matchesPerPage = 10;
+
+    // Helper for complex type filtering
+    const matchesReportType = (metricType: string, selectedFilter: string) => {
+        if (!selectedFilter) return true;
+        if (selectedFilter === 'creator_connections') {
+            return metricType === 'creator_connections' || 
+                   metricType === 'creator_connections_onsite' || 
+                   metricType === 'creator_connections_offsite';
+        }
+        return metricType === selectedFilter;
+    };
 
     // PERFORMANCE FIX: Granular pass for report years
     const { availableReportYears, availableCreatedYears } = useMemo(() => {
@@ -130,7 +143,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         const map = new Map<string, AmazonMetric>();
         
         let base = metrics;
-        if (filterType) base = base.filter(m => m.reportType.includes(filterType));
+        if (filterType) base = base.filter(m => matchesReportType(m.reportType, filterType));
         if (insightsReportYear !== 'all') base = base.filter(m => m.reportYear === insightsReportYear);
         if (insightsCreatedYear !== 'all') base = base.filter(m => m.date.substring(0, 4) === insightsCreatedYear);
 
@@ -198,8 +211,26 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     const tableMetrics = useMemo(() => {
         let result = [...metrics];
-        if (filterType) result = result.filter(m => m.reportType.includes(filterType));
+        if (filterType) result = result.filter(m => matchesReportType(m.reportType, filterType));
         if (dataCreatedYearFilter !== 'all') result = result.filter(m => m.date.startsWith(dataCreatedYearFilter));
+
+        if (isMergedAsins) {
+            const merged = new Map<string, AmazonMetric>();
+            result.forEach(m => {
+                const key = `${m.asin}_${m.reportType}`;
+                if (!merged.has(key)) {
+                    merged.set(key, { ...m });
+                } else {
+                    const ex = merged.get(key)!;
+                    ex.revenue += m.revenue;
+                    ex.clicks += m.clicks;
+                    ex.orderedItems += m.orderedItems;
+                    ex.shippedItems += m.shippedItems;
+                    // Keep most recent date or first date? Keeping first for sort consistency
+                }
+            });
+            result = Array.from(merged.values());
+        }
 
         result.sort((a, b) => {
             const valA = a[dataSortKey] as any;
@@ -211,7 +242,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             return dataSortDir === 'asc' ? valA - valB : valB - valA;
         });
         return result;
-    }, [metrics, filterType, dataCreatedYearFilter, dataSortKey, dataSortDir]);
+    }, [metrics, filterType, dataCreatedYearFilter, isMergedAsins, dataSortKey, dataSortDir]);
 
     const dataTabRevenue = useMemo(() => tableMetrics.reduce((sum, m) => sum + m.revenue, 0), [tableMetrics]);
 
@@ -222,7 +253,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const totalPages = Math.ceil(tableMetrics.length / rowsPerPage);
 
     // Reset pagination when filters change
-    useEffect(() => { setCurrentPage(1); }, [filterType, dataCreatedYearFilter, rowsPerPage]);
+    useEffect(() => { setCurrentPage(1); }, [filterType, dataCreatedYearFilter, rowsPerPage, isMergedAsins]);
 
     // Upload Handlers
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -407,12 +438,23 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <h3 className="font-bold text-slate-800 text-lg">Top Content Insights</h3>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-indigo-700 font-bold min-w-[120px] focus:ring-orange-500 outline-none">
-                                            <option value="">All Channels</option>
-                                            <option value="onsite">Onsite (Influencer)</option>
-                                            <option value="offsite">Offsite (Affiliate)</option>
-                                            <option value="creator">Creator Connections</option>
-                                        </select>
+                                        <div className="relative group">
+                                            <select 
+                                                value={filterType} 
+                                                onChange={e => setFilterType(e.target.value)} 
+                                                className="p-1.5 pr-8 border rounded-lg text-xs bg-white text-indigo-700 font-bold min-w-[150px] focus:ring-orange-500 outline-none appearance-none"
+                                            >
+                                                <option value="">All Types</option>
+                                                <option value="onsite">Onsite</option>
+                                                <option value="offsite">Offsite</option>
+                                                <option value="creator_connections">Creator Connections</option>
+                                                <option value="creator_connections_onsite">CC Onsite</option>
+                                                <option value="creator_connections_offsite">CC Offsite</option>
+                                            </select>
+                                            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                                <ChevronDownIcon className="w-4 h-4 text-indigo-400" />
+                                            </div>
+                                        </div>
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">LIMIT</span>
                                             <select value={insightsLimit} onChange={e => setInsightsLimit(Number(e.target.value))} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold min-w-[65px] focus:ring-orange-500 outline-none">
@@ -511,8 +553,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <option value="onsite">Onsite (Influencer)</option>
                                         <option value="offsite">Offsite (Affiliate)</option>
                                         <option value="creator_connections">Creator Connections</option>
-                                        <option value="creator_connections_onsite">Creator Connections (Onsite)</option>
-                                        <option value="creator_connections_offsite">Creator Connections (Offsite)</option>
+                                        <option value="creator_connections_onsite">CC Onsite</option>
+                                        <option value="creator_connections_offsite">CC Offsite</option>
                                     </select>
                                 </div>
 
@@ -537,6 +579,18 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     >
                                         {[50, 100, 200, 500, 1000].map(v => <option key={v} value={v}>{v} rows</option>)}
                                     </select>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <label className="flex items-center gap-2 cursor-pointer bg-orange-50 px-3 py-1.5 rounded-lg border border-orange-200 hover:bg-orange-100 transition-colors shadow-sm select-none group">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={isMergedAsins} 
+                                            onChange={() => setIsMergedAsins(!isMergedAsins)} 
+                                            className="h-4 w-4 text-orange-600 rounded border-orange-300 focus:ring-orange-500 cursor-pointer" 
+                                        />
+                                        <span className="text-xs font-bold text-orange-700 uppercase">Merge ASINs</span>
+                                    </label>
                                 </div>
                                 
                                 <button onClick={() => { if(confirm("Clear ALL data?")) onDeleteMetrics(metrics.map(m => m.id)); }} className="text-xs font-bold text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg flex items-center gap-1 transition-colors"><DeleteIcon className="w-4 h-4"/> Clear All</button>
@@ -566,7 +620,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <tbody className="divide-y divide-slate-100 bg-white">
                                         {paginatedTableMetrics.map(m => (
                                             <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-4 py-2 text-sm text-slate-600 font-mono">{m.date}</td>
+                                                <td className="px-4 py-2 text-sm text-slate-600 font-mono">{isMergedAsins ? 'MERGED' : m.date}</td>
                                                 <td className="px-4 py-2 text-[10px] text-slate-500 uppercase font-black">
                                                     <span className={`px-2 py-0.5 rounded border ${m.reportType.includes('creator') ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : (m.reportType === 'onsite' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-green-50 text-green-600 border-green-100')}`}>
                                                         {m.reportType.replace(/_/g, ' ')}
@@ -671,7 +725,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <div className="flex-1">
                                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Queue Size</label>
                                         <select value={batchSize} onChange={e => setBatchSize(Number(e.target.value))} className="w-full p-2 border rounded-lg text-sm bg-slate-50">
-                                            {[100, 200, 500, 1000].map(s => <option key={s} value={s}>{s} matches</option>)}
+                                            {[1000, 5000, 10000, 50000].map(s => <option key={s} value={s}>{s.toLocaleString()} matches</option>)}
                                         </select>
                                     </div>
                                     <button 
@@ -819,7 +873,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center space-y-4">
                         <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
                         <h3 className="text-xl font-bold text-slate-800">Matching Records</h3>
-                        <p className="text-sm text-slate-500">Cross-referencing ASINs and dates for a queue of up to {batchSize} matches.</p>
+                        <p className="text-sm text-slate-500">Cross-referencing ASINs and dates for a queue of up to {batchSize.toLocaleString()} matches.</p>
                     </div>
                 </div>
             )}
@@ -827,4 +881,4 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     );
 };
 
-export default AmazonIntegration;
+export default YouTubeIntegration;
