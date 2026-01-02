@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, AmazonReportType, AmazonVideo } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
@@ -349,7 +348,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         } catch (error) { console.error(error); alert("Failed to parse report."); } finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
     };
 
-    // Fix: Added missing confirmImport function
     const confirmImport = () => {
         if (previewMetrics.length > 0) {
             const metricsWithMeta = previewMetrics.map(m => ({ 
@@ -375,7 +373,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             if (importedVideos.length > 0) {
                 // Perform matching immediately
                 const results: VideoMatchResult[] = [];
-                const sales = metrics.filter(m => m.reportType === 'onsite' || m.reportType === 'offsite');
+                // ONLY match with 'onsite' records as specified in request
+                const sales = metrics.filter(m => m.reportType === 'onsite');
                 
                 // Index sales for faster lookup
                 const salesByAsin = new Map<string, AmazonMetric[]>();
@@ -445,7 +444,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         ...updatedMetrics[index], 
                         videoTitle: match.videoData.videoTitle,
                         videoDuration: match.videoData.duration,
-                        videoUrl: match.videoData.duration,
+                        videoUrl: match.videoData.videoUrl,
                         uploadDate: match.videoData.uploadDate
                     };
                 }
@@ -458,7 +457,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         onAddMetrics(updatedMetrics);
         setMergeProgress(null);
         setVideoMatches([]);
-        alert(`Successfully associated ${total} sales records with video metadata.`);
+        alert(`Successfully associated ${total} onsite sales records with video metadata.`);
     };
 
     const handleConfirmCCMatches = async () => {
@@ -901,7 +900,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     </div>
                                 </div>
                                 <p className="text-sm text-slate-600 leading-relaxed">
-                                    Imports video reports to associate Video Titles, Durations, and Upload Dates with Onsite sales records. Matches by ASIN or normalized title.
+                                    Imports video reports to associate Video Titles, Durations, and Upload Dates with <strong className="text-slate-800">Onsite sales records ONLY</strong>. Matches by ASIN or normalized title.
                                 </p>
                                 <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-2xl p-8 bg-slate-50 group hover:border-red-400 transition-colors">
                                     <CloudArrowUpIcon className="w-12 h-12 text-slate-300 group-hover:text-red-400 mb-4 transition-colors" />
@@ -1020,8 +1019,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-red-50/50">
                             <div>
-                                <h3 className="text-2xl font-black text-slate-800 flex items-center gap-2"><VideoIcon className="w-6 h-6 text-red-600" /> Video Metadata Review</h3>
-                                <p className="text-sm text-slate-500">We found <strong>{videoMatches.length}</strong> matching sales records. Reviewing top 100 sample.</p>
+                                <h3 className="text-2xl font-black text-slate-800 flex items-center gap-2"><VideoIcon className="w-6 h-6 text-red-600" /> Video Metadata Review (Onsite Only)</h3>
+                                <p className="text-sm text-slate-500">We found <strong>{videoMatches.length}</strong> matching <strong className="text-slate-700 underline">onsite</strong> records. Reviewing top 100 sample.</p>
                             </div>
                             <button onClick={() => setIsVideoMatchModalOpen(false)} className="p-2 hover:bg-white rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                         </div>
@@ -1041,9 +1040,9 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                             </div>
                                         </div>
                                         <div className="border-l border-slate-200 pl-8 space-y-1">
-                                            <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Sales Record to Update</p>
+                                            <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Matched Onsite Sale</p>
                                             <div className="flex items-center gap-3">
-                                                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${match.salesMetric.reportType === 'onsite' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>{match.salesMetric.reportType}</span>
+                                                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-blue-100 text-blue-700">ONSITE</span>
                                                 <p className="text-xs font-bold text-slate-700 truncate" title={match.salesMetric.title}>{match.salesMetric.title}</p>
                                             </div>
                                             <div className="flex gap-4 text-[10px] font-mono text-slate-500">
@@ -1091,7 +1090,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         </div>
                         <div>
                             <h3 className="text-xl font-black text-slate-800">Updating Database</h3>
-                            <p className="text-sm text-slate-500 mt-1">Linking metadata for {mergeProgress.total} items...</p>
+                            <p className="text-sm text-slate-500 mt-1">Linking metadata for {mergeProgress.total} onsite items...</p>
                         </div>
                         <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                             <div 
