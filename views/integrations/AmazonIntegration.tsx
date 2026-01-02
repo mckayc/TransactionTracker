@@ -321,9 +321,27 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             if (newMetrics.length > 0) {
                 setPreviewMetrics(newMetrics);
                 const fileName = file.name.toLowerCase();
+                
+                // 1. Try to find a year in the filename (e.g. 2024)
                 const yearMatch = fileName.match(/\b(20\d{2})\b/);
-                if (yearMatch) setUploadYear(yearMatch[1]);
-                else if (newMetrics[0].saleDate) setUploadYear(newMetrics[0].saleDate.substring(0, 4));
+                let detectedYear = '';
+                
+                if (yearMatch) {
+                    detectedYear = yearMatch[1];
+                } else {
+                    // 2. Fallback: Find the most recent year among all records in the file
+                    const yearsInFile = newMetrics
+                        .map(m => m.saleDate ? m.saleDate.substring(0, 4) : '')
+                        .filter(y => y.length === 4 && !isNaN(parseInt(y)));
+                    
+                    if (yearsInFile.length > 0) {
+                        // Sort descending and pick the first (most recent)
+                        yearsInFile.sort((a, b) => b.localeCompare(a));
+                        detectedYear = yearsInFile[0];
+                    }
+                }
+
+                setUploadYear(detectedYear);
 
                 let detectedType: AmazonReportType = 'unknown';
                 let detectedCCType: AmazonCCType | 'unknown' = 'unknown';

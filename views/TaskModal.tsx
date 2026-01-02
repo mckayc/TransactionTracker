@@ -83,7 +83,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
 
     useEffect(() => {
         if (isOpen) {
-            // Reset mode on open based on prop (unless creating new)
             setMode(task ? initialMode : 'edit');
 
             if (task) {
@@ -96,7 +95,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                 setIsRecurring(!!task.recurrence);
                 setRecurrence(task.recurrence || { frequency: 'weekly', interval: 1 });
                 setIsCompleted(task.isCompleted);
-                // In edit mode, default to details. In view mode, default to checklist/overview.
                 setActiveTab('details');
             } else {
                 setTitle('');
@@ -128,6 +126,24 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
             return;
         }
 
+        let finalSubtasks = [...subtasks];
+
+        // 1. Automatically apply any pending subtask edits
+        if (editingSubtaskId && editSubtaskData) {
+            finalSubtasks = finalSubtasks.map(s => s.id === editingSubtaskId ? editSubtaskData : s);
+        }
+
+        // 2. Automatically capture pending subtask text if user forgot to click "+"
+        if (newSubtaskText.trim()) {
+            finalSubtasks.push({
+                id: generateUUID(),
+                text: newSubtaskText.trim(),
+                isCompleted: false,
+                linkUrl: newSubtaskLink.trim() || undefined,
+                linkText: newSubtaskLinkText.trim() || undefined
+            });
+        }
+
         const newTask: TaskItem = {
             id: task?.id || generateUUID(),
             title: title.trim(),
@@ -137,7 +153,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
             dueDate: dueDate || undefined,
             isCompleted: isCompleted,
             createdAt: task?.createdAt || new Date().toISOString(),
-            subtasks: subtasks,
+            subtasks: finalSubtasks,
             recurrence: isRecurring ? recurrence : undefined
         };
 
@@ -163,7 +179,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
             setNewSubtaskLinkText('');
             setShowLinkInput(false);
 
-            // If in view mode, auto-save the subtask addition
             if (mode === 'view') {
                 const newTask: TaskItem = {
                     ...(task || {} as TaskItem),
@@ -190,7 +205,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
         const updatedSubtasks = subtasks.map(st => st.id === id ? { ...st, isCompleted: !st.isCompleted } : st);
         setSubtasks(updatedSubtasks);
         
-        // In View mode, save immediately on check
         if (mode === 'view') {
             const newTask: TaskItem = {
                 ...(task || {} as TaskItem),
@@ -200,7 +214,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
         }
     };
 
-    // --- Subtask Editing (Edit Mode) ---
     const startEditingSubtask = (st: SubTask) => {
         setEditingSubtaskId(st.id);
         setEditSubtaskData({ ...st });
@@ -233,12 +246,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
         const newStatus = !isCompleted;
         setIsCompleted(newStatus);
         if (mode === 'view') {
-             // Save immediately
              const newTask: TaskItem = {
                 ...(task! || {}),
-                id: task?.id || generateUUID(), // Should have ID if in view mode
+                id: task?.id || generateUUID(),
                 isCompleted: newStatus,
-                // Ensure other fields are carried over from state in case they were edited in background
                 title, 
                 description, 
                 notes, 
@@ -249,7 +260,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                 createdAt: task?.createdAt || new Date().toISOString()
             };
             onSave(newTask);
-            onClose(); // Close on completion toggle from view mode? Usually expected.
+            onClose();
         }
     };
 
@@ -265,7 +276,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                 
-                {/* Header */}
                 <div className="flex justify-between items-center p-4 border-b">
                     <h2 className="text-xl font-bold text-slate-800 truncate pr-4">
                         {mode === 'view' ? 'Task Details' : (task ? 'Edit Task' : 'New Task')}
@@ -280,10 +290,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                     </div>
                 </div>
 
-                {/* VIEW MODE */}
                 {mode === 'view' && (
                     <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                        {/* Title & Status */}
                         <div className="flex items-start justify-between gap-4">
                             <div>
                                 <h3 className={`text-2xl font-bold text-slate-800 ${isCompleted ? 'line-through text-slate-400' : ''}`}>{title}</h3>
@@ -307,7 +315,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                             </button>
                         </div>
 
-                        {/* Description */}
                         {description && (
                             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                                 <h4 className="text-xs font-bold text-slate-500 uppercase mb-1">Description</h4>
@@ -315,7 +322,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                             </div>
                         )}
 
-                        {/* Notes - Only visible here in View Mode */}
                         {notes && (
                             <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
                                 <h4 className="text-xs font-bold text-yellow-700 uppercase mb-2">Notes</h4>
@@ -323,7 +329,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                             </div>
                         )}
 
-                        {/* Checklist */}
                         <div>
                             <div className="flex items-center justify-between mb-2">
                                 <h4 className="font-bold text-slate-700 flex items-center gap-2">
@@ -367,10 +372,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                     </div>
                 )}
 
-                {/* EDIT MODE */}
                 {mode === 'edit' && (
                     <>
-                        {/* Tabs */}
                         <div className="flex border-b bg-slate-50">
                             <button onClick={() => setActiveTab('details')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'details' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Details</button>
                             <button onClick={() => setActiveTab('checklist')} className={`flex-1 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'checklist' ? 'border-indigo-600 text-indigo-600 bg-white' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Checklist ({subtasks.length})</button>
@@ -379,7 +382,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
 
                         <form onSubmit={handleSave} className="flex-1 overflow-y-auto p-6">
                             
-                            {/* DETAILS TAB */}
                             {activeTab === 'details' && (
                                 <div className="space-y-4">
                                     <div>
@@ -429,7 +431,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                 </div>
                             )}
 
-                            {/* CHECKLIST TAB */}
                             {activeTab === 'checklist' && (
                                 <div className="space-y-4">
                                     <div>
@@ -443,7 +444,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                             <ul className="space-y-2 mb-4">
                                                 {subtasks.map(st => {
                                                     if (editingSubtaskId === st.id && editSubtaskData) {
-                                                        // EDIT MODE FOR SUBTASK
                                                         return (
                                                             <li key={st.id} className="p-3 bg-indigo-50 border border-indigo-200 rounded-md shadow-sm space-y-3">
                                                                 <div>
@@ -498,7 +498,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                                             </li>
                                                         )
                                                     } else {
-                                                        // DISPLAY MODE FOR SUBTASK (IN EDIT FORM)
                                                         return (
                                                             <li key={st.id} className="flex items-start gap-3 p-3 bg-white border rounded-md shadow-sm group hover:border-indigo-300 transition-colors">
                                                                 <input 
@@ -583,7 +582,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                 </div>
                             )}
 
-                            {/* SCHEDULE TAB */}
                             {activeTab === 'schedule' && (
                                 <div className="space-y-6">
                                      <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
@@ -633,7 +631,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                                 </div>
                                             </div>
 
-                                            {/* Advanced Weekly Options */}
                                             {recurrence.frequency === 'weekly' && (
                                                 <div>
                                                     <label className="block text-sm font-medium text-slate-700 mb-1">On these days:</label>
@@ -655,7 +652,6 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                                 </div>
                                             )}
 
-                                            {/* Advanced Monthly Options */}
                                             {recurrence.frequency === 'monthly' && (
                                                 <div>
                                                     <label className="block text-sm font-medium text-slate-700 mb-1">On day:</label>
@@ -704,10 +700,9 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
 
                         </form>
                         
-                        {/* Footer */}
                         <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
                             <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border rounded-lg hover:bg-slate-100">Cancel</button>
-                            <button onClick={handleSave} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm">Save Task</button>
+                            <button onClick={() => handleSave()} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm">Save Task</button>
                         </div>
                     </>
                 )}

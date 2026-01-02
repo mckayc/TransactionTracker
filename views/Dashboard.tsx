@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument, DocumentFolder, Tag } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument, DocumentFolder, Tag, AccountType } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText, hasApiKey } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
@@ -10,7 +10,7 @@ import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import DuplicateReview from '../components/DuplicateReview';
 import ImportVerification from '../components/ImportVerification';
-import { ExclamationTriangleIcon, CalendarIcon } from '../components/Icons';
+import { ExclamationTriangleIcon, CalendarIcon, AddIcon, CloseIcon, CreditCardIcon } from '../components/Icons';
 import { formatDate } from '../dateUtils';
 import { generateUUID } from '../utils';
 import { saveFile } from '../services/storageService';
@@ -22,6 +22,8 @@ interface DashboardProps {
   onTransactionsAdded: (newTransactions: Transaction[], newCategories: Category[]) => void;
   transactions: Transaction[];
   accounts: Account[];
+  onAddAccount: (account: Account) => void;
+  accountTypes: AccountType[];
   categories: Category[];
   tags: Tag[];
   transactionTypes: TransactionType[];
@@ -49,15 +51,13 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, i
 const getNextTaxDeadline = () => {
     const now = new Date();
     const year = now.getFullYear();
-    // US Estimated Tax Deadlines: Apr 15, Jun 15, Sep 15, Jan 15 (next year)
     const deadlines = [
-        { date: new Date(year, 3, 15), label: 'Q1 Est. Tax' }, // April 15
-        { date: new Date(year, 5, 15), label: 'Q2 Est. Tax' }, // June 15
-        { date: new Date(year, 8, 15), label: 'Q3 Est. Tax' }, // Sept 15
-        { date: new Date(year + 1, 0, 15), label: 'Q4 Est. Tax' }, // Jan 15
+        { date: new Date(year, 3, 15), label: 'Q1 Est. Tax' }, 
+        { date: new Date(year, 5, 15), label: 'Q2 Est. Tax' }, 
+        { date: new Date(year, 8, 15), label: 'Q3 Est. Tax' }, 
+        { date: new Date(year + 1, 0, 15), label: 'Q4 Est. Tax' }, 
     ];
 
-    // Find the first deadline that is in the future
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const next = deadlines.find(d => d.date >= today) || deadlines[0]; 
 
@@ -66,67 +66,118 @@ const getNextTaxDeadline = () => {
 
     return {
         label: next.label,
-        // Using dateUtils-like manual formatting for consistency with short display requirement
         dateStr: next.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), 
         daysLeft: diffDays
     };
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, categories, tags, transactionTypes, rules, payees, users, onAddDocument, documentFolders, onCreateFolder }) => {
+// Quick Account Modal Component
+const QuickAccountModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onSave: (account: Account) => void;
+    accountTypes: AccountType[];
+}> = ({ isOpen, onClose, onSave, accountTypes }) => {
+    const [name, setName] = useState('');
+    const [identifier, setIdentifier] = useState('');
+    const [accountTypeId, setAccountTypeId] = useState(accountTypes[0]?.id || '');
+
+    useEffect(() => {
+        if (isOpen && accountTypes.length > 0 && !accountTypeId) {
+            setAccountTypeId(accountTypes[0].id);
+        }
+    }, [isOpen, accountTypes, accountTypeId]);
+
+    if (!isOpen) return null;
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (name.trim() && identifier.trim() && accountTypeId) {
+            onSave({
+                id: generateUUID(),
+                name: name.trim(),
+                identifier: identifier.trim(),
+                accountTypeId
+            });
+            setName('');
+            setIdentifier('');
+            onClose();
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+                    <div className="flex items-center gap-2">
+                        <CreditCardIcon className="w-5 h-5 text-indigo-600" />
+                        <h3 className="font-bold text-slate-800">Quick Add Account</h3>
+                    </div>
+                    <button onClick={onClose}><CloseIcon className="w-6 h-6 text-slate-400 hover:text-slate-600"/></button>
+                </div>
+                <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Account Name</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full" placeholder="e.g. Chase Freedom" required autoFocus />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Identifier (Last 4 digits)</label>
+                        <input type="text" value={identifier} onChange={e => setIdentifier(e.target.value)} className="w-full font-mono" placeholder="1234" required />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Account Type</label>
+                        <select value={accountTypeId} onChange={e => setAccountTypeId(e.target.value)} className="w-full" required>
+                            {accountTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex gap-3 pt-2">
+                        <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border rounded-xl font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
+                        <button type="submit" className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-md">Create Account</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, onAddAccount, accountTypes, categories, tags, transactionTypes, rules, payees, users, onAddDocument, documentFolders, onCreateFolder }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState('');
-  
-  // Dashboard filtering state - Default to Year
   const [dashboardRange, setDashboardRange] = useState<'all' | 'year' | 'month' | 'week'>('year');
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   
   const apiKeyAvailable = hasApiKey();
   const [useAi, setUseAi] = useState(apiKeyAvailable);
   
   useEffect(() => {
-      if (apiKeyAvailable) {
-          setUseAi(true);
-      }
+      if (apiKeyAvailable) setUseAi(true);
   }, [apiKeyAvailable]);
   
   const [importMethod, setImportMethod] = useState<ImportMethod>('upload');
   const [textInput, setTextInput] = useState('');
   const [selectedUserId, setSelectedUserId] = useState<string>('');
-  
-  // State for Paste Account Selection
   const [pasteAccountId, setPasteAccountId] = useState<string>('');
 
-  // Set default user and account on initial load or when lists update
   useEffect(() => {
     const defaultUser = users.find(u => u.isDefault) || users[0];
-    if (defaultUser && !selectedUserId) {
-        setSelectedUserId(defaultUser.id);
-    }
-    if (accounts.length > 0 && !pasteAccountId) {
-        setPasteAccountId(accounts[0].id);
-    }
+    if (defaultUser && !selectedUserId) setSelectedUserId(defaultUser.id);
+    if (accounts.length > 0 && !pasteAccountId) setPasteAccountId(accounts[0].id);
   }, [users, accounts, selectedUserId, pasteAccountId]);
 
-  // State for the import and review flow
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; })[]>([]);
   const [stagedForImport, setStagedForImport] = useState<Transaction[]>([]);
   const [duplicatesToReview, setDuplicatesToReview] = useState<DuplicatePair[]>([]);
   const [stagedNewCategories, setStagedNewCategories] = useState<Category[]>([]);
-
-  // State for the final results display
   const [finalizedTransactions, setFinalizedTransactions] = useState<Transaction[]>([]);
   const [duplicatesIgnored, setDuplicatesIgnored] = useState(0);
   const [duplicatesImported, setDuplicatesImported] = useState(0);
 
-  const handleProgress = (msg: string) => {
-    setProgressMessage(msg);
-  };
+  const handleProgress = (msg: string) => setProgressMessage(msg);
 
   const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
     handleProgress('Applying automation rules...');
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
-    
-    // Pass accounts to support "Account Name" based rules
     const transactionsWithRules = applyRulesToTransactions(rawWithUser, rules, accounts);
 
     const existingCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
@@ -154,62 +205,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setStagedNewCategories(newCategories);
     setRawTransactionsToVerify(transactionsWithCategoryIds);
     setAppState('verifying_import');
-
   }, [rules, categories, accounts]);
 
   const handleFileUpload = useCallback(async (files: File[], accountId: string) => {
     setAppState('processing');
     setError(null);
     try {
-      // Ensure "Imported Documents" folder exists
       let importFolderId = documentFolders.find(f => f.name === "Imported Documents" && !f.parentId)?.id;
-      
       if (!importFolderId) {
           importFolderId = generateUUID();
-          const newFolder: DocumentFolder = {
-              id: importFolderId,
-              name: "Imported Documents",
-              parentId: undefined,
-              createdAt: new Date().toISOString()
-          };
+          const newFolder: DocumentFolder = { id: importFolderId, name: "Imported Documents", parentId: undefined, createdAt: new Date().toISOString() };
           onCreateFolder(newFolder);
-          // Note: onCreateFolder updates parent state, but we use the local ID for this batch
       }
-
-      // Save files to Document Vault first
       for (const file of files) {
           const now = new Date();
-          // Format: YYYY-MM-DD_HH-MM-SS_OriginalName
-          const year = now.getFullYear();
-          const month = String(now.getMonth() + 1).padStart(2, '0');
-          const day = String(now.getDate()).padStart(2, '0');
-          const hours = String(now.getHours()).padStart(2, '0');
-          const minutes = String(now.getMinutes()).padStart(2, '0');
-          const seconds = String(now.getSeconds()).padStart(2, '0');
-          
-          const timestampPrefix = `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
+          const timestampPrefix = now.toISOString().replace(/[:T]/g, '-').slice(0, 19);
           const newFileName = `${timestampPrefix}_${file.name}`;
           const docId = generateUUID();
-          
-          // Clone file with new name for storage
           const fileToSave = new File([file], newFileName, { type: file.type });
-          
           await saveFile(docId, fileToSave);
-          
-          const newDoc: BusinessDocument = {
-              id: docId,
-              name: fileToSave.name,
-              uploadDate: now.toISOString().split('T')[0],
-              size: fileToSave.size,
-              mimeType: fileToSave.type,
-              parentId: importFolderId // Assign to the Imported Documents folder
-          };
+          const newDoc: BusinessDocument = { id: docId, name: fileToSave.name, uploadDate: now.toISOString().split('T')[0], size: fileToSave.size, mimeType: fileToSave.type, parentId: importFolderId };
           onAddDocument(newDoc);
       }
-
-      const rawTransactions = useAi 
-        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, handleProgress) 
-        : await parseTransactionsFromFiles(files, accountId, transactionTypes, handleProgress);
+      const rawTransactions = useAi ? await extractTransactionsFromFiles(files, accountId, transactionTypes, handleProgress) : await parseTransactionsFromFiles(files, accountId, transactionTypes, handleProgress);
       await prepareForVerification(rawTransactions, selectedUserId);
     } catch (err) {
       console.error(err);
@@ -223,9 +241,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setAppState('processing');
     setError(null);
     try {
-      const rawTransactions = useAi
-        ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress)
-        : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress);
+      const rawTransactions = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress);
       await prepareForVerification(rawTransactions, selectedUserId);
     } catch (err) {
       console.error(err);
@@ -237,7 +253,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const handleVerificationComplete = (verifiedTransactions: (RawTransaction & { categoryId: string; })[]) => {
       handleProgress('Checking for duplicates...');
       const { added, duplicates } = mergeTransactions(transactions, verifiedTransactions);
-
       if (duplicates.length > 0) {
           setStagedForImport(added);
           setDuplicatesToReview(duplicates);
@@ -281,38 +296,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
   }, [transactions]);
   
-  // Dashboard Card Filtering Logic
   const dashboardTransactions = useMemo(() => {
     const now = new Date();
-    // Filter out parent transactions immediately to avoid double counting split transactions
     const baseTxs = transactions.filter(t => !t.isParent);
-
     if (dashboardRange === 'all') return baseTxs;
-    
     return baseTxs.filter(tx => {
         const txDate = new Date(tx.date);
-        // Normalize dates to start of day for accurate comparison
         txDate.setHours(0, 0, 0, 0);
         const today = new Date();
         today.setHours(0,0,0,0);
-
         const txYear = txDate.getFullYear();
         const txMonth = txDate.getMonth();
-        
-        if (dashboardRange === 'year') {
-            return txYear === now.getFullYear();
-        }
-        if (dashboardRange === 'month') {
-            return txYear === now.getFullYear() && txMonth === now.getMonth();
-        }
+        if (dashboardRange === 'year') return txYear === now.getFullYear();
+        if (dashboardRange === 'month') return txYear === now.getFullYear() && txMonth === now.getMonth();
         if (dashboardRange === 'week') {
-             // Get Sunday of current week
              const startOfWeek = new Date(today);
              startOfWeek.setDate(today.getDate() - today.getDay());
-             
              const endOfWeek = new Date(startOfWeek);
              endOfWeek.setDate(startOfWeek.getDate() + 6);
-             
              return txDate >= startOfWeek && txDate <= endOfWeek;
         }
         return true;
@@ -324,7 +325,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const totalExpenses = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'expense').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
   const totalInvestments = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'investment').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
   const totalDonations = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'donation').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
-
   const nextDeadline = useMemo(() => getNextTaxDeadline(), []);
 
   const getRangeLabel = () => {
@@ -365,13 +365,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         <SummaryWidget title="Total Expenses" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)} helpText={getRangeLabel()} />
         <SummaryWidget title="Investments" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalInvestments)} helpText={getRangeLabel()} />
         <SummaryWidget title="Donations" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalDonations)} helpText={getRangeLabel()} />
-        <SummaryWidget 
-            title={nextDeadline.label} 
-            value={`${nextDeadline.daysLeft} Days`} 
-            helpText={`Due by ${nextDeadline.dateStr}`} 
-            icon={<CalendarIcon className="w-6 h-6 text-indigo-600"/>}
-            className="border-indigo-200 bg-indigo-50"
-        />
+        <SummaryWidget title={nextDeadline.label} value={`${nextDeadline.daysLeft} Days`} helpText={`Due by ${nextDeadline.dateStr}`} icon={<CalendarIcon className="w-6 h-6 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
@@ -395,34 +389,36 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
             </div>
 
             {importMethod === 'upload' ? (
-                <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} useAi={useAi} />
+                <FileUpload 
+                  onFileUpload={handleFileUpload} 
+                  disabled={false} 
+                  accounts={accounts} 
+                  useAi={useAi} 
+                  onAddAccountRequested={() => setIsAccountModalOpen(true)}
+                />
             ) : (
                 <div className="space-y-4">
-                     {accounts.length > 0 && (
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Select Account</label>
-                            <select
-                                value={pasteAccountId}
-                                onChange={(e) => setPasteAccountId(e.target.value)}
-                                className="w-full p-2 border rounded-md"
-                            >
-                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                            </select>
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Select Account</label>
+                        <div className="flex gap-2">
+                             {accounts.length > 0 ? (
+                                <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="flex-grow">
+                                    {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                </select>
+                             ) : (
+                                <div className="flex-grow p-2 border rounded-md bg-red-50 text-red-600 text-sm font-medium border-red-100">No accounts found. Create one to continue.</div>
+                             )}
+                             <button 
+                                onClick={() => setIsAccountModalOpen(true)} 
+                                className="px-3 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-indigo-600"
+                                title="Quick add account"
+                             >
+                                <AddIcon className="w-5 h-5" />
+                             </button>
                         </div>
-                     )}
-                    <textarea
-                        value={textInput}
-                        onChange={e => setTextInput(e.target.value)}
-                        placeholder="Paste transaction text here (CSV rows, or table data from your bank website)..."
-                        className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono text-sm"
-                    />
-                    <button
-                        onClick={handleTextPaste}
-                        disabled={!textInput.trim() || accounts.length === 0}
-                        className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-400"
-                    >
-                        Process Text
-                    </button>
+                    </div>
+                    <textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="Paste transaction text here (CSV rows, or table data from your bank website)..." className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono text-sm" />
+                    <button onClick={handleTextPaste} disabled={!textInput.trim() || accounts.length === 0} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-400">Process Text</button>
                 </div>
             )}
             
@@ -431,81 +427,35 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                  <div className="flex gap-4">
                     {users.map(u => (
                         <label key={u.id} className="flex items-center gap-2 cursor-pointer">
-                            <input 
-                                type="radio" 
-                                name="importUser" 
-                                value={u.id} 
-                                checked={selectedUserId === u.id} 
-                                onChange={() => setSelectedUserId(u.id)}
-                                className="text-indigo-600 focus:ring-indigo-500"
-                            />
+                            <input type="radio" name="importUser" value={u.id} checked={selectedUserId === u.id} onChange={() => setSelectedUserId(u.id)} className="text-indigo-600 focus:ring-indigo-500" />
                             <span className="text-sm text-slate-700">{u.name}</span>
                         </label>
                     ))}
                  </div>
             </div>
-
           </div>
         ) : appState === 'processing' ? (
-            <div className="py-12">
-                <div className="flex flex-col items-center justify-center space-y-4 text-center">
-                  <svg className="animate-spin h-10 w-10 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <div className="text-slate-600">
-                    <p className="font-semibold text-lg">Processing...</p>
-                    <p className="text-sm">{progressMessage}</p>
-                  </div>
-                </div>
-            </div>
+            <div className="py-12"><div className="flex flex-col items-center justify-center space-y-4 text-center"><svg className="animate-spin h-10 w-10 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><div className="text-slate-600"><p className="font-semibold text-lg">Processing...</p><p className="text-sm">{progressMessage}</p></div></div></div>
         ) : appState === 'verifying_import' ? (
-            <ImportVerification 
-                initialTransactions={rawTransactionsToVerify} 
-                onComplete={handleVerificationComplete} 
-                onCancel={handleClear}
-                accounts={accounts}
-                categories={categories.concat(stagedNewCategories)}
-                transactionTypes={transactionTypes}
-                payees={payees}
-                users={users}
-            />
+            <ImportVerification initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={handleClear} accounts={accounts} categories={categories.concat(stagedNewCategories)} transactionTypes={transactionTypes} payees={payees} users={users} />
         ) : appState === 'reviewing_duplicates' ? (
-            <DuplicateReview 
-                duplicates={duplicatesToReview} 
-                onComplete={handleReviewComplete} 
-                onCancel={handleClear}
-                accounts={accounts}
-            />
+            <DuplicateReview duplicates={duplicatesToReview} onComplete={handleReviewComplete} onCancel={handleClear} accounts={accounts} />
         ) : (
-            <ResultsDisplay 
-                appState={appState} 
-                error={error} 
-                progressMessage={progressMessage} 
-                transactions={finalizedTransactions} 
-                duplicatesIgnored={duplicatesIgnored} 
-                duplicatesImported={duplicatesImported} 
-                onClear={handleClear} 
-            />
+            <ResultsDisplay appState={appState} error={error} progressMessage={progressMessage} transactions={finalizedTransactions} duplicatesIgnored={duplicatesIgnored} duplicatesImported={duplicatesImported} onClear={handleClear} />
         )}
       </div>
 
-      {/* Recent Transactions */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <h2 className="text-xl font-bold text-slate-700 mb-4">Recent Transactions</h2>
-        <TransactionTable 
-            transactions={recentTransactions} 
-            accounts={accounts} 
-            categories={categories} 
-            tags={tags}
-            transactionTypes={transactionTypes} 
-            payees={payees}
-            users={users}
-            onUpdateTransaction={() => {}} 
-            onDeleteTransaction={() => {}}
-            visibleColumns={new Set(['date', 'description', 'amount', 'category', 'type'])}
-        />
+        <TransactionTable transactions={recentTransactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={() => {}} onDeleteTransaction={() => {}} visibleColumns={new Set(['date', 'description', 'amount', 'category', 'type'])} />
       </div>
+
+      <QuickAccountModal 
+        isOpen={isAccountModalOpen} 
+        onClose={() => setIsAccountModalOpen(false)} 
+        onSave={onAddAccount}
+        accountTypes={accountTypes}
+      />
     </div>
   );
 };

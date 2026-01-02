@@ -1,5 +1,6 @@
+
 import React, { useState, useCallback, useRef } from 'react';
-import { UploadIcon } from './Icons';
+import { UploadIcon, AddIcon } from './Icons';
 import type { Account } from '../types';
 
 interface FileUploadProps {
@@ -7,6 +8,7 @@ interface FileUploadProps {
   disabled: boolean;
   accounts: Account[];
   useAi: boolean;
+  onAddAccountRequested?: () => void;
 }
 
 const EXCEL_MIME_TYPES = [
@@ -14,7 +16,7 @@ const EXCEL_MIME_TYPES = [
   'application/vnd.ms-excel'
 ];
 
-const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, accounts, useAi }) => {
+const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, accounts, useAi, onAddAccountRequested }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
@@ -122,20 +124,30 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
             </div>
             <div className="space-y-2">
                  <h4 className="font-medium text-slate-700">Select Account:</h4>
-                 {accounts.length > 0 ? (
-                    <select
-                        value={selectedAccountId}
-                        onChange={(e) => setSelectedAccountId(e.target.value)}
-                        disabled={disabled}
+                 <div className="flex gap-2">
+                    {accounts.length > 0 ? (
+                        <select
+                            value={selectedAccountId}
+                            onChange={(e) => setSelectedAccountId(e.target.value)}
+                            disabled={disabled}
+                            className="flex-grow"
+                        >
+                            <option value="" disabled>Select an account</option>
+                            {accounts.map(account => (
+                                <option key={account.id} value={account.id}>{account.name}</option>
+                            ))}
+                        </select>
+                    ) : (
+                        <div className="flex-grow p-2 border rounded-md bg-red-50 text-red-600 text-sm font-medium border-red-100">No accounts found. Create one to continue.</div>
+                    )}
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onAddAccountRequested?.(); }} 
+                        className="px-3 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-indigo-600 flex items-center justify-center"
+                        title="Quick add account"
                     >
-                        <option value="" disabled>Select an account</option>
-                        {accounts.map(account => (
-                            <option key={account.id} value={account.id}>{account.name}</option>
-                        ))}
-                    </select>
-                 ) : (
-                    <p className="text-sm text-red-600 bg-red-50 p-2 rounded-md">Please create an Account on the Accounts page first.</p>
-                 )}
+                        <AddIcon className="w-5 h-5" />
+                    </button>
+                 </div>
             </div>
         </div>
       )}
