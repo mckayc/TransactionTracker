@@ -162,6 +162,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     // Video Linker Specific State
     const [videoMatches, setVideoMatches] = useState<VideoMatchResult[]>([]);
     const [isScanningVideos, setIsScanningVideos] = useState(false);
+    const [videoScanProgress, setVideoScanProgress] = useState<{ current: number; total: number } | null>(null);
     const [isVideoMatchModalOpen, setIsVideoMatchModalOpen] = useState(false);
 
     const [mergeProgress, setMergeProgress] = useState<{ current: number; total: number } | null>(null);
@@ -370,20 +371,32 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         setIsScanningVideos(true);
         try {
             const importedVideos = await parseAmazonVideos(file, (msg) => console.log(msg));
-            if (importedVideos.length > 0) {
-                // Perform matching immediately
-                const results: VideoMatchResult[] = [];
-                // ONLY match with 'onsite' records as specified in request
-                const sales = metrics.filter(m => m.reportType === 'onsite');
-                
-                // Index sales for faster lookup
-                const salesByAsin = new Map<string, AmazonMetric[]>();
-                sales.forEach(s => {
-                    if (!salesByAsin.has(s.asin)) salesByAsin.set(s.asin, []);
-                    salesByAsin.get(s.asin)!.push(s);
-                });
+            if (importedVideos.length === 0) {
+                setIsScanningVideos(false);
+                return;
+            }
 
-                importedVideos.forEach(v => {
+            // Perform chunked matching to keep UI responsive
+            const totalVideos = importedVideos.length;
+            setVideoScanProgress({ current: 0, total: totalVideos });
+            
+            const results: VideoMatchResult[] = [];
+            const onsiteSales = metrics.filter(m => m.reportType === 'onsite');
+            
+            // Index sales for faster lookup
+            const salesByAsin = new Map<string, AmazonMetric[]>();
+            onsiteSales.forEach(s => {
+                if (!salesByAsin.has(s.asin)) salesByAsin.set(s.asin, []);
+                salesByAsin.get(s.asin)!.push(s);
+            });
+
+            // Process in chunks of 50
+            const CHUNK_SIZE = 50;
+            const processBatch = async (startIndex: number) => {
+                const endIndex = Math.min(startIndex + CHUNK_SIZE, totalVideos);
+                
+                for (let i = startIndex; i < endIndex; i++) {
+                    const v = importedVideos[i];
                     let matchedSales: AmazonMetric[] = [];
                     
                     // Priority 1: Match by ASINs
@@ -397,7 +410,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     // Priority 2: Match by Title (fuzzy)
                     if (matchedSales.length === 0) {
                         const normalizedVideoTitle = normalizeStr(v.videoTitle);
-                        sales.forEach(s => {
+                        onsiteSales.forEach(s => {
                             if (normalizeStr(s.title) === normalizedVideoTitle) {
                                 matchedSales.push(s);
                             }
@@ -412,16 +425,31 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                             videoData: v
                         });
                     });
-                });
+                }
 
-                setVideoMatches(results);
-                setIsVideoMatchModalOpen(true);
-            }
+                setVideoScanProgress({ current: endIndex, total: totalVideos });
+
+                if (endIndex < totalVideos) {
+                    // Pause for a tiny bit to let browser breath
+                    await new Promise(resolve => setTimeout(resolve, 1));
+                    await processBatch(endIndex);
+                } else {
+                    // Done
+                    setVideoMatches(results);
+                    setIsVideoMatchModalOpen(true);
+                    setIsScanningVideos(false);
+                    setVideoScanProgress(null);
+                }
+            };
+
+            await processBatch(0);
+
         } catch (error) {
             console.error(error);
             alert("Failed to parse videos. " + (error instanceof Error ? error.message : ""));
-        } finally {
             setIsScanningVideos(false);
+            setVideoScanProgress(null);
+        } finally {
             if (videoInputRef.current) videoInputRef.current.value = '';
         }
     };
@@ -507,18 +535,25 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     };
 
     // Creator Connections Matcher Logic
-    const handleScanForMatches = () => {
+    const handleScanForMatches = async () => {
         setIsScanningMatches(true);
-        setTimeout(() => {
-            const results: MatchResult[] = [];
-            const creators = metrics.filter(m => m.reportType === 'creator_connections');
-            const sales = metrics.filter(m => m.reportType === 'onsite' || m.reportType === 'offsite');
+        
+        // Wait for state to settle
+        await new Promise(r => setTimeout(r, 100));
 
-            // Use lookup map for performance
-            const salesLookup = new Map<string, AmazonMetric>();
-            sales.forEach(s => salesLookup.set(`${s.date}_${s.asin}`, s));
+        const results: MatchResult[] = [];
+        const creators = metrics.filter(m => m.reportType === 'creator_connections');
+        const onsiteOffsiteSales = metrics.filter(m => m.reportType === 'onsite' || m.reportType === 'offsite');
 
-            for (const c of creators) {
+        // Use lookup map for performance
+        const salesLookup = new Map<string, AmazonMetric>();
+        onsiteOffsiteSales.forEach(s => salesLookup.set(`${s.date}_${s.asin}`, s));
+
+        // Processing in non-blocking batches
+        const BATCH_SIZE = 200;
+        for (let i = 0; i < creators.length; i += BATCH_SIZE) {
+            const batch = creators.slice(i, i + BATCH_SIZE);
+            batch.forEach(c => {
                 const match = salesLookup.get(`${c.date}_${c.asin}`);
                 if (match) {
                     results.push({ 
@@ -527,11 +562,14 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         suggestedType: match.reportType === 'onsite' ? 'creator_connections_onsite' : 'creator_connections_offsite' 
                     });
                 }
-            }
-            setMatchingMatches(results);
-            setIsScanningMatches(false);
-            setIsMatchModalOpen(true);
-        }, 300);
+            });
+            // Yield back to browser
+            await new Promise(r => setTimeout(r, 1));
+        }
+
+        setMatchingMatches(results);
+        setIsScanningMatches(false);
+        setIsMatchModalOpen(true);
     };
 
     return (
@@ -1009,6 +1047,26 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 Merge All {matchingMatches.length} CC Matches
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* VIDEO SCAN PROGRESS OVERLAY */}
+            {isScanningVideos && videoScanProgress && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center space-y-6">
+                        <div className="w-16 h-16 border-4 border-red-100 border-t-red-600 rounded-full animate-spin" />
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800">Scanning for Matches</h3>
+                            <p className="text-sm text-slate-500 mt-1">Cross-referencing video titles and ASINs against onsite sales records.</p>
+                        </div>
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div 
+                                className="h-full bg-red-600 transition-all duration-200" 
+                                style={{ width: `${(videoScanProgress.current / videoScanProgress.total) * 100}%` }}
+                            />
+                        </div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Progress: {videoScanProgress.current} / {videoScanProgress.total}</p>
                     </div>
                 </div>
             )}
