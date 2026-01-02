@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, AmazonReportType, AmazonVideo } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon } from '../../components/Icons';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
 import { parseAmazonReport, parseAmazonVideos } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
 
@@ -57,6 +57,12 @@ const InfoBubble: React.FC<{ title: string; content: string }> = ({ title, conte
     </div>
 );
 
+interface MatchResult {
+    creatorMetric: AmazonMetric;
+    matchedSalesMetric: AmazonMetric;
+    suggestedType: AmazonReportType;
+}
+
 const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics, videos, onAddVideos, onDeleteVideos }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'insights' | 'data' | 'tools' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
@@ -88,6 +94,9 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     // Tools Tab State
     const [isUploadingVideos, setIsUploadingVideos] = useState(false);
     const videoInputRef = useRef<HTMLInputElement>(null);
+    const [matchingMatches, setMatchingMatches] = useState<MatchResult[]>([]);
+    const [isScanningMatches, setIsScanningMatches] = useState(false);
+    const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set());
 
     const availableReportYears = useMemo(() => {
         const yearsSet = new Set<string>();
@@ -252,6 +261,51 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         return dir === 'asc' ? <SortIcon className="w-3 h-3 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-indigo-600" />;
     };
 
+    // Creator Connections Matcher Logic
+    const handleScanForMatches = () => {
+        setIsScanningMatches(true);
+        const results: MatchResult[] = [];
+        
+        const creators = metrics.filter(m => m.reportType === 'creator_connections');
+        const sales = metrics.filter(m => m.reportType === 'onsite' || m.reportType === 'offsite');
+
+        creators.forEach(c => {
+            // Find a sales metric with same date and ASIN
+            const match = sales.find(s => s.date === c.date && s.asin === c.asin);
+            if (match) {
+                results.push({
+                    creatorMetric: c,
+                    matchedSalesMetric: match,
+                    suggestedType: match.reportType === 'onsite' ? 'creator_connections_onsite' : 'creator_connections_offsite'
+                });
+            }
+        });
+
+        setMatchingMatches(results);
+        setSelectedMatchIds(new Set(results.map(r => r.creatorMetric.id)));
+        setIsScanningMatches(false);
+    };
+
+    const handleConfirmMatches = () => {
+        const toUpdate = matchingMatches.filter(m => selectedMatchIds.has(m.creatorMetric.id));
+        if (toUpdate.length === 0) return;
+
+        const updatedMetrics = metrics.map(m => {
+            const match = toUpdate.find(u => u.creatorMetric.id === m.id);
+            if (match) {
+                return { ...m, reportType: match.suggestedType };
+            }
+            return m;
+        });
+
+        onDeleteMetrics(metrics.map(m => m.id)); // Clear all
+        onAddMetrics(updatedMetrics); // Re-add with updates
+        
+        setMatchingMatches([]);
+        setSelectedMatchIds(new Set());
+        alert(`Successfully accurately categorized ${toUpdate.length} creator connection records.`);
+    };
+
     return (
         <div className="space-y-6 h-full flex flex-col relative">
             <div className="flex justify-between items-center flex-shrink-0">
@@ -309,6 +363,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                             <option value="offsite">Amazon Affiliate (Offsite)</option>
                                             <option value="creator">Creator Connections</option>
                                         </select>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-bold text-slate-400 uppercase">Limit</span>
+                                            <select value={insightsLimit} onChange={e => setInsightsLimit(Number(e.target.value))} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[70px]">
+                                                {[50, 100, 200, 500].map(l => <option key={l} value={l}>{l}</option>)}
+                                            </select>
+                                        </div>
                                         <select value={insightsReportYear} onChange={e => setInsightsReportYear(e.target.value)} className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px]">
                                             <option value="all">Reported: All Time</option>
                                             {availableReportYears.map(y => <option key={y} value={y}>Reported: {y}</option>)}
@@ -485,50 +545,145 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 {/* TOOLS TAB */}
                 {activeTab === 'tools' && (
                     <div className="space-y-6 pb-20">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                            <div className="bg-white p-8 rounded-3xl border-2 border-slate-200 space-y-6 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-3 bg-red-50 rounded-2xl text-red-600"><VideoIcon className="w-6 h-6" /></div>
-                                    <div>
-                                        <h3 className="text-xl font-bold text-slate-800">Amazon Video Linker</h3>
-                                        <p className="text-sm text-slate-500">Match ASINs to video titles and metadata.</p>
+                        {matchingMatches.length > 0 ? (
+                            <div className="bg-white p-8 rounded-3xl border-2 border-indigo-500 shadow-xl space-y-6 animate-slide-up">
+                                <div className="flex justify-between items-center border-b pb-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600"><ShieldCheckIcon className="w-8 h-8" /></div>
+                                        <div>
+                                            <h3 className="text-2xl font-black text-slate-800">Match Confirmation</h3>
+                                            <p className="text-sm text-slate-500">Linking Creator Connections to Sales reports.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setSelectedMatchIds(new Set(matchingMatches.map(m => m.creatorMetric.id)))} className="text-xs font-bold text-indigo-600 hover:underline">Select All</button>
+                                        <span className="text-slate-300">|</span>
+                                        <button onClick={() => setSelectedMatchIds(new Set())} className="text-xs font-bold text-slate-500 hover:underline">Clear Selection</button>
                                     </div>
                                 </div>
-                                <p className="text-sm text-slate-600 leading-relaxed">Upload a CSV containing Video IDs, ASINs, and Titles. We'll cross-reference these with your Earnings data to show video performance in the Insights tab.</p>
-                                
-                                <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-2xl p-8 bg-slate-50 group hover:border-red-400 transition-colors">
-                                    <CloudArrowUpIcon className="w-12 h-12 text-slate-300 group-hover:text-red-400 mb-4 transition-colors" />
-                                    <input type="file" ref={videoInputRef} accept=".csv" onChange={handleVideoUpload} className="hidden" />
-                                    <button onClick={() => videoInputRef.current?.click()} disabled={isUploadingVideos} className="px-8 py-3 bg-slate-900 text-white font-black rounded-xl hover:bg-black transition-all transform active:scale-95 disabled:opacity-50">
-                                        {isUploadingVideos ? 'Linking...' : 'Select Videos CSV'}
+
+                                <div className="max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+                                    <div className="space-y-3">
+                                        {matchingMatches.map(match => {
+                                            const isSelected = selectedMatchIds.has(match.creatorMetric.id);
+                                            return (
+                                                <div key={match.creatorMetric.id} className={`p-4 rounded-xl border-2 transition-all flex items-center gap-4 ${isSelected ? 'border-indigo-400 bg-indigo-50/30' : 'border-slate-100 bg-white'}`}>
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={isSelected} 
+                                                        onChange={() => {
+                                                            const newSet = new Set(selectedMatchIds);
+                                                            if (newSet.has(match.creatorMetric.id)) newSet.delete(match.creatorMetric.id);
+                                                            else newSet.add(match.creatorMetric.id);
+                                                            setSelectedMatchIds(newSet);
+                                                        }}
+                                                        className="w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                    />
+                                                    <div className="flex-1 min-w-0 grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div>
+                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Creator Record</p>
+                                                            <p className="text-sm font-bold text-slate-800 truncate">{match.creatorMetric.title}</p>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <span className="text-[10px] font-mono text-slate-500 bg-white border px-1.5 rounded">{match.creatorMetric.date}</span>
+                                                                <span className="text-[10px] font-mono text-slate-500 bg-white border px-1.5 rounded">{match.creatorMetric.asin}</span>
+                                                                <span className="text-sm font-black text-indigo-600">{formatCurrency(match.creatorMetric.revenue)}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="border-l border-slate-200 pl-4">
+                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Linked Sales Type</p>
+                                                            <div className="flex items-center gap-2 mt-2">
+                                                                <span className={`text-[10px] px-2 py-0.5 rounded font-black uppercase ${match.matchedSalesMetric.reportType === 'onsite' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                                                    {match.matchedSalesMetric.reportType}
+                                                                </span>
+                                                                <span className="text-slate-400">&rarr;</span>
+                                                                <span className="text-[10px] px-2 py-0.5 rounded font-black uppercase bg-indigo-600 text-white">
+                                                                    {match.suggestedType.replace(/_/g, ' ')}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-4 pt-4 border-t">
+                                    <button onClick={() => setMatchingMatches([])} className="flex-1 py-4 bg-white border-2 border-slate-200 text-slate-600 font-black rounded-2xl hover:bg-slate-50">Discard Results</button>
+                                    <button onClick={handleConfirmMatches} disabled={selectedMatchIds.size === 0} className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 disabled:opacity-50">
+                                        Update {selectedMatchIds.size} Selected Records
                                     </button>
                                 </div>
                             </div>
-
-                            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col h-full">
-                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><TableIcon className="w-5 h-5 text-indigo-600" /> Current Linked Videos ({videos.length})</h3>
-                                <div className="flex-1 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
-                                    {videos.length === 0 ? (
-                                        <p className="text-center py-12 text-slate-400 italic">No videos linked yet.</p>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {videos.map(v => (
-                                                <div key={v.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center group">
-                                                    <div className="min-w-0">
-                                                        <p className="text-xs font-bold text-slate-800 truncate" title={v.videoTitle}>{v.videoTitle}</p>
-                                                        <p className="text-[10px] font-mono text-slate-500">ASIN: {v.asin}</p>
-                                                    </div>
-                                                    <button onClick={() => onDeleteVideos([v.id])} className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><DeleteIcon className="w-4 h-4" /></button>
-                                                </div>
-                                            ))}
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                                <div className="bg-white p-8 rounded-3xl border-2 border-slate-200 space-y-6 shadow-sm">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600"><BoxIcon className="w-6 h-6" /></div>
+                                        <div>
+                                            <h3 className="text-xl font-bold text-slate-800">Creator Connections Linker</h3>
+                                            <p className="text-sm text-slate-500">Unify your Creator reports with Sales data.</p>
                                         </div>
+                                    </div>
+                                    <p className="text-sm text-slate-600 leading-relaxed">
+                                        Creator Connections reports don't explicitly state if traffic was Onsite or Offsite. 
+                                        This tool scans your existing records and matches them by <strong>ASIN and Date</strong> to identify the correct source.
+                                    </p>
+                                    
+                                    <button 
+                                        onClick={handleScanForMatches} 
+                                        disabled={isScanningMatches || metrics.length === 0} 
+                                        className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all transform active:scale-95 disabled:opacity-50 shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
+                                    >
+                                        {isScanningMatches ? 'Scanning...' : <><SearchCircleIcon className="w-5 h-5"/> Scan for Matches</>}
+                                    </button>
+                                    {metrics.length === 0 && <p className="text-xs text-center text-red-500 font-bold">No metrics found. Upload reports first.</p>}
+                                </div>
+
+                                <div className="bg-white p-8 rounded-3xl border-2 border-slate-200 space-y-6 shadow-sm">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-red-50 rounded-2xl text-red-600"><VideoIcon className="w-6 h-6" /></div>
+                                        <div>
+                                            <h3 className="text-xl font-bold text-slate-800">Amazon Video Linker</h3>
+                                            <p className="text-sm text-slate-500">Match ASINs to video titles and metadata.</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-slate-600 leading-relaxed">Upload a CSV containing Video IDs, ASINs, and Titles. We'll cross-reference these with your Earnings data to show video performance in the Insights tab.</p>
+                                    
+                                    <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-2xl p-8 bg-slate-50 group hover:border-red-400 transition-colors">
+                                        <CloudArrowUpIcon className="w-12 h-12 text-slate-300 group-hover:text-red-400 mb-4 transition-colors" />
+                                        <input type="file" ref={videoInputRef} accept=".csv" onChange={handleVideoUpload} className="hidden" />
+                                        <button onClick={() => videoInputRef.current?.click()} disabled={isUploadingVideos} className="px-8 py-3 bg-slate-900 text-white font-black rounded-xl hover:bg-black transition-all transform active:scale-95 disabled:opacity-50">
+                                            {isUploadingVideos ? 'Linking...' : 'Select Videos CSV'}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm flex flex-col md:col-span-2">
+                                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><TableIcon className="w-5 h-5 text-indigo-600" /> Current Linked Videos ({videos.length})</h3>
+                                    <div className="flex-1 overflow-y-auto max-h-[300px] pr-2 custom-scrollbar">
+                                        {videos.length === 0 ? (
+                                            <p className="text-center py-12 text-slate-400 italic">No videos linked yet.</p>
+                                        ) : (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                                                {videos.map(v => (
+                                                    <div key={v.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center group">
+                                                        <div className="min-w-0">
+                                                            <p className="text-xs font-bold text-slate-800 truncate" title={v.videoTitle}>{v.videoTitle}</p>
+                                                            <p className="text-[10px] font-mono text-slate-500">ASIN: {v.asin}</p>
+                                                        </div>
+                                                        <button onClick={() => onDeleteVideos([v.id])} className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><DeleteIcon className="w-4 h-4" /></button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {videos.length > 0 && (
+                                        <button onClick={() => { if(confirm("Clear ALL video links?")) onDeleteVideos(videos.map(v=>v.id)); }} className="mt-4 text-xs font-bold text-red-500 hover:underline">Remove All Links</button>
                                     )}
                                 </div>
-                                {videos.length > 0 && (
-                                    <button onClick={() => { if(confirm("Clear ALL video links?")) onDeleteVideos(videos.map(v=>v.id)); }} className="mt-4 text-xs font-bold text-red-500 hover:underline">Remove All Links</button>
-                                )}
                             </div>
-                        </div>
+                        )}
                     </div>
                 )}
 
