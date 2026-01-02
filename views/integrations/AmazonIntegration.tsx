@@ -87,6 +87,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     // Data Tab State
     const [dataSortKey, setDataSortKey] = useState<keyof AmazonMetric>('date');
     const [dataSortDir, setDataSortDir] = useState<'asc' | 'desc'>('desc');
+    const [dataCreatedYearFilter, setDataCreatedYearFilter] = useState<string>('all');
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(100);
 
@@ -98,6 +99,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set());
     const [batchSize, setBatchSize] = useState(100);
     const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
+    const [matchModalPage, setMatchModalPage] = useState(1);
+    const matchesPerPage = 10;
 
     // PERFORMANCE FIX: Granular pass for report years
     const { availableReportYears, availableCreatedYears } = useMemo(() => {
@@ -193,16 +196,33 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         };
     }, [metrics]);
 
-    const paginatedTableMetrics = useMemo(() => {
+    const tableMetrics = useMemo(() => {
         let result = [...metrics];
         if (filterType) result = result.filter(m => m.reportType.includes(filterType));
+        if (dataCreatedYearFilter !== 'all') result = result.filter(m => m.date.startsWith(dataCreatedYearFilter));
+
         result.sort((a, b) => {
             const valA = a[dataSortKey] as any;
             const valB = b[dataSortKey] as any;
-            return dataSortDir === 'asc' ? (valA < valB ? -1 : 1) : (valA > valB ? -1 : 1);
+            if (typeof valA === 'string') {
+                const cmp = valA.localeCompare(valB);
+                return dataSortDir === 'asc' ? cmp : -cmp;
+            }
+            return dataSortDir === 'asc' ? valA - valB : valB - valA;
         });
-        return result.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
-    }, [metrics, filterType, dataSortKey, dataSortDir, currentPage, rowsPerPage]);
+        return result;
+    }, [metrics, filterType, dataCreatedYearFilter, dataSortKey, dataSortDir]);
+
+    const dataTabRevenue = useMemo(() => tableMetrics.reduce((sum, m) => sum + m.revenue, 0), [tableMetrics]);
+
+    const paginatedTableMetrics = useMemo(() => {
+        return tableMetrics.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+    }, [tableMetrics, currentPage, rowsPerPage]);
+
+    const totalPages = Math.ceil(tableMetrics.length / rowsPerPage);
+
+    // Reset pagination when filters change
+    useEffect(() => { setCurrentPage(1); }, [filterType, dataCreatedYearFilter, rowsPerPage]);
 
     // Upload Handlers
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -288,21 +308,53 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             setSelectedMatchIds(new Set(results.map(r => r.creatorMetric.id)));
             setIsScanningMatches(false);
             setIsMatchModalOpen(true);
+            setMatchModalPage(1);
         }, 100);
     };
 
-    const handleConfirmMatches = () => {
-        const toUpdate = matchingMatches.filter(m => selectedMatchIds.has(m.creatorMetric.id));
-        if (toUpdate.length === 0) return;
-        const updatedMetrics = metrics.map(m => {
-            const match = toUpdate.find(u => u.creatorMetric.id === m.id);
-            return match ? { ...m, reportType: match.suggestedType } : m;
-        });
-        onDeleteMetrics(metrics.map(m => m.id));
-        onAddMetrics(updatedMetrics);
-        setMatchingMatches([]);
-        setIsMatchModalOpen(false);
-        alert(`Successfully accurately categorized ${toUpdate.length} creator connection records.`);
+    // Internal modal pagination logic
+    const currentMatchesOnPage = useMemo(() => {
+        const start = (matchModalPage - 1) * matchesPerPage;
+        return matchingMatches.slice(start, start + matchesPerPage);
+    }, [matchingMatches, matchModalPage]);
+
+    const totalMatchModalPages = Math.ceil(matchingMatches.length / matchesPerPage);
+
+    const handleConfirmMatches = (onlyCurrentPage: boolean) => {
+        const itemsToProcess = onlyCurrentPage ? currentMatchesOnPage : matchingMatches;
+        const selectedToProcess = itemsToProcess.filter(m => selectedMatchIds.has(m.creatorMetric.id));
+        
+        if (selectedToProcess.length === 0 && onlyCurrentPage) {
+            // If none selected on page, we just advance
+            const nextMatches = matchingMatches.filter(m => !itemsToProcess.find(item => item.creatorMetric.id === m.creatorMetric.id));
+            setMatchingMatches(nextMatches);
+            if (nextMatches.length === 0) setIsMatchModalOpen(false);
+            return;
+        }
+
+        if (selectedToProcess.length > 0) {
+            const updatedMetrics = metrics.map(m => {
+                const match = selectedToProcess.find(u => u.creatorMetric.id === m.id);
+                return match ? { ...m, reportType: match.suggestedType } : m;
+            });
+            onDeleteMetrics(metrics.map(m => m.id));
+            onAddMetrics(updatedMetrics);
+        }
+
+        // Remove processed batch from the queue
+        const nextMatches = matchingMatches.filter(m => !itemsToProcess.find(item => item.creatorMetric.id === m.creatorMetric.id));
+        setMatchingMatches(nextMatches);
+        
+        // Reset selection for new view
+        setSelectedMatchIds(new Set(nextMatches.slice(0, matchesPerPage).map(r => r.creatorMetric.id)));
+        
+        if (nextMatches.length === 0) {
+            setIsMatchModalOpen(false);
+            alert(`Successfully accurately categorized selected creator connection records.`);
+        } else {
+            // Keep on page 1 of the new remaining list
+            setMatchModalPage(1);
+        }
     };
 
     return (
@@ -440,13 +492,53 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 {/* DATA TAB */}
                 {activeTab === 'data' && (
                     <div className="space-y-4 h-full flex flex-col">
-                        <div className="bg-white border border-slate-200 p-4 rounded-xl flex items-center justify-between">
+                        <div className="bg-white border border-slate-200 p-4 rounded-xl flex flex-wrap items-center justify-between gap-4">
                             <div className="flex items-center gap-3">
-                                <span className="text-sm font-bold text-slate-700"><strong>{metrics.length}</strong> raw entries</span>
+                                <span className="text-sm font-bold text-slate-700">Showing <strong>{tableMetrics.length}</strong> records</span>
                                 <div className="h-4 w-px bg-slate-300 mx-2" />
-                                <span className="text-sm font-bold text-green-600">Total Revenue (Unfiltered): {formatCurrency(metrics.reduce((s,m) => s+m.revenue, 0))}</span>
+                                <span className="text-sm font-medium text-slate-500">Revenue: {formatCurrency(dataTabRevenue)}</span>
                             </div>
-                            <div className="flex gap-2">
+
+                            <div className="flex flex-wrap items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Type:</span>
+                                    <select 
+                                        value={filterType} 
+                                        onChange={e => setFilterType(e.target.value)} 
+                                        className="p-1.5 border rounded-lg text-xs bg-white text-indigo-700 font-bold focus:ring-orange-500 min-w-[140px]"
+                                    >
+                                        <option value="">All Types</option>
+                                        <option value="onsite">Onsite (Influencer)</option>
+                                        <option value="offsite">Offsite (Affiliate)</option>
+                                        <option value="creator_connections">Creator Connections</option>
+                                        <option value="creator_connections_onsite">Creator Connections (Onsite)</option>
+                                        <option value="creator_connections_offsite">Creator Connections (Offsite)</option>
+                                    </select>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Published:</span>
+                                    <select 
+                                        value={dataCreatedYearFilter} 
+                                        onChange={(e) => setDataCreatedYearFilter(e.target.value)} 
+                                        className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-orange-500 min-w-[100px]"
+                                    >
+                                        <option value="all">All Time</option>
+                                        {availableCreatedYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                    </select>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Show:</span>
+                                    <select 
+                                        value={rowsPerPage} 
+                                        onChange={(e) => setRowsPerPage(Number(e.target.value))} 
+                                        className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-orange-500 min-w-[80px]"
+                                    >
+                                        {[50, 100, 200, 500, 1000].map(v => <option key={v} value={v}>{v} rows</option>)}
+                                    </select>
+                                </div>
+                                
                                 <button onClick={() => { if(confirm("Clear ALL data?")) onDeleteMetrics(metrics.map(m => m.id)); }} className="text-xs font-bold text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg flex items-center gap-1 transition-colors"><DeleteIcon className="w-4 h-4"/> Clear All</button>
                             </div>
                         </div>
@@ -456,29 +548,54 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 <table className="min-w-full divide-y divide-slate-200">
                                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
-                                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer" onClick={() => handleDataSort('date')}>Date {getSortIcon('date', dataSortKey, dataSortDir)}</th>
+                                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('date')}>
+                                                <div className="flex items-center gap-1">Date {getSortIcon('date', dataSortKey, dataSortDir)}</div>
+                                            </th>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Type</th>
-                                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Product</th>
-                                            <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer" onClick={() => handleDataSort('revenue')}>Rev {getSortIcon('revenue', dataSortKey, dataSortDir)}</th>
+                                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('title')}>
+                                                <div className="flex items-center gap-1">Product {getSortIcon('title', dataSortKey, dataSortDir)}</div>
+                                            </th>
+                                            <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('clicks')}>
+                                                <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', dataSortKey, dataSortDir)}</div>
+                                            </th>
+                                            <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('revenue')}>
+                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('revenue', dataSortKey, dataSortDir)}</div>
+                                            </th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100">
+                                    <tbody className="divide-y divide-slate-100 bg-white">
                                         {paginatedTableMetrics.map(m => (
-                                            <tr key={m.id} className="hover:bg-slate-50">
+                                            <tr key={m.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-4 py-2 text-sm text-slate-600 font-mono">{m.date}</td>
-                                                <td className="px-4 py-2 text-xs text-slate-500 uppercase font-black">{m.reportType.replace(/_/g, ' ')}</td>
-                                                <td className="px-4 py-2 text-sm text-slate-800 truncate max-w-md">{m.title} <span className="text-[10px] text-slate-400 font-mono">({m.asin})</span></td>
-                                                <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.revenue)}</td>
+                                                <td className="px-4 py-2 text-[10px] text-slate-500 uppercase font-black">
+                                                    <span className={`px-2 py-0.5 rounded border ${m.reportType.includes('creator') ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : (m.reportType === 'onsite' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-green-50 text-green-600 border-green-100')}`}>
+                                                        {m.reportType.replace(/_/g, ' ')}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2 text-sm text-slate-800 truncate max-w-md" title={m.title}>{m.title} <span className="text-[10px] text-slate-400 font-mono">({m.asin})</span></td>
+                                                <td className="px-4 py-2 text-right text-sm text-slate-600 font-mono">{formatNumber(m.clicks)}</td>
+                                                <td className="px-4 py-2 text-right text-sm font-bold text-green-600 font-mono">{formatCurrency(m.revenue)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            {/* Simple Pagination Controls */}
+                            {totalPages > 1 && (
+                                <div className="p-3 bg-slate-50 border-t flex items-center justify-between">
+                                    <span className="text-xs text-slate-500">Page {currentPage} of {totalPages}</span>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronLeftIcon className="w-4 h-4"/></button>
+                                        <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronRightIcon className="w-4 h-4"/></button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
 
-                {/* INSIGHTS TAB - Optimized with bucketing */}
+                {/* INSIGHTS TAB */}
                 {activeTab === 'insights' && (
                     <div className="space-y-6 pb-20">
                          <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden">
@@ -552,9 +669,9 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 
                                 <div className="flex items-center gap-4">
                                     <div className="flex-1">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Batch Limit</label>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Queue Size</label>
                                         <select value={batchSize} onChange={e => setBatchSize(Number(e.target.value))} className="w-full p-2 border rounded-lg text-sm bg-slate-50">
-                                            {[100, 200, 500, 1000].map(s => <option key={s} value={s}>{s} at a time</option>)}
+                                            {[100, 200, 500, 1000].map(s => <option key={s} value={s}>{s} matches</option>)}
                                         </select>
                                     </div>
                                     <button 
@@ -621,13 +738,13 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
                             <div>
                                 <h3 className="text-2xl font-black text-slate-800 flex items-center gap-2"><ShieldCheckIcon className="w-6 h-6 text-indigo-600" /> Match Review</h3>
-                                <p className="text-sm text-slate-500">Confirm {matchingMatches.length} suggested traffic source categorizations.</p>
+                                <p className="text-sm text-slate-500">Queue: {matchingMatches.length} matches. Showing page {matchModalPage} of {totalMatchModalPages}.</p>
                             </div>
                             <button onClick={() => setIsMatchModalOpen(false)} className="p-2 hover:bg-white rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-50/50">
-                            {matchingMatches.map(match => (
+                            {currentMatchesOnPage.map(match => (
                                 <div key={match.creatorMetric.id} className={`p-4 rounded-2xl border-2 transition-all flex items-center gap-6 ${selectedMatchIds.has(match.creatorMetric.id) ? 'bg-white border-indigo-400 shadow-md ring-2 ring-indigo-50' : 'bg-slate-50 border-slate-200'}`}>
                                     <input type="checkbox" checked={selectedMatchIds.has(match.creatorMetric.id)} onChange={() => { const s = new Set(selectedMatchIds); if (s.has(match.creatorMetric.id)) s.delete(match.creatorMetric.id); else s.add(match.creatorMetric.id); setSelectedMatchIds(s); }} className="w-6 h-6 rounded-lg text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
                                     <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
@@ -657,14 +774,39 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                             ))}
                         </div>
 
-                        <div className="p-6 border-t border-slate-100 bg-white flex justify-between items-center">
+                        <div className="p-6 border-t border-slate-100 bg-white flex flex-col md:flex-row justify-between items-center gap-4">
                             <div className="flex items-center gap-4">
-                                <button onClick={() => setSelectedMatchIds(new Set(matchingMatches.map(m => m.creatorMetric.id)))} className="text-xs font-bold text-indigo-600 hover:underline">Select All</button>
-                                <button onClick={() => setSelectedMatchIds(new Set())} className="text-xs font-bold text-slate-400 hover:underline">Clear</button>
+                                <div className="flex items-center bg-slate-100 rounded-lg p-1">
+                                    <button 
+                                        disabled={matchModalPage === 1}
+                                        onClick={() => setMatchModalPage(p => Math.max(1, p - 1))}
+                                        className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-colors"
+                                    >
+                                        <ChevronLeftIcon className="w-5 h-5" />
+                                    </button>
+                                    <span className="px-4 text-xs font-black text-slate-500 uppercase">Page {matchModalPage} / {totalMatchModalPages}</span>
+                                    <button 
+                                        disabled={matchModalPage === totalMatchModalPages}
+                                        onClick={() => setMatchModalPage(p => Math.min(totalMatchModalPages, p + 1))}
+                                        className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-colors"
+                                    >
+                                        <ChevronRightIcon className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setSelectedMatchIds(new Set(currentMatchesOnPage.map(m => m.creatorMetric.id)))} className="text-xs font-bold text-indigo-600 hover:underline">Select Page</button>
+                                    <button onClick={() => setSelectedMatchIds(new Set())} className="text-xs font-bold text-slate-400 hover:underline">Clear Page</button>
+                                </div>
                             </div>
                             <div className="flex gap-3">
-                                <button onClick={() => setIsMatchModalOpen(false)} className="px-6 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">Discard Results</button>
-                                <button onClick={handleConfirmMatches} disabled={selectedMatchIds.size === 0} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 disabled:opacity-50">Confirm {selectedMatchIds.size} Changes</button>
+                                <button onClick={() => setIsMatchModalOpen(false)} className="px-6 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">Discard All</button>
+                                <button 
+                                    onClick={() => handleConfirmMatches(true)}
+                                    className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center gap-2"
+                                >
+                                    <CheckCircleIcon className="w-5 h-5" />
+                                    {matchModalPage === totalMatchModalPages ? 'Finish & Confirm Page' : 'Confirm Page & Next'}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -677,7 +819,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center space-y-4">
                         <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
                         <h3 className="text-xl font-bold text-slate-800">Matching Records</h3>
-                        <p className="text-sm text-slate-500">Cross-referencing ASINs and dates for the top {batchSize} possible matches.</p>
+                        <p className="text-sm text-slate-500">Cross-referencing ASINs and dates for a queue of up to {batchSize} matches.</p>
                     </div>
                 </div>
             )}
