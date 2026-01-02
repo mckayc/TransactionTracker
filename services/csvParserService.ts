@@ -1,5 +1,4 @@
-
-import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo } from '../types';
+import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
 
@@ -88,6 +87,14 @@ const formatDate = (date: Date): string => {
     return `${year}-${month}-${day}`;
 }
 
+/**
+ * Generates a deterministic ID for Amazon records to allow overwriting on re-import.
+ */
+const generateAmazonId = (m: Partial<AmazonMetric>): string => {
+    const payload = `${m.saleDate}|${m.asin}|${m.trackingId}|${m.reportType}|${m.revenue}|${m.creatorConnectionsType || ''}`;
+    return btoa(unescape(encodeURIComponent(payload)));
+};
+
 export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
     onProgress(`Reading ${file.name}...`);
     let text = '';
@@ -170,7 +177,7 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         // Date Parsing
         const dateRaw = colMap.date > -1 ? values[colMap.date] : '';
         const parsedDate = parseDate(dateRaw) || new Date();
-        const dateStr = formatDate(parsedDate);
+        const saleDate = formatDate(parsedDate);
         
         // Skip summary rows (often missing ASIN or date)
         if ((!values[colMap.asin] || values[colMap.asin].length < 2) && !isCreatorConnections) continue;
@@ -186,22 +193,26 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         const campaignTitle = colMap.campaignTitle > -1 ? values[colMap.campaignTitle] : undefined;
 
         let reportType: AmazonReportType = 'unknown';
+        let ccType: AmazonCCType | undefined = undefined;
+
         if (isCreatorConnections || campaignTitle) {
-            // Further refinement for creator connections
-            if (trackingId.includes('onamz')) reportType = 'creator_connections_onsite';
-            else if (trackingId.length > 2) reportType = 'creator_connections_offsite';
-            else reportType = 'creator_connections';
+            reportType = 'creator_connections';
+            if (trackingId.includes('onamz')) ccType = 'onsite';
+            else if (trackingId.length > 2) ccType = 'offsite';
         } else if (trackingId.includes('onamz')) {
             reportType = 'onsite';
         } else {
             reportType = 'offsite';
         }
 
+        const productTitle = colMap.title > -1 ? values[colMap.title] : (campaignTitle || `Unknown Product (${asin})`);
+
         const metric: AmazonMetric = {
-            id: generateUUID(),
-            date: dateStr,
+            id: '', // Will be replaced by generateAmazonId
+            saleDate: saleDate,
             asin: asin,
-            title: colMap.title > -1 ? values[colMap.title] : (campaignTitle || `Unknown Product (${asin})`),
+            productTitle: productTitle,
+            ccTitle: campaignTitle,
             clicks: parseNum(colMap.clicks),
             orderedItems: parseNum(colMap.ordered),
             shippedItems: parseNum(colMap.shipped),
@@ -210,9 +221,10 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
             trackingId: trackingId || 'default',
             category: colMap.category > -1 ? values[colMap.category] : undefined,
             reportType: reportType,
-            campaignTitle: campaignTitle
+            creatorConnectionsType: ccType
         };
 
+        metric.id = generateAmazonId(metric);
         metrics.push(metric);
     }
 
@@ -411,7 +423,7 @@ export const parseYouTubeReport = async (file: File, onProgress: (msg: string) =
 
 /* --- GENERAL TRANSACTION PARSER LOGIC --- */
 
-const parseCSV = (lines: string[], accountId: string, transactionTypes: TransactionType[], sourceName: string): RawTransaction[] => {
+const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: TransactionType[], sourceName: string): RawTransaction[] => {
     const transactions: RawTransaction[] = [];
     if (lines.length === 0) return transactions;
 
@@ -506,7 +518,6 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
     return transactions;
 };
 
-// Fix: Re-added missing export parseTransactionsFromText
 export const parseTransactionsFromText = async (
     text: string, 
     accountId: string, 
@@ -515,10 +526,9 @@ export const parseTransactionsFromText = async (
 ): Promise<RawTransaction[]> => {
     onProgress('Parsing text...');
     const lines = text.split('\n');
-    return parseCSV(lines, accountId, transactionTypes, 'Pasted Text');
+    return parseCSV_Tx(lines, accountId, transactionTypes, 'Pasted Text');
 };
 
-// Fix: Re-added missing export parseTransactionsFromFiles
 export const parseTransactionsFromFiles = async (
     files: File[], 
     accountId: string, 
@@ -536,7 +546,7 @@ export const parseTransactionsFromFiles = async (
         
         const text = await readFileAsText(file);
         const lines = text.split('\n');
-        const transactions = parseCSV(lines, accountId, transactionTypes, file.name);
+        const transactions = parseCSV_Tx(lines, accountId, transactionTypes, file.name);
         allTransactions.push(...transactions);
     }
     

@@ -1,10 +1,9 @@
 
-
 import React from 'react';
-import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon } from '../components/Icons';
+import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, ChartPieIcon } from '../components/Icons';
 
 interface IntegrationsPageProps {
-    onNavigate: (view: 'integration-amazon' | 'integration-youtube') => void;
+    onNavigate: (view: 'integration-amazon' | 'integration-youtube' | 'integration-content-hub') => void;
 }
 
 const IntegrationCard: React.FC<{
@@ -13,24 +12,25 @@ const IntegrationCard: React.FC<{
     icon: React.ReactNode;
     status: 'active' | 'inactive';
     onClick: () => void;
-}> = ({ title, description, icon, status, onClick }) => {
+    variant?: 'primary' | 'secondary';
+}> = ({ title, description, icon, status, onClick, variant = 'secondary' }) => {
     return (
         <div 
             onClick={onClick}
-            className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group flex flex-col h-full"
+            className={`p-6 rounded-xl shadow-sm border transition-all cursor-pointer group flex flex-col h-full ${variant === 'primary' ? 'bg-indigo-600 border-indigo-700 text-white shadow-indigo-200' : 'bg-white border-slate-200 hover:shadow-md hover:border-indigo-300'}`}
         >
             <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-indigo-50 rounded-lg text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                <div className={`p-3 rounded-lg transition-colors ${variant === 'primary' ? 'bg-white/20 text-white group-hover:bg-white group-hover:text-indigo-600' : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'}`}>
                     {icon}
                 </div>
-                <span className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${status === 'active' ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                <span className={`px-2 py-1 text-xs font-bold rounded-full uppercase ${status === 'active' ? (variant === 'primary' ? 'bg-white/20 text-white' : 'bg-green-100 text-green-700') : 'bg-slate-100 text-slate-500'}`}>
                     {status}
                 </span>
             </div>
-            <h3 className="text-lg font-bold text-slate-800 mb-2">{title}</h3>
-            <p className="text-sm text-slate-600 flex-grow">{description}</p>
-            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center text-indigo-600 font-medium text-sm gap-1 group-hover:gap-2 transition-all">
-                <span>Open Integration</span>
+            <h3 className={`text-lg font-bold mb-2 ${variant === 'primary' ? 'text-white' : 'text-slate-800'}`}>{title}</h3>
+            <p className={`text-sm flex-grow ${variant === 'primary' ? 'text-indigo-100' : 'text-slate-600'}`}>{description}</p>
+            <div className={`mt-4 pt-4 border-t flex items-center font-medium text-sm gap-1 group-hover:gap-2 transition-all ${variant === 'primary' ? 'border-white/20 text-white' : 'border-slate-100 text-indigo-600'}`}>
+                <span>Open Dashboard</span>
                 <ArrowRightIcon className="w-4 h-4" />
             </div>
         </div>
@@ -42,10 +42,19 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
         <div className="space-y-8">
             <div>
                 <h1 className="text-3xl font-bold text-slate-800">Integrations</h1>
-                <p className="text-slate-500 mt-1">Connect external platforms to track income and performance metrics alongside your finances.</p>
+                <p className="text-slate-500 mt-1">Connect platforms and analyze your Content ROI across ecosystems.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <IntegrationCard 
+                    title="Cross-Platform Content Hub" 
+                    description="The command center for video ROI. Automatically links YouTube and Amazon data to track which platform drives your income."
+                    icon={<ChartPieIcon className="w-8 h-8" />}
+                    status="active"
+                    variant="primary"
+                    onClick={() => onNavigate('integration-content-hub')}
+                />
+
                 <IntegrationCard 
                     title="Amazon Influencer" 
                     description="Import commission reports, track clicks, and analyze top-performing products from the Amazon Associates program."
@@ -61,15 +70,6 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
                     status="active"
                     onClick={() => onNavigate('integration-youtube')}
                 />
-                
-                {/* Future placeholders */}
-                <div className="bg-slate-50 p-6 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-center opacity-70">
-                    <div className="p-3 bg-slate-200 rounded-lg text-slate-400 mb-3">
-                        <PuzzleIcon className="w-8 h-8" />
-                    </div>
-                    <h3 className="font-bold text-slate-600">More Coming Soon</h3>
-                    <p className="text-xs text-slate-500 mt-1">Etsy, Shopify, and more.</p>
-                </div>
             </div>
         </div>
     );

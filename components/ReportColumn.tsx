@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric, YouTubeMetric } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
@@ -122,7 +123,7 @@ const ReportRow: React.FC<{
     return (
         <div className="select-none">
             <div 
-                className={`relative flex items-center gap-2 p-2 pr-3 rounded-lg cursor-pointer transition-colors group ${isHidden ? 'opacity-50 grayscale bg-slate-50' : 'hover:bg-slate-50'}`}
+                className={`relative flex items-center gap-2 p-2 pr-3 rounded-lg cursor-pointer transition-colors border border-transparent group ${isHidden ? 'opacity-50 grayscale bg-slate-50' : 'hover:bg-slate-50'}`}
                 style={{ paddingLeft: `${(depth * 12) + 8}px` }}
                 onClick={() => onClick(item)}
             >
@@ -237,14 +238,13 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
         if (isAmazon) {
             filteredItems = (amazonMetrics || []).filter(m => {
-                if (m.date < startDateStr || m.date > endDateStr) return false;
+                if (m.saleDate < startDateStr || m.saleDate > endDateStr) return false;
                 if (config.filters.amazonSources && !config.filters.amazonSources.includes(m.reportType)) return false;
                 if (config.filters.amazonTrackingIds && config.filters.amazonTrackingIds.length > 0 && !config.filters.amazonTrackingIds.includes(m.trackingId)) return false;
                 return true;
             });
         } else if (isYouTube) {
             filteredItems = (youtubeMetrics || []).filter(m => {
-                // Using publishDate as the filter date
                 if (m.publishDate < startDateStr || m.publishDate > endDateStr) return false;
                 return true;
             });
@@ -392,7 +392,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         label = m.category || 'Unknown Category';
                     } else if (config.groupBy === 'product') {
                         key = m.asin;
-                        label = m.title || m.asin;
+                        label = m.productTitle || m.asin;
                     } else if (config.groupBy === 'trackingId') {
                         key = m.trackingId || 'Unknown ID';
                         label = m.trackingId || 'Unknown ID';
@@ -420,14 +420,13 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     } else if (config.groupBy === 'tag') {
                         const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
                         txTags.forEach(tagId => {
-                            const tagKey = tagId;
                             const tagLabel = tags.find(t => t.id === tagId)?.name || 'No Tag';
                             if (config.filters.tagIds && tagId !== 'no-tag' && !config.filters.tagIds.includes(tagId)) return;
                             
-                            if (!nodes.has(tagKey)) {
-                                nodes.set(tagKey, { id: tagKey, label: tagLabel, value: 0, sortValue: 0, ownValue: 0, color: '', transactions: [], children: [] });
+                            if (!nodes.has(tagId)) {
+                                nodes.set(tagId, { id: tagId, label: tagLabel, value: 0, sortValue: 0, ownValue: 0, color: '', transactions: [], children: [] });
                             }
-                            const node = nodes.get(tagKey)!;
+                            const node = nodes.get(tagId)!;
                             node.ownValue += val;
                             node.transactions.push(tx);
                         });
@@ -535,25 +534,19 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         
         // Determine "unit" based on range size
-        // If range is roughly a month (28-31 days)
         const isMonth = diffDays >= 28 && diffDays <= 32;
-        // If range is roughly a year (365-366 days)
         const isYear = diffDays >= 365 && diffDays <= 366;
 
         let newStart = new Date(start);
         let newEnd = new Date(end);
 
         if (isMonth) {
-            // Shift month
             newStart.setMonth(newStart.getMonth() + (direction === 'next' ? 1 : -1));
-            // Ensure end is end of the new month
             newEnd = new Date(newStart.getFullYear(), newStart.getMonth() + 1, 0);
         } else if (isYear) {
-            // Shift year
             newStart.setFullYear(newStart.getFullYear() + (direction === 'next' ? 1 : -1));
             newEnd.setFullYear(newEnd.getFullYear() + (direction === 'next' ? 1 : -1));
         } else {
-            // Shift by exact duration
             const shiftMs = (diffDays + 1) * 24 * 60 * 60 * 1000 * (direction === 'next' ? 1 : -1);
             newStart = new Date(start.getTime() + shiftMs);
             newEnd = new Date(end.getTime() + shiftMs);

@@ -1,6 +1,7 @@
 
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -20,6 +21,7 @@ import FinancialPlanPage from './views/FinancialPlanPage';
 import IntegrationsPage from './views/IntegrationsPage';
 import AmazonIntegration from './views/integrations/AmazonIntegration';
 import YouTubeIntegration from './views/integrations/YouTubeIntegration';
+import ContentHub from './views/integrations/ContentHub';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
 import { MenuIcon, CloseIcon } from './components/Icons';
@@ -27,8 +29,6 @@ import { calculateNextDate, formatDate } from './dateUtils';
 import { generateUUID } from './utils';
 import { api } from './services/apiService';
 import { saveFile, deleteFile } from './services/storageService';
-
-type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube';
 
 const DEFAULT_CATEGORIES: Category[] = [
     "Groceries", "Dining", "Shopping", "Travel", "Entertainment", "Utilities", "Health", "Services", "Transportation", "Income", "Other"
@@ -87,6 +87,7 @@ const App: React.FC = () => {
   const [amazonVideos, setAmazonVideos] = useState<AmazonVideo[]>([]);
   const [youtubeMetrics, setYoutubeMetrics] = useState<YouTubeMetric[]>([]);
   const [youtubeChannels, setYoutubeChannels] = useState<YouTubeChannel[]>([]);
+  const [contentLinks, setContentLinks] = useState<ContentLink[]>([]);
   
   const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
   const [financialPlan, setFinancialPlan] = useState<FinancialPlan | null>(null);
@@ -125,11 +126,11 @@ const App: React.FC = () => {
       setAccountTypes(finalAccountTypes);
       setAccounts(finalAccounts);
       setIsStructureLoading(false);
-      loadHeavyData(finalUsers.find(u => u.isDefault)?.id || finalUsers[0]?.id);
+      loadHeavyData();
     };
-    const loadHeavyData = async (defaultUserId: string) => {
+    const loadHeavyData = async () => {
         setIsHeavyDataLoading(true);
-        const [txs, templates, events, tasks, completions, profile, docs, folders, reports, chats, ranges, amazon, amazonV, youtubeM, youtubeC, goals, plan] = await Promise.all([
+        const [txs, templates, events, tasks, completions, profile, docs, folders, reports, chats, ranges, amazon, amazonV, youtubeM, youtubeC, goals, plan, links] = await Promise.all([
             api.get<Transaction[]>('transactions'),
             api.get<Template[]>('templates'),
             api.get<ScheduledEvent[]>('scheduledEvents'),
@@ -146,7 +147,8 @@ const App: React.FC = () => {
             api.get<YouTubeMetric[]>('youtubeMetrics'),
             api.get<YouTubeChannel[]>('youtubeChannels'),
             api.get<FinancialGoal[]>('financialGoals'),
-            api.get<FinancialPlan>('financialPlan')
+            api.get<FinancialPlan>('financialPlan'),
+            api.get<ContentLink[]>('contentLinks')
         ]);
         setTransactions(txs || []);
         setTemplates(templates || []);
@@ -165,6 +167,7 @@ const App: React.FC = () => {
         setYoutubeChannels(youtubeC || []);
         setFinancialGoals(goals || []);
         setFinancialPlan(plan || null);
+        setContentLinks(links || []);
         setIsHeavyDataLoading(false);
     };
     loadCoreStructure();
@@ -197,7 +200,7 @@ const App: React.FC = () => {
           let shouldRun = (config.frequency === 'daily' && daysSinceLast >= 1) || (config.frequency === 'weekly' && daysSinceLast >= 7) || (config.frequency === 'monthly' && daysSinceLast >= 30);
           if (shouldRun) {
               try {
-                  const exportData = { exportDate: new Date().toISOString(), version: '0.0.46-auto', transactions, accounts, accountTypes, categories, tags, payees, reconciliationRules, templates, scheduledEvents, tasks, taskCompletions, users, transactionTypes, businessProfile, documentFolders, savedReports, chatSessions, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan };
+                  const exportData = { exportDate: new Date().toISOString(), version: '0.0.46-auto', transactions, accounts, accountTypes, categories, tags, payees, reconciliationRules, templates, scheduledEvents, tasks, taskCompletions, users, transactionTypes, businessProfile, documentFolders, savedReports, chatSessions, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks };
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
                   const file = new File([JSON.stringify(exportData, null, 2)], fileName, { type: 'application/json' });
                   let autoFolder = documentFolders.find(f => f.name === "Automated Backups" && !f.parentId);
@@ -245,6 +248,7 @@ const App: React.FC = () => {
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('amazonVideos', amazonVideos), 500); return () => clearTimeout(h); }, [amazonVideos, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('youtubeMetrics', youtubeMetrics), 500); return () => clearTimeout(h); }, [youtubeMetrics, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('youtubeChannels', youtubeChannels), 500); return () => clearTimeout(h); }, [youtubeChannels, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('contentLinks', contentLinks), 500); return () => clearTimeout(h); }, [contentLinks, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; api.save('financialGoals', financialGoals); }, [financialGoals, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; api.save('financialPlan', financialPlan); }, [financialPlan, isHeavyDataLoading]);
 
@@ -290,7 +294,7 @@ const App: React.FC = () => {
   const handleCreateFolder = (folder: DocumentFolder) => setDocumentFolders(prev => [...prev, folder]);
   const handleDeleteFolder = (folderId: string) => { setBusinessDocuments(prev => prev.map(d => d.parentId === folderId ? { ...d, parentId: undefined } : d)); setDocumentFolders(prev => prev.filter(f => f.id !== folderId)); };
   const handleAddSavedReport = (report: SavedReport) => setSavedReports(prev => [...prev, report]);
-  const handleAddAmazonMetrics = (newMetrics: AmazonMetric[]) => { if(newMetrics.length > 0) setAmazonMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())); };
+  const handleAddAmazonMetrics = (newMetrics: AmazonMetric[]) => { if(newMetrics.length > 0) setAmazonMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime())); };
   const handleDeleteAmazonMetrics = (ids: string[]) => { const idSet = new Set(ids); setAmazonMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
   const handleAddAmazonVideos = (vids: AmazonVideo[]) => { if(vids.length > 0) setAmazonVideos(prev => [...prev, ...vids]); };
   const handleDeleteAmazonVideos = (ids: string[]) => { const idSet = new Set(ids); setAmazonVideos(prev => prev.filter(v => !idSet.has(v.id))); };
@@ -298,6 +302,7 @@ const App: React.FC = () => {
   const handleDeleteYouTubeMetrics = (ids: string[]) => { const idSet = new Set(ids); setYoutubeMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
   const handleSaveYouTubeChannel = (channel: YouTubeChannel) => setYoutubeChannels(prev => { const index = prev.findIndex(c => c.id === channel.id); if (index > -1) { const updated = [...prev]; updated[index] = channel; return updated; } return [...prev, channel]; });
   const handleDeleteYouTubeChannel = (channelId: string) => setYoutubeChannels(prev => prev.filter(c => c.id !== channelId));
+  const handleUpdateContentLinks = (links: ContentLink[]) => setContentLinks(links);
 
   const renderView = () => {
     if (isStructureLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Initializing secure storage..." /></div>;
@@ -312,7 +317,7 @@ const App: React.FC = () => {
       case 'categories': return <CategoriesPage categories={categories} onSaveCategory={handleSaveCategory} onDeleteCategory={handleDeleteCategory} transactions={transactions}/>;
       case 'tags': return <TagsPage tags={tags} onSaveTag={handleSaveTag} onDeleteTag={handleDeleteTag} />;
       case 'rules': return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} />;
-      case 'settings': return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} tags={tags} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} tasks={tasks} taskCompletions={taskCompletions} users={users} businessProfile={businessProfile} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} savedReports={savedReports} savedDateRanges={savedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels} financialGoals={financialGoals} financialPlan={financialPlan} />;
+      case 'settings': return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} tags={tags} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} tasks={tasks} taskCompletions={taskCompletions} users={users} businessProfile={businessProfile} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} savedReports={savedReports} savedDateRanges={savedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels} financialGoals={financialGoals} financialPlan={financialPlan} contentLinks={contentLinks} />;
       case 'tasks': return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
       case 'hub': return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} chatSessions={chatSessions} onUpdateChatSessions={setChatSessions} transactions={transactions} accounts={accounts} categories={categories} />;
       case 'documents': return <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
@@ -320,6 +325,7 @@ const App: React.FC = () => {
       case 'integrations': return <IntegrationsPage onNavigate={setCurrentView} />;
       case 'integration-amazon': return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} onDeleteMetrics={handleDeleteAmazonMetrics} videos={amazonVideos} onAddVideos={handleAddAmazonVideos} onDeleteVideos={handleDeleteAmazonVideos} />;
       case 'integration-youtube': return <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={handleAddYouTubeMetrics} onDeleteMetrics={handleDeleteYouTubeMetrics} channels={youtubeChannels} onSaveChannel={handleSaveYouTubeChannel} onDeleteChannel={handleDeleteYouTubeChannel} />;
+      case 'integration-content-hub': return <ContentHub amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} contentLinks={contentLinks} onUpdateLinks={handleUpdateContentLinks} />;
       default: return null;
     }
   };

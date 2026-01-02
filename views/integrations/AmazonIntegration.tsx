@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { AmazonMetric, AmazonReportType, AmazonVideo } from '../../types';
+import type { AmazonMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
 import { parseAmazonReport, parseAmazonVideos } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
@@ -29,10 +29,18 @@ const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation:
 
 const normalizeStr = (str: string) => (str || '').toLowerCase().replace(/&#39;/g, "'").replace(/[^a-z0-9]/g, '').trim();
 
-const matchAdvancedSearch = (title: string, search: string) => {
+const matchAdvancedSearch = (metric: AmazonMetric, search: string) => {
     if (!search) return true;
-    const lowerTitle = title.toLowerCase();
-    const orParts = search.split('|').map(p => p.trim()).filter(Boolean);
+    const lowerSearch = search.toLowerCase();
+    const searchTargets = [
+        metric.productTitle,
+        metric.ccTitle,
+        metric.videoTitle,
+        metric.asin,
+        metric.trackingId
+    ].filter(Boolean).map(t => t!.toLowerCase());
+
+    const orParts = lowerSearch.split('|').map(p => p.trim()).filter(Boolean);
     if (orParts.length === 0) return true;
 
     return orParts.some(orPart => {
@@ -41,9 +49,9 @@ const matchAdvancedSearch = (title: string, search: string) => {
         return words.every(word => {
             if (word.startsWith('-')) {
                 const exclude = word.substring(1).toLowerCase();
-                return exclude === '' || !lowerTitle.includes(exclude);
+                return exclude === '' || !searchTargets.some(t => t.includes(exclude));
             }
-            return lowerTitle.includes(word.toLowerCase());
+            return searchTargets.some(t => t.includes(word));
         });
     });
 };
@@ -64,14 +72,14 @@ const MultiTitleDisplay: React.FC<{ metric: AmazonMetric }> = ({ metric }) => {
     const titles = useMemo(() => {
         const list: { type: string, value: string }[] = [];
         
-        if (metric.reportType.includes('onsite')) {
-            if (metric.title) list.push({ type: 'Product', value: metric.title });
+        if (metric.reportType === 'onsite') {
+            if (metric.productTitle) list.push({ type: 'Product', value: metric.productTitle });
             if (metric.videoTitle) list.push({ type: 'Video', value: metric.videoTitle });
-            if (metric.campaignTitle) list.push({ type: 'CC Campaign', value: metric.campaignTitle });
+            if (metric.ccTitle) list.push({ type: 'CC Campaign', value: metric.ccTitle });
         } else {
             if (metric.videoTitle) list.push({ type: 'Video', value: metric.videoTitle });
-            if (metric.title) list.push({ type: 'Product', value: metric.title });
-            if (metric.campaignTitle) list.push({ type: 'CC Campaign', value: metric.campaignTitle });
+            if (metric.productTitle) list.push({ type: 'Product', value: metric.productTitle });
+            if (metric.ccTitle) list.push({ type: 'CC Campaign', value: metric.ccTitle });
         }
         
         // Ensure unique values
@@ -115,7 +123,7 @@ const MultiTitleDisplay: React.FC<{ metric: AmazonMetric }> = ({ metric }) => {
 interface MatchResult {
     creatorMetric: AmazonMetric;
     matchedSalesMetric: AmazonMetric;
-    suggestedType: AmazonReportType;
+    suggestedType: AmazonCCType;
 }
 
 interface VideoMatchResult {
@@ -131,6 +139,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     const [uploadYear, setUploadYear] = useState<string>('');
     const [uploadType, setUploadType] = useState<AmazonReportType>('unknown');
+    const [uploadCCType, setUploadCCType] = useState<AmazonCCType | 'unknown'>('unknown');
 
     // Filtering & Sorting State
     const [searchTerm, setSearchTerm] = useState('');
@@ -145,7 +154,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [insightsSortDir, setInsightsSortDir] = useState<'asc' | 'desc'>('desc');
 
     // Data Tab State
-    const [dataSortKey, setDataSortKey] = useState<keyof AmazonMetric>('date');
+    const [dataSortKey, setDataSortKey] = useState<keyof AmazonMetric>('saleDate');
     const [dataSortDir, setDataSortDir] = useState<'asc' | 'desc'>('desc');
     const [dataCreatedYearFilter, setDataCreatedYearFilter] = useState<string>('all');
     const [isMergedAsins, setIsMergedAsins] = useState(false);
@@ -168,14 +177,11 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [mergeProgress, setMergeProgress] = useState<{ current: number; total: number } | null>(null);
 
     // Helper for complex type filtering
-    const matchesReportType = (metricType: string, selectedFilter: string) => {
+    const matchesReportType = (metric: AmazonMetric, selectedFilter: string) => {
         if (!selectedFilter) return true;
-        if (selectedFilter === 'creator_connections') {
-            return metricType === 'creator_connections' || 
-                   metricType === 'creator_connections_onsite' || 
-                   metricType === 'creator_connections_offsite';
-        }
-        return metricType === selectedFilter;
+        if (selectedFilter === 'creator_connections_onsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'onsite';
+        if (selectedFilter === 'creator_connections_offsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'offsite';
+        return metric.reportType === selectedFilter;
     };
 
     const { availableReportYears, availableCreatedYears } = useMemo(() => {
@@ -183,8 +189,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         const createdYears = new Set<string>();
         metrics.forEach(m => {
             if (m.reportYear) reportYears.add(m.reportYear);
-            if (m.date) {
-                const y = m.date.substring(0, 4);
+            if (m.saleDate) {
+                const y = m.saleDate.substring(0, 4);
                 if (y.length === 4) createdYears.add(y);
             }
         });
@@ -194,18 +200,17 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         };
     }, [metrics]);
 
-    // OPTIMIZED: Aggregated metrics for Dashboard and Insights
+    // Aggregate metrics for Dashboard and Insights
     const productAggregateMap = useMemo(() => {
         const map = new Map<string, AmazonMetric>();
         
         let base = metrics;
-        if (filterType) base = base.filter(m => matchesReportType(m.reportType, filterType));
+        if (filterType) base = base.filter(m => matchesReportType(m, filterType));
         if (insightsReportYear !== 'all') base = base.filter(m => m.reportYear === insightsReportYear);
-        if (insightsCreatedYear !== 'all') base = base.filter(m => m.date.substring(0, 4) === insightsCreatedYear);
+        if (insightsCreatedYear !== 'all') base = base.filter(m => m.saleDate.substring(0, 4) === insightsCreatedYear);
 
         base.forEach(m => {
-            const searchMatched = matchAdvancedSearch(m.title || '', debouncedSearchTerm) || matchAdvancedSearch(m.asin, debouncedSearchTerm) || matchAdvancedSearch(m.videoTitle || '', debouncedSearchTerm);
-            if (!searchMatched) return;
+            if (!matchAdvancedSearch(m, debouncedSearchTerm)) return;
 
             if (!map.has(m.asin)) {
                 map.set(m.asin, { ...m });
@@ -248,7 +253,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             if (m.reportYear) {
                 yearBuckets[m.reportYear] = (yearBuckets[m.reportYear] || 0) + m.revenue;
             }
-            const date = new Date(m.date);
+            const date = new Date(m.saleDate);
             if (!isNaN(date.getTime())) {
                 monthBuckets[date.getMonth()] += m.revenue;
             }
@@ -264,13 +269,13 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     const tableMetrics = useMemo(() => {
         let result = [...metrics];
-        if (filterType) result = result.filter(m => matchesReportType(m.reportType, filterType));
-        if (dataCreatedYearFilter !== 'all') result = result.filter(m => m.date.startsWith(dataCreatedYearFilter));
+        if (filterType) result = result.filter(m => matchesReportType(m, filterType));
+        if (dataCreatedYearFilter !== 'all') result = result.filter(m => m.saleDate.startsWith(dataCreatedYearFilter));
 
         if (isMergedAsins) {
             const merged = new Map<string, AmazonMetric>();
             result.forEach(m => {
-                const key = `${m.asin}_${m.reportType}`;
+                const key = `${m.asin}_${m.reportType}_${m.creatorConnectionsType || ''}`;
                 if (!merged.has(key)) {
                     merged.set(key, { ...m });
                 } else {
@@ -304,7 +309,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     const totalPages = Math.ceil(tableMetrics.length / rowsPerPage);
 
-    // Reset pagination when filters change
     useEffect(() => { setCurrentPage(1); }, [filterType, dataCreatedYearFilter, rowsPerPage, isMergedAsins]);
 
     // Upload Handlers
@@ -319,18 +323,30 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 const fileName = file.name.toLowerCase();
                 const yearMatch = fileName.match(/\b(20\d{2})\b/);
                 if (yearMatch) setUploadYear(yearMatch[1]);
-                else if (newMetrics[0].date) setUploadYear(newMetrics[0].date.substring(0, 4));
+                else if (newMetrics[0].saleDate) setUploadYear(newMetrics[0].saleDate.substring(0, 4));
 
                 let detectedType: AmazonReportType = 'unknown';
+                let detectedCCType: AmazonCCType | 'unknown' = 'unknown';
+
                 if (fileName.includes('creator') || fileName.includes('connection')) {
-                    if (fileName.includes('onsite')) detectedType = 'creator_connections_onsite';
-                    else if (fileName.includes('offsite')) detectedType = 'creator_connections_offsite';
-                    else detectedType = 'creator_connections';
-                } else if (fileName.includes('onsite')) detectedType = 'onsite';
-                else if (fileName.includes('offsite')) detectedType = 'offsite';
+                    detectedType = 'creator_connections';
+                    if (fileName.includes('onsite')) detectedCCType = 'onsite';
+                    else if (fileName.includes('offsite')) detectedCCType = 'offsite';
+                } else if (fileName.includes('onsite')) {
+                    detectedType = 'onsite';
+                } else if (fileName.includes('offsite')) {
+                    detectedType = 'offsite';
+                }
                 setUploadType(detectedType);
+                setUploadCCType(detectedCCType);
             }
-        } catch (error) { console.error(error); alert("Failed to parse report."); } finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+        } catch (error) { 
+            console.error(error); 
+            alert("Failed to parse report."); 
+        } finally { 
+            setIsUploading(false); 
+            if (fileInputRef.current) fileInputRef.current.value = ''; 
+        }
     };
 
     const confirmImport = () => {
@@ -338,13 +354,32 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             const metricsWithMeta = previewMetrics.map(m => ({ 
                 ...m, 
                 reportYear: uploadYear || undefined, 
-                reportType: uploadType !== 'unknown' ? uploadType : m.reportType 
+                reportType: uploadType !== 'unknown' ? uploadType : m.reportType,
+                creatorConnectionsType: uploadType === 'creator_connections' ? (uploadCCType !== 'unknown' ? (uploadCCType as AmazonCCType) : undefined) : undefined
             }));
-            onAddMetrics(metricsWithMeta);
+            
+            // Smarter Merge: Use deterministic ID to prevent duplicates if user imports same file
+            const existingIds = new Set(metrics.map(m => m.id));
+            const toAdd = metricsWithMeta.filter(m => !existingIds.has(m.id));
+            const toUpdate = metricsWithMeta.filter(m => existingIds.has(m.id));
+
+            if (toUpdate.length > 0) {
+                // If records exist, we update them (overwriting)
+                const updatedAll = metrics.map(m => {
+                    const match = toUpdate.find(u => u.id === m.id);
+                    return match ? match : m;
+                });
+                onDeleteMetrics(metrics.map(m => m.id));
+                onAddMetrics([...updatedAll, ...toAdd]);
+            } else {
+                onAddMetrics(toAdd);
+            }
+            
             setPreviewMetrics([]);
             setUploadYear('');
             setUploadType('unknown');
-            alert(`Successfully imported ${previewMetrics.length} records.`);
+            setUploadCCType('unknown');
+            alert(`Successfully processed ${metricsWithMeta.length} records.`);
             setActiveTab('dashboard');
         }
     };
@@ -360,22 +395,18 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 return;
             }
 
-            // Perform chunked matching to keep UI responsive
             const totalVideos = importedVideos.length;
             setVideoScanProgress({ current: 0, total: totalVideos });
             
             const results: VideoMatchResult[] = [];
-            // STRICTLY match only onsite as requested
             const onsiteSales = metrics.filter(m => m.reportType === 'onsite');
             
-            // Index sales for faster lookup
             const salesByAsin = new Map<string, AmazonMetric[]>();
             onsiteSales.forEach(s => {
                 if (!salesByAsin.has(s.asin)) salesByAsin.set(s.asin, []);
                 salesByAsin.get(s.asin)!.push(s);
             });
 
-            // Process in chunks of 40 (slightly smaller for smoother UI)
             const CHUNK_SIZE = 40;
             const processBatch = async (startIndex: number) => {
                 const endIndex = Math.min(startIndex + CHUNK_SIZE, totalVideos);
@@ -384,7 +415,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     const v = importedVideos[i];
                     let matchedSales: AmazonMetric[] = [];
                     
-                    // Priority 1: Match by ASINs
                     if (v.asins && v.asins.length > 0) {
                         v.asins.forEach(asin => {
                             const found = salesByAsin.get(asin);
@@ -392,11 +422,10 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         });
                     }
 
-                    // Priority 2: Match by Title (fuzzy)
                     if (matchedSales.length === 0) {
                         const normalizedVideoTitle = normalizeStr(v.videoTitle);
                         onsiteSales.forEach(s => {
-                            if (normalizeStr(s.title) === normalizedVideoTitle) {
+                            if (normalizeStr(s.productTitle) === normalizedVideoTitle) {
                                 matchedSales.push(s);
                             }
                         });
@@ -404,17 +433,13 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
                     const uniqueMatchedSales = Array.from(new Set(matchedSales));
                     uniqueMatchedSales.forEach(s => {
-                        results.push({
-                            salesMetric: s,
-                            videoData: v
-                        });
+                        results.push({ salesMetric: s, videoData: v });
                     });
                 }
 
                 setVideoScanProgress({ current: endIndex, total: totalVideos });
 
                 if (endIndex < totalVideos) {
-                    // Yield to browser for 5ms to ensure paint cycles
                     await new Promise(resolve => setTimeout(resolve, 5));
                     await processBatch(endIndex);
                 } else {
@@ -486,7 +511,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             chunk.forEach(match => {
                 const index = updatedMetrics.findIndex(m => m.id === match.creatorMetric.id);
                 if (index !== -1) {
-                    updatedMetrics[index] = { ...updatedMetrics[index], reportType: match.suggestedType };
+                    updatedMetrics[index] = { ...updatedMetrics[index], creatorConnectionsType: match.suggestedType };
                 }
             });
             
@@ -526,18 +551,18 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         const onsiteOffsiteSales = metrics.filter(m => m.reportType === 'onsite' || m.reportType === 'offsite');
 
         const salesLookup = new Map<string, AmazonMetric>();
-        onsiteOffsiteSales.forEach(s => salesLookup.set(`${s.date}_${s.asin}`, s));
+        onsiteOffsiteSales.forEach(s => salesLookup.set(`${s.saleDate}_${s.asin}`, s));
 
         const BATCH_SIZE = 100;
         for (let i = 0; i < creators.length; i += BATCH_SIZE) {
             const batch = creators.slice(i, i + BATCH_SIZE);
             batch.forEach(c => {
-                const match = salesLookup.get(`${c.date}_${c.asin}`);
+                const match = salesLookup.get(`${c.saleDate}_${c.asin}`);
                 if (match) {
                     results.push({ 
                         creatorMetric: c, 
                         matchedSalesMetric: match, 
-                        suggestedType: match.reportType === 'onsite' ? 'creator_connections_onsite' : 'creator_connections_offsite' 
+                        suggestedType: match.reportType === 'onsite' ? 'onsite' : 'offsite' 
                     });
                 }
             });
@@ -607,7 +632,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                 <option value="">All Types</option>
                                                 <option value="onsite">Onsite</option>
                                                 <option value="offsite">Offsite</option>
-                                                <option value="creator_connections">Creator Connections</option>
+                                                <option value="creator_connections">CC (All)</option>
                                                 <option value="creator_connections_onsite">CC Onsite</option>
                                                 <option value="creator_connections_offsite">CC Offsite</option>
                                             </select>
@@ -666,8 +691,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                             <MultiTitleDisplay metric={p} />
                                                             <div className="flex items-center gap-2 mt-1">
                                                                 <span className="text-[10px] text-slate-400 font-mono">{p.asin}</span>
-                                                                <span className={`text-[9px] px-1 rounded font-bold uppercase ${p.reportType.includes('onsite') ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
-                                                                    {p.reportType.replace(/_/g, ' ')}
+                                                                <span className={`text-[9px] px-1 rounded font-bold uppercase ${p.reportType === 'creator_connections' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : (p.reportType === 'onsite' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-green-50 text-green-600 border-green-100')}`}>
+                                                                    {p.reportType.replace(/_/g, ' ')} {p.creatorConnectionsType ? `(${p.creatorConnectionsType})` : ''}
                                                                 </span>
                                                                 {p.videoDuration && (
                                                                     <div className="flex items-center gap-1 text-[9px] text-red-600 font-black uppercase bg-red-50 px-1 rounded border border-red-100">
@@ -711,14 +736,14 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <option value="">All Types</option>
                                         <option value="onsite">Onsite (Influencer)</option>
                                         <option value="offsite">Offsite (Affiliate)</option>
-                                        <option value="creator_connections">Creator Connections</option>
+                                        <option value="creator_connections">Creator Connections (All)</option>
                                         <option value="creator_connections_onsite">CC Onsite</option>
                                         <option value="creator_connections_offsite">CC Offsite</option>
                                     </select>
                                 </div>
 
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Published:</span>
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sale Date:</span>
                                     <select 
                                         value={dataCreatedYearFilter} 
                                         onChange={(e) => setDataCreatedYearFilter(e.target.value)} 
@@ -761,12 +786,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 <table className="min-w-full divide-y divide-slate-200">
                                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
-                                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('date')}>
-                                                <div className="flex items-center gap-1">Date {getSortIcon('date', dataSortKey, dataSortDir)}</div>
+                                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('saleDate')}>
+                                                <div className="flex items-center gap-1">Date {getSortIcon('saleDate', dataSortKey, dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Type</th>
-                                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('title')}>
-                                                <div className="flex items-center gap-1">Product / Video {getSortIcon('title', dataSortKey, dataSortDir)}</div>
+                                            <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('productTitle')}>
+                                                <div className="flex items-center gap-1">Product / Video {getSortIcon('productTitle', dataSortKey, dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('clicks')}>
                                                 <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', dataSortKey, dataSortDir)}</div>
@@ -779,10 +804,10 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <tbody className="divide-y divide-slate-100 bg-white">
                                         {paginatedTableMetrics.map(m => (
                                             <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-4 py-2 text-sm text-slate-600 font-mono">{isMergedAsins ? 'MERGED' : m.date}</td>
+                                                <td className="px-4 py-2 text-sm text-slate-600 font-mono">{isMergedAsins ? 'MERGED' : m.saleDate}</td>
                                                 <td className="px-4 py-2 text-[10px] text-slate-500 uppercase font-black">
-                                                    <span className={`px-2 py-0.5 rounded border ${m.reportType.includes('creator') ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : (m.reportType === 'onsite' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-green-50 text-green-600 border-green-100')}`}>
-                                                        {m.reportType.replace(/_/g, ' ')}
+                                                    <span className={`px-2 py-0.5 rounded border ${m.reportType === 'creator_connections' ? 'bg-indigo-50 text-indigo-600 border-indigo-100' : (m.reportType === 'onsite' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-green-50 text-green-600 border-green-100')}`}>
+                                                        {m.reportType.replace(/_/g, ' ')} {m.creatorConnectionsType ? `(${m.creatorConnectionsType})` : ''}
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-2 text-sm text-slate-800 truncate max-w-md">
@@ -942,6 +967,16 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 <div className="grid grid-cols-2 gap-4">
                                     <div><label className="text-[10px] font-black text-slate-400 uppercase">Report Year</label><select value={uploadYear} onChange={e => setUploadYear(e.target.value)} className="w-full p-2 border rounded-lg font-bold">{availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
                                     <div><label className="text-[10px] font-black text-slate-400 uppercase">Traffic Type</label><select value={uploadType} onChange={e => setUploadType(e.target.value as any)} className="w-full p-2 border rounded-lg font-bold"><option value="onsite">Onsite</option><option value="offsite">Offsite</option><option value="creator_connections">Creator Connections</option></select></div>
+                                    {uploadType === 'creator_connections' && (
+                                        <div className="col-span-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase">CC Category (Optional Override)</label>
+                                            <select value={uploadCCType} onChange={e => setUploadCCType(e.target.value as any)} className="w-full p-2 border rounded-lg font-bold">
+                                                <option value="unknown">Auto-detect from Tracking ID</option>
+                                                <option value="onsite">Onsite (onamz)</option>
+                                                <option value="offsite">Offsite</option>
+                                            </select>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="flex gap-4">
                                     <button onClick={() => setPreviewMetrics([])} className="flex-1 py-4 bg-white border border-slate-200 text-slate-600 font-black rounded-2xl">Cancel</button>
@@ -979,9 +1014,9 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
                                         <div className="space-y-1">
                                             <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Creator Connection Record</p>
-                                            <p className="text-sm font-bold text-slate-800 truncate" title={match.creatorMetric.title}>{match.creatorMetric.title}</p>
+                                            <p className="text-sm font-bold text-slate-800 truncate" title={match.creatorMetric.ccTitle || match.creatorMetric.productTitle}>{match.creatorMetric.ccTitle || match.creatorMetric.productTitle}</p>
                                             <div className="flex gap-4 text-[10px] font-mono text-slate-500">
-                                                <span>Date: {match.creatorMetric.date}</span>
+                                                <span>Date: {match.creatorMetric.saleDate}</span>
                                                 <span>ASIN: {match.creatorMetric.asin}</span>
                                                 <span className="font-bold text-indigo-600">Rev: {formatCurrency(match.creatorMetric.revenue)}</span>
                                             </div>
@@ -1067,10 +1102,10 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                             <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Matched Onsite Sale</p>
                                             <div className="flex items-center gap-3">
                                                 <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-blue-100 text-blue-700">ONSITE</span>
-                                                <p className="text-xs font-bold text-slate-700 truncate" title={match.salesMetric.title}>{match.salesMetric.title}</p>
+                                                <p className="text-xs font-bold text-slate-700 truncate" title={match.salesMetric.productTitle}>{match.salesMetric.productTitle}</p>
                                             </div>
                                             <div className="flex gap-4 text-[10px] font-mono text-slate-500">
-                                                <span>Date: {match.salesMetric.date}</span>
+                                                <span>Date: {match.salesMetric.saleDate}</span>
                                                 <span>ASIN: {match.salesMetric.asin}</span>
                                                 <span className="font-bold text-indigo-600">Earnings: {formatCurrency(match.salesMetric.revenue)}</span>
                                             </div>
@@ -1104,7 +1139,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 className="absolute inset-0 border-4 border-indigo-600 rounded-full transition-all duration-300"
                                 style={{ 
                                     clipPath: `inset(0 0 0 0)`,
-                                    strokeDasharray: '251.2', // 2 * PI * r (approx 40 radius)
+                                    strokeDasharray: '251.2', 
                                     strokeDashoffset: `${251.2 - (251.2 * (mergeProgress.current / mergeProgress.total))}`
                                 }}
                              />
@@ -1114,7 +1149,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         </div>
                         <div>
                             <h3 className="text-xl font-black text-slate-800">Updating Database</h3>
-                            <p className="text-sm text-slate-500 mt-1">Linking metadata for {mergeProgress.total} onsite items...</p>
+                            <p className="text-sm text-slate-500 mt-1">Linking metadata for {mergeProgress.total} records...</p>
                         </div>
                         <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                             <div 
