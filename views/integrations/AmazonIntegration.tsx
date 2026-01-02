@@ -262,25 +262,42 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     const handleScanForMatches = () => {
         setIsScanningMatches(true);
-        const results: MatchResult[] = [];
         
-        const creators = metrics.filter(m => m.reportType === 'creator_connections');
-        const sales = metrics.filter(m => m.reportType === 'onsite' || m.reportType === 'offsite');
+        // Wrap in setTimeout to ensure the loader UI renders before the heavy processing starts
+        setTimeout(() => {
+            const results: MatchResult[] = [];
+            const MATCH_LIMIT = 100;
+            
+            const creators = metrics.filter(m => m.reportType === 'creator_connections');
+            const sales = metrics.filter(m => m.reportType === 'onsite' || m.reportType === 'offsite');
 
-        creators.forEach(c => {
-            const match = sales.find(s => s.date === c.date && s.asin === c.asin);
-            if (match) {
-                results.push({
-                    creatorMetric: c,
-                    matchedSalesMetric: match,
-                    suggestedType: match.reportType === 'onsite' ? 'creator_connections_onsite' : 'creator_connections_offsite'
-                });
+            // OPTIMIZATION: Use a Map for O(1) lookups instead of .find() O(N)
+            // This prevents system freezing by making the search O(N+M) instead of O(N*M)
+            const salesLookup = new Map<string, AmazonMetric>();
+            sales.forEach(s => {
+                const key = `${s.date}_${s.asin}`;
+                salesLookup.set(key, s);
+            });
+
+            for (const c of creators) {
+                if (results.length >= MATCH_LIMIT) break;
+                
+                const key = `${c.date}_${c.asin}`;
+                const match = salesLookup.get(key);
+                
+                if (match) {
+                    results.push({
+                        creatorMetric: c,
+                        matchedSalesMetric: match,
+                        suggestedType: match.reportType === 'onsite' ? 'creator_connections_onsite' : 'creator_connections_offsite'
+                    });
+                }
             }
-        });
 
-        setMatchingMatches(results);
-        setSelectedMatchIds(new Set(results.map(r => r.creatorMetric.id)));
-        setIsScanningMatches(false);
+            setMatchingMatches(results);
+            setSelectedMatchIds(new Set(results.map(r => r.creatorMetric.id)));
+            setIsScanningMatches(false);
+        }, 100);
     };
 
     const handleConfirmMatches = () => {
@@ -548,7 +565,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600"><ShieldCheckIcon className="w-8 h-8" /></div>
                                         <div>
                                             <h3 className="text-2xl font-black text-slate-800">Match Confirmation</h3>
-                                            <p className="text-sm text-slate-500">Linking Creator Connections to Sales reports.</p>
+                                            <p className="text-sm text-slate-500">Linking Creator Connections to Sales reports (Limited to 100 matches per scan).</p>
                                         </div>
                                     </div>
                                     <div className="flex gap-2">
@@ -631,7 +648,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         disabled={isScanningMatches || metrics.length === 0} 
                                         className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all transform active:scale-95 disabled:opacity-50 shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
                                     >
-                                        {isScanningMatches ? 'Scanning...' : <><SearchCircleIcon className="w-5 h-5"/> Scan for Matches</>}
+                                        <SearchCircleIcon className="w-5 h-5"/> Scan for Matches
                                     </button>
                                     {metrics.length === 0 && <p className="text-xs text-center text-red-500 font-bold">No metrics found. Upload reports first.</p>}
                                 </div>
@@ -748,6 +765,25 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     </div>
                 )}
             </div>
+
+            {/* SCANNING LOADER MODAL */}
+            {isScanningMatches && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center space-y-4 animate-bounce-subtle">
+                        <div className="relative">
+                            <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+                            <SearchCircleIcon className="absolute inset-0 w-8 h-8 m-auto text-indigo-600" />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-bold text-slate-800">Analyzing Patterns</h3>
+                            <p className="text-sm text-slate-500 mt-2">I'm scanning your metrics for matches. This usually takes just a few seconds.</p>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-indigo-600 animate-progress-indeterminate"></div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
