@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, ChartPieIcon, BoxIcon, HeartIcon, CalendarIcon, UsersIcon } from '../../components/Icons';
@@ -237,7 +238,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             if (newMetrics.length > 0) {
                 setPreviewMetrics(newMetrics);
                 
-                // Auto-detect year logic
+                // Auto-detect most common publication year logic
                 const yearCounts: Record<string, number> = {};
                 newMetrics.forEach(m => {
                     const y = m.publishDate.substring(0, 4);
@@ -338,7 +339,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }>();
         
         const videosPerYear = new Map<string, number>();
-        const weekdayMap = new Map<number, { revenue: number, views: number, count: number }>();
+        const weekdayMap = new Map<number, { 
+            revenue: number, 
+            views: number, 
+            count: number,
+            creationYearRevenue: number,
+            creationYearViews: number
+        }>();
         const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
         let evergreenRevenue = 0;
@@ -370,10 +377,18 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             // Weekday ROI logic
             const date = new Date(m.publishDate);
             const dayIdx = date.getDay();
-            const stats = weekdayMap.get(dayIdx) || { revenue: 0, views: 0, count: 0 };
+            const stats = weekdayMap.get(dayIdx) || { revenue: 0, views: 0, count: 0, creationYearRevenue: 0, creationYearViews: 0 };
+            
             stats.revenue += m.estimatedRevenue;
             stats.views += m.views;
             stats.count += 1;
+            
+            // Split Creation Year vs All Time
+            if (m.reportYear === year) {
+                stats.creationYearRevenue += m.estimatedRevenue;
+                stats.creationYearViews += m.views;
+            }
+
             weekdayMap.set(dayIdx, stats);
         });
 
@@ -382,7 +397,12 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 day: DAYS[idx],
                 avgRev: s.revenue / s.count,
                 avgViews: s.views / s.count,
-                totalRev: s.revenue
+                totalRev: s.revenue,
+                totalViews: s.views,
+                creationYearRev: s.creationYearRevenue,
+                creationYearViews: s.creationYearViews,
+                count: s.count,
+                viralVelocity: s.views > 0 ? (s.creationYearViews / s.views) * 100 : 0
             }))
             .sort((a,b) => b.avgRev - a.avgRev);
 
@@ -851,22 +871,56 @@ Conv Rate: ${conv.toFixed(2)}%
                                     </h3>
                                     <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{currentContextChannelName}</span>
                                 </div>
-                                <p className="text-xs text-slate-500 mb-4 italic">Performance averages based on the day of the week your videos were released.</p>
-                                <div className="space-y-2">
+                                <p className="text-xs text-slate-500 mb-4 italic">Performance averages and lifetime splits for each day.</p>
+                                <div className="space-y-3">
                                     {generatedInsights?.weekdayStats.map((s, idx) => (
-                                        <div key={s.day} className={`flex items-center justify-between p-3 rounded-xl border ${idx === 0 ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}>
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black ${idx === 0 ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}>
-                                                    {s.day.charAt(0)}
+                                        <div key={s.day} className={`flex flex-col p-4 rounded-xl border ${idx === 0 ? 'bg-indigo-50 border-indigo-200 ring-1 ring-indigo-200 shadow-sm' : 'bg-slate-50 border-slate-200'}`}>
+                                            <div className="flex items-center justify-between mb-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black ${idx === 0 ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400 shadow-sm'}`}>
+                                                        {s.day.charAt(0)}
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-bold text-slate-800">{s.day}</p>
+                                                            <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded-full text-[10px] font-black uppercase shadow-sm">
+                                                                {s.count} Vids
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tight">
+                                                            {formatNumber(s.avgViews)} avg views • {formatCurrency(s.avgRev)} avg rev
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="font-bold text-slate-800">{s.day}</p>
-                                                    <p className="text-[10px] text-slate-500 uppercase font-bold">{formatNumber(s.avgViews)} avg views</p>
+                                                <div className="text-right">
+                                                    <div className="flex items-center gap-1.5 justify-end">
+                                                        <TrendingUpIcon className={`w-3 h-3 ${s.viralVelocity > 60 ? 'text-orange-500' : 'text-green-500'}`} />
+                                                        <p className={`font-black text-sm ${idx === 0 ? 'text-indigo-700' : 'text-slate-700'}`}>
+                                                            {s.viralVelocity.toFixed(0)}% <span className="text-[9px] font-bold text-slate-400">VELOCITY</span>
+                                                        </p>
+                                                    </div>
+                                                    <p className="text-[10px] text-green-600 font-bold uppercase tracking-widest">{formatCurrency(s.totalRev)} TOTAL</p>
                                                 </div>
                                             </div>
-                                            <div className="text-right">
-                                                <p className={`font-black ${idx === 0 ? 'text-indigo-700' : 'text-slate-700'}`}>{formatCurrency(s.avgRev)} <span className="text-[10px] font-normal text-slate-400">/vid</span></p>
-                                                <p className="text-[10px] text-green-600 font-bold">{formatCurrency(s.totalRev)} Total</p>
+                                            
+                                            {/* Lifetime Growth Bar */}
+                                            <div className="space-y-1 mt-1">
+                                                <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider">
+                                                    <span className="text-slate-400">Creation Year Views: {formatNumber(s.creationYearViews)}</span>
+                                                    <span className="text-indigo-500">Evergreen Growth: +{formatNumber(s.totalViews - s.creationYearViews)}</span>
+                                                </div>
+                                                <div className="w-full h-1.5 bg-white rounded-full overflow-hidden flex border border-slate-200/50">
+                                                    <div 
+                                                        className="h-full bg-slate-300 transition-all duration-1000" 
+                                                        style={{ width: `${s.viralVelocity}%` }}
+                                                        title={`Creation Year: ${s.viralVelocity.toFixed(1)}%`}
+                                                    />
+                                                    <div 
+                                                        className="h-full bg-indigo-500 transition-all duration-1000" 
+                                                        style={{ width: `${100 - s.viralVelocity}%` }}
+                                                        title={`Evergreen: ${(100 - s.viralVelocity).toFixed(1)}%`}
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     ))}
@@ -973,54 +1027,85 @@ Conv Rate: ${conv.toFixed(2)}%
                                         {isUploading ? 'Parsing...' : 'Choose File'}
                                     </button>
                                 </div>
-                                <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-4">
-                                    <h4 className="font-bold text-slate-700 border-b pb-2">Import Context</h4>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">YouTube Channel <span className="text-red-500">*</span></label>
-                                        <div className="flex gap-2">
-                                            <select value={uploadChannelId} onChange={(e) => setUploadChannelId(e.target.value)} className="w-full p-2 border rounded-md text-sm">
-                                                <option value="">Select Channel...</option>
-                                                {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
-                                            </select>
+
+                                {previewMetrics.length > 0 && (
+                                    <div className="bg-white p-6 rounded-xl border border-slate-200 space-y-4 shadow-sm animate-slide-up">
+                                        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
+                                            <CheckCircleIcon className="w-6 h-6 text-green-600" />
+                                            <h3 className="text-lg font-bold text-slate-800">Review Import Data</h3>
                                         </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Year (Optional)</label>
-                                        <select value={uploadYear} onChange={(e) => setUploadYear(e.target.value)} className="w-full p-2 border rounded-md text-sm">
-                                            <option value="">Auto-Detect from File</option>
-                                            {Array.from({length: 25}, (_, i) => (2010 + i).toString()).reverse().map(y => <option key={y} value={y}>{y}</option>)}
-                                        </select>
-                                    </div>
-                                    {previewMetrics.length > 0 && (
-                                        <div className="bg-indigo-50 border border-indigo-200 p-6 rounded-xl space-y-4 animate-slide-up">
-                                            <div className="flex items-center gap-3 border-b border-indigo-100 pb-3">
-                                                <CheckCircleIcon className="w-6 h-6 text-indigo-600" />
-                                                <h3 className="text-lg font-bold text-indigo-900">Ready to Import</h3>
+
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">YouTube Channel <span className="text-red-500">*</span></label>
+                                                <select value={uploadChannelId} onChange={(e) => setUploadChannelId(e.target.value)} className="w-full p-2 border rounded-md text-sm bg-slate-50">
+                                                    <option value="">Select Channel...</option>
+                                                    {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                                                </select>
                                             </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <div>
-                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Records</p>
-                                                    <p className="text-xl font-black text-indigo-900">{previewMetrics.length}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Est. Revenue</p>
-                                                    <p className="text-xl font-black text-green-600">{formatCurrency(previewMetrics.reduce((s, m) => s + m.estimatedRevenue, 0))}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Views</p>
-                                                    <p className="text-xl font-black text-indigo-900">{formatNumber(previewMetrics.reduce((s, m) => s + m.views, 0))}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Selected Year</p>
-                                                    <p className="text-xl font-black text-indigo-900">{uploadYear || 'N/A'}</p>
-                                                </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Report Year</label>
+                                                <select value={uploadYear} onChange={(e) => setUploadYear(e.target.value)} className="w-full p-2 border rounded-md text-sm bg-slate-50">
+                                                    <option value="">Manual Override...</option>
+                                                    {Array.from({length: 25}, (_, i) => (2010 + i).toString()).reverse().map(y => <option key={y} value={y}>{y}</option>)}
+                                                </select>
+                                                <p className="text-[10px] text-indigo-600 mt-1 italic">Auto-detected most frequent year from publish dates.</p>
                                             </div>
-                                            <button onClick={confirmImport} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
-                                                Confirm Import
+                                        </div>
+
+                                        <div className="bg-indigo-50/50 rounded-lg p-4 border border-indigo-100 grid grid-cols-3 gap-2">
+                                            <div>
+                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Videos</p>
+                                                <p className="text-lg font-black text-indigo-900">{previewMetrics.length}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Revenue</p>
+                                                <p className="text-lg font-black text-green-600">{formatCurrency(previewMetrics.reduce((s, m) => s + m.estimatedRevenue, 0))}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Views</p>
+                                                <p className="text-lg font-black text-indigo-900">{formatNumber(previewMetrics.reduce((s, m) => s + m.views, 0))}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="max-h-40 overflow-y-auto border rounded-md bg-white">
+                                            <table className="min-w-full text-left text-xs divide-y divide-slate-100">
+                                                <thead className="bg-slate-50 sticky top-0">
+                                                    <tr>
+                                                        <th className="p-2">Date</th>
+                                                        <th className="p-2">Title</th>
+                                                        <th className="p-2 text-right">Revenue</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-50">
+                                                    {previewMetrics.slice(0, 50).map((m, idx) => (
+                                                        <tr key={idx}>
+                                                            <td className="p-2 text-slate-500 whitespace-nowrap">{m.publishDate}</td>
+                                                            <td className="p-2 text-slate-700 truncate max-w-[150px]">{m.videoTitle}</td>
+                                                            <td className="p-2 text-right font-bold text-slate-800">{formatCurrency(m.estimatedRevenue)}</td>
+                                                        </tr>
+                                                    ))}
+                                                    {previewMetrics.length > 50 && (
+                                                        <tr><td colSpan={3} className="p-2 text-center text-slate-400 italic">...and {previewMetrics.length - 50} more items</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+
+                                        <div className="flex gap-3 pt-2">
+                                            <button onClick={() => setPreviewMetrics([])} className="flex-1 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors">
+                                                Cancel
+                                            </button>
+                                            <button 
+                                                onClick={confirmImport} 
+                                                disabled={!uploadChannelId}
+                                                className="flex-[2] py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                                            >
+                                                Confirm Import of {previewMetrics.length} Records
                                             </button>
                                         </div>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
                             </div>
                             
                             <div className="space-y-6">
@@ -1059,14 +1144,14 @@ Conv Rate: ${conv.toFixed(2)}%
                                         </div>
                                     </form>
 
-                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar group">
                                         {channels.length === 0 ? (
                                             <p className="text-center py-8 text-sm text-slate-400 italic">No channels added yet.</p>
                                         ) : (
                                             channels.map(channel => (
-                                                <div key={channel.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 group">
+                                                <div key={channel.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 group/item">
                                                     <span className="text-sm font-bold text-slate-700">{channel.name}</span>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
                                                         <button 
                                                             onClick={() => handleEditChannel(channel)}
                                                             className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-white transition-colors"
