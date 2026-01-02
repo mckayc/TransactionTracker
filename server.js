@@ -11,22 +11,35 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
-// Data Configuration
+// 1. DATA CONFIGURATION
 const DATA_DIR = path.join(__dirname, 'data', 'config');
 const DOCUMENTS_DIR = path.join(__dirname, 'media', 'files');
 const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
+// 2. IMMEDIATE MIDDLEWARE & HEALTH
+app.use(express.json({ limit: '100mb' }));
+app.use(express.raw({ type: '*/*', limit: '100mb' }));
+
+// Health endpoint for Docker/Proxy - Respond immediately
+app.get('/api/health', (req, res) => res.status(200).json({ status: 'live', timestamp: new Date().toISOString() }));
+
+// 3. START LISTENING IMMEDIATELY
+// This ensures the port is open and the browser doesn't get "Site cannot be reached"
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log("-----------------------------------------");
+    console.log(`✅ SERVER PORT ${PORT} OPEN`);
+    console.log("-----------------------------------------");
+});
+
+// 4. BACKGROUND INITIALIZATION
 // Ensure directories exist
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
-if (!fs.existsSync(PUBLIC_DIR)) {
-    console.warn("WARNING: 'public' directory not found. Static files may not serve correctly.");
-    fs.mkdirSync(PUBLIC_DIR, { recursive: true });
-}
+if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 
 // Initialize SQLite Database
-console.log("Initializing database at", DB_PATH);
+console.log("Initializing database...");
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
@@ -56,11 +69,7 @@ const insertFileMeta = db.prepare('INSERT OR REPLACE INTO files_meta (id, origin
 const getFileMeta = db.prepare('SELECT * FROM files_meta WHERE id = ?');
 const deleteFileMeta = db.prepare('DELETE FROM files_meta WHERE id = ?');
 
-app.use(express.json({ limit: '100mb' }));
-app.use(express.raw({ type: '*/*', limit: '100mb' }));
-app.use(express.static(PUBLIC_DIR));
-
-// JSON API Routes
+// 5. JSON API ROUTES
 app.get('/api/data', (req, res) => {
   try {
     const rows = getAllAppStorage.all();
@@ -89,7 +98,7 @@ app.post('/api/data/:key', (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to save' }); }
 });
 
-// AI Proxy Routes
+// 6. AI PROXY ROUTES
 app.post('/api/ai/generate', async (req, res) => {
     try {
         const { model, contents, config } = req.body;
@@ -126,7 +135,7 @@ app.post('/api/ai/stream', async (req, res) => {
     }
 });
 
-// File API Routes
+// 7. FILE API ROUTES
 app.post('/api/files/:id', (req, res) => {
   const { id } = req.params;
   const rawFilename = req.headers['x-filename'] || 'unknown.bin';
@@ -166,11 +175,8 @@ app.delete('/api/files/:id', (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
+// 8. FINAL FRONTEND DELIVERY
+app.use(express.static(PUBLIC_DIR));
 app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log("-----------------------------------------");
-    console.log(`✅ SERVER IS READY AND LISTENING ON PORT ${PORT}`);
-    console.log(`🏠 Access locally: http://localhost:${PORT}`);
-    console.log("-----------------------------------------");
-});
+console.log("✅ BACKGROUND INIT COMPLETE");

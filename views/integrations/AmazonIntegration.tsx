@@ -178,7 +178,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         return metricType === selectedFilter;
     };
 
-    // PERFORMANCE FIX: Granular pass for report years
     const { availableReportYears, availableCreatedYears } = useMemo(() => {
         const reportYears = new Set<string>();
         const createdYears = new Set<string>();
@@ -194,18 +193,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             availableCreatedYears: Array.from(createdYears).sort().reverse()
         };
     }, [metrics]);
-
-    const videoMap = useMemo(() => {
-        const map = new Map<string, AmazonVideo>();
-        videos.forEach(v => {
-            if (v.asins) {
-                v.asins.forEach(asin => map.set(asin, v));
-            } else if (v.asin) {
-                map.set(v.asin, v);
-            }
-        });
-        return map;
-    }, [videos]);
 
     // OPTIMIZED: Aggregated metrics for Dashboard and Insights
     const productAggregateMap = useMemo(() => {
@@ -253,17 +240,14 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         return { ...res, conversion: res.clicks > 0 ? (res.ordered / res.clicks) * 100 : 0 };
     }, [productAggregateMap]);
 
-    // OPTIMIZATION: Single pass aggregator for Insights Tab
     const insightsAggregates = useMemo(() => {
         const yearBuckets: Record<string, number> = {};
         const monthBuckets: number[] = Array(12).fill(0);
         
         metrics.forEach(m => {
-            // YoY Growth
             if (m.reportYear) {
                 yearBuckets[m.reportYear] = (yearBuckets[m.reportYear] || 0) + m.revenue;
             }
-            // Seasonality
             const date = new Date(m.date);
             if (!isNaN(date.getTime())) {
                 monthBuckets[date.getMonth()] += m.revenue;
@@ -381,6 +365,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             setVideoScanProgress({ current: 0, total: totalVideos });
             
             const results: VideoMatchResult[] = [];
+            // STRICTLY match only onsite as requested
             const onsiteSales = metrics.filter(m => m.reportType === 'onsite');
             
             // Index sales for faster lookup
@@ -390,8 +375,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 salesByAsin.get(s.asin)!.push(s);
             });
 
-            // Process in chunks of 50
-            const CHUNK_SIZE = 50;
+            // Process in chunks of 40 (slightly smaller for smoother UI)
+            const CHUNK_SIZE = 40;
             const processBatch = async (startIndex: number) => {
                 const endIndex = Math.min(startIndex + CHUNK_SIZE, totalVideos);
                 
@@ -417,7 +402,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         });
                     }
 
-                    // Dedup and create results
                     const uniqueMatchedSales = Array.from(new Set(matchedSales));
                     uniqueMatchedSales.forEach(s => {
                         results.push({
@@ -430,11 +414,10 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 setVideoScanProgress({ current: endIndex, total: totalVideos });
 
                 if (endIndex < totalVideos) {
-                    // Pause for a tiny bit to let browser breath
-                    await new Promise(resolve => setTimeout(resolve, 1));
+                    // Yield to browser for 5ms to ensure paint cycles
+                    await new Promise(resolve => setTimeout(resolve, 5));
                     await processBatch(endIndex);
                 } else {
-                    // Done
                     setVideoMatches(results);
                     setIsVideoMatchModalOpen(true);
                     setIsScanningVideos(false);
@@ -478,7 +461,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 }
             });
             setMergeProgress({ current: Math.min(i + batchSize, total), total });
-            await new Promise(r => setTimeout(r, 30));
+            await new Promise(r => setTimeout(r, 10));
         }
 
         onDeleteMetrics(metrics.map(m => m.id));
@@ -495,7 +478,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         const total = matchingMatches.length;
         setMergeProgress({ current: 0, total });
 
-        // Process in chunks to maintain UI responsiveness and simulate progress
         const updatedMetrics = [...metrics];
         const batchSize = 50;
         
@@ -509,7 +491,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             });
             
             setMergeProgress({ current: Math.min(i + batchSize, total), total });
-            await new Promise(r => setTimeout(r, 50)); // Tiny delay for progress bar visibility
+            await new Promise(r => setTimeout(r, 20));
         }
 
         onDeleteMetrics(metrics.map(m => m.id));
@@ -537,20 +519,16 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     // Creator Connections Matcher Logic
     const handleScanForMatches = async () => {
         setIsScanningMatches(true);
-        
-        // Wait for state to settle
         await new Promise(r => setTimeout(r, 100));
 
         const results: MatchResult[] = [];
         const creators = metrics.filter(m => m.reportType === 'creator_connections');
         const onsiteOffsiteSales = metrics.filter(m => m.reportType === 'onsite' || m.reportType === 'offsite');
 
-        // Use lookup map for performance
         const salesLookup = new Map<string, AmazonMetric>();
         onsiteOffsiteSales.forEach(s => salesLookup.set(`${s.date}_${s.asin}`, s));
 
-        // Processing in non-blocking batches
-        const BATCH_SIZE = 200;
+        const BATCH_SIZE = 100;
         for (let i = 0; i < creators.length; i += BATCH_SIZE) {
             const batch = creators.slice(i, i + BATCH_SIZE);
             batch.forEach(c => {
@@ -563,8 +541,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     });
                 }
             });
-            // Yield back to browser
-            await new Promise(r => setTimeout(r, 1));
+            await new Promise(r => setTimeout(r, 5));
         }
 
         setMatchingMatches(results);
@@ -592,7 +569,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
             <div className="flex-1 overflow-y-auto min-h-0 bg-slate-50 -mx-4 px-4 pt-4 relative">
                 
-                {/* DASHBOARD TAB */}
                 {activeTab === 'dashboard' && (
                     <div className="space-y-6 pb-8">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -715,7 +691,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     </div>
                 )}
 
-                {/* DATA TAB */}
                 {activeTab === 'data' && (
                     <div className="space-y-4 h-full flex flex-col">
                         <div className="bg-white border border-slate-200 p-4 rounded-xl flex flex-wrap items-center justify-between gap-4">
@@ -822,7 +797,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 </table>
                             </div>
                             
-                            {/* Simple Pagination Controls */}
                             {totalPages > 1 && (
                                 <div className="p-3 bg-slate-50 border-t flex items-center justify-between">
                                     <span className="text-xs text-slate-500">Page {currentPage} of {totalPages}</span>
@@ -836,7 +810,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     </div>
                 )}
 
-                {/* INSIGHTS TAB */}
                 {activeTab === 'insights' && (
                     <div className="space-y-6 pb-20">
                          <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden">
@@ -892,7 +865,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     </div>
                 )}
 
-                {/* TOOLS TAB */}
                 {activeTab === 'tools' && (
                     <div className="space-y-6 pb-20">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
@@ -962,7 +934,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     </div>
                 )}
 
-                {/* UPLOAD TAB */}
                 {activeTab === 'upload' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pb-20 items-start">
                         {previewMetrics.length > 0 ? (
@@ -1030,11 +1001,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     </div>
                                 </div>
                             ))}
-                            {matchingMatches.length > 100 && (
-                                <div className="text-center py-8">
-                                    <p className="text-slate-400 text-sm font-medium italic">...and {matchingMatches.length - 100} more matches ready to merge.</p>
-                                </div>
-                            )}
                         </div>
 
                         <div className="p-6 border-t border-slate-100 bg-white flex justify-between items-center">
