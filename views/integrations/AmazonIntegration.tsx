@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, AmazonReportType, AmazonVideo } from '../../types';
-// Add ChevronDownIcon to imports
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
 import { parseAmazonReport, parseAmazonVideos } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
@@ -226,7 +225,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     ex.clicks += m.clicks;
                     ex.orderedItems += m.orderedItems;
                     ex.shippedItems += m.shippedItems;
-                    // Keep most recent date or first date? Keeping first for sort consistency
                 }
             });
             result = Array.from(merged.values());
@@ -448,8 +446,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                 <option value="onsite">Onsite</option>
                                                 <option value="offsite">Offsite</option>
                                                 <option value="creator_connections">Creator Connections</option>
-                                                <option value="creator_connections_onsite">CC Onsite</option>
-                                                <option value="creator_connections_offsite">CC Offsite</option>
+                                                <option value="creator_connections_onsite">Creator Connections Onsite</option>
+                                                <option value="creator_connections_offsite">Creator Connections Offsite</option>
                                             </select>
                                             <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
                                                 <ChevronDownIcon className="w-4 h-4 text-indigo-400" />
@@ -788,7 +786,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             {/* MATCH CONFIRMATION MODAL */}
             {isMatchModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
                             <div>
                                 <h3 className="text-2xl font-black text-slate-800 flex items-center gap-2"><ShieldCheckIcon className="w-6 h-6 text-indigo-600" /> Match Review</h3>
@@ -881,4 +879,4 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     );
 };
 
-export default YouTubeIntegration;
+export default AmazonIntegration;
