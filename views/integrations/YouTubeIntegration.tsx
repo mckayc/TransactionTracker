@@ -199,6 +199,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
     const tableMetrics = useMemo(() => {
         let result = [...metrics];
+
+        if (filterChannelId) {
+            result = result.filter(m => m.channelId === filterChannelId);
+        }
         
         if (dataCreatedYearFilter !== 'all') {
             result = result.filter(m => m.publishDate.startsWith(dataCreatedYearFilter));
@@ -232,13 +236,13 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         });
 
         return result;
-    }, [metrics, groupByVideo, dataSortKey, dataSortDir, dataCreatedYearFilter]);
+    }, [metrics, groupByVideo, dataSortKey, dataSortDir, dataCreatedYearFilter, filterChannelId]);
 
     const totalPages = Math.ceil(tableMetrics.length / rowsPerPage);
     const startIndex = (currentPage - 1) * rowsPerPage;
     const paginatedMetrics = tableMetrics.slice(startIndex, startIndex + rowsPerPage);
 
-    useEffect(() => { setCurrentPage(1); }, [rowsPerPage, groupByVideo, dataSortKey, dataSortDir, dataCreatedYearFilter]);
+    useEffect(() => { setCurrentPage(1); }, [rowsPerPage, groupByVideo, dataSortKey, dataSortDir, dataCreatedYearFilter, filterChannelId]);
 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -374,7 +378,8 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
     const summary = useMemo(() => {
         const result = { totalRevenue: 0, totalViews: 0, totalSubs: 0, totalWatchTime: 0, avgRPM: 0, avgCTR: 0, avgWatchPerView: 0 };
-        metrics.forEach(m => {
+        const data = filterChannelId ? metrics.filter(m => m.channelId === filterChannelId) : metrics;
+        data.forEach(m => {
             result.totalRevenue += m.estimatedRevenue;
             result.totalViews += m.views;
             result.totalSubs += m.subscribersGained;
@@ -384,11 +389,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             result.avgRPM = (result.totalRevenue / result.totalViews) * 1000;
             result.avgWatchPerView = result.totalWatchTime / result.totalViews;
         }
-        const totalImpressions = metrics.reduce((acc, m) => acc + m.impressions, 0);
-        const totalClicks = metrics.reduce((acc, m) => acc + (m.impressions * (m.ctr / 100)), 0);
+        const totalImpressions = data.reduce((acc, m) => acc + m.impressions, 0);
+        const totalClicks = data.reduce((acc, m) => acc + (m.impressions * (m.ctr / 100)), 0);
         if (totalImpressions > 0) result.avgCTR = (totalClicks / totalImpressions) * 100;
         return result;
-    }, [metrics]);
+    }, [metrics, filterChannelId]);
 
     const generatedInsights = useMemo(() => {
         // Apply Filtered Context
@@ -570,7 +575,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
     const getSortIcon = (key: keyof YouTubeMetric | 'rpm', currentKey: string, currentDir: string) => {
         if (currentKey !== key) return <SortIcon className="w-3 h-3 text-slate-300 opacity-50" />;
-        return currentDir === 'asc' ? <SortIcon className="w-3 h-3 text-red-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-red-600" />;
+        return currentDir === 'asc' ? <SortIcon className="w-3 h-3 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-indigo-600" />;
     };
 
     const toggleEvergreenPublishedYear = (year: string) => {
@@ -651,7 +656,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                     </div>
                                     <div className="flex flex-wrap items-center gap-3">
                                         <div className="flex items-center gap-2">
-                                            <select value={filterChannelId} onChange={(e) => setFilterChannelId(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[120px]">
+                                            <select value={filterChannelId} onChange={(e) => setFilterChannelId(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-indigo-700 font-bold min-w-[120px]">
                                                 <option value="">All Channels</option>
                                                 {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
                                             </select>
@@ -1007,6 +1012,18 @@ Conv Rate: ${conv.toFixed(2)}%
                             </div>
 
                             <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-500 uppercase">Channel:</span>
+                                    <select 
+                                        value={filterChannelId} 
+                                        onChange={(e) => setFilterChannelId(e.target.value)} 
+                                        className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-red-500 min-w-[120px]"
+                                    >
+                                        <option value="">All Channels</option>
+                                        {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                                    </select>
+                                </div>
+
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-bold text-slate-500 uppercase">Published:</span>
                                     <select 
