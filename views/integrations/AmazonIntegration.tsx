@@ -250,7 +250,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         else { setInsightsSortKey(key); setInsightsSortDir('desc'); }
     };
 
-    // Fix: Added handleDataSort to handle sorting in the data table tab
     const handleDataSort = (key: keyof AmazonMetric) => {
         if (dataSortKey === key) setDataSortDir(dataSortDir === 'asc' ? 'desc' : 'asc');
         else { setDataSortKey(key); setDataSortDir('desc'); }
@@ -261,7 +260,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         return dir === 'asc' ? <SortIcon className="w-3 h-3 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-indigo-600" />;
     };
 
-    // Creator Connections Matcher Logic
     const handleScanForMatches = () => {
         setIsScanningMatches(true);
         const results: MatchResult[] = [];
@@ -270,7 +268,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         const sales = metrics.filter(m => m.reportType === 'onsite' || m.reportType === 'offsite');
 
         creators.forEach(c => {
-            // Find a sales metric with same date and ASIN
             const match = sales.find(s => s.date === c.date && s.asin === c.asin);
             if (match) {
                 results.push({
@@ -298,8 +295,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             return m;
         });
 
-        onDeleteMetrics(metrics.map(m => m.id)); // Clear all
-        onAddMetrics(updatedMetrics); // Re-add with updates
+        onDeleteMetrics(metrics.map(m => m.id));
+        onAddMetrics(updatedMetrics);
         
         setMatchingMatches([]);
         setSelectedMatchIds(new Set());
@@ -327,7 +324,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
             <div className="flex-1 overflow-y-auto min-h-0 bg-slate-50 -mx-4 px-4 pt-4 relative">
                 
-                {/* DASHBOARD TAB */}
                 {activeTab === 'dashboard' && (
                     <div className="space-y-6 pb-8">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -350,36 +346,36 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         </div>
 
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                            <div className="mb-6 space-y-4">
-                                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                            <div className="mb-6">
+                                <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                                     <div className="flex items-center gap-2">
                                         <SparklesIcon className="w-5 h-5 text-orange-500" />
                                         <h3 className="font-bold text-slate-800 text-lg">Top Content Insights</h3>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-indigo-700 font-bold min-w-[120px]">
-                                            <option value="">All Types</option>
-                                            <option value="onsite">Amazon Influencer (Onsite)</option>
-                                            <option value="offsite">Amazon Affiliate (Offsite)</option>
+                                    <div className="flex items-center gap-3">
+                                        <select value={filterType} onChange={e => setFilterType(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-indigo-700 font-bold min-w-[120px] focus:ring-orange-500 outline-none">
+                                            <option value="">All Channels</option>
+                                            <option value="onsite">Onsite (Influencer)</option>
+                                            <option value="offsite">Offsite (Affiliate)</option>
                                             <option value="creator">Creator Connections</option>
                                         </select>
                                         <div className="flex items-center gap-2">
-                                            <span className="text-xs font-bold text-slate-400 uppercase">Limit</span>
-                                            <select value={insightsLimit} onChange={e => setInsightsLimit(Number(e.target.value))} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[70px]">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">LIMIT</span>
+                                            <select value={insightsLimit} onChange={e => setInsightsLimit(Number(e.target.value))} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold min-w-[65px] focus:ring-orange-500 outline-none">
                                                 {[50, 100, 200, 500].map(l => <option key={l} value={l}>{l}</option>)}
                                             </select>
                                         </div>
-                                        <select value={insightsReportYear} onChange={e => setInsightsReportYear(e.target.value)} className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px]">
+                                        <select value={insightsReportYear} onChange={e => setInsightsReportYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none">
                                             <option value="all">Reported: All Time</option>
                                             {availableReportYears.map(y => <option key={y} value={y}>Reported: {y}</option>)}
                                         </select>
-                                        <select value={insightsCreatedYear} onChange={e => setInsightsCreatedYear(e.target.value)} className="p-1.5 pr-8 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px]">
+                                        <select value={insightsCreatedYear} onChange={e => setInsightsCreatedYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none">
                                             <option value="all">Created: All Time</option>
                                             {availableCreatedYears.map(y => <option key={y} value={y}>Created: {y}</option>)}
                                         </select>
                                     </div>
                                 </div>
-                                <div className="relative">
+                                <div className="relative mt-4">
                                     <input type="text" placeholder="Search products or ASINs..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-4 pr-12 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:outline-none font-medium shadow-sm" />
                                     <InfoBubble title="Filter Power" content="Use '|' for OR, ' ' for AND, and '-' to exclude. e.g. 'Apple Watch -Series 7'" />
                                 </div>
