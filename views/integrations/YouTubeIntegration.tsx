@@ -139,10 +139,15 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
     }, [availableReportYears, evergreenReportYear]);
 
+    // Simple Map of Channel IDs to Names
+    const channelMap = useMemo(() => new Map(channels.map(c => [c.id, c.name])), [channels]);
+    const currentContextChannelName = filterChannelId ? (channelMap.get(filterChannelId) || 'Unknown Channel') : 'All Channels';
+
     // Aggregate Map for Video Stats (Creation Year vs Lifetime)
     const videoAggregateMap = useMemo(() => {
         const map = new Map<string, { 
             videoId: string, 
+            channelId?: string,
             title: string, 
             publishDate: string,
             creationYearViews: number,
@@ -156,6 +161,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             if (!map.has(m.videoId)) {
                 map.set(m.videoId, {
                     videoId: m.videoId,
+                    channelId: m.channelId,
                     title: m.videoTitle,
                     publishDate: m.publishDate,
                     creationYearViews: 0,
@@ -228,8 +234,32 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         setIsUploading(true);
         try {
             const newMetrics = await parseYouTubeReport(file, (msg) => console.log(msg));
-            if (newMetrics.length > 0) setPreviewMetrics(newMetrics);
-            else alert("No valid records found in file.");
+            if (newMetrics.length > 0) {
+                setPreviewMetrics(newMetrics);
+                
+                // Auto-detect year logic
+                const yearCounts: Record<string, number> = {};
+                newMetrics.forEach(m => {
+                    const y = m.publishDate.substring(0, 4);
+                    if (y.length === 4) {
+                        yearCounts[y] = (yearCounts[y] || 0) + 1;
+                    }
+                });
+                
+                let bestYear = '';
+                let maxCount = 0;
+                for (const y in yearCounts) {
+                    if (yearCounts[y] > maxCount) {
+                        maxCount = yearCounts[y];
+                        bestYear = y;
+                    }
+                }
+                if (bestYear) {
+                    setUploadYear(bestYear);
+                }
+            } else {
+                alert("No valid records found in file.");
+            }
         } catch (error) {
             console.error(error);
             alert(`Import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -466,8 +496,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         setEvergreenPublishedYears(newSet);
     };
 
-    const channelMap = useMemo(() => new Map(channels.map(c => [c.id, c.name])), [channels]);
-
     // Logic for Champions Hover Tooltip content
     const getChampionStats = (videoId: string) => {
         const agg = videoAggregateMap.get(videoId);
@@ -664,21 +692,26 @@ Conv Rate: ${conv.toFixed(2)}%
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* CONTENT DURABILITY - MOVED TO TOP */}
+                            {/* CONTENT DURABILITY */}
                             <div className="bg-slate-900 text-white p-6 rounded-xl shadow-xl space-y-6 overflow-hidden relative col-span-1 md:col-span-2">
-                                <div>
-                                    <h3 className="font-bold mb-4 flex items-center gap-2 text-lg">
-                                        <HeartIcon className="w-5 h-5 text-red-500" /> Content Durability (Evergreen Analysis)
-                                    </h3>
-                                    <div className="grid grid-cols-2 gap-8">
-                                        <div>
-                                            <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest block mb-1">Evergreen Revenue (1yr+ old)</span>
-                                            <p className="text-3xl font-bold">{formatCurrency(generatedInsights?.evergreenRevenue || 0)}</p>
-                                        </div>
-                                        <div>
-                                            <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest block mb-1">% of Lifetime Earnings</span>
-                                            <p className="text-3xl font-bold">{generatedInsights?.evergreenPercent.toFixed(1)}%</p>
-                                        </div>
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <h3 className="font-bold mb-1 flex items-center gap-2 text-lg">
+                                            <HeartIcon className="w-5 h-5 text-red-500" /> Content Durability (Evergreen Analysis)
+                                        </h3>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{currentContextChannelName}</p>
+                                    </div>
+                                    <span className="text-[9px] bg-white/10 px-2 py-0.5 rounded font-black uppercase tracking-tighter">Lifetime Analysis</span>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-8">
+                                    <div>
+                                        <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest block mb-1">Evergreen Revenue (1yr+ old)</span>
+                                        <p className="text-3xl font-bold">{formatCurrency(generatedInsights?.evergreenRevenue || 0)}</p>
+                                    </div>
+                                    <div>
+                                        <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest block mb-1">% of Lifetime Earnings</span>
+                                        <p className="text-3xl font-bold">{generatedInsights?.evergreenPercent.toFixed(1)}%</p>
                                     </div>
                                 </div>
                                 
@@ -725,11 +758,14 @@ Conv Rate: ${conv.toFixed(2)}%
                                 </div>
                             </div>
 
-                            {/* YEARLY PERFORMANCE - SCROLLABLE + RICHER INFO */}
+                            {/* YEARLY PERFORMANCE */}
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col max-h-[500px]">
-                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-lg flex-shrink-0">
-                                    <TrendingUpIcon className="w-5 h-5 text-red-500" /> Yearly Performance Champions
-                                </h3>
+                                <div className="flex justify-between items-start mb-4 flex-shrink-0">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
+                                        <TrendingUpIcon className="w-5 h-5 text-red-500" /> Yearly Champions
+                                    </h3>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{currentContextChannelName}</span>
+                                </div>
                                 <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-grow">
                                     {generatedInsights?.champions.map(([year, stats]) => (
                                         <div key={year} className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
@@ -771,10 +807,14 @@ Conv Rate: ${conv.toFixed(2)}%
                                 </div>
                             </div>
 
+                            {/* CONTENT VELOCITY */}
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-lg">
-                                    <VideoIcon className="w-5 h-5 text-red-500" /> Content Velocity
-                                </h3>
+                                <div className="flex justify-between items-start mb-4">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
+                                        <VideoIcon className="w-5 h-5 text-red-500" /> Content Velocity
+                                    </h3>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{currentContextChannelName}</span>
+                                </div>
                                 <div className="space-y-4">
                                     {generatedInsights?.counts.map(([year, count]) => {
                                         const maxCount = Math.max(...Array.from(generatedInsights.counts.map(c => c[1])));
@@ -803,11 +843,14 @@ Conv Rate: ${conv.toFixed(2)}%
                                 </div>
                             </div>
 
-                            {/* PUBLISHING STRATEGY CARD - REPLACED KEYWORDS */}
+                            {/* PUBLISHING STRATEGY */}
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-lg">
-                                    <CalendarIcon className="w-5 h-5 text-indigo-500" /> Best Days to Publish (ROI Analysis)
-                                </h3>
+                                <div className="flex justify-between items-start mb-4">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
+                                        <CalendarIcon className="w-5 h-5 text-indigo-500" /> Best Days to Publish (ROI)
+                                    </h3>
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{currentContextChannelName}</span>
+                                </div>
                                 <p className="text-xs text-slate-500 mb-4 italic">Performance averages based on the day of the week your videos were released.</p>
                                 <div className="space-y-2">
                                     {generatedInsights?.weekdayStats.map((s, idx) => (
@@ -949,9 +992,33 @@ Conv Rate: ${conv.toFixed(2)}%
                                         </select>
                                     </div>
                                     {previewMetrics.length > 0 && (
-                                        <button onClick={confirmImport} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
-                                            Confirm Import of {previewMetrics.length} Records
-                                        </button>
+                                        <div className="bg-indigo-50 border border-indigo-200 p-6 rounded-xl space-y-4 animate-slide-up">
+                                            <div className="flex items-center gap-3 border-b border-indigo-100 pb-3">
+                                                <CheckCircleIcon className="w-6 h-6 text-indigo-600" />
+                                                <h3 className="text-lg font-bold text-indigo-900">Ready to Import</h3>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Records</p>
+                                                    <p className="text-xl font-black text-indigo-900">{previewMetrics.length}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Est. Revenue</p>
+                                                    <p className="text-xl font-black text-green-600">{formatCurrency(previewMetrics.reduce((s, m) => s + m.estimatedRevenue, 0))}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Total Views</p>
+                                                    <p className="text-xl font-black text-indigo-900">{formatNumber(previewMetrics.reduce((s, m) => s + m.views, 0))}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Selected Year</p>
+                                                    <p className="text-xl font-black text-indigo-900">{uploadYear || 'N/A'}</p>
+                                                </div>
+                                            </div>
+                                            <button onClick={confirmImport} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
+                                                Confirm Import
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             </div>
@@ -1045,7 +1112,10 @@ Conv Rate: ${conv.toFixed(2)}%
                         <div className="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
                             <div>
                                 <h3 className="text-2xl font-bold text-slate-800">Batch Analysis: {selectedVelocityYear}</h3>
-                                <p className="text-slate-500">Comparing performance from their first year vs. lifetime stats.</p>
+                                <p className="text-slate-500 flex items-center gap-2 mt-1">
+                                    Viewing Performance for 
+                                    <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 font-black text-xs uppercase">{currentContextChannelName}</span>
+                                </p>
                             </div>
                             <button onClick={() => setSelectedVelocityYear(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                         </div>
@@ -1053,21 +1123,31 @@ Conv Rate: ${conv.toFixed(2)}%
                         {/* Summary Totals for the selected year */}
                         <div className="bg-white px-6 py-4 grid grid-cols-2 md:grid-cols-4 gap-6 border-b border-slate-100">
                             <div>
-                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Revenue</p>
-                                <p className="text-2xl font-black text-indigo-600">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
+                                <p className="text-2xl font-black text-slate-800 font-mono">
                                     {formatCurrency(
                                         Array.from(videoAggregateMap.values())
-                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear))
+                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear) && (!filterChannelId || v.channelId === filterChannelId))
+                                            .reduce((sum, v) => sum + v.creationYearRevenue, 0)
+                                    )}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
+                                <p className="text-2xl font-black text-indigo-600 font-mono">
+                                    {formatCurrency(
+                                        Array.from(videoAggregateMap.values())
+                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce((sum, v) => sum + v.lifetimeRevenue, 0)
                                     )}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
-                                <p className="text-2xl font-black text-slate-800">
+                                <p className="text-2xl font-black text-slate-800 font-mono">
                                     {formatNumber(
                                         Array.from(videoAggregateMap.values())
-                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear))
+                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce((sum, v) => sum + v.lifetimeViews, 0)
                                     )}
                                 </p>
@@ -1094,7 +1174,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-100">
                                     {Array.from(videoAggregateMap.values())
-                                        .filter(v => v.publishDate.startsWith(selectedVelocityYear))
+                                        .filter(v => v.publishDate.startsWith(selectedVelocityYear) && (!filterChannelId || v.channelId === filterChannelId))
                                         .sort((a,b) => b.lifetimeRevenue - a.lifetimeRevenue)
                                         .map((v, idx) => (
                                             <tr key={v.videoId} className="hover:bg-slate-50 transition-colors group">
@@ -1102,7 +1182,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                                 <td className="px-6 py-3 max-w-md">
                                                     <div className="flex items-center gap-3">
                                                         <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap">{v.publishDate}</span>
-                                                        <span className="text-sm font-bold text-slate-700 truncate" title={v.title}>{v.title}</span>
+                                                        <div className="min-w-0">
+                                                            <span className="text-sm font-bold text-slate-700 truncate block" title={v.title}>{v.title}</span>
+                                                            {!filterChannelId && v.channelId && <span className="text-[9px] font-bold text-indigo-500 uppercase">{channelMap.get(v.channelId)}</span>}
+                                                        </div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-3 text-right text-xs text-slate-600 font-mono border-l border-slate-50">{formatNumber(v.creationYearViews)}</td>
