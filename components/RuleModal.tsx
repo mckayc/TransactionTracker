@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleCondition, Tag } from '../types';
 import { CloseIcon } from './Icons';
@@ -98,7 +99,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
     };
 
     const handleCreatePayee = () => {
-        const name = prompt("Enter new Payee name:");
+        const name = prompt("Enter new Income Source name:");
         if (name && name.trim() && onSavePayee) {
             const newPayee = { id: generateUUID(), name: name.trim() };
             onSavePayee(newPayee);
@@ -163,7 +164,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
     };
     
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4" onClick={onClose}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-[70] flex justify-center items-center p-4" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Header with Actions */}
                 <div className="flex justify-between items-center p-6 border-b bg-white sticky top-0 z-20">
@@ -203,7 +204,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Set Payee</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Set Income Source</label>
                                 <div className="flex gap-1">
                                     <select value={setPayeeId} onChange={(e) => setSetPayeeId(e.target.value)} className="w-full p-2 border rounded-md">
                                         <option value="">-- Don't Change --</option>

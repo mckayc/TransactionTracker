@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction, View } from '../types';
@@ -32,7 +31,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
   const managementNavItems = [
     { id: 'accounts', label: 'Accounts', icon: CreditCardIcon },
     { id: 'users', label: 'Users', icon: UserGroupIcon },
-    { id: 'payees', label: 'Payees', icon: UsersIcon },
+    { id: 'payees', label: 'Income Source', icon: UsersIcon },
     { id: 'categories', label: 'Categories', icon: TagIcon },
     { id: 'tags', label: 'Tags', icon: TagIcon },
     { id: 'rules', label: 'Rules', icon: LinkIcon },

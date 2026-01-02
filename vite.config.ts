@@ -13,5 +13,14 @@ export default defineConfig(({ mode }) => {
       // This exposes the API_KEY from the build environment to the browser code
       'process.env.API_KEY': JSON.stringify(apiKey),
     },
+    server: {
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        }
+      }
+    }
   };
 });

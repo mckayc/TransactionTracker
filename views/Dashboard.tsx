@@ -9,7 +9,8 @@ import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import DuplicateReview from '../components/DuplicateReview';
 import ImportVerification from '../components/ImportVerification';
-import { ExclamationTriangleIcon, CalendarIcon, AddIcon, CloseIcon, CreditCardIcon } from '../components/Icons';
+import RuleModal from '../components/RuleModal';
+import { ExclamationTriangleIcon, CalendarIcon, AddIcon, CloseIcon, CreditCardIcon, SparklesIcon } from '../components/Icons';
 import { formatDate } from '../dateUtils';
 import { generateUUID } from '../utils';
 import { saveFile } from '../services/storageService';
@@ -22,6 +23,7 @@ interface DashboardProps {
   transactions: Transaction[];
   accounts: Account[];
   onAddAccount: (account: Account) => void;
+  onAddAccountType: (type: AccountType) => void;
   accountTypes: AccountType[];
   categories: Category[];
   tags: Tag[];
@@ -32,6 +34,11 @@ interface DashboardProps {
   onAddDocument: (doc: BusinessDocument) => void;
   documentFolders: DocumentFolder[];
   onCreateFolder: (folder: DocumentFolder) => void;
+  onSaveRule: (rule: ReconciliationRule) => void;
+  onSaveCategory: (category: Category) => void;
+  onSavePayee: (payee: Payee) => void;
+  onSaveTag: (tag: Tag) => void;
+  onAddTransactionType: (type: TransactionType) => void;
 }
 
 const SummaryWidget: React.FC<{title: string, value: string, helpText: string, icon?: React.ReactNode, className?: string}> = ({title, value, helpText, icon, className}) => (
@@ -70,16 +77,18 @@ const getNextTaxDeadline = () => {
     };
 };
 
-// Quick Account Modal Component
 const QuickAccountModal: React.FC<{
     isOpen: boolean;
     onClose: () => void;
     onSave: (account: Account) => void;
+    onAddType: (type: AccountType) => void;
     accountTypes: AccountType[];
-}> = ({ isOpen, onClose, onSave, accountTypes }) => {
+}> = ({ isOpen, onClose, onSave, onAddType, accountTypes }) => {
     const [name, setName] = useState('');
     const [identifier, setIdentifier] = useState('');
     const [accountTypeId, setAccountTypeId] = useState(accountTypes[0]?.id || '');
+    const [isAddingType, setIsAddingType] = useState(false);
+    const [newTypeName, setNewTypeName] = useState('');
 
     useEffect(() => {
         if (isOpen && accountTypes.length > 0 && !accountTypeId) {
@@ -104,6 +113,16 @@ const QuickAccountModal: React.FC<{
         }
     };
 
+    const handleCreateType = () => {
+        if (newTypeName.trim()) {
+            const newType = { id: generateUUID(), name: newTypeName.trim() };
+            onAddType(newType);
+            setAccountTypeId(newType.id);
+            setNewTypeName('');
+            setIsAddingType(false);
+        }
+    };
+
     return (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -117,7 +136,7 @@ const QuickAccountModal: React.FC<{
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Account Name</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full" placeholder="e.g. Chase Freedom" required autoFocus />
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full" placeholder="e.g. Chase Checking" required autoFocus />
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Identifier (Last 4 digits)</label>
@@ -125,9 +144,20 @@ const QuickAccountModal: React.FC<{
                     </div>
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-1">Account Type</label>
-                        <select value={accountTypeId} onChange={e => setAccountTypeId(e.target.value)} className="w-full" required>
-                            {accountTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
-                        </select>
+                        {isAddingType ? (
+                            <div className="flex gap-2">
+                                <input type="text" value={newTypeName} onChange={e => setNewTypeName(e.target.value)} className="flex-grow text-sm" placeholder="New Type Name" autoFocus />
+                                <button type="button" onClick={handleCreateType} className="bg-indigo-600 text-white px-3 rounded-lg text-sm font-bold">Add</button>
+                                <button type="button" onClick={() => setIsAddingType(false)} className="text-slate-400 p-1"><CloseIcon className="w-4 h-4"/></button>
+                            </div>
+                        ) : (
+                            <div className="flex gap-2">
+                                <select value={accountTypeId} onChange={e => setAccountTypeId(e.target.value)} className="flex-grow" required>
+                                    {accountTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+                                </select>
+                                <button type="button" onClick={() => setIsAddingType(true)} className="px-3 border rounded-lg hover:bg-slate-50 text-indigo-600 font-bold">+</button>
+                            </div>
+                        )}
                     </div>
                     <div className="flex gap-3 pt-2">
                         <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border rounded-xl font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
@@ -139,19 +169,17 @@ const QuickAccountModal: React.FC<{
     );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, onAddAccount, accountTypes, categories, tags, transactionTypes, rules, payees, users, onAddDocument, documentFolders, onCreateFolder }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, onAddAccount, onAddAccountType, accountTypes, categories, tags, transactionTypes, rules, payees, users, onAddDocument, documentFolders, onCreateFolder, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState('');
   const [dashboardRange, setDashboardRange] = useState<'all' | 'year' | 'month' | 'week'>('year');
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+  const [txForRule, setTxForRule] = useState<Transaction | null>(null);
   
   const apiKeyAvailable = hasApiKey();
-  const [useAi, setUseAi] = useState(apiKeyAvailable);
-  
-  useEffect(() => {
-      if (apiKeyAvailable) setUseAi(true);
-  }, [apiKeyAvailable]);
+  const [useAi, setUseAi] = useState(false); // Default to FAST import
   
   const [importMethod, setImportMethod] = useState<ImportMethod>('upload');
   const [textInput, setTextInput] = useState('');
@@ -164,6 +192,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     if (accounts.length > 0 && !pasteAccountId) setPasteAccountId(accounts[0].id);
   }, [users, accounts, selectedUserId, pasteAccountId]);
 
+  const [rawExtractedTransactions, setRawExtractedTransactions] = useState<RawTransaction[]>([]);
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
   const [stagedForImport, setStagedForImport] = useState<Transaction[]>([]);
   const [duplicatesToReview, setDuplicatesToReview] = useState<DuplicatePair[]>([]);
@@ -174,10 +203,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
 
   const handleProgress = (msg: string) => setProgressMessage(msg);
 
-  const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
-    handleProgress('Applying automation rules...');
+  const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
-    const transactionsWithRules = applyRulesToTransactions(rawWithUser, rules, accounts);
+    const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
 
     const existingCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
     const newCategories: Category[] = [];
@@ -195,24 +223,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     const categoryNameToIdMap = new Map([...categories, ...newCategories].map(c => [c.name.toLowerCase(), c.id]));
     const defaultCategoryId = categories.find(c => c.name === 'Other')?.id || categories[0]?.id || '';
 
-    // Heuristic: Initial ignore flag based on type/description for non-AI imports
     const transactionsWithCategoryIds = transactionsWithRules.map(tx => {
         const desc = (tx.description || '').toLowerCase();
-        const typeStr = (tx.category || '').toLowerCase(); // csvParser often puts raw type in category field initially
+        const typeStr = (tx.category || '').toLowerCase();
         const isTransfer = desc.includes('transfer') || typeStr.includes('transfer');
         
         return {
             ...tx,
             categoryId: tx.categoryId || categoryNameToIdMap.get(tx.category.toLowerCase()) || defaultCategoryId,
             tempId: generateUUID(),
-            isIgnored: isTransfer // Default 'ignored' if it looks like a transfer
+            isIgnored: isTransfer
         };
     });
 
     setStagedNewCategories(newCategories);
     setRawTransactionsToVerify(transactionsWithCategoryIds);
+  }, [categories, accounts]);
+
+  const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
+    handleProgress('Applying automation rules...');
+    setRawExtractedTransactions(rawTransactions);
+    applyRulesAndSetStaging(rawTransactions, userId, rules);
     setAppState('verifying_import');
-  }, [rules, categories, accounts]);
+  }, [rules, applyRulesAndSetStaging]);
 
   const handleFileUpload = useCallback(async (files: File[], accountId: string) => {
     setAppState('processing');
@@ -290,6 +323,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setError(null);
     setProgressMessage('');
     setTextInput('');
+    setRawExtractedTransactions([]);
     setRawTransactionsToVerify([]);
     setStagedForImport([]);
     setDuplicatesToReview([]);
@@ -310,13 +344,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     return baseTxs.filter(tx => {
         const txDate = new Date(tx.date);
         txDate.setHours(0, 0, 0, 0);
-        const today = new Date();
-        today.setHours(0,0,0,0);
         const txYear = txDate.getFullYear();
         const txMonth = txDate.getMonth();
         if (dashboardRange === 'year') return txYear === now.getFullYear();
         if (dashboardRange === 'month') return txYear === now.getFullYear() && txMonth === now.getMonth();
         if (dashboardRange === 'week') {
+             const today = new Date();
+             today.setHours(0,0,0,0);
              const startOfWeek = new Date(today);
              startOfWeek.setDate(today.getDate() - today.getDay());
              const endOfWeek = new Date(startOfWeek);
@@ -342,6 +376,23 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
           default: return 'All Time';
       }
   }
+
+  const handleTriggerCreateRule = (rawTx: RawTransaction & { tempId: string }) => {
+      const tx: Transaction = {
+          ...rawTx,
+          id: rawTx.tempId,
+          categoryId: rawTx.categoryId || ''
+      };
+      setTxForRule(tx);
+      setIsRuleModalOpen(true);
+  };
+
+  const handleSaveRuleFromImport = (rule: ReconciliationRule) => {
+      onSaveRule(rule);
+      setIsRuleModalOpen(false);
+      const updatedRules = [...rules, rule];
+      applyRulesAndSetStaging(rawExtractedTransactions, selectedUserId, updatedRules);
+  };
 
   return (
     <div className="space-y-8">
@@ -444,7 +495,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         ) : appState === 'processing' ? (
             <div className="py-12"><div className="flex flex-col items-center justify-center space-y-4 text-center"><svg className="animate-spin h-10 w-10 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><div className="text-slate-600"><p className="font-semibold text-lg">Processing...</p><p className="text-sm">{progressMessage}</p></div></div></div>
         ) : appState === 'verifying_import' ? (
-            <ImportVerification initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={handleClear} accounts={accounts} categories={categories.concat(stagedNewCategories)} transactionTypes={transactionTypes} payees={payees} users={users} />
+            <ImportVerification initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={handleClear} accounts={accounts} categories={categories.concat(stagedNewCategories)} transactionTypes={transactionTypes} payees={payees} users={users} onCreateRule={handleTriggerCreateRule} />
         ) : appState === 'reviewing_duplicates' ? (
             <DuplicateReview duplicates={duplicatesToReview} onComplete={handleReviewComplete} onCancel={handleClear} accounts={accounts} />
         ) : (
@@ -461,8 +512,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         isOpen={isAccountModalOpen} 
         onClose={() => setIsAccountModalOpen(false)} 
         onSave={onAddAccount}
+        onAddType={onAddAccountType}
         accountTypes={accountTypes}
       />
+
+      {isRuleModalOpen && (
+        <RuleModal
+            isOpen={isRuleModalOpen}
+            onClose={() => setIsRuleModalOpen(false)}
+            onSaveRule={handleSaveRuleFromImport}
+            accounts={accounts}
+            transactionTypes={transactionTypes}
+            categories={categories}
+            tags={tags}
+            payees={payees}
+            transaction={txForRule}
+            onSaveCategory={onSaveCategory}
+            onSavePayee={onSavePayee}
+            onSaveTag={onSaveTag}
+            onAddTransactionType={onAddTransactionType}
+        />
+      )}
     </div>
   );
 };

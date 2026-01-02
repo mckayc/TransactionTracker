@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon } from './Icons';
 
 type VerifiableTransaction = RawTransaction & { 
     categoryId: string; 
@@ -17,6 +17,7 @@ interface ImportVerificationProps {
     transactionTypes: TransactionType[];
     payees: Payee[];
     users: User[];
+    onCreateRule?: (tx: VerifiableTransaction) => void;
 }
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
@@ -27,18 +28,35 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     categories,
     transactionTypes,
     payees,
-    users
+    users,
+    onCreateRule
 }) => {
-    // We maintain 'isIgnored' in the local state of the verification screen
-    const [transactions, setTransactions] = useState<VerifiableTransaction[]>(initialTransactions);
+    const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [editingCell, setEditingCell] = useState<{ id: string; field: keyof VerifiableTransaction } | null>(null);
     
-    // Bulk Edit State
+    useEffect(() => {
+        setTransactions(initialTransactions);
+    }, [initialTransactions]);
+
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [bulkDate, setBulkDate] = useState('');
     const [bulkCategoryId, setBulkCategoryId] = useState('');
 
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
+    const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
+
+    const sortedPayeeOptions = useMemo(() => {
+        const sorted: { id: string, name: string }[] = [];
+        const parents = payees.filter(p => !p.parentId).sort((a, b) => a.name.localeCompare(b.name));
+        parents.forEach(parent => {
+          sorted.push({ id: parent.id, name: parent.name });
+          const children = payees.filter(p => p.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
+          children.forEach(child => {
+            sorted.push({ id: child.id, name: `  - ${child.name}` });
+          });
+        });
+        return sorted;
+    }, [payees]);
+
     const sortedCategoryOptions = useMemo(() => {
         const sorted: { id: string, name: string }[] = [];
         const parents = categories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
@@ -56,9 +74,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setTransactions(prev => prev.map(tx => {
             if (tx.tempId === txId) {
                 const updatedTx = { ...tx, [field]: value };
-                if (field === 'categoryId') {
-                    updatedTx.category = categoryMap.get(value) || 'Other';
-                }
+                if (field === 'categoryId') updatedTx.category = categoryMap.get(value) || 'Other';
+                if (field === 'payeeId') updatedTx.payee = payeeMap.get(value) || '';
                 return updatedTx;
             }
             return tx;
@@ -81,7 +98,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         });
     };
 
-    // Bulk Actions
     const handleSelectAll = () => {
         if (selectedIds.size === transactions.length) {
             setSelectedIds(new Set());
@@ -111,18 +127,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         }
     };
 
-    const handleBulkDateUpdate = () => {
-        if (!bulkDate) return;
-        setTransactions(prev => prev.map(tx => {
-            if (selectedIds.has(tx.tempId)) {
-                return { ...tx, date: bulkDate };
-            }
-            return tx;
-        }));
-        setBulkDate('');
-        setSelectedIds(new Set()); 
-    };
-
     const handleBulkCategoryUpdate = () => {
         if (!bulkCategoryId) return;
         const catName = categoryMap.get(bulkCategoryId) || 'Other';
@@ -141,18 +145,13 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     };
 
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement | HTMLSelectElement>, txId: string, field: keyof VerifiableTransaction) => {
-        if (e.key === 'Enter') {
-          handleUpdate(txId, field, e.currentTarget.value);
-        } else if (e.key === 'Escape') {
-          setEditingCell(null);
-        }
+        if (e.key === 'Enter') handleUpdate(txId, field, e.currentTarget.value);
+        else if (e.key === 'Escape') setEditingCell(null);
     };
     
-    const formatCurrency = (amount: number) => {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-    };
+    const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
     
-    const commonInputClass = "w-full p-1 text-sm rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none";
+    const commonInputClass = "w-full p-1 text-sm rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none bg-white";
 
     const handleFinalize = () => {
         const toImport = transactions.filter(t => !t.isIgnored);
@@ -181,7 +180,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 </div>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto border rounded-lg shadow-sm">
+            <div className="max-h-[60vh] overflow-y-auto border rounded-lg shadow-sm bg-white">
                 <table className="min-w-full divide-y divide-slate-200">
                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                         <tr>
@@ -194,7 +193,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 />
                             </th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-20">Status</th>
-                            {['Date', 'Description', 'Category', 'Amount', 'Actions'].map(header => (
+                            {['Date', 'Description', 'Income Source', 'Category', 'Amount', 'Actions'].map(header => (
                                 <th key={header} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">{header}</th>
                             ))}
                         </tr>
@@ -234,6 +233,16 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                     )}
                                 </td>
                                 <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">
+                                     {editingCell?.id === tx.tempId && editingCell.field === 'payeeId' ? (
+                                        <select defaultValue={tx.payeeId || ''} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'payeeId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'payeeId')} className={commonInputClass}>
+                                            <option value="">-- No Source --</option>
+                                            {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                    ) : (
+                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">Unassigned</span>}</div>
+                                    )}
+                                </td>
+                                <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">
                                      {editingCell?.id === tx.tempId && editingCell.field === 'categoryId' ? (
                                         <select defaultValue={tx.categoryId} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'categoryId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'categoryId')} className={commonInputClass}>
                                             {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
@@ -249,10 +258,15 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'amount' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{formatCurrency(tx.amount)}</div>
                                     )}
                                 </td>
-                                <td className="px-4 py-2 whitespace-nowrap text-center w-20">
-                                    <button onClick={() => handleDelete(tx.tempId)} className="text-slate-400 hover:text-red-600 p-1" title="Delete from import">
-                                        <DeleteIcon className="w-4 h-4"/>
-                                    </button>
+                                <td className="px-4 py-2 whitespace-nowrap text-center w-24">
+                                    <div className="flex items-center justify-center gap-1">
+                                        <button onClick={() => onCreateRule?.(tx)} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Automation Rule from this row">
+                                            <SparklesIcon className="w-4 h-4" />
+                                        </button>
+                                        <button onClick={() => handleDelete(tx.tempId)} className="text-slate-400 hover:text-red-600 p-1" title="Delete from import">
+                                            <DeleteIcon className="w-4 h-4"/>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
@@ -305,7 +319,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                          <button 
                             onClick={handleBulkCategoryUpdate} 
                             disabled={!bulkCategoryId} 
-                            className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide"
+                            className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide"
                         >
                             Set Cat
                         </button>

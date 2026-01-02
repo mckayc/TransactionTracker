@@ -84,8 +84,8 @@ const App: React.FC = () => {
   const [savedDateRanges, setSavedDateRanges] = useState<CustomDateRange[]>([]);
   const [amazonMetrics, setAmazonMetrics] = useState<AmazonMetric[]>([]);
   const [amazonVideos, setAmazonVideos] = useState<AmazonVideo[]>([]);
-  const [youtubeMetrics, setYoutubeMetrics] = useState<YouTubeMetric[]>([]);
-  const [youtubeChannels, setYoutubeChannels] = useState<YouTubeChannel[]>([]);
+  const [youtubeMetrics, setYouTubeMetrics] = useState<YouTubeMetric[]>([]);
+  const [youtubeChannels, setYouTubeChannels] = useState<YouTubeChannel[]>([]);
   const [contentLinks, setContentLinks] = useState<ContentLink[]>([]);
   
   const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
@@ -129,7 +129,7 @@ const App: React.FC = () => {
     };
     const loadHeavyData = async () => {
         setIsHeavyDataLoading(true);
-        const [txs, templates, events, tasks, completions, profile, docs, folders, reports, chats, ranges, amazon, amazonV, youtubeM, youtubeC, goals, plan, links] = await Promise.all([
+        const [txs, templates, events, tasks, completions, profile, docs, folders, reports, ranges, amazon, amazonV, youtubeM, youtubeC, goals, plan, links] = await Promise.all([
             api.get<Transaction[]>('transactions'),
             api.get<Template[]>('templates'),
             api.get<ScheduledEvent[]>('scheduledEvents'),
@@ -139,7 +139,6 @@ const App: React.FC = () => {
             api.get<BusinessDocument[]>('businessDocuments'),
             api.get<DocumentFolder[]>('documentFolders'),
             api.get<SavedReport[]>('savedReports'),
-            api.get<ChatSession[]>('chatSessions'),
             api.get<CustomDateRange[]>('savedDateRanges'),
             api.get<AmazonMetric[]>('amazonMetrics'),
             api.get<AmazonVideo[]>('amazonVideos'),
@@ -158,12 +157,12 @@ const App: React.FC = () => {
         setBusinessDocuments(docs || []);
         setDocumentFolders(folders || []);
         setSavedReports(reports || []);
-        setChatSessions(chats || []);
         setSavedDateRanges(ranges || []);
         setAmazonMetrics(amazon || []);
         setAmazonVideos(amazonV || []);
-        setYoutubeMetrics(youtubeM || []);
-        setYoutubeChannels(youtubeC || []);
+        // Fix for Error in file App.tsx on line 163: Cannot find name 'setYoutubeMetrics'. Did you mean 'setYouTubeMetrics'?
+        setYouTubeMetrics(youtubeM || []);
+        setYouTubeChannels(youtubeC || []);
         setFinancialGoals(goals || []);
         setFinancialPlan(plan || null);
         setContentLinks(links || []);
@@ -199,7 +198,7 @@ const App: React.FC = () => {
           let shouldRun = (config.frequency === 'daily' && daysSinceLast >= 1) || (config.frequency === 'weekly' && daysSinceLast >= 7) || (config.frequency === 'monthly' && daysSinceLast >= 30);
           if (shouldRun) {
               try {
-                  const exportData = { exportDate: new Date().toISOString(), version: '0.0.46-auto', transactions, accounts, accountTypes, categories, tags, payees, reconciliationRules, templates, scheduledEvents, tasks, taskCompletions, users, transactionTypes, businessProfile, documentFolders, savedReports, chatSessions, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks };
+                  const exportData = { exportDate: new Date().toISOString(), version: '0.0.46-auto', transactions, accounts, accountTypes, categories, tags, payees, reconciliationRules, templates, scheduledEvents, tasks, taskCompletions, users, transactionTypes, businessProfile, documentFolders, savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks };
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
                   const file = new File([JSON.stringify(exportData, null, 2)], fileName, { type: 'application/json' });
                   let autoFolder = documentFolders.find(f => f.name === "Automated Backups" && !f.parentId);
@@ -221,7 +220,7 @@ const App: React.FC = () => {
       };
       const timeout = setTimeout(checkAndRunBackup, 5000);
       return () => clearTimeout(timeout);
-  }, [isHeavyDataLoading, systemSettings.backupConfig, transactions, accounts, categories, tags, tasks, taskCompletions]); 
+  }, [isHeavyDataLoading, systemSettings.backupConfig, transactions, accounts, categories, tags, tasks, taskCompletions, accountTypes, payees, reconciliationRules, templates, scheduledEvents, users, transactionTypes, businessProfile, documentFolders, savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks]); 
 
   useEffect(() => { if (isStructureLoading) return; api.save('systemSettings', systemSettings); }, [systemSettings, isStructureLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('transactions', transactions), 1000); return () => clearTimeout(h); }, [transactions, isHeavyDataLoading]);
@@ -241,7 +240,6 @@ const App: React.FC = () => {
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('businessDocuments', businessDocuments), 500); return () => clearTimeout(h); }, [businessDocuments, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('documentFolders', documentFolders), 500); return () => clearTimeout(h); }, [documentFolders, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('savedReports', savedReports), 500); return () => clearTimeout(h); }, [savedReports, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('chatSessions', chatSessions), 500); return () => clearTimeout(h); }, [chatSessions, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('savedDateRanges', savedDateRanges), 500); return () => clearTimeout(h); }, [savedDateRanges, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('amazonMetrics', amazonMetrics), 500); return () => clearTimeout(h); }, [amazonMetrics, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('amazonVideos', amazonVideos), 500); return () => clearTimeout(h); }, [amazonVideos, isHeavyDataLoading]);
@@ -297,16 +295,16 @@ const App: React.FC = () => {
   const handleDeleteAmazonMetrics = (ids: string[]) => { const idSet = new Set(ids); setAmazonMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
   const handleAddAmazonVideos = (vids: AmazonVideo[]) => { if(vids.length > 0) setAmazonVideos(prev => [...prev, ...vids]); };
   const handleDeleteAmazonVideos = (ids: string[]) => { const idSet = new Set(ids); setAmazonVideos(prev => prev.filter(v => !idSet.has(v.id))); };
-  const handleAddYouTubeMetrics = (newMetrics: YouTubeMetric[]) => { if(newMetrics.length > 0) setYoutubeMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime())); };
-  const handleDeleteYouTubeMetrics = (ids: string[]) => { const idSet = new Set(ids); setYoutubeMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
-  const handleSaveYouTubeChannel = (channel: YouTubeChannel) => setYoutubeChannels(prev => { const index = prev.findIndex(c => c.id === channel.id); if (index > -1) { const updated = [...prev]; updated[index] = channel; return updated; } return [...prev, channel]; });
-  const handleDeleteYouTubeChannel = (channelId: string) => setYoutubeChannels(prev => prev.filter(c => c.id !== channelId));
+  const handleAddYouTubeMetrics = (newMetrics: YouTubeMetric[]) => { if(newMetrics.length > 0) setYouTubeMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime())); };
+  const handleDeleteYouTubeMetrics = (ids: string[]) => { const idSet = new Set(ids); setYouTubeMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
+  const handleSaveYouTubeChannel = (channel: YouTubeChannel) => setYouTubeChannels(prev => { const index = prev.findIndex(c => c.id === channel.id); if (index > -1) { const updated = [...prev]; updated[index] = channel; return updated; } return [...prev, channel]; });
+  const handleDeleteYouTubeChannel = (channelId: string) => setYouTubeChannels(prev => prev.filter(c => c.id !== channelId));
   const handleUpdateContentLinks = (links: ContentLink[]) => setContentLinks(links);
 
   const renderView = () => {
     if (isStructureLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Initializing secure storage..." /></div>;
     switch (currentView) {
-      case 'dashboard': if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Hydrating dashboard data..." /></div>; return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} onAddAccount={handleAddAccount} accountTypes={accountTypes} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} />;
+      case 'dashboard': if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Hydrating dashboard data..." /></div>; return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} onAddAccount={handleAddAccount} onAddAccountType={handleAddAccountType} accountTypes={accountTypes} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} />;
       case 'transactions': if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Loading transaction history..." /></div>; return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onSaveReport={handleAddSavedReport} />;
       case 'calendar': return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
       case 'reports': return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} savedDateRanges={savedDateRanges} setSavedDateRanges={setSavedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} />;
