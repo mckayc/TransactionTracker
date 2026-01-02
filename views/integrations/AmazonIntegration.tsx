@@ -21,7 +21,7 @@ function useDebounce<T>(value: T, delay: number): T {
     }, delay);
     return () => clearTimeout(handler);
   }, [value, delay]);
-  return debouncedSearchTerm;
+  return debouncedValue;
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
@@ -396,7 +396,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 overflow-hidden flex flex-col">
                             <div className="overflow-auto flex-1">
                                 <table className="min-w-full divide-y divide-slate-200">
-                                    <thead className="bg-slate-50 sticky top-0 z-10">
+                                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer" onClick={() => handleDataSort('date')}>Date {getSortIcon('date', dataSortKey, dataSortDir)}</th>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Type</th>
