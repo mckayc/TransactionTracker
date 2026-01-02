@@ -97,11 +97,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const videoInputRef = useRef<HTMLInputElement>(null);
     const [matchingMatches, setMatchingMatches] = useState<MatchResult[]>([]);
     const [isScanningMatches, setIsScanningMatches] = useState(false);
-    const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set());
-    const [batchSize, setBatchSize] = useState(1000);
     const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
-    const [matchModalPage, setMatchModalPage] = useState(1);
-    const matchesPerPage = 10;
+    const [mergeProgress, setMergeProgress] = useState<{ current: number; total: number } | null>(null);
 
     // Helper for complex type filtering
     const matchesReportType = (metricType: string, selectedFilter: string) => {
@@ -316,7 +313,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     // Creator Connections Matcher Logic
     const handleScanForMatches = () => {
         setIsScanningMatches(true);
-        // Delay to allow UI to render the loading state
         setTimeout(() => {
             const results: MatchResult[] = [];
             const creators = metrics.filter(m => m.reportType === 'creator_connections');
@@ -327,63 +323,50 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             sales.forEach(s => salesLookup.set(`${s.date}_${s.asin}`, s));
 
             for (const c of creators) {
-                if (results.length >= batchSize) break;
                 const match = salesLookup.get(`${c.date}_${c.asin}`);
                 if (match) {
-                    results.push({ creatorMetric: c, matchedSalesMetric: match, suggestedType: match.reportType === 'onsite' ? 'creator_connections_onsite' : 'creator_connections_offsite' });
+                    results.push({ 
+                        creatorMetric: c, 
+                        matchedSalesMetric: match, 
+                        suggestedType: match.reportType === 'onsite' ? 'creator_connections_onsite' : 'creator_connections_offsite' 
+                    });
                 }
             }
             setMatchingMatches(results);
-            setSelectedMatchIds(new Set(results.map(r => r.creatorMetric.id)));
             setIsScanningMatches(false);
             setIsMatchModalOpen(true);
-            setMatchModalPage(1);
-        }, 100);
+        }, 300);
     };
 
-    // Internal modal pagination logic
-    const currentMatchesOnPage = useMemo(() => {
-        const start = (matchModalPage - 1) * matchesPerPage;
-        return matchingMatches.slice(start, start + matchesPerPage);
-    }, [matchingMatches, matchModalPage]);
-
-    const totalMatchModalPages = Math.ceil(matchingMatches.length / matchesPerPage);
-
-    const handleConfirmMatches = (onlyCurrentPage: boolean) => {
-        const itemsToProcess = onlyCurrentPage ? currentMatchesOnPage : matchingMatches;
-        const selectedToProcess = itemsToProcess.filter(m => selectedMatchIds.has(m.creatorMetric.id));
+    const handleMergeAll = async () => {
+        if (matchingMatches.length === 0) return;
         
-        if (selectedToProcess.length === 0 && onlyCurrentPage) {
-            // If none selected on page, we just advance
-            const nextMatches = matchingMatches.filter(m => !itemsToProcess.find(item => item.creatorMetric.id === m.creatorMetric.id));
-            setMatchingMatches(nextMatches);
-            if (nextMatches.length === 0) setIsMatchModalOpen(false);
-            return;
-        }
+        setIsMatchModalOpen(false);
+        const total = matchingMatches.length;
+        setMergeProgress({ current: 0, total });
 
-        if (selectedToProcess.length > 0) {
-            const updatedMetrics = metrics.map(m => {
-                const match = selectedToProcess.find(u => u.creatorMetric.id === m.id);
-                return match ? { ...m, reportType: match.suggestedType } : m;
+        // Process in chunks to maintain UI responsiveness and simulate progress
+        const updatedMetrics = [...metrics];
+        const batchSize = 50;
+        
+        for (let i = 0; i < matchingMatches.length; i += batchSize) {
+            const chunk = matchingMatches.slice(i, i + batchSize);
+            chunk.forEach(match => {
+                const index = updatedMetrics.findIndex(m => m.id === match.creatorMetric.id);
+                if (index !== -1) {
+                    updatedMetrics[index] = { ...updatedMetrics[index], reportType: match.suggestedType };
+                }
             });
-            onDeleteMetrics(metrics.map(m => m.id));
-            onAddMetrics(updatedMetrics);
+            
+            setMergeProgress({ current: Math.min(i + batchSize, total), total });
+            await new Promise(r => setTimeout(r, 50)); // Tiny delay for progress bar visibility
         }
 
-        // Remove processed batch from the queue
-        const nextMatches = matchingMatches.filter(m => !itemsToProcess.find(item => item.creatorMetric.id === m.creatorMetric.id));
-        setMatchingMatches(nextMatches);
-        
-        // Reset selection for new view
-        setSelectedMatchIds(new Set(nextMatches.slice(0, matchesPerPage).map(r => r.creatorMetric.id)));
-        
-        if (nextMatches.length === 0) {
-            setIsMatchModalOpen(false);
-            alert(`Successfully accurately categorized selected creator connection records.`);
-        } else {
-            // Keep on page 1 of the new remaining list
-            setMatchModalPage(1);
-        }
+        onDeleteMetrics(metrics.map(m => m.id));
+        onAddMetrics(updatedMetrics);
+        setMergeProgress(null);
+        setMatchingMatches([]);
+        alert(`Successfully accurately categorized ${total} creator connection records.`);
     };
 
     return (
@@ -446,8 +429,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                 <option value="onsite">Onsite</option>
                                                 <option value="offsite">Offsite</option>
                                                 <option value="creator_connections">Creator Connections</option>
-                                                <option value="creator_connections_onsite">Creator Connections Onsite</option>
-                                                <option value="creator_connections_offsite">Creator Connections Offsite</option>
+                                                <option value="creator_connections_onsite">CC Onsite</option>
+                                                <option value="creator_connections_offsite">CC Offsite</option>
                                             </select>
                                             <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
                                                 <ChevronDownIcon className="w-4 h-4 text-indigo-400" />
@@ -716,24 +699,26 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     </div>
                                 </div>
                                 <p className="text-sm text-slate-600 leading-relaxed">
-                                    Matches Creator Connection records to Onsite/Offsite data by ASIN and Date to accurately categorize traffic sources.
+                                    Cross-references every Creator Connection record against your entire Onsite/Offsite database to identify where the base commission originated.
                                 </p>
                                 
-                                <div className="flex items-center gap-4">
-                                    <div className="flex-1">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Queue Size</label>
-                                        <select value={batchSize} onChange={e => setBatchSize(Number(e.target.value))} className="w-full p-2 border rounded-lg text-sm bg-slate-50">
-                                            {[1000, 5000, 10000, 50000].map(s => <option key={s} value={s}>{s.toLocaleString()} matches</option>)}
-                                        </select>
-                                    </div>
-                                    <button 
-                                        onClick={handleScanForMatches} 
-                                        disabled={isScanningMatches || metrics.length === 0} 
-                                        className="flex-[2] py-4 mt-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-lg flex items-center justify-center gap-2"
-                                    >
-                                        {isScanningMatches ? 'Scanning...' : 'Scan for Matches'}
-                                    </button>
-                                </div>
+                                <button 
+                                    onClick={handleScanForMatches} 
+                                    disabled={isScanningMatches || metrics.length === 0} 
+                                    className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {isScanningMatches ? (
+                                        <>
+                                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Scanning Metrics...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <SparklesIcon className="w-5 h-5" />
+                                            Scan for Matches
+                                        </>
+                                    )}
+                                </button>
                             </div>
 
                             <div className="bg-white p-8 rounded-3xl border-2 border-slate-200 space-y-6 shadow-sm">
@@ -790,23 +775,23 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
                             <div>
                                 <h3 className="text-2xl font-black text-slate-800 flex items-center gap-2"><ShieldCheckIcon className="w-6 h-6 text-indigo-600" /> Match Review</h3>
-                                <p className="text-sm text-slate-500">Queue: {matchingMatches.length} matches. Showing page {matchModalPage} of {totalMatchModalPages}.</p>
+                                <p className="text-sm text-slate-500">We found <strong>{matchingMatches.length}</strong> possible matches. Showing a sample of up to 100.</p>
                             </div>
                             <button onClick={() => setIsMatchModalOpen(false)} className="p-2 hover:bg-white rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-50/50">
-                            {currentMatchesOnPage.map(match => (
-                                <div key={match.creatorMetric.id} className={`p-4 rounded-2xl border-2 transition-all flex items-center gap-6 ${selectedMatchIds.has(match.creatorMetric.id) ? 'bg-white border-indigo-400 shadow-md ring-2 ring-indigo-50' : 'bg-slate-50 border-slate-200'}`}>
-                                    <input type="checkbox" checked={selectedMatchIds.has(match.creatorMetric.id)} onChange={() => { const s = new Set(selectedMatchIds); if (s.has(match.creatorMetric.id)) s.delete(match.creatorMetric.id); else s.add(match.creatorMetric.id); setSelectedMatchIds(s); }} className="w-6 h-6 rounded-lg text-indigo-600 focus:ring-indigo-500 cursor-pointer" />
+                            {matchingMatches.slice(0, 100).map((match, idx) => (
+                                <div key={match.creatorMetric.id} className="p-4 rounded-2xl border-2 border-slate-200 bg-white shadow-sm flex items-center gap-6">
+                                    <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-400">{idx + 1}</div>
                                     <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
                                         <div className="space-y-1">
                                             <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Creator Connection Record</p>
                                             <p className="text-sm font-bold text-slate-800 truncate" title={match.creatorMetric.title}>{match.creatorMetric.title}</p>
                                             <div className="flex gap-4 text-[10px] font-mono text-slate-500">
-                                                <span>{match.creatorMetric.date}</span>
+                                                <span>Date: {match.creatorMetric.date}</span>
                                                 <span>ASIN: {match.creatorMetric.asin}</span>
-                                                <span className="font-bold text-indigo-600">CC Rev: {formatCurrency(match.creatorMetric.revenue)}</span>
+                                                <span className="font-bold text-indigo-600">Rev: {formatCurrency(match.creatorMetric.revenue)}</span>
                                             </div>
                                         </div>
                                         <div className="border-l border-slate-200 pl-8 space-y-1">
@@ -817,61 +802,63 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                 <span className="bg-indigo-600 text-white px-2 py-0.5 rounded text-[10px] font-black uppercase shadow-sm">Creator {match.matchedSalesMetric.reportType}</span>
                                             </div>
                                             <div className="flex gap-4 text-[10px] font-mono text-slate-500">
-                                                <span>ID: {match.matchedSalesMetric.trackingId}</span>
+                                                <span>Tracking: {match.matchedSalesMetric.trackingId}</span>
                                                 <span className="font-bold text-emerald-600">Base Rev: {formatCurrency(match.matchedSalesMetric.revenue)}</span>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             ))}
+                            {matchingMatches.length > 100 && (
+                                <div className="text-center py-8">
+                                    <p className="text-slate-400 text-sm font-medium italic">...and {matchingMatches.length - 100} more matches ready to merge.</p>
+                                </div>
+                            )}
                         </div>
 
-                        <div className="p-6 border-t border-slate-100 bg-white flex flex-col md:flex-row justify-between items-center gap-4">
-                            <div className="flex items-center gap-4">
-                                <div className="flex items-center bg-slate-100 rounded-lg p-1">
-                                    <button 
-                                        disabled={matchModalPage === 1}
-                                        onClick={() => setMatchModalPage(p => Math.max(1, p - 1))}
-                                        className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-colors"
-                                    >
-                                        <ChevronLeftIcon className="w-5 h-5" />
-                                    </button>
-                                    <span className="px-4 text-xs font-black text-slate-500 uppercase">Page {matchModalPage} / {totalMatchModalPages}</span>
-                                    <button 
-                                        disabled={matchModalPage === totalMatchModalPages}
-                                        onClick={() => setMatchModalPage(p => Math.min(totalMatchModalPages, p + 1))}
-                                        className="p-1.5 rounded-md hover:bg-white disabled:opacity-30 transition-colors"
-                                    >
-                                        <ChevronRightIcon className="w-5 h-5" />
-                                    </button>
-                                </div>
-                                <div className="flex gap-3">
-                                    <button onClick={() => setSelectedMatchIds(new Set(currentMatchesOnPage.map(m => m.creatorMetric.id)))} className="text-xs font-bold text-indigo-600 hover:underline">Select Page</button>
-                                    <button onClick={() => setSelectedMatchIds(new Set())} className="text-xs font-bold text-slate-400 hover:underline">Clear Page</button>
-                                </div>
-                            </div>
-                            <div className="flex gap-3">
-                                <button onClick={() => setIsMatchModalOpen(false)} className="px-6 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">Discard All</button>
-                                <button 
-                                    onClick={() => handleConfirmMatches(true)}
-                                    className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center gap-2"
-                                >
-                                    <CheckCircleIcon className="w-5 h-5" />
-                                    {matchModalPage === totalMatchModalPages ? 'Finish & Confirm Page' : 'Confirm Page & Next'}
-                                </button>
-                            </div>
+                        <div className="p-6 border-t border-slate-100 bg-white flex justify-between items-center">
+                            <button onClick={() => setIsMatchModalOpen(false)} className="px-6 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors">Discard Results</button>
+                            <button 
+                                onClick={handleMergeAll} 
+                                className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all flex items-center gap-2"
+                            >
+                                <CheckCircleIcon className="w-5 h-5" />
+                                Merge All {matchingMatches.length} Matches
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* SCANNING LOADER */}
-            {isScanningMatches && (
+            {/* MERGE PROGRESS OVERLAY */}
+            {mergeProgress && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center space-y-4">
-                        <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-                        <h3 className="text-xl font-bold text-slate-800">Matching Records</h3>
-                        <p className="text-sm text-slate-500">Cross-referencing ASINs and dates for a queue of up to {batchSize.toLocaleString()} matches.</p>
+                    <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center space-y-6">
+                        <div className="relative w-20 h-20">
+                             <div className="absolute inset-0 border-4 border-indigo-100 rounded-full" />
+                             <div 
+                                className="absolute inset-0 border-4 border-indigo-600 rounded-full transition-all duration-300"
+                                style={{ 
+                                    clipPath: `inset(0 0 0 0)`,
+                                    strokeDasharray: '251.2', // 2 * PI * r (approx 40 radius)
+                                    strokeDashoffset: `${251.2 - (251.2 * (mergeProgress.current / mergeProgress.total))}`
+                                }}
+                             />
+                             <div className="absolute inset-0 flex items-center justify-center font-black text-indigo-600">
+                                {Math.round((mergeProgress.current / mergeProgress.total) * 100)}%
+                             </div>
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-black text-slate-800">Merging Records</h3>
+                            <p className="text-sm text-slate-500 mt-1">Updating traffic sources for {mergeProgress.total} matched items...</p>
+                        </div>
+                        <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div 
+                                className="h-full bg-indigo-600 transition-all duration-300" 
+                                style={{ width: `${(mergeProgress.current / mergeProgress.total) * 100}%` }}
+                            />
+                        </div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Processing: {mergeProgress.current} / {mergeProgress.total}</p>
                     </div>
                 </div>
             )}
