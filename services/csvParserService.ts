@@ -1,4 +1,5 @@
-import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType } from '../types';
+
+import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
 
@@ -181,12 +182,15 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         }
 
         const asin = colMap.asin > -1 ? values[colMap.asin] : 'Unknown';
-        const trackingId = colMap.tracking > -1 ? values[colMap.tracking] : 'creator-connections';
+        const trackingId = colMap.tracking > -1 ? values[colMap.tracking] : '';
         const campaignTitle = colMap.campaignTitle > -1 ? values[colMap.campaignTitle] : undefined;
 
         let reportType: AmazonReportType = 'unknown';
         if (isCreatorConnections || campaignTitle) {
-            reportType = 'creator_connections';
+            // Further refinement for creator connections
+            if (trackingId.includes('onamz')) reportType = 'creator_connections_onsite';
+            else if (trackingId.length > 2) reportType = 'creator_connections_offsite';
+            else reportType = 'creator_connections';
         } else if (trackingId.includes('onamz')) {
             reportType = 'onsite';
         } else {
@@ -203,7 +207,7 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
             shippedItems: parseNum(colMap.shipped),
             revenue: parseNum(colMap.income),
             conversionRate: parseNum(colMap.conversion),
-            trackingId: trackingId,
+            trackingId: trackingId || 'default',
             category: colMap.category > -1 ? values[colMap.category] : undefined,
             reportType: reportType,
             campaignTitle: campaignTitle
@@ -215,6 +219,82 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
     onProgress(`Parsed ${metrics.length} amazon metrics.`);
     return metrics;
 }
+
+export const parseAmazonVideos = async (file: File, onProgress: (msg: string) => void): Promise<AmazonVideo[]> => {
+    onProgress(`Reading ${file.name}...`);
+    let text = '';
+    
+    if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        const buffer = await readFileAsArrayBuffer(file);
+        const workbook = XLSX.read(buffer, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        text = XLSX.utils.sheet_to_csv(worksheet);
+    } else {
+        text = await readFileAsText(file);
+    }
+
+    const lines = text.split('\n');
+    const videos: AmazonVideo[] = [];
+
+    if (lines.length < 2) return [];
+
+    // Simple header detection for video reports
+    let headerIndex = -1;
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+        const lower = lines[i].toLowerCase();
+        if (lower.includes('asin') && (lower.includes('video') || lower.includes('title'))) {
+            headerIndex = i;
+            break;
+        }
+    }
+
+    if (headerIndex === -1) {
+        throw new Error("Invalid format. Could not find header with 'ASIN' and 'Video'/'Title'.");
+    }
+
+    const header = lines[headerIndex].split(/[,;\t]/).map(h => h.trim().replace(/"/g, '').toLowerCase());
+    
+    const colMap = {
+        asin: header.findIndex(h => h === 'asin'),
+        title: header.findIndex(h => h.includes('title') || h === 'video' || h.includes('name')),
+        id: header.findIndex(h => h.includes('id') || h.includes('external')),
+        duration: header.findIndex(h => h.includes('duration') || h.includes('length')),
+        date: header.findIndex(h => h.includes('date') || h.includes('upload'))
+    };
+
+    if (colMap.asin === -1) throw new Error("Missing ASIN column.");
+
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
+        if (values.length < 2) continue;
+
+        const durationStr = colMap.duration > -1 ? values[colMap.duration] : '';
+        let durationSecs = 0;
+        if (durationStr.includes(':')) {
+            const parts = durationStr.split(':').map(Number);
+            if (parts.length === 2) durationSecs = parts[0] * 60 + parts[1];
+            else if (parts.length === 3) durationSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+        } else {
+            durationSecs = parseInt(durationStr) || 0;
+        }
+
+        videos.push({
+            id: generateUUID(),
+            asin: values[colMap.asin],
+            videoId: colMap.id > -1 ? values[colMap.id] : generateUUID().slice(0,8),
+            videoTitle: colMap.title > -1 ? values[colMap.title] : 'Unknown Video',
+            durationSeconds: durationSecs > 0 ? durationSecs : undefined,
+            uploadDate: colMap.date > -1 ? values[colMap.date] : undefined
+        });
+    }
+
+    onProgress(`Parsed ${videos.length} videos.`);
+    return videos;
+};
 
 export const parseYouTubeReport = async (file: File, onProgress: (msg: string) => void): Promise<YouTubeMetric[]> => {
     onProgress(`Reading ${file.name}...`);

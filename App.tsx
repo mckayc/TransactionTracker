@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -84,6 +84,7 @@ const App: React.FC = () => {
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [savedDateRanges, setSavedDateRanges] = useState<CustomDateRange[]>([]);
   const [amazonMetrics, setAmazonMetrics] = useState<AmazonMetric[]>([]);
+  const [amazonVideos, setAmazonVideos] = useState<AmazonVideo[]>([]);
   const [youtubeMetrics, setYoutubeMetrics] = useState<YouTubeMetric[]>([]);
   const [youtubeChannels, setYoutubeChannels] = useState<YouTubeChannel[]>([]);
   
@@ -128,7 +129,7 @@ const App: React.FC = () => {
     };
     const loadHeavyData = async (defaultUserId: string) => {
         setIsHeavyDataLoading(true);
-        const [txs, templates, events, tasks, completions, profile, docs, folders, reports, chats, ranges, amazon, youtubeM, youtubeC, goals, plan] = await Promise.all([
+        const [txs, templates, events, tasks, completions, profile, docs, folders, reports, chats, ranges, amazon, amazonV, youtubeM, youtubeC, goals, plan] = await Promise.all([
             api.get<Transaction[]>('transactions'),
             api.get<Template[]>('templates'),
             api.get<ScheduledEvent[]>('scheduledEvents'),
@@ -141,6 +142,7 @@ const App: React.FC = () => {
             api.get<ChatSession[]>('chatSessions'),
             api.get<CustomDateRange[]>('savedDateRanges'),
             api.get<AmazonMetric[]>('amazonMetrics'),
+            api.get<AmazonVideo[]>('amazonVideos'),
             api.get<YouTubeMetric[]>('youtubeMetrics'),
             api.get<YouTubeChannel[]>('youtubeChannels'),
             api.get<FinancialGoal[]>('financialGoals'),
@@ -158,6 +160,7 @@ const App: React.FC = () => {
         setChatSessions(chats || []);
         setSavedDateRanges(ranges || []);
         setAmazonMetrics(amazon || []);
+        setAmazonVideos(amazonV || []);
         setYoutubeMetrics(youtubeM || []);
         setYoutubeChannels(youtubeC || []);
         setFinancialGoals(goals || []);
@@ -194,7 +197,7 @@ const App: React.FC = () => {
           let shouldRun = (config.frequency === 'daily' && daysSinceLast >= 1) || (config.frequency === 'weekly' && daysSinceLast >= 7) || (config.frequency === 'monthly' && daysSinceLast >= 30);
           if (shouldRun) {
               try {
-                  const exportData = { exportDate: new Date().toISOString(), version: '0.0.30-auto', transactions, accounts, accountTypes, categories, tags, payees, reconciliationRules, templates, scheduledEvents, tasks, taskCompletions, users, transactionTypes, businessProfile, documentFolders, savedReports, chatSessions, savedDateRanges, amazonMetrics, youtubeMetrics, youtubeChannels, financialGoals, financialPlan };
+                  const exportData = { exportDate: new Date().toISOString(), version: '0.0.46-auto', transactions, accounts, accountTypes, categories, tags, payees, reconciliationRules, templates, scheduledEvents, tasks, taskCompletions, users, transactionTypes, businessProfile, documentFolders, savedReports, chatSessions, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan };
                   const fileName = `AutoBackup-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
                   const file = new File([JSON.stringify(exportData, null, 2)], fileName, { type: 'application/json' });
                   let autoFolder = documentFolders.find(f => f.name === "Automated Backups" && !f.parentId);
@@ -239,6 +242,7 @@ const App: React.FC = () => {
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('chatSessions', chatSessions), 500); return () => clearTimeout(h); }, [chatSessions, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('savedDateRanges', savedDateRanges), 500); return () => clearTimeout(h); }, [savedDateRanges, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('amazonMetrics', amazonMetrics), 500); return () => clearTimeout(h); }, [amazonMetrics, isHeavyDataLoading]);
+  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('amazonVideos', amazonVideos), 500); return () => clearTimeout(h); }, [amazonVideos, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('youtubeMetrics', youtubeMetrics), 500); return () => clearTimeout(h); }, [youtubeMetrics, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('youtubeChannels', youtubeChannels), 500); return () => clearTimeout(h); }, [youtubeChannels, isHeavyDataLoading]);
   useEffect(() => { if (isHeavyDataLoading) return; api.save('financialGoals', financialGoals); }, [financialGoals, isHeavyDataLoading]);
@@ -288,6 +292,8 @@ const App: React.FC = () => {
   const handleAddSavedReport = (report: SavedReport) => setSavedReports(prev => [...prev, report]);
   const handleAddAmazonMetrics = (newMetrics: AmazonMetric[]) => { if(newMetrics.length > 0) setAmazonMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())); };
   const handleDeleteAmazonMetrics = (ids: string[]) => { const idSet = new Set(ids); setAmazonMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
+  const handleAddAmazonVideos = (vids: AmazonVideo[]) => { if(vids.length > 0) setAmazonVideos(prev => [...prev, ...vids]); };
+  const handleDeleteAmazonVideos = (ids: string[]) => { const idSet = new Set(ids); setAmazonVideos(prev => prev.filter(v => !idSet.has(v.id))); };
   const handleAddYouTubeMetrics = (newMetrics: YouTubeMetric[]) => { if(newMetrics.length > 0) setYoutubeMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime())); };
   const handleDeleteYouTubeMetrics = (ids: string[]) => { const idSet = new Set(ids); setYoutubeMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
   const handleSaveYouTubeChannel = (channel: YouTubeChannel) => setYoutubeChannels(prev => { const index = prev.findIndex(c => c.id === channel.id); if (index > -1) { const updated = [...prev]; updated[index] = channel; return updated; } return [...prev, channel]; });
@@ -312,7 +318,7 @@ const App: React.FC = () => {
       case 'documents': return <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
       case 'plan': return <FinancialPlanPage transactions={transactions} goals={financialGoals} onSaveGoals={setFinancialGoals} plan={financialPlan} onSavePlan={setFinancialPlan} categories={categories} />;
       case 'integrations': return <IntegrationsPage onNavigate={setCurrentView} />;
-      case 'integration-amazon': return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} onDeleteMetrics={handleDeleteAmazonMetrics} />;
+      case 'integration-amazon': return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} onDeleteMetrics={handleDeleteAmazonMetrics} videos={amazonVideos} onAddVideos={handleAddAmazonVideos} onDeleteVideos={handleDeleteAmazonVideos} />;
       case 'integration-youtube': return <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={handleAddYouTubeMetrics} onDeleteMetrics={handleDeleteYouTubeMetrics} channels={youtubeChannels} onSaveChannel={handleSaveYouTubeChannel} onDeleteChannel={handleDeleteYouTubeChannel} />;
       default: return null;
     }

@@ -323,11 +323,18 @@ export interface FinancialPlan {
 }
 
 // Integrations
-export type AmazonReportType = 'onsite' | 'offsite' | 'creator_connections' | 'unknown';
+export type AmazonReportType = 
+    | 'onsite' 
+    | 'offsite' 
+    | 'creator_connections' 
+    | 'creator_connections_onsite' 
+    | 'creator_connections_offsite' 
+    | 'unknown';
 
 export interface AmazonMetric {
     id: string;
     date: string; // YYYY-MM-DD
+    reportYear?: string;
     asin: string;
     title: string;
     clicks: number;
@@ -339,6 +346,15 @@ export interface AmazonMetric {
     category?: string;
     reportType: AmazonReportType;
     campaignTitle?: string;
+}
+
+export interface AmazonVideo {
+    id: string;
+    asin: string;
+    videoId: string;
+    videoTitle: string;
+    durationSeconds?: number;
+    uploadDate?: string;
 }
 
 export interface YouTubeChannel {
