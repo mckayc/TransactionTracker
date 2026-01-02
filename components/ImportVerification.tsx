@@ -1,9 +1,12 @@
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User } from '../types';
-import { DeleteIcon, CloseIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon } from './Icons';
 
-type VerifiableTransaction = RawTransaction & { categoryId: string; tempId: string };
+type VerifiableTransaction = RawTransaction & { 
+    categoryId: string; 
+    tempId: string;
+    isIgnored?: boolean; 
+};
 
 interface ImportVerificationProps {
     initialTransactions: VerifiableTransaction[];
@@ -26,6 +29,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     payees,
     users
 }) => {
+    // We maintain 'isIgnored' in the local state of the verification screen
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>(initialTransactions);
     const [editingCell, setEditingCell] = useState<{ id: string; field: keyof VerifiableTransaction } | null>(null);
     
@@ -52,7 +56,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setTransactions(prev => prev.map(tx => {
             if (tx.tempId === txId) {
                 const updatedTx = { ...tx, [field]: value };
-                // If categoryId is changed, also update the category name string
                 if (field === 'categoryId') {
                     updatedTx.category = categoryMap.get(value) || 'Other';
                 }
@@ -63,6 +66,12 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setEditingCell(null);
     };
     
+    const handleToggleIgnore = (txId: string) => {
+        setTransactions(prev => prev.map(tx => 
+            tx.tempId === txId ? { ...tx, isIgnored: !tx.isIgnored } : tx
+        ));
+    };
+
     const handleDelete = (txId: string) => {
         setTransactions(prev => prev.filter(tx => tx.tempId !== txId));
         setSelectedIds(prev => {
@@ -88,8 +97,15 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setSelectedIds(newSet);
     };
 
+    const handleBulkStatusUpdate = (ignore: boolean) => {
+        setTransactions(prev => prev.map(tx => 
+            selectedIds.has(tx.tempId) ? { ...tx, isIgnored: ignore } : tx
+        ));
+        setSelectedIds(new Set());
+    };
+
     const handleBulkDelete = () => {
-        if (confirm(`Delete ${selectedIds.size} transactions?`)) {
+        if (confirm(`Delete ${selectedIds.size} transactions from preview?`)) {
             setTransactions(prev => prev.filter(tx => !selectedIds.has(tx.tempId)));
             setSelectedIds(new Set());
         }
@@ -104,7 +120,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
             return tx;
         }));
         setBulkDate('');
-        // Optional: keep selection or clear. Clearing often feels cleaner after an action.
         setSelectedIds(new Set()); 
     };
 
@@ -139,14 +154,34 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     
     const commonInputClass = "w-full p-1 text-sm rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none";
 
+    const handleFinalize = () => {
+        const toImport = transactions.filter(t => !t.isIgnored);
+        if (toImport.length === 0) {
+            if (!confirm("No transactions are marked for import. Close preview?")) return;
+        }
+        onComplete(toImport);
+    };
+
+    const importCount = transactions.filter(t => !t.isIgnored).length;
+    const skipCount = transactions.filter(t => t.isIgnored).length;
+
     return (
         <div className="space-y-4 relative min-h-[400px]">
-            <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
-                <h2 className="text-lg font-bold text-indigo-800">Verify Import ({transactions.length} Transactions)</h2>
-                <p className="text-sm text-indigo-700 mt-1">Review the parsed transactions below. You can edit any field, select multiple rows to bulk edit, or delete rows before completing the import.</p>
+            <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg flex justify-between items-start">
+                <div>
+                    <h2 className="text-lg font-bold text-indigo-800">Verify Import Data</h2>
+                    <p className="text-sm text-indigo-700 mt-1">
+                        Showing all rows from file. <span className="text-green-700 font-bold">{importCount} will be imported</span>, 
+                        <span className="text-slate-500 font-bold ml-1">{skipCount} will be skipped (transfers/ignored)</span>.
+                    </p>
+                </div>
+                <div className="bg-white p-2 rounded-lg border border-indigo-100 flex gap-4 text-xs font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-1 text-green-600"><div className="w-2 h-2 rounded-full bg-green-500"></div> Import</div>
+                    <div className="flex items-center gap-1 text-slate-400"><div className="w-2 h-2 rounded-full bg-slate-300"></div> Skip</div>
+                </div>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto border rounded-lg">
+            <div className="max-h-[60vh] overflow-y-auto border rounded-lg shadow-sm">
                 <table className="min-w-full divide-y divide-slate-200">
                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                         <tr>
@@ -158,6 +193,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                     onChange={handleSelectAll}
                                 />
                             </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-20">Status</th>
                             {['Date', 'Description', 'Category', 'Amount', 'Actions'].map(header => (
                                 <th key={header} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">{header}</th>
                             ))}
@@ -165,7 +201,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
                         {transactions.map(tx => (
-                            <tr key={tx.tempId} className={selectedIds.has(tx.tempId) ? 'bg-indigo-50' : 'hover:bg-slate-50 transition-colors'}>
+                            <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 grayscale bg-slate-50' : 'bg-green-50/30'} ${selectedIds.has(tx.tempId) ? 'ring-2 ring-inset ring-indigo-400' : 'hover:bg-slate-50'}`}>
                                 <td className="px-4 py-2 text-center">
                                     <input 
                                         type="checkbox" 
@@ -174,18 +210,27 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         onChange={() => toggleSelection(tx.tempId)}
                                     />
                                 </td>
+                                <td className="px-4 py-2 text-center">
+                                    <button 
+                                        onClick={() => handleToggleIgnore(tx.tempId)}
+                                        className={`p-1.5 rounded-lg transition-colors ${tx.isIgnored ? 'text-slate-400 hover:text-indigo-600' : 'text-green-600 hover:text-red-500'}`}
+                                        title={tx.isIgnored ? "Mark for Import" : "Ignore / Skip"}
+                                    >
+                                        {tx.isIgnored ? <SlashIcon className="w-4 h-4" /> : <CheckCircleIcon className="w-5 h-5" />}
+                                    </button>
+                                </td>
                                 <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-32">
                                      {editingCell?.id === tx.tempId && editingCell.field === 'date' ? (
                                         <input type="date" defaultValue={tx.date} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'date')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'date')} className={commonInputClass} />
                                     ) : (
-                                        <div onClick={() => setEditingCell({ id: tx.tempId, field: 'date' })} className="cursor-pointer rounded-md p-1 -m-1 hover:bg-white border border-transparent hover:border-slate-200">{tx.date}</div>
+                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'date' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{tx.date}</div>
                                     )}
                                 </td>
                                 <td className="px-4 py-2 text-sm font-medium text-slate-900 max-w-sm">
                                     {editingCell?.id === tx.tempId && editingCell.field === 'description' ? (
                                         <input type="text" defaultValue={tx.description} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'description')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'description')} className={commonInputClass} />
                                     ) : (
-                                        <div onClick={() => setEditingCell({ id: tx.tempId, field: 'description' })} className="cursor-pointer rounded-md p-1 -m-1 hover:bg-white border border-transparent hover:border-slate-200 truncate" title={tx.description}>{tx.description}</div>
+                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'description' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`} title={tx.description}>{tx.description}</div>
                                     )}
                                 </td>
                                 <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">
@@ -194,14 +239,14 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                                         </select>
                                     ) : (
-                                        <div onClick={() => setEditingCell({ id: tx.tempId, field: 'categoryId' })} className="cursor-pointer rounded-md p-1 -m-1 hover:bg-white border border-transparent hover:border-slate-200">{categoryMap.get(tx.categoryId) || 'N/A'}</div>
+                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'categoryId' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{categoryMap.get(tx.categoryId) || 'N/A'}</div>
                                     )}
                                 </td>
                                 <td className="px-4 py-2 whitespace-nowrap text-sm text-right font-medium text-slate-700 w-32">
                                      {editingCell?.id === tx.tempId && editingCell.field === 'amount' ? (
                                         <input type="number" step="0.01" defaultValue={tx.amount} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'amount')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'amount')} className={`${commonInputClass} text-right`} />
                                     ) : (
-                                        <div onClick={() => setEditingCell({ id: tx.tempId, field: 'amount' })} className="cursor-pointer rounded-md p-1 -m-1 hover:bg-white border border-transparent hover:border-slate-200">{formatCurrency(tx.amount)}</div>
+                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'amount' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{formatCurrency(tx.amount)}</div>
                                     )}
                                 </td>
                                 <td className="px-4 py-2 whitespace-nowrap text-center w-20">
@@ -216,9 +261,10 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
             </div>
 
             <div className="flex justify-end items-center gap-3 pt-4 border-t">
-                 <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel Import</button>
-                <button onClick={() => onComplete(transactions)} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm">
-                    Complete Import
+                <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+                <button onClick={handleFinalize} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm flex items-center gap-2">
+                    <CheckCircleIcon className="w-4 h-4" />
+                    Complete Import ({importCount} items)
                 </button>
             </div>
 
@@ -232,19 +278,18 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <input 
-                            type="date" 
-                            value={bulkDate} 
-                            onChange={e => setBulkDate(e.target.value)} 
-                            className="p-1.5 border rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none" 
-                        />
-                        <button 
-                            onClick={handleBulkDateUpdate} 
-                            disabled={!bulkDate} 
-                            className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide"
+                    <div className="flex items-center gap-2 border-r border-slate-100 pr-4 mr-2">
+                         <button 
+                            onClick={() => handleBulkStatusUpdate(false)} 
+                            className="bg-green-50 text-green-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-green-100 transition-colors uppercase tracking-wide border border-green-200"
                         >
-                            Set Date
+                            Mark for Import
+                        </button>
+                        <button 
+                            onClick={() => handleBulkStatusUpdate(true)} 
+                            className="bg-slate-50 text-slate-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-slate-100 transition-colors uppercase tracking-wide border border-slate-200"
+                        >
+                            Skip / Ignore
                         </button>
                     </div>
 

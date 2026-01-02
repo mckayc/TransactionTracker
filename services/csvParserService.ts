@@ -428,7 +428,7 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     if (lines.length === 0) return transactions;
 
     let headerIndex = -1;
-    let colMap = { date: -1, description: -1, amount: -1, credit: -1, debit: -1, category: -1 };
+    let colMap = { date: -1, description: -1, amount: -1, credit: -1, debit: -1, category: -1, transactionType: -1 };
     
     for(let i=0; i<Math.min(lines.length, 20); i++) {
         const lineLower = lines[i].toLowerCase();
@@ -437,13 +437,22 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
         const dateIdx = parts.findIndex(p => p.includes('date') || p === 'dt');
         const descIdx = parts.findIndex(p => p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction'));
         const amtIdx = parts.findIndex(p => p === 'amount' || p.includes('amount'));
-        const creditIdx = parts.findIndex(p => p.includes('credit') || p.includes('deposit'));
-        const debitIdx = parts.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdraw'));
-        const catIdx = parts.findIndex(p => p.includes('category'));
+        const creditIdx = parts.findIndex(p => p.includes('credit') || p.includes('deposit') || p.includes('receive'));
+        const debitIdx = parts.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdraw') || p.includes('spend'));
+        const catIdx = parts.findIndex(p => p.includes('category') || p === 'type');
+        const typeIdx = parts.findIndex(p => p === 'transaction type'); // Specific support for user's example
 
         if (dateIdx > -1 && (descIdx > -1 || amtIdx > -1 || (creditIdx > -1 && debitIdx > -1))) {
             headerIndex = i;
-            colMap = { date: dateIdx, description: descIdx, amount: amtIdx, credit: creditIdx, debit: debitIdx, category: catIdx };
+            colMap = { 
+                date: dateIdx, 
+                description: descIdx, 
+                amount: amtIdx, 
+                credit: creditIdx, 
+                debit: debitIdx, 
+                category: catIdx,
+                transactionType: typeIdx
+            };
             break;
         }
     }
@@ -476,19 +485,19 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
             const creditStr = parts[colMap.credit] || '0';
             const debitStr = parts[colMap.debit] || '0';
             
-            const creditVal = parseFloat(creditStr.replace(/[$,]/g, '') || '0');
-            const debitVal = parseFloat(debitStr.replace(/[$,]/g, '') || '0');
+            const creditVal = parseFloat(creditStr.replace(/[$,+]/g, '') || '0');
+            const debitVal = parseFloat(debitStr.replace(/[$,-]/g, '') || '0');
             
-            if (creditVal > 0) {
-                amount = creditVal;
+            if (Math.abs(creditVal) > 0) {
+                amount = Math.abs(creditVal);
                 isIncome = true;
-            } else if (debitVal > 0) {
-                amount = debitVal;
+            } else if (Math.abs(debitVal) > 0) {
+                amount = Math.abs(debitVal);
                 isIncome = false;
             }
         } else if (colMap.amount > -1) {
             // Handle single Amount column
-            const valStr = parts[colMap.amount].replace(/[$,\s]/g, '');
+            const valStr = parts[colMap.amount].replace(/[$,\s+]/g, '');
             const val = parseFloat(valStr);
             if (isNaN(val)) continue;
             
@@ -503,12 +512,15 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
 
         if (amount === 0) continue;
 
+        // For "everything" preview, we extract the raw transaction type if it exists to aid initial skipping
+        const rawType = colMap.transactionType > -1 ? parts[colMap.transactionType] : '';
+
         transactions.push({
             date: formatDate(parsedDate),
             description: toTitleCase(description),
             amount: amount,
             categoryId: '', 
-            category: colMap.category > -1 ? parts[colMap.category] : 'Uncategorized',
+            category: rawType || (colMap.category > -1 ? parts[colMap.category] : 'Uncategorized'),
             accountId: accountId,
             typeId: isIncome ? incomeType.id : expenseType.id,
             sourceFilename: sourceName

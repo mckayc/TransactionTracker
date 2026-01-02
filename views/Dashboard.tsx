@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument, DocumentFolder, Tag, AccountType } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText, hasApiKey } from '../services/geminiService';
@@ -165,7 +164,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     if (accounts.length > 0 && !pasteAccountId) setPasteAccountId(accounts[0].id);
   }, [users, accounts, selectedUserId, pasteAccountId]);
 
-  const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; })[]>([]);
+  const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
   const [stagedForImport, setStagedForImport] = useState<Transaction[]>([]);
   const [duplicatesToReview, setDuplicatesToReview] = useState<DuplicatePair[]>([]);
   const [stagedNewCategories, setStagedNewCategories] = useState<Category[]>([]);
@@ -196,11 +195,19 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     const categoryNameToIdMap = new Map([...categories, ...newCategories].map(c => [c.name.toLowerCase(), c.id]));
     const defaultCategoryId = categories.find(c => c.name === 'Other')?.id || categories[0]?.id || '';
 
-    const transactionsWithCategoryIds = transactionsWithRules.map(tx => ({
-        ...tx,
-        categoryId: tx.categoryId || categoryNameToIdMap.get(tx.category.toLowerCase()) || defaultCategoryId,
-        tempId: generateUUID(), 
-    }));
+    // Heuristic: Initial ignore flag based on type/description for non-AI imports
+    const transactionsWithCategoryIds = transactionsWithRules.map(tx => {
+        const desc = (tx.description || '').toLowerCase();
+        const typeStr = (tx.category || '').toLowerCase(); // csvParser often puts raw type in category field initially
+        const isTransfer = desc.includes('transfer') || typeStr.includes('transfer');
+        
+        return {
+            ...tx,
+            categoryId: tx.categoryId || categoryNameToIdMap.get(tx.category.toLowerCase()) || defaultCategoryId,
+            tempId: generateUUID(),
+            isIgnored: isTransfer // Default 'ignored' if it looks like a transfer
+        };
+    });
 
     setStagedNewCategories(newCategories);
     setRawTransactionsToVerify(transactionsWithCategoryIds);

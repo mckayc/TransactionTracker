@@ -322,22 +322,30 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 setPreviewMetrics(newMetrics);
                 const fileName = file.name.toLowerCase();
                 
-                // 1. Try to find a year in the filename (e.g. 2024)
-                const yearMatch = fileName.match(/\b(20\d{2})\b/);
+                // --- IMPROVED YEAR DETECTION FROM FILENAME ---
+                // 1. Look for a year range first (e.g., 2023-2024 or 2023_2024)
+                const rangeMatch = fileName.match(/(20\d{2})[-_](20\d{2})/);
                 let detectedYear = '';
                 
-                if (yearMatch) {
-                    detectedYear = yearMatch[1];
+                if (rangeMatch) {
+                    // Pick the first year in the range
+                    detectedYear = rangeMatch[1];
                 } else {
-                    // 2. Fallback: Find the most recent year among all records in the file
-                    const yearsInFile = newMetrics
-                        .map(m => m.saleDate ? m.saleDate.substring(0, 4) : '')
-                        .filter(y => y.length === 4 && !isNaN(parseInt(y)));
-                    
-                    if (yearsInFile.length > 0) {
-                        // Sort descending and pick the first (most recent)
-                        yearsInFile.sort((a, b) => b.localeCompare(a));
-                        detectedYear = yearsInFile[0];
+                    // 2. Fallback to a single 4-digit year in the filename
+                    const singleMatch = fileName.match(/\b(20\d{2})\b/);
+                    if (singleMatch) {
+                        detectedYear = singleMatch[1];
+                    } else {
+                        // 3. Data Fallback: Find the most frequent or most recent year in the data records
+                        const yearsInFile = newMetrics
+                            .map(m => m.saleDate ? m.saleDate.substring(0, 4) : '')
+                            .filter(y => y.length === 4 && !isNaN(parseInt(y)));
+                        
+                        if (yearsInFile.length > 0) {
+                            // Find earliest year in file if multiple exist (to represent the start of the report)
+                            yearsInFile.sort((a, b) => a.localeCompare(b));
+                            detectedYear = yearsInFile[0];
+                        }
                     }
                 }
 
