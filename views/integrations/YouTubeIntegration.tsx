@@ -81,6 +81,17 @@ const InsightLabel: React.FC<{
     );
 };
 
+const InfoBubble: React.FC<{ title: string; content: string }> = ({ title, content }) => (
+    <div className="relative group/info inline-block align-middle ml-1">
+        <InfoIcon className="w-3 h-3 text-slate-300 cursor-help hover:text-indigo-500 transition-colors" />
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-800 text-white rounded-lg shadow-xl opacity-0 translate-y-1 pointer-events-none group-hover/info:opacity-100 group-hover/info:translate-y-0 transition-all z-[60] text-[10px] leading-relaxed">
+            <p className="font-bold border-b border-white/10 pb-1 mb-1 uppercase tracking-wider">{title}</p>
+            {content}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+        </div>
+    </div>
+);
+
 const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics, channels, onSaveChannel, onDeleteChannel }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'insights' | 'data' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
@@ -238,26 +249,44 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             if (newMetrics.length > 0) {
                 setPreviewMetrics(newMetrics);
                 
-                // Auto-detect most common publication year logic
-                const yearCounts: Record<string, number> = {};
-                newMetrics.forEach(m => {
-                    const y = m.publishDate.substring(0, 4);
-                    if (y.length === 4) {
-                        yearCounts[y] = (yearCounts[y] || 0) + 1;
+                // --- DETECT FROM FILENAME ---
+                const fileName = file.name;
+                let detectedYear = '';
+                let detectedChannelId = '';
+
+                // 1. Look for 4-digit year (e.g. 2024, 2025)
+                const yearMatch = fileName.match(/\b(20\d{2})\b/);
+                if (yearMatch) {
+                    detectedYear = yearMatch[1];
+                }
+
+                // 2. Look for channel name in filename if it follows "Table data - ChannelName - ..."
+                const channelPartMatch = fileName.match(/Table data - ([^-]+) -/i);
+                if (channelPartMatch) {
+                    const channelName = channelPartMatch[1].trim().toLowerCase();
+                    const matchedChannel = channels.find(c => c.name.toLowerCase() === channelName);
+                    if (matchedChannel) {
+                        detectedChannelId = matchedChannel.id;
                     }
-                });
+                }
+
+                // --- FALLBACK LOGIC ---
+                // If year not found in filename, find the record with the most recent publish date
+                if (!detectedYear) {
+                    const latestRecord = [...newMetrics].sort((a, b) => {
+                        const dateA = new Date(a.publishDate).getTime();
+                        const dateB = new Date(b.publishDate).getTime();
+                        return dateB - dateA;
+                    })[0];
+
+                    if (latestRecord && latestRecord.publishDate) {
+                        detectedYear = latestRecord.publishDate.substring(0, 4);
+                    }
+                }
+
+                if (detectedYear) setUploadYear(detectedYear);
+                if (detectedChannelId) setUploadChannelId(detectedChannelId);
                 
-                let bestYear = '';
-                let maxCount = 0;
-                for (const y in yearCounts) {
-                    if (yearCounts[y] > maxCount) {
-                        maxCount = yearCounts[y];
-                        bestYear = y;
-                    }
-                }
-                if (bestYear) {
-                    setUploadYear(bestYear);
-                }
             } else {
                 alert("No valid records found in file.");
             }
@@ -277,6 +306,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             onAddMetrics(metricsWithChannel);
             setPreviewMetrics([]);
             setUploadYear('');
+            setUploadChannelId('');
             alert(`Successfully imported ${previewMetrics.length} records.`);
             setActiveTab('dashboard');
         }
@@ -888,7 +918,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                                             </span>
                                                         </div>
                                                         <p className="text-[10px] text-slate-500 uppercase font-bold tracking-tight">
-                                                            {formatNumber(s.avgViews)} avg views • {formatCurrency(s.avgRev)} avg rev
+                                                            {formatNumber(s.avgViews)} avg views 
+                                                            <InfoBubble title="Avg Views" content="Average number of views generated per video published on this specific weekday across its entire recorded lifetime." />
+                                                            • {formatCurrency(s.avgRev)} avg rev
+                                                            <InfoBubble title="Avg Revenue" content="Average estimated revenue earned per video published on this specific weekday across its entire recorded lifetime." />
                                                         </p>
                                                     </div>
                                                 </div>
@@ -897,6 +930,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                                         <TrendingUpIcon className={`w-3 h-3 ${s.viralVelocity > 60 ? 'text-orange-500' : 'text-green-500'}`} />
                                                         <p className={`font-black text-sm ${idx === 0 ? 'text-indigo-700' : 'text-slate-700'}`}>
                                                             {s.viralVelocity.toFixed(0)}% <span className="text-[9px] font-bold text-slate-400">VELOCITY</span>
+                                                            <InfoBubble title="Viral Velocity" content="Percentage of total views that occurred within the same calendar year the video was published. A high score suggests immediate viral impact; a low score indicates slow-burn evergreen performance." />
                                                         </p>
                                                     </div>
                                                     <p className="text-[10px] text-green-600 font-bold uppercase tracking-widest">{formatCurrency(s.totalRev)} TOTAL</p>
@@ -991,7 +1025,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                                 <div className="flex items-center justify-end gap-1">Views {getSortIcon('views', dataSortKey, dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('estimatedRevenue')}>
-                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue', dataSortKey, dataSortDir)}</div>
+                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue', insightsSortKey, insightsSortDir)}</div>
                                             </th>
                                         </tr>
                                     </thead>
@@ -1049,7 +1083,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                                     <option value="">Manual Override...</option>
                                                     {Array.from({length: 25}, (_, i) => (2010 + i).toString()).reverse().map(y => <option key={y} value={y}>{y}</option>)}
                                                 </select>
-                                                <p className="text-[10px] text-indigo-600 mt-1 italic">Auto-detected most frequent year from publish dates.</p>
+                                                <p className="text-[10px] text-indigo-600 mt-1 italic">Auto-detected year: {uploadYear || 'None'}</p>
                                             </div>
                                         </div>
 
