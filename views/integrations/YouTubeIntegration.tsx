@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
-import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, ChartPieIcon, BoxIcon, HeartIcon } from '../../components/Icons';
+import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, ChartPieIcon, BoxIcon, HeartIcon, CalendarIcon, UsersIcon } from '../../components/Icons';
 import { parseYouTubeReport } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
 
@@ -91,6 +90,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     const [uploadYear, setUploadYear] = useState<string>('');
     const [uploadChannelId, setUploadChannelId] = useState<string>('');
 
+    // Channel Management State
+    const [editingChannel, setEditingChannel] = useState<YouTubeChannel | null>(null);
+    const [newChannelName, setNewChannelName] = useState('');
+
     // Filter & Search Logic
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
@@ -145,7 +148,8 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             creationYearViews: number,
             creationYearRevenue: number,
             lifetimeViews: number,
-            lifetimeRevenue: number
+            lifetimeRevenue: number,
+            lifetimeSubs: number
         }>();
 
         metrics.forEach(m => {
@@ -157,7 +161,8 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                     creationYearViews: 0,
                     creationYearRevenue: 0,
                     lifetimeViews: 0,
-                    lifetimeRevenue: 0
+                    lifetimeRevenue: 0,
+                    lifetimeSubs: 0
                 });
             }
             const agg = map.get(m.videoId)!;
@@ -169,6 +174,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             }
             agg.lifetimeViews += m.views;
             agg.lifetimeRevenue += m.estimatedRevenue;
+            agg.lifetimeSubs += m.subscribersGained;
         });
         return map;
     }, [metrics]);
@@ -245,6 +251,33 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
     };
 
+    // Channel CRUD handlers
+    const handleSaveChannel = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newChannelName.trim()) return;
+        
+        onSaveChannel({
+            id: editingChannel?.id || generateUUID(),
+            name: newChannelName.trim()
+        });
+        
+        setNewChannelName('');
+        setEditingChannel(null);
+    };
+
+    const handleEditChannel = (channel: YouTubeChannel) => {
+        setEditingChannel(channel);
+        setNewChannelName(channel.name);
+    };
+
+    const handleDeleteChannel = (id: string) => {
+        if (window.confirm("Permanently delete this channel? Metrics associated with this channel will remain but will no longer have a channel reference.")) {
+            onDeleteChannel(id);
+            if (uploadChannelId === id) setUploadChannelId('');
+            if (filterChannelId === id) setFilterChannelId('');
+        }
+    };
+
     const summary = useMemo(() => {
         const result = { totalRevenue: 0, totalViews: 0, totalSubs: 0, totalWatchTime: 0, avgRPM: 0, avgCTR: 0, avgWatchPerView: 0 };
         metrics.forEach(m => {
@@ -264,7 +297,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     }, [metrics]);
 
     const generatedInsights = useMemo(() => {
-        if (metrics.length === 0) return null;
+        // Apply Filtered Context
+        const data = filterChannelId ? metrics.filter(m => m.channelId === filterChannelId) : metrics;
+        if (data.length === 0) return null;
 
         const yearlyStats = new Map<string, { 
             revChamp: YouTubeMetric, 
@@ -273,17 +308,18 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }>();
         
         const videosPerYear = new Map<string, number>();
-        const keywordMap = new Map<string, { totalRevenue: number, count: number }>();
-        const stopWords = new Set(['the', 'and', 'a', 'to', 'of', 'in', 'is', 'for', 'with', 'on', 'my', 'how', 'to', 'why']);
+        const weekdayMap = new Map<number, { revenue: number, views: number, count: number }>();
+        const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
         let evergreenRevenue = 0;
         const oneYearAgo = new Date();
         oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
-        metrics.forEach(m => {
+        data.forEach(m => {
             const year = m.publishDate.substring(0, 4);
             const rpm = m.views > 0 ? (m.estimatedRevenue / m.views) * 1000 : 0;
             
+            // Yearly Champions logic
             const currentYearStats = yearlyStats.get(year) || { 
                 revChamp: m, 
                 viewChamp: m, 
@@ -301,31 +337,33 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 evergreenRevenue += m.estimatedRevenue;
             }
 
-            const words = m.videoTitle.toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/);
-            words.forEach(word => {
-                if (word.length > 3 && !stopWords.has(word)) {
-                    const stats = keywordMap.get(word) || { totalRevenue: 0, count: 0 };
-                    stats.totalRevenue += m.estimatedRevenue;
-                    stats.count += 1;
-                    keywordMap.set(word, stats);
-                }
-            });
+            // Weekday ROI logic
+            const date = new Date(m.publishDate);
+            const dayIdx = date.getDay();
+            const stats = weekdayMap.get(dayIdx) || { revenue: 0, views: 0, count: 0 };
+            stats.revenue += m.estimatedRevenue;
+            stats.views += m.views;
+            stats.count += 1;
+            weekdayMap.set(dayIdx, stats);
         });
 
-        const topKeywords = Array.from(keywordMap.entries())
-            .map(([word, stats]) => ({ word, avgRevenue: stats.totalRevenue / stats.count, count: stats.count }))
-            .filter(k => k.count >= 3)
-            .sort((a, b) => b.avgRevenue - a.avgRevenue)
-            .slice(0, 5);
+        const weekdayStats = Array.from(weekdayMap.entries())
+            .map(([idx, s]) => ({
+                day: DAYS[idx],
+                avgRev: s.revenue / s.count,
+                avgViews: s.views / s.count,
+                totalRev: s.revenue
+            }))
+            .sort((a,b) => b.avgRev - a.avgRev);
 
         return {
             champions: Array.from(yearlyStats.entries()).sort((a, b) => b[0].localeCompare(a[0])),
             counts: Array.from(videosPerYear.entries()).sort((a, b) => b[0].localeCompare(a[0])),
-            topKeywords,
+            weekdayStats,
             evergreenRevenue,
             evergreenPercent: (evergreenRevenue / (summary.totalRevenue || 1)) * 100
         };
-    }, [metrics, summary.totalRevenue]);
+    }, [metrics, summary.totalRevenue, filterChannelId]);
 
     // Evergreen Cohort Calc
     const evergreenCohortStats = useMemo(() => {
@@ -334,7 +372,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         let cohortRev = 0;
         let cohortViews = 0;
         
-        metrics.forEach(m => {
+        const data = filterChannelId ? metrics.filter(m => m.channelId === filterChannelId) : metrics;
+
+        data.forEach(m => {
             const pubYear = m.publishDate.substring(0, 4);
             if (m.reportYear === evergreenReportYear && evergreenPublishedYears.has(pubYear)) {
                 cohortRev += m.estimatedRevenue;
@@ -342,7 +382,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             }
         });
 
-        const totalYearRevenue = metrics
+        const totalYearRevenue = data
             .filter(m => m.reportYear === evergreenReportYear)
             .reduce((s, m) => s + m.estimatedRevenue, 0);
 
@@ -351,7 +391,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             views: cohortViews,
             percentOfTotalYear: totalYearRevenue > 0 ? (cohortRev / totalYearRevenue) * 100 : 0
         };
-    }, [metrics, evergreenReportYear, evergreenPublishedYears]);
+    }, [metrics, evergreenReportYear, evergreenPublishedYears, filterChannelId]);
 
     const videoInsights = useMemo(() => {
         let base = metrics;
@@ -427,6 +467,24 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     };
 
     const channelMap = useMemo(() => new Map(channels.map(c => [c.id, c.name])), [channels]);
+
+    // Logic for Champions Hover Tooltip content
+    const getChampionStats = (videoId: string) => {
+        const agg = videoAggregateMap.get(videoId);
+        if (!agg) return "Stats unknown";
+        
+        const rpm = agg.lifetimeViews > 0 ? (agg.lifetimeRevenue / agg.lifetimeViews) * 1000 : 0;
+        const conv = agg.lifetimeViews > 0 ? (agg.lifetimeSubs / agg.lifetimeViews) * 100 : 0;
+
+        return `
+Revenue (Creation Yr): ${formatCurrency(agg.creationYearRevenue)}
+Revenue (Lifetime): ${formatCurrency(agg.lifetimeRevenue)}
+Total Views: ${formatNumber(agg.lifetimeViews)}
+Total Subs Gained: ${formatNumber(agg.lifetimeSubs)}
+Avg RPM: ${formatCurrency(rpm)}
+Conv Rate: ${conv.toFixed(2)}%
+        `.trim();
+    };
 
     return (
         <div className="space-y-6 h-full flex flex-col relative">
@@ -589,38 +647,124 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
                 {activeTab === 'insights' && (
                     <div className="space-y-6 pb-8">
+                        {/* Channel Filter for Insights */}
+                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-bold text-slate-500 uppercase">Context Channel:</span>
+                                <select 
+                                    value={filterChannelId} 
+                                    onChange={(e) => setFilterChannelId(e.target.value)} 
+                                    className="p-2 border rounded-lg text-sm bg-slate-50 text-indigo-700 font-bold focus:ring-red-500 min-w-[200px]"
+                                >
+                                    <option value="">All Channels</option>
+                                    {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
+                                </select>
+                            </div>
+                            <p className="text-xs text-slate-400 italic">This filter affects all data analysis cards on this page.</p>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-lg">
+                            {/* CONTENT DURABILITY - MOVED TO TOP */}
+                            <div className="bg-slate-900 text-white p-6 rounded-xl shadow-xl space-y-6 overflow-hidden relative col-span-1 md:col-span-2">
+                                <div>
+                                    <h3 className="font-bold mb-4 flex items-center gap-2 text-lg">
+                                        <HeartIcon className="w-5 h-5 text-red-500" /> Content Durability (Evergreen Analysis)
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-8">
+                                        <div>
+                                            <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest block mb-1">Evergreen Revenue (1yr+ old)</span>
+                                            <p className="text-3xl font-bold">{formatCurrency(generatedInsights?.evergreenRevenue || 0)}</p>
+                                        </div>
+                                        <div>
+                                            <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest block mb-1">% of Lifetime Earnings</span>
+                                            <p className="text-3xl font-bold">{generatedInsights?.evergreenPercent.toFixed(1)}%</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="pt-6 border-t border-white/10 space-y-6">
+                                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                                        <h4 className="text-sm font-bold text-indigo-400 uppercase tracking-widest">Evergreen Cohort Analyzer</h4>
+                                        <div className="flex items-center gap-3">
+                                            <span className="text-xs text-slate-400 font-bold uppercase">Measurement Year:</span>
+                                            <select 
+                                                value={evergreenReportYear} 
+                                                onChange={e => setEvergreenReportYear(e.target.value)}
+                                                className="bg-slate-800 border-slate-700 text-white text-sm py-1.5 px-3 rounded-lg focus:ring-red-500 focus:border-red-500 transition-all"
+                                            >
+                                                {availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <p className="text-xs text-slate-400 font-medium">Select publication years to analyze their performance in {evergreenReportYear}:</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {availableCreatedYears.map(y => (
+                                                <button 
+                                                    key={y}
+                                                    onClick={() => toggleEvergreenPublishedYear(y)}
+                                                    className={`px-4 py-2 rounded-xl text-xs font-black border-2 transition-all transform active:scale-95 ${evergreenPublishedYears.has(y) ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg shadow-indigo-900/40' : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-600'}`}
+                                                >
+                                                    {y}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    {evergreenCohortStats && (
+                                        <div className="bg-indigo-600/20 border border-indigo-500/30 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-4 animate-slide-up">
+                                            <div className="text-center sm:text-left">
+                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">Cohort Revenue in {evergreenReportYear}</p>
+                                                <p className="text-3xl font-black">{formatCurrency(evergreenCohortStats.revenue)}</p>
+                                            </div>
+                                            <div className="text-center sm:text-right">
+                                                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mb-1">% of Total {evergreenReportYear} Revenue</p>
+                                                <p className="text-3xl font-black text-indigo-400">{evergreenCohortStats.percentOfTotalYear.toFixed(1)}%</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* YEARLY PERFORMANCE - SCROLLABLE + RICHER INFO */}
+                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col max-h-[500px]">
+                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-lg flex-shrink-0">
                                     <TrendingUpIcon className="w-5 h-5 text-red-500" /> Yearly Performance Champions
                                 </h3>
-                                <div className="space-y-4">
+                                <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar flex-grow">
                                     {generatedInsights?.champions.map(([year, stats]) => (
                                         <div key={year} className="bg-slate-50 p-4 rounded-lg border border-slate-200 space-y-3">
-                                            <h4 className="text-sm font-black text-slate-400 uppercase tracking-tighter border-b border-slate-200 pb-1">{year} Elite</h4>
+                                            <h4 className="text-sm font-black text-slate-400 uppercase tracking-tighter border-b border-slate-200 pb-1">{year} Performance Leaders</h4>
                                             
-                                            <div className="flex items-center justify-between text-xs">
-                                                <div className="min-w-0 flex-1">
-                                                    <span className="bg-green-100 text-green-700 px-1.5 rounded font-bold uppercase text-[9px] mr-2">Top Revenue</span>
-                                                    <span className="text-slate-700 font-medium truncate inline-block max-w-[150px] align-bottom" title={stats.revChamp.videoTitle}>{stats.revChamp.videoTitle}</span>
+                                            <div className="space-y-2">
+                                                <div className="flex flex-col group/info">
+                                                    <div className="flex items-center justify-between text-xs cursor-help">
+                                                        <div className="min-w-0 flex-1">
+                                                            <span className="bg-green-100 text-green-700 px-1.5 rounded font-bold uppercase text-[9px] mr-2">Revenue</span>
+                                                            <span className="text-slate-700 font-bold hover:text-red-600 transition-colors" title={getChampionStats(stats.revChamp.videoId)}>{stats.revChamp.videoTitle}</span>
+                                                        </div>
+                                                        <span className="font-bold text-green-600 ml-4">{formatCurrency(stats.revChamp.estimatedRevenue)}</span>
+                                                    </div>
                                                 </div>
-                                                <span className="font-bold text-green-600">{formatCurrency(stats.revChamp.estimatedRevenue)}</span>
-                                            </div>
 
-                                            <div className="flex items-center justify-between text-xs">
-                                                <div className="min-w-0 flex-1">
-                                                    <span className="bg-blue-100 text-blue-700 px-1.5 rounded font-bold uppercase text-[9px] mr-2">Most Views</span>
-                                                    <span className="text-slate-700 font-medium truncate inline-block max-w-[150px] align-bottom" title={stats.viewChamp.videoTitle}>{stats.viewChamp.videoTitle}</span>
+                                                <div className="flex flex-col group/info">
+                                                    <div className="flex items-center justify-between text-xs cursor-help">
+                                                        <div className="min-w-0 flex-1">
+                                                            <span className="bg-blue-100 text-blue-700 px-1.5 rounded font-bold uppercase text-[9px] mr-2">Views</span>
+                                                            <span className="text-slate-700 font-bold hover:text-red-600 transition-colors" title={getChampionStats(stats.viewChamp.videoId)}>{stats.viewChamp.videoTitle}</span>
+                                                        </div>
+                                                        <span className="font-bold text-blue-600 ml-4">{formatNumber(stats.viewChamp.views)}</span>
+                                                    </div>
                                                 </div>
-                                                <span className="font-bold text-blue-600">{formatNumber(stats.viewChamp.views)}</span>
-                                            </div>
 
-                                            <div className="flex items-center justify-between text-xs">
-                                                <div className="min-w-0 flex-1">
-                                                    <span className="bg-purple-100 text-purple-700 px-1.5 rounded font-bold uppercase text-[9px] mr-2">Best RPM</span>
-                                                    <span className="text-slate-700 font-medium truncate inline-block max-w-[150px] align-bottom" title={stats.rpmChamp.videoTitle}>{stats.rpmChamp.videoTitle}</span>
+                                                <div className="flex flex-col group/info">
+                                                    <div className="flex items-center justify-between text-xs cursor-help">
+                                                        <div className="min-w-0 flex-1">
+                                                            <span className="bg-purple-100 text-purple-700 px-1.5 rounded font-bold uppercase text-[9px] mr-2">RPM</span>
+                                                            <span className="text-slate-700 font-bold hover:text-red-600 transition-colors" title={getChampionStats(stats.rpmChamp.videoId)}>{stats.rpmChamp.videoTitle}</span>
+                                                        </div>
+                                                        <span className="font-bold text-purple-600 ml-4">{formatCurrency(stats.rpmChamp.rpm)}</span>
+                                                    </div>
                                                 </div>
-                                                <span className="font-bold text-purple-600">{formatCurrency(stats.rpmChamp.rpm)}</span>
                                             </div>
                                         </div>
                                     ))}
@@ -640,15 +784,15 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                                 <div className="flex justify-between text-xs font-bold text-slate-600 uppercase">
                                                     <button 
                                                         onClick={() => setSelectedVelocityYear(year)}
-                                                        className="text-indigo-600 hover:underline decoration-dotted"
+                                                        className="text-indigo-600 hover:underline decoration-dotted transition-all"
                                                     >
-                                                        {year}
+                                                        {year} Batch
                                                     </button>
                                                     <span>{count} Videos Created</span>
                                                 </div>
                                                 <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                                                     <div 
-                                                        className="h-full bg-red-500 rounded-full transition-all duration-1000 cursor-pointer" 
+                                                        className="h-full bg-red-500 rounded-full transition-all duration-1000 cursor-pointer hover:bg-red-600" 
                                                         style={{ width: `${percent}%` }}
                                                         onClick={() => setSelectedVelocityYear(year)}
                                                     />
@@ -659,80 +803,30 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                 </div>
                             </div>
 
+                            {/* PUBLISHING STRATEGY CARD - REPLACED KEYWORDS */}
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                                 <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2 text-lg">
-                                    <LightBulbIcon className="w-5 h-5 text-yellow-500" /> High-Value Keywords
+                                    <CalendarIcon className="w-5 h-5 text-indigo-500" /> Best Days to Publish (ROI Analysis)
                                 </h3>
-                                <p className="text-xs text-slate-500 mb-4 italic">Words in titles with the highest average revenue (minimum 3 videos per word).</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {generatedInsights?.topKeywords.map(k => (
-                                        <div key={k.word} className="flex flex-col p-3 bg-red-50 border border-red-100 rounded-xl min-w-[120px]">
-                                            <span className="text-sm font-bold text-red-700 capitalize">"{k.word}"</span>
-                                            <span className="text-xs font-bold text-slate-600 mt-1">{formatCurrency(k.avgRevenue)} avg</span>
-                                            <span className="text-[10px] text-slate-400 mt-0.5 uppercase font-bold">{k.count} Videos</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="bg-slate-900 text-white p-6 rounded-xl shadow-xl space-y-6 overflow-hidden relative">
-                                <SparklesIcon className="absolute -bottom-8 -right-8 w-48 h-48 opacity-10" />
-                                <div>
-                                    <h3 className="font-bold mb-4 flex items-center gap-2 text-lg">
-                                        <HeartIcon className="w-5 h-5 text-red-500" /> Content Durability
-                                    </h3>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest block mb-1">Evergreen Revenue (1yr+ old)</span>
-                                            <p className="text-2xl font-bold">{formatCurrency(generatedInsights?.evergreenRevenue || 0)}</p>
-                                        </div>
-                                        <div>
-                                            <span className="text-slate-400 text-[10px] uppercase font-bold tracking-widest block mb-1">% of Lifetime Earnings</span>
-                                            <p className="text-2xl font-bold">{generatedInsights?.evergreenPercent.toFixed(1)}%</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div className="pt-4 border-t border-white/10 space-y-4">
-                                    <div className="flex justify-between items-center">
-                                        <h4 className="text-xs font-bold text-indigo-400 uppercase">Evergreen Cohort Report</h4>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-slate-500 uppercase">In Report Year:</span>
-                                            <select 
-                                                value={evergreenReportYear} 
-                                                onChange={e => setEvergreenReportYear(e.target.value)}
-                                                className="bg-slate-800 border-slate-700 text-white text-[10px] py-0.5 rounded focus:ring-0"
-                                            >
-                                                {availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] text-slate-400">Select published years to measure impact:</p>
-                                        <div className="flex flex-wrap gap-1.5">
-                                            {availableCreatedYears.map(y => (
-                                                <button 
-                                                    key={y}
-                                                    onClick={() => toggleEvergreenPublishedYear(y)}
-                                                    className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${evergreenPublishedYears.has(y) ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                                                >
-                                                    {y}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    {evergreenCohortStats && (
-                                        <div className="bg-indigo-600/20 border border-indigo-500/30 p-3 rounded-lg flex items-center justify-between">
-                                            <div>
-                                                <p className="text-[9px] font-bold text-indigo-400 uppercase">Cohort Revenue</p>
-                                                <p className="text-lg font-bold">{formatCurrency(evergreenCohortStats.revenue)}</p>
+                                <p className="text-xs text-slate-500 mb-4 italic">Performance averages based on the day of the week your videos were released.</p>
+                                <div className="space-y-2">
+                                    {generatedInsights?.weekdayStats.map((s, idx) => (
+                                        <div key={s.day} className={`flex items-center justify-between p-3 rounded-xl border ${idx === 0 ? 'bg-indigo-50 border-indigo-200' : 'bg-slate-50 border-slate-200'}`}>
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black ${idx === 0 ? 'bg-indigo-600 text-white' : 'bg-white text-slate-400'}`}>
+                                                    {s.day.charAt(0)}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-800">{s.day}</p>
+                                                    <p className="text-[10px] text-slate-500 uppercase font-bold">{formatNumber(s.avgViews)} avg views</p>
+                                                </div>
                                             </div>
                                             <div className="text-right">
-                                                <p className="text-[9px] font-bold text-indigo-400 uppercase">% of {evergreenReportYear} Total</p>
-                                                <p className="text-lg font-bold">{evergreenCohortStats.percentOfTotalYear.toFixed(1)}%</p>
+                                                <p className={`font-black ${idx === 0 ? 'text-indigo-700' : 'text-slate-700'}`}>{formatCurrency(s.avgRev)} <span className="text-[10px] font-normal text-slate-400">/vid</span></p>
+                                                <p className="text-[10px] text-green-600 font-bold">{formatCurrency(s.totalRev)} Total</p>
                                             </div>
                                         </div>
-                                    )}
+                                    ))}
                                 </div>
                             </div>
                         </div>
@@ -774,7 +868,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
                                 <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-slate-300 hover:border-red-300 transition-colors shadow-sm select-none">
                                     <input type="checkbox" checked={groupByVideo} onChange={() => setGroupByVideo(!groupByVideo)} className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer" />
-                                    <span className="text-xs font-bold text-slate-700 uppercase">Merge Video Totals</span>
+                                    <span className="text-xs font-bold text-red-700 uppercase">Merge Video Totals</span>
                                 </label>
                             </div>
                         </div>
@@ -825,7 +919,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 )}
 
                 {activeTab === 'upload' && (
-                    <div className="h-full space-y-6">
+                    <div className="h-full space-y-6 pb-20">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                             <div className="space-y-4">
                                 <div className="flex flex-col items-center justify-center bg-white rounded-xl border-2 border-dashed border-slate-300 p-8">
@@ -854,18 +948,90 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                             {Array.from({length: 25}, (_, i) => (2010 + i).toString()).reverse().map(y => <option key={y} value={y}>{y}</option>)}
                                         </select>
                                     </div>
+                                    {previewMetrics.length > 0 && (
+                                        <button onClick={confirmImport} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm">
+                                            Confirm Import of {previewMetrics.length} Records
+                                        </button>
+                                    )}
                                 </div>
                             </div>
-                            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><ExternalLinkIcon className="w-5 h-5 text-indigo-600" />How to Export</h3>
-                                <p className="text-sm text-slate-600 mb-2">Follow these exact steps:</p>
-                                <ol className="space-y-3 list-decimal list-inside text-sm text-slate-600 font-medium">
-                                    <li>Go to <a href="https://studio.youtube.com/" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">YouTube Studio</a>.</li>
-                                    <li>Click <strong>Analytics</strong> in the left sidebar.</li>
-                                    <li>Click <strong>Advanced Mode</strong> (top right).</li>
-                                    <li>Select the <strong>Year</strong> in the date dropdown (top right).</li>
-                                    <li>Click <strong>Export current view</strong> (top right) and choose <strong>Comma-separated values (.csv)</strong>.</li>
-                                </ol>
+                            
+                            <div className="space-y-6">
+                                {/* MANAGE CHANNELS CARD */}
+                                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full">
+                                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                                        <UsersIcon className="w-5 h-5 text-red-500" /> Manage Channels
+                                    </h3>
+                                    
+                                    <form onSubmit={handleSaveChannel} className="mb-4">
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="text" 
+                                                value={newChannelName} 
+                                                onChange={(e) => setNewChannelName(e.target.value)}
+                                                placeholder="Channel Name"
+                                                className="flex-grow p-2 border rounded-md text-sm"
+                                                required
+                                            />
+                                            <button 
+                                                type="submit" 
+                                                className="px-4 py-2 bg-slate-800 text-white font-bold rounded-md hover:bg-slate-900 transition-colors flex items-center gap-1"
+                                            >
+                                                {editingChannel ? <CheckCircleIcon className="w-4 h-4"/> : <AddIcon className="w-4 h-4" />}
+                                                {editingChannel ? 'Save' : 'Add'}
+                                            </button>
+                                            {editingChannel && (
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => { setEditingChannel(null); setNewChannelName(''); }}
+                                                    className="p-2 text-slate-400 hover:text-red-500"
+                                                >
+                                                    <CloseIcon className="w-5 h-5" />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </form>
+
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                                        {channels.length === 0 ? (
+                                            <p className="text-center py-8 text-sm text-slate-400 italic">No channels added yet.</p>
+                                        ) : (
+                                            channels.map(channel => (
+                                                <div key={channel.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 group">
+                                                    <span className="text-sm font-bold text-slate-700">{channel.name}</span>
+                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button 
+                                                            onClick={() => handleEditChannel(channel)}
+                                                            className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-white transition-colors"
+                                                            title="Edit Name"
+                                                        >
+                                                            <EditIcon className="w-4 h-4" />
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleDeleteChannel(channel.id)}
+                                                            className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-white transition-colors"
+                                                            title="Delete Channel"
+                                                        >
+                                                            <DeleteIcon className="w-4 h-4" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                    <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><ExternalLinkIcon className="w-5 h-5 text-indigo-600" />How to Export</h3>
+                                    <p className="text-sm text-slate-600 mb-2">Follow these exact steps:</p>
+                                    <ol className="space-y-3 list-decimal list-inside text-sm text-slate-600 font-medium">
+                                        <li>Go to <a href="https://studio.youtube.com/" target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">YouTube Studio</a>.</li>
+                                        <li>Click <strong>Analytics</strong> in the left sidebar.</li>
+                                        <li>Click <strong>Advanced Mode</strong> (top right).</li>
+                                        <li>Select the <strong>Year</strong> in the date dropdown (top right).</li>
+                                        <li>Click <strong>Export current view</strong> (top right) and choose <strong>Comma-separated values (.csv)</strong>.</li>
+                                    </ol>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -875,24 +1041,50 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             {/* Velocity Detail Modal */}
             {selectedVelocityYear && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedVelocityYear(null)}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
                             <div>
-                                <h3 className="text-2xl font-bold text-slate-800">Content Batch: {selectedVelocityYear}</h3>
-                                <p className="text-slate-500">Performance comparison: First Year vs Lifetime</p>
+                                <h3 className="text-2xl font-bold text-slate-800">Batch Analysis: {selectedVelocityYear}</h3>
+                                <p className="text-slate-500">Comparing performance from their first year vs. lifetime stats.</p>
                             </div>
                             <button onClick={() => setSelectedVelocityYear(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                        </div>
+                        
+                        {/* Summary Totals for the selected year */}
+                        <div className="bg-white px-6 py-4 grid grid-cols-2 md:grid-cols-4 gap-6 border-b border-slate-100">
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Revenue</p>
+                                <p className="text-2xl font-black text-indigo-600">
+                                    {formatCurrency(
+                                        Array.from(videoAggregateMap.values())
+                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear))
+                                            .reduce((sum, v) => sum + v.lifetimeRevenue, 0)
+                                    )}
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
+                                <p className="text-2xl font-black text-slate-800">
+                                    {formatNumber(
+                                        Array.from(videoAggregateMap.values())
+                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear))
+                                            .reduce((sum, v) => sum + v.lifetimeViews, 0)
+                                    )}
+                                </p>
+                            </div>
                         </div>
                         
                         <div className="flex-1 overflow-auto p-0">
                             <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
                                 <thead className="bg-slate-100 sticky top-0 z-10 shadow-sm">
                                     <tr>
+                                        <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100">#</th>
                                         <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100">Video Information</th>
                                         <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 border-l border-slate-200" colSpan={2}>Creation Year ({selectedVelocityYear})</th>
                                         <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 border-l border-slate-200" colSpan={2}>Lifetime Total</th>
                                     </tr>
                                     <tr className="bg-slate-50">
+                                        <th className="px-6 py-2"></th>
                                         <th className="px-6 py-2 text-left text-[9px] font-bold text-slate-500">Date & Title</th>
                                         <th className="px-6 py-2 text-right text-[9px] font-bold text-slate-500 border-l border-slate-200">Views</th>
                                         <th className="px-6 py-2 text-right text-[9px] font-bold text-slate-500">Revenue</th>
@@ -904,11 +1096,12 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                                     {Array.from(videoAggregateMap.values())
                                         .filter(v => v.publishDate.startsWith(selectedVelocityYear))
                                         .sort((a,b) => b.lifetimeRevenue - a.lifetimeRevenue)
-                                        .map(v => (
+                                        .map((v, idx) => (
                                             <tr key={v.videoId} className="hover:bg-slate-50 transition-colors group">
+                                                <td className="px-6 py-3 text-xs font-mono text-slate-300">#{idx + 1}</td>
                                                 <td className="px-6 py-3 max-w-md">
                                                     <div className="flex items-center gap-3">
-                                                        <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{v.publishDate}</span>
+                                                        <span className="text-[10px] font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded whitespace-nowrap">{v.publishDate}</span>
                                                         <span className="text-sm font-bold text-slate-700 truncate" title={v.title}>{v.title}</span>
                                                     </div>
                                                 </td>
