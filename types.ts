@@ -346,14 +346,22 @@ export interface AmazonMetric {
     category?: string;
     reportType: AmazonReportType;
     campaignTitle?: string;
+    
+    // Video-linked metadata
+    videoTitle?: string;
+    videoDuration?: string;
+    videoUrl?: string;
+    uploadDate?: string;
 }
 
 export interface AmazonVideo {
     id: string;
-    asin: string;
+    asin?: string; // Legacy single ASIN
+    asins?: string[]; // Multiple ASIN support
     videoId: string;
     videoTitle: string;
-    durationSeconds?: number;
+    duration?: string;
+    videoUrl?: string;
     uploadDate?: string;
 }
 

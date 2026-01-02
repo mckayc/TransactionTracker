@@ -239,60 +239,65 @@ export const parseAmazonVideos = async (file: File, onProgress: (msg: string) =>
 
     if (lines.length < 2) return [];
 
-    // Simple header detection for video reports
+    // Improved header detection for video reports (supports both user provided formats)
     let headerIndex = -1;
-    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+    for (let i = 0; i < Math.min(lines.length, 20); i++) {
         const lower = lines[i].toLowerCase();
-        if (lower.includes('asin') && (lower.includes('video') || lower.includes('title'))) {
+        if (lower.includes('title') && (lower.includes('asin') || lower.includes('duration') || lower.includes('video_url'))) {
             headerIndex = i;
             break;
         }
     }
 
     if (headerIndex === -1) {
-        throw new Error("Invalid format. Could not find header with 'ASIN' and 'Video'/'Title'.");
+        throw new Error("Invalid format. Could not find header with 'Title' and either 'ASINs' or 'Duration'.");
     }
 
-    const header = lines[headerIndex].split(/[,;\t]/).map(h => h.trim().replace(/"/g, '').toLowerCase());
-    
-    const colMap = {
-        asin: header.findIndex(h => h === 'asin'),
-        title: header.findIndex(h => h.includes('title') || h === 'video' || h.includes('name')),
-        id: header.findIndex(h => h.includes('id') || h.includes('external')),
-        duration: header.findIndex(h => h.includes('duration') || h.includes('length')),
-        date: header.findIndex(h => h.includes('date') || h.includes('upload'))
+    // Split logic handling both comma and tab (common for spreadsheet copy-pastes)
+    const splitLine = (line: string) => {
+        if (line.includes('\t')) return line.split('\t').map(v => v.trim().replace(/^"|"$/g, ''));
+        return line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/^"|"$/g, ''));
     };
 
-    if (colMap.asin === -1) throw new Error("Missing ASIN column.");
+    const header = splitLine(lines[headerIndex]).map(h => h.toLowerCase().replace(/ /g, '_'));
+    
+    const colMap = {
+        title: header.findIndex(h => h === 'title'),
+        asins: header.findIndex(h => h === 'asins' || h === 'asin'),
+        duration: header.findIndex(h => h === 'duration'),
+        url: header.findIndex(h => h === 'video_url' || h === 'url'),
+        date: header.findIndex(h => h === 'upload_date' || h === 'date')
+    };
+
+    if (colMap.title === -1) throw new Error("Missing 'Title' column.");
 
     for (let i = headerIndex + 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
 
-        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
-        if (values.length < 2) continue;
+        const values = splitLine(line);
+        if (values.length <= colMap.title) continue;
 
-        const durationStr = colMap.duration > -1 ? values[colMap.duration] : '';
-        let durationSecs = 0;
-        if (durationStr.includes(':')) {
-            const parts = durationStr.split(':').map(Number);
-            if (parts.length === 2) durationSecs = parts[0] * 60 + parts[1];
-            else if (parts.length === 3) durationSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
-        } else {
-            durationSecs = parseInt(durationStr) || 0;
-        }
+        // Extract ASINs - handle pipe separated or single
+        const asinsRaw = colMap.asins > -1 ? values[colMap.asins] : '';
+        const asins = asinsRaw ? Array.from(new Set(asinsRaw.split('|').map(a => a.trim()).filter(Boolean))) : [];
+
+        // Parse Date if present
+        const dateRaw = colMap.date > -1 ? values[colMap.date] : '';
+        const parsedDate = parseDate(dateRaw);
 
         videos.push({
             id: generateUUID(),
-            asin: values[colMap.asin],
-            videoId: colMap.id > -1 ? values[colMap.id] : generateUUID().slice(0,8),
-            videoTitle: colMap.title > -1 ? values[colMap.title] : 'Unknown Video',
-            durationSeconds: durationSecs > 0 ? durationSecs : undefined,
-            uploadDate: colMap.date > -1 ? values[colMap.date] : undefined
+            asins: asins.length > 0 ? asins : undefined,
+            videoId: generateUUID().slice(0, 8), // Default local ID
+            videoTitle: values[colMap.title] || 'Unknown Video',
+            duration: colMap.duration > -1 ? values[colMap.duration] : undefined,
+            videoUrl: colMap.url > -1 ? values[colMap.url] : undefined,
+            uploadDate: parsedDate ? formatDate(parsedDate) : undefined
         });
     }
 
-    onProgress(`Parsed ${videos.length} videos.`);
+    onProgress(`Parsed ${videos.length} video records.`);
     return videos;
 };
 
@@ -404,6 +409,8 @@ export const parseYouTubeReport = async (file: File, onProgress: (msg: string) =
     return metrics;
 };
 
+/* --- GENERAL TRANSACTION PARSER LOGIC --- */
+
 const parseCSV = (lines: string[], accountId: string, transactionTypes: TransactionType[], sourceName: string): RawTransaction[] => {
     const transactions: RawTransaction[] = [];
     if (lines.length === 0) return transactions;
@@ -488,6 +495,7 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
             date: formatDate(parsedDate),
             description: toTitleCase(description),
             amount: amount,
+            categoryId: '', 
             category: colMap.category > -1 ? parts[colMap.category] : 'Uncategorized',
             accountId: accountId,
             typeId: isIncome ? incomeType.id : expenseType.id,
@@ -498,6 +506,7 @@ const parseCSV = (lines: string[], accountId: string, transactionTypes: Transact
     return transactions;
 };
 
+// Fix: Re-added missing export parseTransactionsFromText
 export const parseTransactionsFromText = async (
     text: string, 
     accountId: string, 
@@ -509,6 +518,7 @@ export const parseTransactionsFromText = async (
     return parseCSV(lines, accountId, transactionTypes, 'Pasted Text');
 };
 
+// Fix: Re-added missing export parseTransactionsFromFiles
 export const parseTransactionsFromFiles = async (
     files: File[], 
     accountId: string, 
@@ -519,23 +529,12 @@ export const parseTransactionsFromFiles = async (
     
     for (const file of files) {
         onProgress(`Reading ${file.name}...`);
-        
         if (file.type === 'application/pdf') {
              console.warn("Local PDF parsing not fully implemented. Use AI mode for PDFs.");
              continue; 
         }
-
-        let text = '';
-        if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-            const buffer = await readFileAsArrayBuffer(file);
-            const workbook = XLSX.read(buffer, { type: 'array' });
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            text = XLSX.utils.sheet_to_csv(worksheet);
-        } else {
-            text = await readFileAsText(file);
-        }
-
+        
+        const text = await readFileAsText(file);
         const lines = text.split('\n');
         const transactions = parseCSV(lines, accountId, transactionTypes, file.name);
         allTransactions.push(...transactions);
