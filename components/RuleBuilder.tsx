@@ -1,7 +1,7 @@
-
 import React, { useState } from 'react';
 import type { RuleCondition, Account } from '../types';
-import { DeleteIcon, AddIcon, DragHandleIcon, InfoIcon } from './Icons';
+/* Added TableIcon to fix 'Cannot find name' error on line 129 */
+import { DeleteIcon, AddIcon, DragHandleIcon, InfoIcon, TableIcon } from './Icons';
 import { generateUUID } from '../utils';
 
 interface RuleBuilderProps {
@@ -92,52 +92,65 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
                     onDrop={(e) => handleDrop(e, index)}
                 >
                     {/* Condition Row */}
-                    <div className={`flex flex-col lg:flex-row gap-2 items-start lg:items-center bg-white p-3 rounded border border-slate-200 shadow-sm z-10 relative transition-all ${draggedIndex === index ? 'opacity-50 bg-indigo-50 border-indigo-300' : ''}`}>
-                        <div 
-                            className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 p-1"
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, index)}
-                        >
-                            <DragHandleIcon className="w-5 h-5" />
-                        </div>
-                        <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-xs font-bold text-slate-500 mr-1 flex-shrink-0">
-                            {index + 1}
+                    <div className={`grid grid-cols-1 xl:grid-cols-12 gap-3 items-center bg-white p-3 rounded border border-slate-200 shadow-sm z-10 relative transition-all ${draggedIndex === index ? 'opacity-50 bg-indigo-50 border-indigo-300' : ''}`}>
+                        
+                        {/* Drag Handle & Index */}
+                        <div className="xl:col-span-1 flex items-center gap-2">
+                            <div 
+                                className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 p-1"
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, index)}
+                            >
+                                <DragHandleIcon className="w-5 h-5" />
+                            </div>
+                            <div className="flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-[10px] font-black text-slate-500 flex-shrink-0">
+                                {index + 1}
+                            </div>
                         </div>
                         
-                        <div className="flex flex-col sm:flex-row gap-2 w-full flex-grow items-start sm:items-center">
+                        {/* Field Selector */}
+                        <div className="xl:col-span-2">
                             <select 
                                 value={condition.field} 
                                 onChange={(e) => handleUpdateCondition(index, 'field', e.target.value)}
-                                className="w-full sm:w-[160px] p-2 text-sm border rounded-md bg-slate-50 focus:bg-white font-bold"
+                                className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white font-bold text-indigo-800"
                             >
                                 <option value="description">Description</option>
                                 <option value="amount">Amount</option>
                                 <option value="accountId">Account</option>
                                 <option value="metadata">Raw Metadata Field</option>
                             </select>
+                        </div>
 
-                            {condition.field === 'metadata' && (
-                                <div className="flex items-center gap-1 w-full sm:w-[180px]">
-                                    <input 
-                                        type="text" 
-                                        value={condition.metadataKey || ''} 
-                                        onChange={(e) => handleUpdateCondition(index, 'metadataKey', e.target.value)}
-                                        placeholder="Column Name (e.g. Reference)"
-                                        className="w-full p-2 text-sm border border-indigo-200 rounded-md bg-indigo-50/50 focus:bg-white placeholder:text-indigo-300 font-medium"
-                                    />
-                                    <div className="group relative">
-                                        <InfoIcon className="w-3 h-3 text-indigo-400 cursor-help" />
-                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                                            Enter the exact column header from your CSV (e.g., "Reference", "Status", "Currency")
-                                        </div>
+                        {/* Metadata Column Key (WIDER) */}
+                        <div className={`${condition.field === 'metadata' ? 'xl:col-span-3' : 'hidden'}`}>
+                            <div className="flex items-center gap-2 relative">
+                                <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                                    <TableIcon className="w-3.5 h-3.5 text-indigo-400" />
+                                </div>
+                                <input 
+                                    type="text" 
+                                    value={condition.metadataKey || ''} 
+                                    onChange={(e) => handleUpdateCondition(index, 'metadataKey', e.target.value)}
+                                    placeholder="Column Name (e.g. Reference)"
+                                    className="w-full p-2 pl-8 text-sm border border-indigo-200 rounded-md bg-indigo-50/50 focus:bg-white placeholder:text-indigo-300 font-bold"
+                                />
+                                <div className="group relative flex-shrink-0">
+                                    <InfoIcon className="w-4 h-4 text-indigo-400 cursor-help" />
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-800 text-white text-[11px] rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 leading-relaxed">
+                                        <p className="font-bold border-b border-white/10 pb-1 mb-1">Column Matching</p>
+                                        Enter the exact column header from your CSV. Use the inspector drawer in the import screen to copy keys.
                                     </div>
                                 </div>
-                            )}
-                            
+                            </div>
+                        </div>
+
+                        {/* Operator */}
+                        <div className={`${condition.field === 'metadata' ? 'xl:col-span-2' : 'xl:col-span-3'}`}>
                             <select 
                                 value={condition.operator} 
                                 onChange={(e) => handleUpdateCondition(index, 'operator', e.target.value)}
-                                className="w-full sm:w-[160px] p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
+                                className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white font-medium"
                             >
                                 {(condition.field === 'description' || condition.field === 'metadata') && (
                                     <>
@@ -164,35 +177,37 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
                                     </>
                                 )}
                             </select>
+                        </div>
 
-                            {condition.operator !== 'exists' && (
-                                <>
-                                    {condition.field === 'accountId' && condition.operator === 'equals' ? (
-                                        <select 
-                                            value={condition.value} 
-                                            onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                            className="w-full sm:flex-grow p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
-                                        >
-                                            <option value="">Select Account...</option>
-                                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                                        </select>
-                                    ) : (
-                                        <input 
-                                            type={condition.field === 'amount' ? 'number' : 'text'} 
-                                            step={condition.field === 'amount' ? '0.01' : undefined}
-                                            value={condition.value} 
-                                            onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                            placeholder="Value"
-                                            className={`w-full sm:flex-grow p-2 text-sm border rounded-md bg-slate-50 focus:bg-white ${condition.field === 'metadata' ? 'border-indigo-100' : ''}`}
-                                        />
-                                    )}
-                                </>
+                        {/* Value Input */}
+                        <div className={`${condition.operator === 'exists' ? 'hidden' : condition.field === 'metadata' ? 'xl:col-span-3' : 'xl:col-span-5'}`}>
+                            {condition.field === 'accountId' && condition.operator === 'equals' ? (
+                                <select 
+                                    value={condition.value} 
+                                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                    className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
+                                >
+                                    <option value="">Select Account...</option>
+                                    {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                </select>
+                            ) : (
+                                <input 
+                                    type={condition.field === 'amount' ? 'number' : 'text'} 
+                                    step={condition.field === 'amount' ? '0.01' : undefined}
+                                    value={condition.value} 
+                                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                    placeholder="Value"
+                                    className={`w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white ${condition.field === 'metadata' ? 'border-indigo-100 font-medium' : ''}`}
+                                />
                             )}
                         </div>
 
-                        <button type="button" onClick={() => handleDeleteCondition(index)} className="p-2 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0" title="Remove Condition">
-                            <DeleteIcon className="w-4 h-4" />
-                        </button>
+                        {/* Delete Button */}
+                        <div className="xl:col-span-1 flex justify-end">
+                            <button type="button" onClick={() => handleDeleteCondition(index)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all flex-shrink-0" title="Remove Condition">
+                                <DeleteIcon className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Logic Connector (if not last item) */}
@@ -204,10 +219,10 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
                             <button 
                                 type="button" 
                                 onClick={() => toggleLogic(index)} 
-                                className={`relative z-10 px-3 py-1 text-[10px] font-bold uppercase rounded-full border cursor-pointer transition-all hover:scale-110 ${
+                                className={`relative z-10 px-4 py-1.5 text-[10px] font-black uppercase rounded-full border shadow-sm cursor-pointer transition-all hover:scale-110 active:scale-95 ${
                                     (condition.nextLogic || 'AND') === 'AND' 
-                                    ? 'bg-indigo-100 text-indigo-700 border-indigo-200' 
-                                    : 'bg-orange-100 text-orange-700 border-orange-200'
+                                    ? 'bg-indigo-600 text-white border-indigo-700' 
+                                    : 'bg-orange-600 text-white border-orange-700'
                                 }`}
                             >
                                 {condition.nextLogic || 'AND'}
@@ -217,9 +232,9 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
                 </div>
             ))}
             
-            <div className="flex justify-center mt-4 pt-2 border-t border-dashed border-slate-300">
-                <button type="button" onClick={handleAddCondition} className="text-xs bg-white border border-slate-300 text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 hover:border-indigo-300 px-4 py-2 rounded-full font-medium flex items-center gap-2 transition-all shadow-sm">
-                    <AddIcon className="w-3 h-3" /> Add Condition
+            <div className="flex justify-center mt-6 pt-4 border-t border-dashed border-slate-300">
+                <button type="button" onClick={handleAddCondition} className="text-sm bg-white border-2 border-indigo-100 text-indigo-600 hover:bg-indigo-50 hover:border-indigo-400 px-6 py-2.5 rounded-2xl font-bold flex items-center gap-2 transition-all shadow-sm hover:shadow-md active:scale-95">
+                    <AddIcon className="w-4 h-4" /> Add Condition
                 </button>
             </div>
         </div>

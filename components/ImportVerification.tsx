@@ -31,11 +31,42 @@ const MetadataDrawer: React.FC<{
     tx: VerifiableTransaction | null; 
     onClose: () => void;
 }> = ({ tx, onClose }) => {
+    const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
     if (!tx || !tx.metadata) return null;
 
-    const copyToClipboard = (text: string) => {
-        navigator.clipboard.writeText(text);
-        // Simple visual feedback could be added here
+    const copyToClipboard = async (text: string) => {
+        const executeCopy = async (val: string) => {
+            if (navigator.clipboard && window.isSecureContext) {
+                try {
+                    await navigator.clipboard.writeText(val);
+                    return true;
+                } catch (err) {
+                    console.warn('Modern Clipboard API failed, attempting fallback...', err);
+                }
+            }
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = val;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                textArea.style.top = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                return successful;
+            } catch (err) {
+                return false;
+            }
+        };
+
+        const success = await executeCopy(text);
+        if (success) {
+            setCopiedKey(text);
+            setTimeout(() => setCopiedKey(null), 2000);
+        }
     };
 
     return (
@@ -72,11 +103,14 @@ const MetadataDrawer: React.FC<{
                                     <span className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter">{key}</span>
                                     <button 
                                         onClick={() => copyToClipboard(key)}
-                                        className="opacity-0 group-hover/item:opacity-100 p-1 text-slate-500 hover:text-indigo-400 transition-all"
+                                        className="p-1 text-slate-500 hover:text-indigo-400 transition-all"
                                         title="Copy column name for rules"
                                     >
-                                        <CopyIcon className="w-3 h-3" />
+                                        <CopyIcon className={`w-3.5 h-3.5 ${copiedKey === key ? 'text-green-400 scale-110' : ''}`} />
                                     </button>
+                                    {copiedKey === key && (
+                                        <span className="text-[9px] font-bold text-green-400 animate-fade-in uppercase">Copied!</span>
+                                    )}
                                 </div>
                                 {(!value || value.trim() === '') && <span className="text-[9px] font-bold text-slate-600 uppercase">Empty</span>}
                             </div>

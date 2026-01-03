@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleCondition, Tag } from '../types';
-import { CloseIcon, SlashIcon } from './Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, CheckCircleIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
 
@@ -158,34 +159,46 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
     
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[70] flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center p-6 border-b bg-white sticky top-0 z-20">
-                    <h2 className="text-xl font-bold text-slate-800">Create Automation Rule</h2>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center p-6 border-b bg-white sticky top-0 z-20 shadow-sm">
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+                            <SparklesIcon className="w-6 h-6 text-indigo-600" />
+                            Create Automation Rule
+                        </h2>
+                        <p className="text-sm text-slate-500 mt-1">Define logic to automatically clean up and organize your data.</p>
+                    </div>
                     <div className="flex items-center gap-3">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200">
+                        <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">
                             Cancel
                         </button>
-                        <button onClick={handleSave} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm">
-                            Create Rule
+                        <button onClick={handleSave} className="px-8 py-2.5 text-sm font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">
+                            Save Automation
                         </button>
                     </div>
                 </div>
                 
-                 <form onSubmit={handleSave} className="p-6 space-y-6 overflow-y-auto">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Rule Name</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Monthly Netflix Subscription" className="w-full p-2 border rounded-md" required />
+                 <form onSubmit={handleSave} className="p-8 space-y-8 overflow-y-auto bg-slate-50/50">
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Friendly Label</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Monthly Netflix Subscription" className="w-full p-3 border-2 border-slate-100 rounded-xl focus:border-indigo-500 focus:ring-0 transition-all font-bold text-slate-800 text-lg" required />
                     </div>
                     
-                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <h3 className="font-semibold text-slate-800 mb-3">If transactions match...</h3>
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">1</div>
+                            If transactions match these conditions
+                        </h3>
                         <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
                     </div>
                     
-                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-semibold text-slate-800">Then apply these changes:</h3>
-                            <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-slate-300 hover:border-red-400 transition-colors shadow-sm group">
+                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-[10px]">2</div>
+                                Then apply these automatic updates
+                            </h3>
+                            <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border border-slate-300 hover:border-red-400 transition-colors shadow-sm group">
                                 <input 
                                     type="checkbox" 
                                     checked={skipImport} 
@@ -199,50 +212,50 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                         </div>
                         
                         {!skipImport ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Set Category</label>
-                                    <div className="flex gap-1">
-                                        <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-2 border rounded-md">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Set Category</label>
+                                    <div className="flex gap-2">
+                                        <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
                                             <option value="">-- Don't Change --</option>
                                             {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                                         </select>
-                                        {onSaveCategory && <button type="button" onClick={handleCreateCategory} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold">+</button>}
+                                        {onSaveCategory && <button type="button" onClick={handleCreateCategory} className="px-3 bg-slate-100 text-slate-600 rounded-xl border hover:bg-indigo-50 hover:text-indigo-600 font-bold transition-colors">+</button>}
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Set Income Source</label>
-                                    <div className="flex gap-1">
-                                        <select value={setPayeeId} onChange={(e) => setSetPayeeId(e.target.value)} className="w-full p-2 border rounded-md">
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Set Income Source</label>
+                                    <div className="flex gap-2">
+                                        <select value={setPayeeId} onChange={(e) => setSetPayeeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
                                             <option value="">-- Don't Change --</option>
                                             {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                         </select>
-                                        {onSavePayee && <button type="button" onClick={handleCreatePayee} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold">+</button>}
+                                        {onSavePayee && <button type="button" onClick={handleCreatePayee} className="px-3 bg-slate-100 text-slate-600 rounded-xl border hover:bg-indigo-50 hover:text-indigo-600 font-bold transition-colors">+</button>}
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Set Transaction Type</label>
-                                    <div className="flex gap-1">
-                                        <select value={setTransactionTypeId} onChange={(e) => setSetTransactionTypeId(e.target.value)} className="w-full p-2 border rounded-md">
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Set Transaction Type</label>
+                                    <div className="flex gap-2">
+                                        <select value={setTransactionTypeId} onChange={(e) => setSetTransactionTypeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
                                             <option value="">-- Don't Change --</option>
                                             {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
                                         </select>
-                                        {onAddTransactionType && <button type="button" onClick={handleCreateType} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold">+</button>}
+                                        {onAddTransactionType && <button type="button" onClick={handleCreateType} className="px-3 bg-slate-100 text-slate-600 rounded-xl border hover:bg-indigo-50 hover:text-indigo-600 font-bold transition-colors">+</button>}
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Set Description</label>
-                                    <input type="text" value={setDescription} onChange={(e) => setSetDescription(e.target.value)} placeholder="e.g., Clean Name" className="w-full p-2 border rounded-md" />
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Override Description</label>
+                                    <input type="text" value={setDescription} onChange={(e) => setSetDescription(e.target.value)} placeholder="e.g., Clean Business Name" className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none" />
                                 </div>
-                                <div className="col-span-1 sm:col-span-2 lg:col-span-3">
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Assign Tags</label>
-                                    <div className="flex flex-wrap gap-2">
+                                <div className="col-span-1 md:col-span-2">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-2">Append Tags</label>
+                                    <div className="flex flex-wrap gap-2 p-3 border rounded-xl bg-slate-50/50">
                                         {tags.map(tag => (
                                             <button
                                                 key={tag.id}
                                                 type="button"
                                                 onClick={() => toggleTag(tag.id)}
-                                                className={`px-2 py-1 rounded-full text-xs border transition-colors ${assignTagIds.has(tag.id) ? tag.color + ' ring-1 ring-offset-1 ring-slate-400' : 'bg-white text-slate-600 border-slate-300'}`}
+                                                className={`px-3 py-1.5 rounded-full text-xs border-2 transition-all font-bold ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200'}`}
                                             >
                                                 {tag.name}
                                             </button>
@@ -251,19 +264,20 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                                             <button
                                                 type="button"
                                                 onClick={handleCreateTag}
-                                                className="px-2 py-1 rounded-full text-xs border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 bg-white transition-colors"
+                                                className="px-3 py-1.5 rounded-full text-xs border-2 border-dashed border-slate-300 text-slate-400 hover:text-indigo-600 hover:border-indigo-300 bg-white transition-all active:scale-95"
                                                 title="Create new tag"
                                             >
-                                                + New
+                                                + New Tag
                                             </button>
                                         )}
                                     </div>
                                 </div>
                             </div>
                         ) : (
-                            <div className="py-6 text-center bg-red-50 rounded-xl border border-red-100 border-dashed">
-                                <p className="text-sm font-bold text-red-800">This transaction will be filtered out automatically.</p>
-                                <p className="text-xs text-red-600 mt-1">Matched rows will not be added to your permanent transaction history.</p>
+                            <div className="py-12 text-center bg-red-50 rounded-2xl border-2 border-red-100 border-dashed animate-pulse">
+                                <SlashIcon className="w-12 h-12 text-red-200 mx-auto mb-4" />
+                                <p className="text-lg font-black text-red-800 uppercase tracking-tight">Auto-Purge Active</p>
+                                <p className="text-sm text-red-600 mt-1 max-w-md mx-auto font-medium">Any imported rows matching these criteria will be discarded immediately to prevent noise in your ledger.</p>
                             </div>
                         )}
                     </div>
