@@ -306,7 +306,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       if (!type) return { color: 'text-slate-600', prefix: '' };
       
       if (type.balanceEffect === 'income') return { color: 'text-emerald-600', prefix: '+' };
-      if (['expense', 'investment', 'donation', 'tax', 'savings'].includes(type.balanceEffect)) return { color: 'text-rose-600', prefix: '-' };
+      if (['expense', 'investment', 'donation', 'tax', 'savings', 'debt'].includes(type.balanceEffect)) return { color: 'text-rose-600', prefix: '-' };
       return { color: 'text-slate-400', prefix: '' };
   };
 

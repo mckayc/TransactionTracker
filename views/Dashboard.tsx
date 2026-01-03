@@ -459,12 +459,22 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     });
   }, [transactions, dashboardRange]);
 
-  const totalIncome = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'income').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
-  const totalExpenses = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'expense').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
-  const totalInvestments = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'investment').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
-  const totalDonations = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'donation').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
-  const totalTaxes = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'tax').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
-  const totalSavings = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'savings').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
+  const totals = useMemo(() => {
+    const res = { income: 0, expenses: 0, investments: 0, donations: 0, taxes: 0, savings: 0, debt: 0 };
+    dashboardTransactions.forEach(tx => {
+        const type = transactionTypeMap.get(tx.typeId);
+        if (!type) return;
+        const effect = type.balanceEffect;
+        if (effect === 'income') res.income += tx.amount;
+        else if (effect === 'expense') res.expenses += tx.amount;
+        else if (effect === 'investment') res.investments += tx.amount;
+        else if (effect === 'donation') res.donations += tx.amount;
+        else if (effect === 'tax') res.taxes += tx.amount;
+        else if (effect === 'savings') res.savings += tx.amount;
+        else if (effect === 'debt') res.debt += tx.amount;
+    });
+    return res;
+  }, [dashboardTransactions, transactionTypeMap]);
   
   const nextDeadline = useMemo(() => getNextTaxDeadline(), []);
 
@@ -525,14 +535,15 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       </div>
       
       {appState === 'idle' && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 flex-shrink-0">
-            <SummaryWidget title="Income" value={formatCurrency(totalIncome)} helpText={getRangeLabel()} className="border-emerald-100" />
-            <SummaryWidget title="Expenses" value={formatCurrency(totalExpenses)} helpText={getRangeLabel()} className="border-rose-100" />
-            <SummaryWidget title="Taxes Paid" value={formatCurrency(totalTaxes)} helpText={getRangeLabel()} className="border-amber-100 bg-amber-50/30" />
-            <SummaryWidget title="Investments" value={formatCurrency(totalInvestments)} helpText={getRangeLabel()} className="border-purple-100" />
-            <SummaryWidget title="Donations" value={formatCurrency(totalDonations)} helpText={getRangeLabel()} className="border-blue-100" />
-            <SummaryWidget title="Savings" value={formatCurrency(totalSavings)} helpText={getRangeLabel()} className="border-indigo-100" />
-            <SummaryWidget title={nextDeadline.label} value={`${nextDeadline.daysLeft} Days`} helpText={`Due ${nextDeadline.dateStr}`} icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 flex-shrink-0">
+            <SummaryWidget title="Income" value={formatCurrency(totals.income)} helpText={getRangeLabel()} className="border-emerald-100" />
+            <SummaryWidget title="Expenses" value={formatCurrency(totals.expenses)} helpText={getRangeLabel()} className="border-rose-100" />
+            <SummaryWidget title="Taxes" value={formatCurrency(totals.taxes)} helpText={getRangeLabel()} className="border-amber-100 bg-amber-50/30" />
+            <SummaryWidget title="Debt" value={formatCurrency(totals.debt)} helpText={getRangeLabel()} className="border-slate-100 bg-slate-50" />
+            <SummaryWidget title="Invest" value={formatCurrency(totals.investments)} helpText={getRangeLabel()} className="border-purple-100" />
+            <SummaryWidget title="Donations" value={formatCurrency(totals.donations)} helpText={getRangeLabel()} className="border-blue-100" />
+            <SummaryWidget title="Savings" value={formatCurrency(totals.savings)} helpText={getRangeLabel()} className="border-indigo-100" />
+            <SummaryWidget title={nextDeadline.label} value={`${nextDeadline.daysLeft}d`} helpText={`Due ${nextDeadline.dateStr}`} icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
           </div>
       )}
 

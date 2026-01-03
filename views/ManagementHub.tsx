@@ -334,7 +334,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                         <div>
                                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Net Worth / Balance Effect</label>
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                                {(['income', 'expense', 'transfer', 'investment', 'donation', 'tax', 'savings'] as const).map(effect => (
+                                                {(['income', 'expense', 'transfer', 'investment', 'donation', 'tax', 'savings', 'debt'] as const).map(effect => (
                                                     <button 
                                                         key={effect} 
                                                         type="button"

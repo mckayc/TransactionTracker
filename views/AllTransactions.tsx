@@ -207,6 +207,7 @@ const SummaryCard: React.FC<{ title: string; value: number; type: BalanceEffect 
         donation: 'text-blue-600 bg-blue-50 border-blue-100',
         tax: 'text-orange-600 bg-orange-50 border-orange-100',
         savings: 'text-indigo-600 bg-indigo-50 border-indigo-100',
+        debt: 'text-slate-600 bg-slate-100 border-slate-200',
         transfer: 'text-slate-600 bg-slate-50 border-slate-100'
     };
     
@@ -468,6 +469,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       let donations = 0;
       let taxes = 0;
       let savings = 0;
+      let debt = 0;
 
       filteredTransactions.forEach(tx => {
           // Skip Parent transactions in sums to avoid double counting
@@ -480,9 +482,10 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
           else if (type?.balanceEffect === 'donation') donations += tx.amount;
           else if (type?.balanceEffect === 'tax') taxes += tx.amount;
           else if (type?.balanceEffect === 'savings') savings += tx.amount;
+          else if (type?.balanceEffect === 'debt') debt += tx.amount;
       });
 
-      return { income, expenses, investments, donations, taxes, savings };
+      return { income, expenses, investments, donations, taxes, savings, debt };
   }, [filteredTransactions, transactionTypeMap]);
 
   const clearFilters = () => {
@@ -909,13 +912,15 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       <div className="flex flex-col h-full overflow-hidden gap-4 w-full max-w-full">
         
         {/* Dynamic Summary Cards (Based on Filters) */}
-        <div className="grid grid-cols-3 md:grid-cols-6 gap-3 flex-shrink-0 print:hidden">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 flex-shrink-0 print:hidden">
             <SummaryCard title="Income" value={summaries.income} type="income" />
             <SummaryCard title="Expenses" value={summaries.expenses} type="expense" />
             <SummaryCard title="Taxes" value={summaries.taxes} type="tax" />
-            <SummaryCard title="Savings" value={summaries.savings} type="savings" />
+            <SummaryCard title="Debt" value={summaries.debt} type="debt" />
             <SummaryCard title="Invest" value={summaries.investments} type="investment" />
             <SummaryCard title="Donation" value={summaries.donations} type="donation" />
+            <SummaryCard title="Savings" value={summaries.savings} type="savings" />
+            <SummaryCard title="Transfer" value={0} type="transfer" />
         </div>
 
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-shrink-0 print:hidden">

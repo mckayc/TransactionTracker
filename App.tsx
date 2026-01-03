@@ -24,6 +24,9 @@ import { MenuIcon, CloseIcon, SparklesIcon, ExclamationTriangleIcon } from './co
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
 
+// Multi-tab synchronization channel
+const syncChannel = new BroadcastChannel('finparser_sync');
+
 const App: React.FC = () => {
     // UI State
     const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -65,78 +68,145 @@ const App: React.FC = () => {
     const [contentLinks, setContentLinks] = useState<ContentLink[]>([]);
     const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
 
-    // Initialization
+    const loadInitialData = async (showLoader = true) => {
+        if (showLoader) setIsLoading(true);
+        setLoadError(null);
+        try {
+            const data = await api.loadAll();
+            
+            // 1. Transaction Types & Migration
+            const defaultTypes: TransactionType[] = [
+                { id: 'expense', name: 'Purchase', balanceEffect: 'expense', isDefault: true },
+                { id: 'income', name: 'Income', balanceEffect: 'income' },
+                { id: 'transfer', name: 'Transfer', balanceEffect: 'transfer' },
+                { id: 'investment', name: 'Investment', balanceEffect: 'investment' },
+                { id: 'donation', name: 'Donation', balanceEffect: 'donation' },
+                { id: 'tax', name: 'Tax Payment', balanceEffect: 'tax' },
+                { id: 'savings', name: 'Savings Outflow', balanceEffect: 'savings' },
+                { id: 'debt', name: 'Debt Repayment', balanceEffect: 'debt' }
+            ];
+            
+            let loadedTypes = data.transactionTypes || defaultTypes;
+
+            // Perform Migration: Fix cases where "Tax Payment" or similar are marked as expense
+            let migrationHappened = false;
+            loadedTypes = loadedTypes.map((t: TransactionType) => {
+                const nameLower = t.name.toLowerCase();
+                // Ensure existing types use the correct balance effects added in recent versions
+                if ((nameLower.includes('tax') || nameLower.includes('tithing')) && t.balanceEffect === 'expense') {
+                    migrationHappened = true;
+                    return { ...t, balanceEffect: 'tax' };
+                }
+                if (nameLower.includes('savings') && t.balanceEffect === 'expense') {
+                    migrationHappened = true;
+                    return { ...t, balanceEffect: 'savings' };
+                }
+                if ((nameLower.includes('debt') || nameLower.includes('loan') || nameLower.includes('mortgage')) && t.balanceEffect === 'expense') {
+                    migrationHappened = true;
+                    return { ...t, balanceEffect: 'debt' };
+                }
+                return t;
+            });
+
+            // Ensure 'debt' effect type exists if missing
+            if (!loadedTypes.find((t: TransactionType) => t.balanceEffect === 'debt')) {
+                loadedTypes.push({ id: 'debt', name: 'Debt Repayment', balanceEffect: 'debt' });
+                migrationHappened = true;
+            }
+
+            if (migrationHappened) {
+                await api.save('transactionTypes', loadedTypes);
+            }
+            setTransactionTypes(loadedTypes);
+
+            // 2. Categories
+            setCategories(data.categories || [
+                { id: 'groceries', name: 'Groceries' },
+                { id: 'dining', name: 'Dining' },
+                { id: 'utilities', name: 'Utilities' },
+                { id: 'income', name: 'Income' },
+                { id: 'tax', name: 'Taxes' },
+                { id: 'debt', name: 'Debt' },
+                { id: 'other', name: 'Other' }
+            ]);
+
+            setTransactions(data.transactions || []);
+            setAccounts(data.accounts || []);
+            setAccountTypes(data.accountTypes || [
+                { id: 'bank', name: 'Bank Account', isDefault: true },
+                { id: 'cc', name: 'Credit Card' },
+                { id: 'cash', name: 'Cash' }
+            ]);
+            
+            setTags(data.tags || []);
+            
+            const initialRules = data.reconciliationRules || data.rules || [];
+            setRules(initialRules);
+            if (data.rules && !data.reconciliationRules) api.save('reconciliationRules', data.rules);
+
+            setPayees(data.payees || []);
+            if (data.users && Array.isArray(data.users) && data.users.length > 0) setUsers(data.users);
+            else setUsers([{ id: 'user1', name: 'Primary User', isDefault: true }]);
+
+            setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
+            setDocumentFolders(data.documentFolders || []);
+            setBusinessDocuments(data.businessDocuments || []);
+            setTemplates(data.templates || []);
+            setScheduledEvents(data.scheduledEvents || []);
+            setTasks(data.tasks || []);
+            setTaskCompletions(data.taskCompletions || {});
+            setSavedReports(data.savedReports || []);
+            setSavedDateRanges(data.savedDateRanges || []);
+            setChatSessions(data.chatSessions || []);
+            setAmazonMetrics(data.amazonMetrics || []);
+            setAmazonVideos(data.amazonVideos || []);
+            setYouTubeMetric(data.youtubeMetrics || []);
+            setYouTubeChannels(data.youtubeChannels || []);
+            setFinancialGoals(data.financialGoals || []);
+            setFinancialPlan(data.financialPlan || null);
+            setContentLinks(data.contentLinks || []);
+            setSystemSettings(data.systemSettings || {});
+            
+            if (showLoader) setIsLoading(false);
+            document.body.classList.add('loaded');
+        } catch (err) {
+            console.error("Failed to load initial data", err);
+            setLoadError("Engine startup failed. Please verify your server connection.");
+        }
+    };
+
+    // Initialize data
     useEffect(() => {
-        const loadInitialData = async () => {
-            setIsLoading(true);
-            setLoadError(null);
-            try {
-                const data = await api.loadAll();
-                setTransactions(data.transactions || []);
-                setAccounts(data.accounts || []);
-                setAccountTypes(data.accountTypes || [
-                    { id: 'bank', name: 'Bank Account', isDefault: true },
-                    { id: 'cc', name: 'Credit Card' },
-                    { id: 'cash', name: 'Cash' }
-                ]);
-                setCategories(data.categories || [
-                    { id: 'groceries', name: 'Groceries' },
-                    { id: 'dining', name: 'Dining' },
-                    { id: 'utilities', name: 'Utilities' },
-                    { id: 'income', name: 'Income' },
-                    { id: 'other', name: 'Other' }
-                ]);
-                setTags(data.tags || []);
-                setTransactionTypes(data.transactionTypes || [
-                    { id: 'expense', name: 'Purchase', balanceEffect: 'expense', isDefault: true },
-                    { id: 'income', name: 'Income', balanceEffect: 'income' },
-                    { id: 'transfer', name: 'Transfer', balanceEffect: 'transfer' },
-                    { id: 'investment', name: 'Investment', balanceEffect: 'investment' },
-                    { id: 'donation', name: 'Donation', balanceEffect: 'donation' },
-                    { id: 'tax', name: 'Tax Payment', balanceEffect: 'tax' },
-                    { id: 'savings', name: 'Savings Outflow', balanceEffect: 'savings' }
-                ]);
-                
-                const initialRules = data.reconciliationRules || data.rules || [];
-                setRules(initialRules);
-                if (data.rules && !data.reconciliationRules) api.save('reconciliationRules', data.rules);
+        loadInitialData();
 
-                setPayees(data.payees || []);
-                if (data.users && Array.isArray(data.users) && data.users.length > 0) setUsers(data.users);
-                else setUsers([{ id: 'user1', name: 'Primary User', isDefault: true }]);
-
-                setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
-                setDocumentFolders(data.documentFolders || []);
-                setBusinessDocuments(data.businessDocuments || []);
-                setTemplates(data.templates || []);
-                setScheduledEvents(data.scheduledEvents || []);
-                setTasks(data.tasks || []);
-                setTaskCompletions(data.taskCompletions || {});
-                setSavedReports(data.savedReports || []);
-                setSavedDateRanges(data.savedDateRanges || []);
-                setChatSessions(data.chatSessions || []);
-                setAmazonMetrics(data.amazonMetrics || []);
-                setAmazonVideos(data.amazonVideos || []);
-                setYouTubeMetric(data.youtubeMetrics || []);
-                setYouTubeChannels(data.youtubeChannels || []);
-                setFinancialGoals(data.financialGoals || []);
-                setFinancialPlan(data.financialPlan || null);
-                setContentLinks(data.contentLinks || []);
-                setSystemSettings(data.systemSettings || {});
-                
-                setIsLoading(false);
-                document.body.classList.add('loaded');
-            } catch (err) {
-                console.error("Failed to load initial data", err);
-                setLoadError("Engine startup failed. Please verify your server connection.");
+        // Listen for sync messages from other tabs
+        const handleSync = (event: MessageEvent) => {
+            if (event.data === 'REFRESH_REQUIRED') {
+                console.log("Tab sync: Refreshing data from server...");
+                loadInitialData(false); // Background refresh
             }
         };
-        loadInitialData();
+        syncChannel.addEventListener('message', handleSync);
+
+        // Also refresh when tab regains focus to handle long periods of inactivity
+        const handleFocus = () => loadInitialData(false);
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            syncChannel.removeEventListener('message', handleSync);
+            window.removeEventListener('focus', handleFocus);
+        };
     }, []);
 
     const updateData = async (key: string, value: any, setter: Function) => {
         setter(value);
-        try { await api.save(key, value); } catch (e) { console.error(`Failed to persist key: ${key}`, e); }
+        try { 
+            await api.save(key, value); 
+            // Notify other tabs that data has changed
+            syncChannel.postMessage('REFRESH_REQUIRED');
+        } catch (e) { 
+            console.error(`Failed to persist key: ${key}`, e); 
+        }
     };
 
     const handleTransactionsAdded = (newTxs: Transaction[], newCats: Category[]) => {
