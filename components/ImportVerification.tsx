@@ -49,6 +49,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
     const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
+    const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
 
     const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
         return items
@@ -171,6 +172,16 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     }, [transactions, sortKey, sortDirection, categoryMap, payeeMap]);
 
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+    
+    const getAmountStyles = (tx: VerifiableTransaction) => {
+        const type = typeMap.get(tx.typeId);
+        if (!type) return { color: 'text-slate-600', prefix: '' };
+        
+        if (type.balanceEffect === 'income') return { color: 'text-emerald-600', prefix: '+' };
+        if (type.balanceEffect === 'expense') return { color: 'text-rose-600', prefix: '-' };
+        return { color: 'text-slate-400', prefix: '' };
+    };
+
     const commonInputClass = "w-full p-1 text-sm rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none bg-white";
 
     const handleFinalize = () => {
@@ -209,8 +220,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 </div>
             </div>
 
-            <div className="max-h-[60vh] overflow-y-auto border rounded-lg shadow-sm bg-white">
-                <table className="min-w-full divide-y divide-slate-200">
+            <div className="max-h-[60vh] overflow-y-auto border rounded-lg shadow-sm bg-white overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200 table-fixed">
                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                         <tr>
                             <th className="px-4 py-3 w-10 text-center">
@@ -222,13 +233,16 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                             {renderHeader('Income Source', 'payeeId')}
                             {renderHeader('Category', 'categoryId')}
                             {renderHeader('Amount', 'amount')}
-                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-24">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
                         {sortedTransactions.map(tx => {
                             const matchedSkipRule = tx.isIgnored && initialTransactions.find(it => it.tempId === tx.tempId)?.isIgnored;
                             const isNewPayee = tx.payeeId?.startsWith('new-p-');
+                            const type = typeMap.get(tx.typeId);
+                            const isIncome = type?.balanceEffect === 'income';
+                            const { color, prefix } = getAmountStyles(tx);
 
                             return (
                                 <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 grayscale bg-slate-50' : 'bg-green-50/30'} ${selectedIds.has(tx.tempId) ? 'ring-2 ring-inset ring-indigo-400' : 'hover:bg-slate-50'}`}>
@@ -252,23 +266,29 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'date' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{tx.date}</div>
                                         )}
                                     </td>
-                                    <td className="px-4 py-2 text-sm font-medium text-slate-900 max-w-sm">
+                                    <td className="px-4 py-2 text-sm font-medium text-slate-900 w-64 max-w-xs">
                                         {editingCell?.id === tx.tempId && editingCell.field === 'description' ? (
                                             <input type="text" defaultValue={tx.description} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'description')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'description')} className={commonInputClass} />
                                         ) : (
-                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'description' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`} title={tx.description}>{tx.description}</div>
+                                            <div 
+                                                onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'description' })} 
+                                                className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`} 
+                                                title={tx.description}
+                                            >
+                                                {tx.description}
+                                            </div>
                                         )}
                                     </td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48 max-w-[180px]">
                                          {editingCell?.id === tx.tempId && editingCell.field === 'payeeId' ? (
                                             <select defaultValue={tx.payeeId || ''} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'payeeId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'payeeId')} className={commonInputClass}>
                                                 <option value="">-- No Source --</option>
                                                 {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                             </select>
                                         ) : (
-                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 flex items-center justify-between gap-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>
-                                                <span className={isNewPayee ? 'text-indigo-600 font-bold' : ''}>
-                                                    {payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">None</span>}
+                                            <div onClick={() => !tx.isIgnored && isIncome && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 flex items-center justify-between gap-1 rounded-md truncate ${!tx.isIgnored && isIncome ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : 'bg-slate-50/50 grayscale opacity-50'}`}>
+                                                <span className={`${isNewPayee ? 'text-indigo-600 font-bold' : ''} truncate`}>
+                                                    {isIncome ? (payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">None</span>) : '--'}
                                                 </span>
                                                 {isNewPayee && (
                                                     <div className="group relative flex-shrink-0">
@@ -281,20 +301,24 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             </div>
                                         )}
                                     </td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48 max-w-[180px]">
                                          {editingCell?.id === tx.tempId && editingCell.field === 'categoryId' ? (
                                             <select defaultValue={tx.categoryId} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'categoryId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'categoryId')} className={commonInputClass}>
                                                 {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                                             </select>
                                         ) : (
-                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'categoryId' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{categoryMap.get(tx.categoryId) || 'N/A'}</div>
+                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'categoryId' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`} title={categoryMap.get(tx.categoryId) || 'N/A'}>
+                                                {categoryMap.get(tx.categoryId) || 'N/A'}
+                                            </div>
                                         )}
                                     </td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-right font-medium text-slate-700 w-32">
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-right font-medium w-32">
                                          {editingCell?.id === tx.tempId && editingCell.field === 'amount' ? (
                                             <input type="number" step="0.01" defaultValue={tx.amount} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'amount')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'amount')} className={`${commonInputClass} text-right`} />
                                         ) : (
-                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'amount' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{formatCurrency(tx.amount)}</div>
+                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'amount' })} className={`p-1 rounded-md font-mono font-bold ${color} ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>
+                                                {prefix}{formatCurrency(tx.amount)}
+                                            </div>
                                         )}
                                     </td>
                                     <td className="px-4 py-2 whitespace-nowrap text-center w-24">

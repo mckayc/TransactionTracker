@@ -301,20 +301,13 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     return colors[categoryName] || 'bg-slate-100 text-slate-800';
   };
 
-  const getAmountColor = (typeId: string) => {
+  const getAmountStyles = (typeId: string) => {
       const type = transactionTypeMap.get(typeId);
-      if (type?.balanceEffect === 'expense') return 'text-red-600';
-      if (type?.balanceEffect === 'investment') return 'text-purple-600';
-      if (type?.balanceEffect === 'donation') return 'text-blue-600';
-      if (type?.balanceEffect === 'income') return 'text-green-600';
-      return 'text-slate-600';
-  };
-
-  const getAmountPrefix = (typeId: string) => {
-      const type = transactionTypeMap.get(typeId);
-      if (type?.balanceEffect === 'expense' || type?.balanceEffect === 'investment' || type?.balanceEffect === 'donation') return '-';
-      if (type?.balanceEffect === 'income') return '+';
-      return '';
+      if (!type) return { color: 'text-slate-600', prefix: '' };
+      
+      if (type.balanceEffect === 'income') return { color: 'text-emerald-600', prefix: '+' };
+      if (type.balanceEffect === 'expense' || type.balanceEffect === 'investment' || type.balanceEffect === 'donation') return { color: 'text-rose-600', prefix: '-' };
+      return { color: 'text-slate-400', prefix: '' };
   };
 
   const dateColumnStyle = showCheckboxes ? { left: '2.5rem' } : {};
@@ -332,14 +325,15 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const cellClass = (isEditable = false) => `px-3 py-2 whitespace-nowrap text-sm text-slate-600 ${isEditable ? 'cursor-pointer hover:text-indigo-600 hover:bg-slate-50' : ''}`;
 
   const renderRow = (transaction: Transaction, isChild: boolean = false, groupData?: GroupItem) => {
-        const typeName = transaction.type || transactionTypeMap.get(transaction.typeId)?.name || 'N/A';
+        const type = transactionTypeMap.get(transaction.typeId);
+        const typeName = transaction.type || type?.name || 'N/A';
+        const isIncome = type?.balanceEffect === 'income';
         const categoryName = transaction.category || categoryMap.get(transaction.categoryId)?.name || 'Uncategorized';
         const payeeName = transaction.payee || payeeMap.get(transaction.payeeId || '')?.name || '';
         const userName = transaction.user || userMap.get(transaction.userId || '') || 'N/A';
         const accountName = transaction.account || accountMap.get(transaction.accountId || '')?.name || 'N/A';
         
-        const amountColor = getAmountColor(transaction.typeId);
-        const amountPrefix = getAmountPrefix(transaction.typeId);
+        const { color, prefix } = getAmountStyles(transaction.typeId);
         const isSelected = selectedTxIds.has(transaction.id);
         const linkGroupId = transaction.linkGroupId || transaction.linkedTransactionId;
         const isLinkedLegacy = !!linkGroupId && !groupData; 
@@ -417,7 +411,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'payeeId' })} className="truncate max-w-[180px]" title={payeeName}>{payeeName || <span className="text-slate-400 italic">None</span>}</div>
+                        <div onClick={() => isIncome && setEditingCell({ id: transaction.id, field: 'payeeId' })} className={`truncate max-w-[180px] ${!isIncome ? 'text-slate-300 italic' : ''}`} title={payeeName}>
+                            {isIncome ? (payeeName || <span className="text-slate-400 italic">None</span>) : '--'}
+                        </div>
                     )}
                   </td>
               )}
@@ -497,8 +493,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                      {editingCell?.id === transaction.id && editingCell.field === 'amount' ? (
                         <input type="number" step="0.01" defaultValue={transaction.amount} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'amount')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'amount')} className={`${commonInputClass} text-right font-mono`} />
                     ) : (
-                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'amount' })} className={`cursor-pointer hover:opacity-75 tabular-nums font-mono font-bold ${amountColor}`}>
-                            {amountPrefix}{formatCurrency(Math.abs(transaction.amount))}
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'amount' })} className={`cursor-pointer hover:opacity-75 tabular-nums font-mono font-bold ${color}`}>
+                            {prefix}{formatCurrency(Math.abs(transaction.amount))}
                         </div>
                     )}
                   </td>
@@ -532,8 +528,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       const isFullySelected = allChildIds.every(id => selectedTxIds.has(id));
       const primaryTx = group.primaryTx;
       const typeName = primaryTx.type || transactionTypeMap.get(primaryTx.typeId)?.name || 'Mix';
-      const amountColor = getAmountColor(primaryTx.typeId);
-      const amountPrefix = getAmountPrefix(primaryTx.typeId);
+      const { color, prefix } = getAmountStyles(primaryTx.typeId);
 
       return (
           <tr key={group.id} className={`bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer border-b border-slate-200 group`} onClick={() => toggleGroup(group.id)}>
@@ -566,8 +561,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {visibleColumns.has('user') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
               {visibleColumns.has('type') && (<td className="px-3 py-2 text-sm text-slate-600">{typeName}</td>)}
               {visibleColumns.has('amount') && (
-                  <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-bold pr-8 tabular-nums font-mono ${amountColor}`}>
-                      {amountPrefix}{formatCurrency(Math.abs(primaryTx.amount))}
+                  <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-bold pr-8 tabular-nums font-mono ${color}`}>
+                      {prefix}{formatCurrency(Math.abs(primaryTx.amount))}
                   </td>
               )}
               {visibleColumns.has('actions') && (

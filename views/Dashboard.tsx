@@ -8,8 +8,9 @@ import { applyRulesToTransactions } from '../services/ruleService';
 import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
-import DuplicateReview from '../components/DuplicateReview';
 import ImportVerification from '../components/ImportVerification';
+// Fix: Import missing DuplicateReview component
+import DuplicateReview from '../components/DuplicateReview';
 import RuleModal from '../components/RuleModal';
 import { ExclamationTriangleIcon, CalendarIcon, AddIcon, CloseIcon, CreditCardIcon, SparklesIcon, CheckCircleIcon, TableIcon, InfoIcon } from '../components/Icons';
 import { formatDate } from '../dateUtils';
@@ -209,6 +210,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
 
   const handleProgress = (msg: string) => setProgressMessage(msg);
 
+  const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
+
   /**
    * Fuzzy matches a description to an existing payee based on keyword overlap.
    */
@@ -260,8 +263,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     const otherCategoryId = categories.find(c => c.name.toLowerCase() === 'other')?.id || categories[0]?.id || '';
 
     const processedTransactions = transactionsWithRules.map(tx => {
-        let matchedPayeeId = tx.payeeId;
         const isIncome = transactionTypeMap.get(tx.typeId)?.balanceEffect === 'income';
+        let matchedPayeeId = tx.payeeId;
 
         // 1. Detect new categories
         if (tx.category && tx.category !== 'Uncategorized' && !existingCategoryNames.has(tx.category.toLowerCase())) {
@@ -273,8 +276,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
             existingCategoryNames.add(tx.category.toLowerCase());
         }
 
-        // 2. Payee Identification
-        if (!matchedPayeeId) {
+        // 2. Payee Identification - ONLY if it's income
+        if (isIncome && !matchedPayeeId) {
             const match = findSmartPayeeMatch(tx.description, [...payees, ...newPayees]);
             if (match) {
                 matchedPayeeId = match.id;
@@ -290,6 +293,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                     matchedPayeeId = newPayee.id;
                 }
             }
+        } else if (!isIncome) {
+            // For non-income, suppress Payee/Source assignment
+            matchedPayeeId = undefined;
         }
 
         // 3. Category Intelligence
@@ -320,7 +326,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setStagedNewCategories(newCategories);
     setStagedNewPayees(newPayees);
     setRawTransactionsToVerify(processedTransactions);
-  }, [categories, payees, accounts, findSmartPayeeMatch, transactionTypes]);
+  }, [categories, payees, accounts, findSmartPayeeMatch, transactionTypeMap]);
 
   const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
     handleProgress('Applying automation rules...');
@@ -453,7 +459,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     });
   }, [transactions, dashboardRange]);
 
-  const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
   const totalIncome = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'income').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
   const totalExpenses = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'expense').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
   const totalInvestments = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'investment').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
