@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon } from './Icons';
 
 type VerifiableTransaction = RawTransaction & { 
     categoryId: string; 
@@ -21,6 +21,9 @@ interface ImportVerificationProps {
     onCreateRule?: (tx: VerifiableTransaction) => void;
 }
 
+type SortKey = 'date' | 'description' | 'payeeId' | 'categoryId' | 'amount' | '';
+type SortDirection = 'asc' | 'desc';
+
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
     initialTransactions, 
     onComplete, 
@@ -34,6 +37,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [editingCell, setEditingCell] = useState<{ id: string; field: keyof VerifiableTransaction } | null>(null);
+    const [sortKey, setSortKey] = useState<SortKey>('');
+    const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     
     useEffect(() => {
         setTransactions(initialTransactions);
@@ -45,7 +50,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
     const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
 
-    // Recursive helper for deep hierarchies (parents, children, grandchildren)
     const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
         return items
             .filter(i => i.parentId === parentId)
@@ -138,8 +142,35 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         else if (e.key === 'Escape') setEditingCell(null);
     };
     
+    const requestSort = (key: SortKey) => {
+        setSortDirection(prev => (sortKey === key && prev === 'asc' ? 'desc' : 'asc'));
+        setSortKey(key);
+    };
+
+    const sortedTransactions = useMemo(() => {
+        if (!sortKey) return transactions;
+        const result = [...transactions].sort((a, b) => {
+            let valA: any = a[sortKey as keyof VerifiableTransaction];
+            let valB: any = b[sortKey as keyof VerifiableTransaction];
+
+            if (sortKey === 'categoryId') {
+                valA = categoryMap.get(a.categoryId) || '';
+                valB = categoryMap.get(b.categoryId) || '';
+            } else if (sortKey === 'payeeId') {
+                valA = payeeMap.get(a.payeeId || '') || '';
+                valB = payeeMap.get(b.payeeId || '') || '';
+            }
+
+            if (typeof valA === 'string') {
+                const cmp = valA.localeCompare(valB);
+                return sortDirection === 'asc' ? cmp : -cmp;
+            }
+            return sortDirection === 'asc' ? valA - valB : valB - valA;
+        });
+        return result;
+    }, [transactions, sortKey, sortDirection, categoryMap, payeeMap]);
+
     const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-    
     const commonInputClass = "w-full p-1 text-sm rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none bg-white";
 
     const handleFinalize = () => {
@@ -152,6 +183,15 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
     const importCount = transactions.filter(t => !t.isIgnored).length;
     const skipCount = transactions.filter(t => t.isIgnored).length;
+
+    const renderHeader = (label: string, key: SortKey) => (
+        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 transition-colors group" onClick={() => requestSort(key)}>
+            <div className="flex items-center gap-1">
+                {label}
+                <SortIcon className={`w-3 h-3 transition-opacity ${sortKey === key ? 'opacity-100 text-indigo-600' : 'opacity-0 group-hover:opacity-50'}`} />
+            </div>
+        </th>
+    );
 
     return (
         <div className="space-y-4 relative min-h-[400px]">
@@ -177,16 +217,17 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={transactions.length > 0 && selectedIds.size === transactions.length} onChange={handleSelectAll} />
                             </th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-20">Status</th>
-                            {['Date', 'Description', 'Income Source', 'Category', 'Amount', 'Actions'].map(header => (
-                                <th key={header} className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">{header}</th>
-                            ))}
+                            {renderHeader('Date', 'date')}
+                            {renderHeader('Description', 'description')}
+                            {renderHeader('Income Source', 'payeeId')}
+                            {renderHeader('Category', 'categoryId')}
+                            {renderHeader('Amount', 'amount')}
+                            <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
-                        {transactions.map(tx => {
-                            // Check if this specific transaction was ignored by a rule specifically
+                        {sortedTransactions.map(tx => {
                             const matchedSkipRule = tx.isIgnored && initialTransactions.find(it => it.tempId === tx.tempId)?.isIgnored;
-
                             return (
                                 <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 grayscale bg-slate-50' : 'bg-green-50/30'} ${selectedIds.has(tx.tempId) ? 'ring-2 ring-inset ring-indigo-400' : 'hover:bg-slate-50'}`}>
                                     <td className="px-4 py-2 text-center">
@@ -223,7 +264,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                                 {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                             </select>
                                         ) : (
-                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">Unassigned</span>}</div>
+                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">New Source</span>}</div>
                                         )}
                                     </td>
                                     <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">

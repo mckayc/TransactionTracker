@@ -11,10 +11,10 @@ import TransactionTable from '../components/TransactionTable';
 import DuplicateReview from '../components/DuplicateReview';
 import ImportVerification from '../components/ImportVerification';
 import RuleModal from '../components/RuleModal';
-// Added InfoIcon to the imports from components/Icons
 import { ExclamationTriangleIcon, CalendarIcon, AddIcon, CloseIcon, CreditCardIcon, SparklesIcon, CheckCircleIcon, TableIcon, InfoIcon } from '../components/Icons';
 import { formatDate } from '../dateUtils';
 import { generateUUID } from '../utils';
+import { api } from '../services/apiService';
 import { saveFile } from '../services/storageService';
 
 type AppState = 'idle' | 'processing' | 'verifying_import' | 'reviewing_duplicates' | 'post_import_edit' | 'success' | 'error';
@@ -41,7 +41,6 @@ interface DashboardProps {
   onSavePayee: (payee: Payee) => void;
   onSaveTag: (tag: Tag) => void;
   onAddTransactionType: (type: TransactionType) => void;
-  // Added handlers for post-import edit mode
   onUpdateTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
 }
@@ -184,7 +183,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [txForRule, setTxForRule] = useState<Transaction | null>(null);
   
   const apiKeyAvailable = hasApiKey();
-  const [useAi, setUseAi] = useState(false); // Default to FAST import
+  const [useAi, setUseAi] = useState(false); 
   
   const [importMethod, setImportMethod] = useState<ImportMethod>('upload');
   const [textInput, setTextInput] = useState('');
@@ -202,6 +201,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [stagedForImport, setStagedForImport] = useState<Transaction[]>([]);
   const [duplicatesToReview, setDuplicatesToReview] = useState<DuplicatePair[]>([]);
   const [stagedNewCategories, setStagedNewCategories] = useState<Category[]>([]);
+  const [stagedNewPayees, setStagedNewPayees] = useState<Payee[]>([]);
   const [finalizedTransactions, setFinalizedTransactions] = useState<Transaction[]>([]);
   const [importedTxIds, setImportedTxIds] = useState<Set<string>>(new Set());
   const [duplicatesIgnored, setDuplicatesIgnored] = useState(0);
@@ -213,10 +213,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
     const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
 
+    // Track new Categories
     const existingCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
     const newCategories: Category[] = [];
+    
+    // Track new Payees (Income Sources)
+    const existingPayeeNames = new Set(payees.map(p => p.name.toLowerCase()));
+    const newPayees: Payee[] = [];
+
     transactionsWithRules.forEach(tx => {
-        if (tx.category && !existingCategoryNames.has(tx.category.toLowerCase())) {
+        // Detect new categories
+        if (tx.category && tx.category !== 'Uncategorized' && !existingCategoryNames.has(tx.category.toLowerCase())) {
             const newCategory: Category = {
                 id: `new-${tx.category.toLowerCase().replace(/\s+/g, '-')}-${generateUUID().slice(0,4)}`,
                 name: tx.category
@@ -224,12 +231,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
             newCategories.push(newCategory);
             existingCategoryNames.add(tx.category.toLowerCase());
         }
+
+        // Detect new payees from description if not already handled by rules
+        if (!tx.payeeId) {
+            const cleanName = tx.description.trim();
+            if (cleanName && !existingPayeeNames.has(cleanName.toLowerCase())) {
+                 const newPayee: Payee = {
+                    id: `new-p-${generateUUID().slice(0,8)}`,
+                    name: cleanName
+                 };
+                 newPayees.push(newPayee);
+                 existingPayeeNames.add(cleanName.toLowerCase());
+            }
+        }
     });
 
     const categoryNameToIdMap = new Map([...categories, ...newCategories].map(c => [c.name.toLowerCase(), c.id]));
+    const payeeNameToIdMap = new Map([...payees, ...newPayees].map(p => [p.name.toLowerCase(), p.id]));
+    
     const defaultCategoryId = categories.find(c => c.name === 'Other')?.id || categories[0]?.id || '';
 
-    const transactionsWithCategoryIds = transactionsWithRules.map(tx => {
+    const transactionsWithStagedData = transactionsWithRules.map(tx => {
         const desc = (tx.description || '').toLowerCase();
         const typeStr = (tx.category || '').toLowerCase();
         const isTransfer = desc.includes('transfer') || typeStr.includes('transfer');
@@ -237,14 +259,16 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         return {
             ...tx,
             categoryId: tx.categoryId || categoryNameToIdMap.get(tx.category.toLowerCase()) || defaultCategoryId,
+            payeeId: tx.payeeId || payeeNameToIdMap.get(tx.description.trim().toLowerCase()),
             tempId: generateUUID(),
             isIgnored: isTransfer
         };
     });
 
     setStagedNewCategories(newCategories);
-    setRawTransactionsToVerify(transactionsWithCategoryIds);
-  }, [categories, accounts]);
+    setStagedNewPayees(newPayees);
+    setRawTransactionsToVerify(transactionsWithStagedData);
+  }, [categories, payees, accounts]);
 
   const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
     handleProgress('Applying automation rules...');
@@ -297,15 +321,19 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   }, [textInput, useAi, pasteAccountId, transactionTypes, prepareForVerification, selectedUserId]);
   
   const handleVerificationComplete = (verifiedTransactions: (RawTransaction & { categoryId: string; })[]) => {
-      handleProgress('Checking for duplicates...');
+      handleProgress('Finalizing staged data...');
+      
+      // Save staged new categories and payees first
+      stagedNewCategories.forEach(cat => onSaveCategory(cat));
+      stagedNewPayees.forEach(p => onSavePayee(p));
+
       const { added, duplicates } = mergeTransactions(transactions, verifiedTransactions);
       if (duplicates.length > 0) {
           setStagedForImport(added);
           setDuplicatesToReview(duplicates);
           setAppState('reviewing_duplicates');
       } else {
-          // If no duplicates, go straight to post-import edit
-          onTransactionsAdded(added, stagedNewCategories);
+          onTransactionsAdded(added, []); // Staged categories already saved above
           setFinalizedTransactions(added);
           setImportedTxIds(new Set(added.map(tx => tx.id)));
           setDuplicatesIgnored(0);
@@ -316,7 +344,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
 
   const handleReviewComplete = (duplicatesToImport: Transaction[]) => {
     const finalTransactions = [...stagedForImport, ...duplicatesToImport];
-    onTransactionsAdded(finalTransactions, stagedNewCategories);
+    onTransactionsAdded(finalTransactions, []);
     setFinalizedTransactions(finalTransactions);
     setImportedTxIds(new Set(finalTransactions.map(tx => tx.id)));
     setDuplicatesImported(duplicatesToImport.length);
@@ -325,6 +353,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setStagedForImport([]);
     setDuplicatesToReview([]);
     setStagedNewCategories([]);
+    setStagedNewPayees([]);
   };
 
   const handleClear = () => {
@@ -337,6 +366,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setStagedForImport([]);
     setDuplicatesToReview([]);
     setStagedNewCategories([]);
+    setStagedNewPayees([]);
     setFinalizedTransactions([]);
     setImportedTxIds(new Set());
     setDuplicatesIgnored(0);
@@ -404,7 +434,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       applyRulesAndSetStaging(rawExtractedTransactions, selectedUserId, updatedRules);
   };
 
-  // Filter current transactions by those just imported
   const justImportedTransactions = useMemo(() => {
     return transactions.filter(tx => importedTxIds.has(tx.id));
   }, [transactions, importedTxIds]);
@@ -498,12 +527,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                 )}
                 
                 <div className="mt-4 pt-4 border-t border-slate-100">
-                     <label className="block text-sm font-medium text-slate-700 mb-2">Assign to User (Optional)</label>
-                     <div className="flex gap-4">
+                     <label className="block text-sm font-medium text-slate-700 mb-2">Assign to User</label>
+                     <div className="flex flex-wrap gap-x-6 gap-y-3 max-h-32 overflow-y-auto p-2 border rounded-lg bg-slate-50 shadow-inner">
                         {users.map(u => (
-                            <label key={u.id} className="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" name="importUser" value={u.id} checked={selectedUserId === u.id} onChange={() => setSelectedUserId(u.id)} className="text-indigo-600 focus:ring-indigo-500" />
-                                <span className="text-sm text-slate-700">{u.name}</span>
+                            <label key={u.id} className="flex items-center gap-2 cursor-pointer group bg-white px-3 py-1.5 rounded-md border border-slate-200 hover:border-indigo-400 transition-colors">
+                                <input type="radio" name="importUser" value={u.id} checked={selectedUserId === u.id} onChange={() => setSelectedUserId(u.id)} className="text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
+                                <span className="text-sm font-medium text-slate-700 group-hover:text-indigo-700">{u.name}</span>
                             </label>
                         ))}
                      </div>
@@ -526,7 +555,17 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                 </div>
             </div>
         ) : appState === 'verifying_import' ? (
-            <ImportVerification initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={handleClear} accounts={accounts} categories={categories.concat(stagedNewCategories)} transactionTypes={transactionTypes} payees={payees} users={users} onCreateRule={handleTriggerCreateRule} />
+            <ImportVerification 
+                initialTransactions={rawTransactionsToVerify} 
+                onComplete={handleVerificationComplete} 
+                onCancel={handleClear} 
+                accounts={accounts} 
+                categories={categories.concat(stagedNewCategories)} 
+                transactionTypes={transactionTypes} 
+                payees={payees.concat(stagedNewPayees)} 
+                users={users} 
+                onCreateRule={handleTriggerCreateRule} 
+            />
         ) : appState === 'reviewing_duplicates' ? (
             <DuplicateReview duplicates={duplicatesToReview} onComplete={handleReviewComplete} onCancel={handleClear} accounts={accounts} />
         ) : appState === 'post_import_edit' ? (
