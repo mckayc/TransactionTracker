@@ -216,7 +216,7 @@ export interface TaxInfo {
 export interface BusinessProfile {
     info: BusinessInfo;
     tax: TaxInfo;
-    completedSteps: string[];
+    completedSteps: []
 }
 
 export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime' | 'custom' | 'last3Months' | 'last6Months' | 'last12Months' | 'specificMonth' | 'relativeMonth';
