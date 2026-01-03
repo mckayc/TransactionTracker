@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { AmazonMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
 import { parseAmazonReport, parseAmazonVideos } from '../../services/csvParserService';
@@ -135,6 +135,7 @@ interface VideoMatchResult {
 const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics, videos, onAddVideos, onDeleteVideos }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'insights' | 'data' | 'tools' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const [previewMetrics, setPreviewMetrics] = useState<AmazonMetric[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -315,10 +316,20 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     useEffect(() => { setCurrentPage(1); }, [filterType, dataCreatedYearFilter, rowsPerPage, isMergedAsins]);
 
-    // Upload Handlers
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    // Drag and Drop handlers
+    const onDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    }, []);
+
+    const onDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    }, []);
+
+    const processFile = async (file: File) => {
         setIsUploading(true);
         try {
             const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
@@ -326,16 +337,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 setPreviewMetrics(newMetrics);
                 const fileName = file.name.toLowerCase();
                 
-                // --- IMPROVED YEAR DETECTION FROM FILENAME ---
-                // Try to find any 4-digit year starting with 20 (e.g. 2025, 2024)
-                // We use a broader regex to catch 2025-Onsite, Onsite-2025, etc.
                 const yearMatch = fileName.match(/20\d{2}/);
                 let detectedYear = '';
                 
                 if (yearMatch) {
                     detectedYear = yearMatch[0];
                 } else {
-                    // Data Fallback: Find the most frequent or most recent year in the data records
                     const yearsInFile = newMetrics
                         .map(m => m.saleDate ? m.saleDate.substring(0, 4) : '')
                         .filter(y => y.length === 4 && !isNaN(parseInt(y)));
@@ -370,6 +377,20 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             setIsUploading(false); 
             if (fileInputRef.current) fileInputRef.current.value = ''; 
         }
+    };
+
+    const onDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) processFile(file);
+    }, []);
+
+    // Upload Handlers
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) processFile(file);
     };
 
     const confirmImport = () => {
@@ -645,12 +666,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                             <div className="mb-6">
                                 <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 whitespace-nowrap">
                                         <SparklesIcon className="w-5 h-5 text-orange-500" />
                                         <h3 className="font-bold text-slate-800 text-lg">Top Content Insights</h3>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        <div className="relative group">
+                                    <div className="flex flex-nowrap items-center gap-3 overflow-x-auto no-scrollbar">
+                                        <div className="relative group flex-shrink-0">
                                             <select 
                                                 value={filterType} 
                                                 onChange={e => setFilterType(e.target.value)} 
@@ -667,17 +688,17 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                 <ChevronDownIcon className="w-4 h-4 text-indigo-400" />
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">LIMIT</span>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">LIMIT</span>
                                             <select value={insightsLimit} onChange={e => setInsightsLimit(Number(e.target.value))} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold min-w-[65px] focus:ring-orange-500 outline-none">
                                                 {[50, 100, 200, 500].map(l => <option key={l} value={l}>{l}</option>)}
                                             </select>
                                         </div>
-                                        <select value={insightsReportYear} onChange={e => setInsightsReportYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none">
+                                        <select value={insightsReportYear} onChange={e => setInsightsReportYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none flex-shrink-0">
                                             <option value="all">Reported: All Time</option>
                                             {availableReportYears.map(y => <option key={y} value={y}>Reported: {y}</option>)}
                                         </select>
-                                        <select value={insightsCreatedYear} onChange={e => setInsightsCreatedYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none">
+                                        <select value={insightsCreatedYear} onChange={e => setInsightsCreatedYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none flex-shrink-0">
                                             <option value="all">Created: All Time</option>
                                             {availableCreatedYears.map(y => <option key={y} value={y}>Created: {y}</option>)}
                                         </select>
@@ -1021,11 +1042,25 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 </div>
                             </div>
                         ) : (
-                            <div className="bg-white p-8 rounded-[2rem] border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-center space-y-6">
-                                <div className="p-6 bg-orange-50 rounded-full text-orange-500"><CloudArrowUpIcon className="w-12 h-12" /></div>
-                                <h3 className="text-2xl font-black text-slate-800">Import Earnings</h3>
+                            <div 
+                                onDragOver={onDragOver}
+                                onDragLeave={onDragLeave}
+                                onDrop={onDrop}
+                                onClick={() => fileInputRef.current?.click()}
+                                className={`bg-white p-8 rounded-[2rem] border-4 border-dashed transition-all flex flex-col items-center justify-center text-center space-y-6 cursor-pointer group ${isDragging ? 'border-orange-500 bg-orange-50 scale-[1.02]' : 'border-slate-300 bg-white hover:border-orange-400'}`}
+                            >
+                                <div className={`p-6 rounded-full transition-colors ${isDragging ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-500 group-hover:bg-orange-100'}`}>
+                                    <CloudArrowUpIcon className="w-12 h-12" />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-800">Import Amazon Earnings</h3>
+                                    <p className="text-slate-500 mt-1">Drag and drop your report CSV here, or click to browse</p>
+                                </div>
                                 <input type="file" ref={fileInputRef} accept=".csv,.tsv,.xlsx,.xls" onChange={handleFileUpload} className="hidden" />
-                                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="px-10 py-4 bg-orange-600 text-white font-black rounded-2xl hover:bg-orange-700 shadow-xl">{isUploading ? 'Analyzing...' : 'Choose File'}</button>
+                                <button disabled={isUploading} className="px-10 py-4 bg-orange-600 text-white font-black rounded-2xl hover:bg-orange-700 shadow-xl transition-all group-hover:scale-105 active:scale-95">
+                                    {isUploading ? 'Analyzing...' : 'Choose File'}
+                                </button>
+                                <p className="text-xs text-slate-400 uppercase tracking-widest font-bold">Supports CSV and Excel Formats</p>
                             </div>
                         )}
                     </div>

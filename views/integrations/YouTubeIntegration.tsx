@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, ChartPieIcon, BoxIcon, HeartIcon, CalendarIcon, UsersIcon } from '../../components/Icons';
 import { parseYouTubeReport } from '../../services/csvParserService';
@@ -95,6 +95,7 @@ const InfoBubble: React.FC<{ title: string; content: string }> = ({ title, conte
 const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddMetrics, onDeleteMetrics, channels, onSaveChannel, onDeleteChannel }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'insights' | 'data' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
     const [previewMetrics, setPreviewMetrics] = useState<YouTubeMetric[]>([]);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -244,37 +245,44 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
 
     useEffect(() => { setCurrentPage(1); }, [rowsPerPage, groupByVideo, dataSortKey, dataSortDir, dataCreatedYearFilter, filterChannelId]);
 
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    // Drag and Drop handlers
+    const onDragOver = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+    }, []);
+
+    const onDragLeave = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+    }, []);
+
+    const processFile = async (file: File) => {
         setIsUploading(true);
         try {
             const newMetrics = await parseYouTubeReport(file, (msg) => console.log(msg));
             if (newMetrics.length > 0) {
                 setPreviewMetrics(newMetrics);
                 
-                // --- IMPROVED DETECTION FROM FILENAME ---
                 const fileName = file.name;
                 let detectedYear = '';
                 let detectedChannelId = '';
 
-                // 1. Look for date range pattern YYYY-MM-DD_YYYY-MM-DD (matches the "2018-01-01_2019-01-01 Super English Kid" format)
                 const dateRangeMatch = fileName.match(/(\d{4})-\d{2}-\d{2}_(\d{4})-\d{2}-\d{2}/);
                 if (dateRangeMatch) {
-                    detectedYear = dateRangeMatch[1]; // Use the start year
+                    detectedYear = dateRangeMatch[1];
                 } else {
-                    // Fallback to any 4-digit year if no range
                     const yearMatch = fileName.match(/\b(20\d{2})\b/);
                     if (yearMatch) {
                         detectedYear = yearMatch[1];
                     }
                 }
 
-                // 2. Channel Detection - check common naming patterns
                 const channelCleanPatterns = [
-                    /Table data - ([^-]+) -/i,             // Standard YT export
-                    /_\d{4}-\d{2}-\d{2}\s+(.+)\.csv/i,      // Format: _YYYY-MM-DD Channel Name.csv
-                    /(\d{4}-\d{2}-\d{2}_){2}\s*(.+)\.csv/i  // Format: YYYY-MM-DD_YYYY-MM-DD ChannelName.csv
+                    /Table data - ([^-]+) -/i,
+                    /_\d{4}-\d{2}-\d{2}\s+(.+)\.csv/i,
+                    /(\d{4}-\d{2}-\d{2}_){2}\s*(.+)\.csv/i
                 ];
 
                 let extractedName = '';
@@ -286,7 +294,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                     }
                 }
 
-                // Fuzzy matching: strip spaces and lowercase to compare extracted vs existing
                 const findChannelFuzzy = (name: string) => {
                     const stripped = name.toLowerCase().replace(/\s+/g, '');
                     return channels.find(c => c.name.toLowerCase().replace(/\s+/g, '') === stripped);
@@ -297,7 +304,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                     if (matched) detectedChannelId = matched.id;
                 }
 
-                // 3. Fallback: Search all existing channel names in the raw filename
                 if (!detectedChannelId) {
                     const matched = channels.find(c => {
                         const strippedName = c.name.toLowerCase().replace(/\s+/g, '');
@@ -307,8 +313,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                     if (matched) detectedChannelId = matched.id;
                 }
 
-                // --- FALLBACK LOGIC FOR YEAR ---
-                // If year not found in filename, find the record with the most recent publish date
                 if (!detectedYear) {
                     const latestRecord = [...newMetrics].sort((a, b) => {
                         const dateA = new Date(a.publishDate).getTime();
@@ -334,6 +338,19 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
+    };
+
+    const onDrop = useCallback((e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) processFile(file);
+    }, []);
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) processFile(file);
     };
 
     const confirmImport = () => {
@@ -1103,13 +1120,25 @@ Conv Rate: ${conv.toFixed(2)}%
                     <div className="h-full space-y-6 pb-20">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
                             <div className="space-y-4">
-                                <div className="flex flex-col items-center justify-center bg-white rounded-xl border-2 border-dashed border-slate-300 p-8">
-                                    <div className="bg-red-50 p-4 rounded-full mb-4"><CloudArrowUpIcon className="w-8 h-8 text-red-500" /></div>
-                                    <h3 className="text-xl font-bold text-slate-700 mb-2">Select CSV File</h3>
+                                <div 
+                                    onDragOver={onDragOver}
+                                    onDragLeave={onDragLeave}
+                                    onDrop={onDrop}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className={`flex flex-col items-center justify-center rounded-xl border-4 border-dashed p-10 text-center transition-all cursor-pointer group ${isDragging ? 'border-red-500 bg-red-50 scale-[1.02]' : 'border-slate-300 bg-white hover:border-red-400'}`}
+                                >
+                                    <div className={`p-6 rounded-full transition-colors ${isDragging ? 'bg-red-500 text-white' : 'bg-red-50 text-red-500 group-hover:bg-red-100'}`}>
+                                        <CloudArrowUpIcon className="w-12 h-12" />
+                                    </div>
+                                    <div className="mt-4">
+                                        <h3 className="text-xl font-bold text-slate-700">Import YouTube Data</h3>
+                                        <p className="text-slate-500 mt-1">Drag and drop your CSV file here, or click to browse</p>
+                                    </div>
                                     <input type="file" ref={fileInputRef} accept=".csv,.tsv" onChange={handleFileUpload} className="hidden" />
-                                    <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="px-6 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:bg-slate-300 transition-colors">
+                                    <button disabled={isUploading} className="mt-6 px-10 py-3 bg-red-600 text-white font-black rounded-xl hover:bg-red-700 shadow-xl transition-all group-hover:scale-105 active:scale-95">
                                         {isUploading ? 'Parsing...' : 'Choose File'}
                                     </button>
+                                    <p className="mt-4 text-xs text-slate-400 uppercase font-black tracking-widest">CSV and TSV exports supported</p>
                                 </div>
 
                                 {previewMetrics.length > 0 && (
