@@ -79,9 +79,9 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
     if (!isOpen) return null;
 
     const handleCreateCategory = () => {
-        const categoryName = prompt("Enter new Category name:");
-        if (categoryName && categoryName.trim() && typeof onSaveCategory === 'function') {
-            const newCat = { id: generateUUID(), name: categoryName.trim() };
+        const categoryNameInput = prompt("Enter new Category name:");
+        if (categoryNameInput && categoryNameInput.trim() && typeof onSaveCategory === 'function') {
+            const newCat = { id: generateUUID(), name: categoryNameInput.trim() };
             onSaveCategory(newCat);
             setSetCategoryId(newCat.id);
         }
@@ -199,4 +199,78 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                         </div>
                         
                         {!skipImport ? (
-                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Set Category</label>
+                                    <div className="flex gap-1">
+                                        <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-2 border rounded-md">
+                                            <option value="">-- Don't Change --</option>
+                                            {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                                        </select>
+                                        {onSaveCategory && <button type="button" onClick={handleCreateCategory} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold">+</button>}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Set Income Source</label>
+                                    <div className="flex gap-1">
+                                        <select value={setPayeeId} onChange={(e) => setSetPayeeId(e.target.value)} className="w-full p-2 border rounded-md">
+                                            <option value="">-- Don't Change --</option>
+                                            {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                        {onSavePayee && <button type="button" onClick={handleCreatePayee} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold">+</button>}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Set Transaction Type</label>
+                                    <div className="flex gap-1">
+                                        <select value={setTransactionTypeId} onChange={(e) => setSetTransactionTypeId(e.target.value)} className="w-full p-2 border rounded-md">
+                                            <option value="">-- Don't Change --</option>
+                                            {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+                                        </select>
+                                        {onAddTransactionType && <button type="button" onClick={handleCreateType} className="px-3 bg-indigo-100 text-indigo-600 rounded border border-indigo-200 hover:bg-indigo-200 font-bold">+</button>}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 mb-1">Set Description</label>
+                                    <input type="text" value={setDescription} onChange={(e) => setSetDescription(e.target.value)} placeholder="e.g., Clean Name" className="w-full p-2 border rounded-md" />
+                                </div>
+                                <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Assign Tags</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {tags.map(tag => (
+                                            <button
+                                                key={tag.id}
+                                                type="button"
+                                                onClick={() => toggleTag(tag.id)}
+                                                className={`px-2 py-1 rounded-full text-xs border transition-colors ${assignTagIds.has(tag.id) ? tag.color + ' ring-1 ring-offset-1 ring-slate-400' : 'bg-white text-slate-600 border-slate-300'}`}
+                                            >
+                                                {tag.name}
+                                            </button>
+                                        ))}
+                                        {onSaveTag && (
+                                            <button
+                                                type="button"
+                                                onClick={handleCreateTag}
+                                                className="px-2 py-1 rounded-full text-xs border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 bg-white transition-colors"
+                                                title="Create new tag"
+                                            >
+                                                + New
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="py-6 text-center bg-red-50 rounded-xl border border-red-100 border-dashed">
+                                <p className="text-sm font-bold text-red-800">This transaction will be filtered out automatically.</p>
+                                <p className="text-xs text-red-600 mt-1">Matched rows will not be added to your permanent transaction history.</p>
+                            </div>
+                        )}
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+export default RuleModal;
