@@ -9,7 +9,6 @@ import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import ImportVerification from '../components/ImportVerification';
-// Fix: Import missing DuplicateReview component
 import DuplicateReview from '../components/DuplicateReview';
 import RuleModal from '../components/RuleModal';
 import { ExclamationTriangleIcon, CalendarIcon, AddIcon, CloseIcon, CreditCardIcon, SparklesIcon, CheckCircleIcon, TableIcon, InfoIcon } from '../components/Icons';
@@ -219,15 +218,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       const cleanDesc = description.toLowerCase().trim();
       if (!cleanDesc) return null;
 
-      // 1. Direct exact match
       const exact = existingPayees.find(p => p.name.toLowerCase() === cleanDesc);
       if (exact) return exact;
 
-      // 2. Contains match
       const contains = existingPayees.find(p => cleanDesc.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanDesc));
       if (contains) return contains;
 
-      // 3. Keyword Overlap
       const descKeywords = cleanDesc.split(/[^a-z0-9]/).filter(w => w.length > 2);
       if (descKeywords.length === 0) return null;
 
@@ -238,8 +234,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       }).filter(c => c.overlap > 0);
 
       candidates.sort((a, b) => b.overlap - a.overlap);
-      
-      // If at least one significant keyword matches, we'll suggest it
       if (candidates.length > 0 && candidates[0].overlap >= Math.max(1, descKeywords.length / 2)) {
           return candidates[0].payee;
       }
@@ -251,11 +245,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
     const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
 
-    // Track new Categories
     const existingCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
     const newCategories: Category[] = [];
-    
-    // Track new Payees (Income Sources)
     const existingPayeeNames = new Set(payees.map(p => p.name.toLowerCase()));
     const newPayees: Payee[] = [];
 
@@ -266,7 +257,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         const isIncome = transactionTypeMap.get(tx.typeId)?.balanceEffect === 'income';
         let matchedPayeeId = tx.payeeId;
 
-        // 1. Detect new categories
         if (tx.category && tx.category !== 'Uncategorized' && !existingCategoryNames.has(tx.category.toLowerCase())) {
             const newCategory: Category = {
                 id: `new-${tx.category.toLowerCase().replace(/\s+/g, '-')}-${generateUUID().slice(0,4)}`,
@@ -276,38 +266,25 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
             existingCategoryNames.add(tx.category.toLowerCase());
         }
 
-        // 2. Payee Identification - ONLY if it's income
         if (isIncome && !matchedPayeeId) {
             const match = findSmartPayeeMatch(tx.description, [...payees, ...newPayees]);
-            if (match) {
-                matchedPayeeId = match.id;
-            } else {
+            if (match) matchedPayeeId = match.id;
+            else {
                 const cleanName = tx.description.trim();
                 if (cleanName) {
-                    const newPayee: Payee = {
-                        id: `new-p-${generateUUID().slice(0,8)}`,
-                        name: cleanName
-                    };
+                    const newPayee: Payee = { id: `new-p-${generateUUID().slice(0,8)}`, name: cleanName };
                     newPayees.push(newPayee);
                     existingPayeeNames.add(cleanName.toLowerCase());
                     matchedPayeeId = newPayee.id;
                 }
             }
-        } else if (!isIncome) {
-            // For non-income, suppress Payee/Source assignment
-            matchedPayeeId = undefined;
         }
 
-        // 3. Category Intelligence
-        // If income and no category was assigned by a rule, default to 'Income' category
         let finalCategoryId = tx.categoryId;
         if (!finalCategoryId) {
              const categoryNameToIdMap = new Map([...categories, ...newCategories].map(c => [c.name.toLowerCase(), c.id]));
              finalCategoryId = categoryNameToIdMap.get((tx.category || '').toLowerCase());
-             
-             if (!finalCategoryId) {
-                 finalCategoryId = isIncome && incomeCategoryId ? incomeCategoryId : otherCategoryId;
-             }
+             if (!finalCategoryId) finalCategoryId = isIncome && incomeCategoryId ? incomeCategoryId : otherCategoryId;
         }
 
         const desc = (tx.description || '').toLowerCase();
@@ -342,18 +319,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       let importFolderId = documentFolders.find(f => f.name === "Imported Documents" && !f.parentId)?.id;
       if (!importFolderId) {
           importFolderId = generateUUID();
-          const newFolder: DocumentFolder = { id: importFolderId, name: "Imported Documents", parentId: undefined, createdAt: new Date().toISOString() };
-          onCreateFolder(newFolder);
+          onCreateFolder({ id: importFolderId, name: "Imported Documents", parentId: undefined, createdAt: new Date().toISOString() });
       }
       for (const file of files) {
-          const now = new Date();
-          const timestampPrefix = now.toISOString().replace(/[:T]/g, '-').slice(0, 19);
-          const newFileName = `${timestampPrefix}_${file.name}`;
           const docId = generateUUID();
-          const fileToSave = new File([file], newFileName, { type: file.type });
-          await saveFile(docId, fileToSave);
-          const newDoc: BusinessDocument = { id: docId, name: fileToSave.name, uploadDate: now.toISOString().split('T')[0], size: fileToSave.size, mimeType: fileToSave.type, parentId: importFolderId };
-          onAddDocument(newDoc);
+          await saveFile(docId, file);
+          onAddDocument({ id: docId, name: file.name, uploadDate: new Date().toISOString().split('T')[0], size: file.size, mimeType: file.type, parentId: importFolderId });
       }
       const rawTransactions = useAi ? await extractTransactionsFromFiles(files, accountId, transactionTypes, handleProgress) : await parseTransactionsFromFiles(files, accountId, transactionTypes, handleProgress);
       await prepareForVerification(rawTransactions, selectedUserId);
@@ -380,8 +351,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   
   const handleVerificationComplete = (verifiedTransactions: (RawTransaction & { categoryId: string; })[]) => {
       handleProgress('Finalizing staged data...');
-      
-      // Save staged new categories and payees first
       stagedNewCategories.forEach(cat => onSaveCategory(cat));
       stagedNewPayees.forEach(p => onSavePayee(p));
 
@@ -391,11 +360,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
           setDuplicatesToReview(duplicates);
           setAppState('reviewing_duplicates');
       } else {
-          onTransactionsAdded(added, []); // Staged categories already saved above
+          onTransactionsAdded(added, []);
           setFinalizedTransactions(added);
           setImportedTxIds(new Set(added.map(tx => tx.id)));
-          setDuplicatesIgnored(0);
-          setDuplicatesImported(0);
           setAppState('post_import_edit');
       }
   };
@@ -410,8 +377,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     setAppState('post_import_edit');
     setStagedForImport([]);
     setDuplicatesToReview([]);
-    setStagedNewCategories([]);
-    setStagedNewPayees([]);
   };
 
   const handleClear = () => {
@@ -442,19 +407,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     return baseTxs.filter(tx => {
         const txDate = new Date(tx.date);
         txDate.setHours(0, 0, 0, 0);
-        const txYear = txDate.getFullYear();
-        const txMonth = txDate.getMonth();
-        if (dashboardRange === 'year') return txYear === now.getFullYear();
-        if (dashboardRange === 'month') return txYear === now.getFullYear() && txMonth === now.getMonth();
-        if (dashboardRange === 'week') {
-             const today = new Date();
-             today.setHours(0,0,0,0);
-             const startOfWeek = new Date(today);
-             startOfWeek.setDate(today.getDate() - today.getDay());
-             const endOfWeek = new Date(startOfWeek);
-             endOfWeek.setDate(startOfWeek.getDate() + 6);
-             return txDate >= startOfWeek && txDate <= endOfWeek;
-        }
+        if (dashboardRange === 'year') return txDate.getFullYear() === now.getFullYear();
+        if (dashboardRange === 'month') return txDate.getFullYear() === now.getFullYear() && txDate.getMonth() === now.getMonth();
         return true;
     });
   }, [transactions, dashboardRange]);
@@ -478,21 +432,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   
   const nextDeadline = useMemo(() => getNextTaxDeadline(), []);
 
-  const getRangeLabel = () => {
-      switch(dashboardRange) {
-          case 'year': return 'This Year';
-          case 'month': return 'This Month';
-          case 'week': return 'This Week';
-          default: return 'All Time';
-      }
-  }
-
   const handleTriggerCreateRule = (rawTx: RawTransaction & { tempId: string }) => {
-      const tx: Transaction = {
-          ...rawTx,
-          id: rawTx.tempId,
-          categoryId: rawTx.categoryId || ''
-      };
+      const tx: Transaction = { ...rawTx, id: rawTx.tempId, categoryId: rawTx.categoryId || '' };
       setTxForRule(tx);
       setIsRuleModalOpen(true);
   };
@@ -500,13 +441,10 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const handleSaveRuleFromImport = (rule: ReconciliationRule) => {
       onSaveRule(rule);
       setIsRuleModalOpen(false);
-      const updatedRules = [...rules, rule];
-      applyRulesAndSetStaging(rawExtractedTransactions, selectedUserId, updatedRules);
+      applyRulesAndSetStaging(rawExtractedTransactions, selectedUserId, [...rules, rule]);
   };
 
-  const justImportedTransactions = useMemo(() => {
-    return transactions.filter(tx => importedTxIds.has(tx.id));
-  }, [transactions, importedTxIds]);
+  const justImportedTransactions = useMemo(() => transactions.filter(tx => importedTxIds.has(tx.id)), [transactions, importedTxIds]);
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 
@@ -518,17 +456,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
             <p className="text-slate-500 mt-1">An overview of your financial activity.</p>
         </div>
         <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200 overflow-x-auto">
-            {(['all', 'year', 'month', 'week'] as const).map(range => (
-                <button
-                    key={range}
-                    onClick={() => setDashboardRange(range)}
-                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
-                        dashboardRange === range 
-                        ? 'bg-indigo-50 text-indigo-700 shadow-sm' 
-                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                    }`}
-                >
-                    {range === 'all' ? 'All Time' : range === 'year' ? 'This Year' : range === 'month' ? 'This Month' : 'This Week'}
+            {(['all', 'year', 'month'] as const).map(range => (
+                <button key={range} onClick={() => setDashboardRange(range)} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${dashboardRange === range ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}>
+                    {range === 'all' ? 'All Time' : range === 'year' ? 'This Year' : 'This Month'}
                 </button>
             ))}
         </div>
@@ -536,13 +466,13 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       
       {appState === 'idle' && (
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 flex-shrink-0">
-            <SummaryWidget title="Income" value={formatCurrency(totals.income)} helpText={getRangeLabel()} className="border-emerald-100" />
-            <SummaryWidget title="Expenses" value={formatCurrency(totals.expenses)} helpText={getRangeLabel()} className="border-rose-100" />
-            <SummaryWidget title="Taxes" value={formatCurrency(totals.taxes)} helpText={getRangeLabel()} className="border-amber-100 bg-amber-50/30" />
-            <SummaryWidget title="Debt" value={formatCurrency(totals.debt)} helpText={getRangeLabel()} className="border-slate-100 bg-slate-50" />
-            <SummaryWidget title="Invest" value={formatCurrency(totals.investments)} helpText={getRangeLabel()} className="border-purple-100" />
-            <SummaryWidget title="Donations" value={formatCurrency(totals.donations)} helpText={getRangeLabel()} className="border-blue-100" />
-            <SummaryWidget title="Savings" value={formatCurrency(totals.savings)} helpText={getRangeLabel()} className="border-indigo-100" />
+            <SummaryWidget title="Income" value={formatCurrency(totals.income)} helpText={dashboardRange} className="border-emerald-100" />
+            <SummaryWidget title="Expenses" value={formatCurrency(totals.expenses)} helpText={dashboardRange} className="border-rose-100" />
+            <SummaryWidget title="Taxes" value={formatCurrency(totals.taxes)} helpText={dashboardRange} className="border-amber-100 bg-amber-50/30" />
+            <SummaryWidget title="Debt" value={formatCurrency(totals.debt)} helpText={dashboardRange} className="border-slate-100 bg-slate-50" />
+            <SummaryWidget title="Invest" value={formatCurrency(totals.investments)} helpText={dashboardRange} className="border-purple-100" />
+            <SummaryWidget title="Donations" value={formatCurrency(totals.donations)} helpText={dashboardRange} className="border-blue-100" />
+            <SummaryWidget title="Savings" value={formatCurrency(totals.savings)} helpText={dashboardRange} className="border-indigo-100" />
             <SummaryWidget title={nextDeadline.label} value={`${nextDeadline.daysLeft}d`} helpText={`Due ${nextDeadline.dateStr}`} icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
           </div>
       )}
@@ -557,61 +487,19 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                         <button onClick={() => setImportMethod('upload')} className={`px-4 py-2 rounded-lg font-semibold ${importMethod === 'upload' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}`}>Upload Files</button>
                         <button onClick={() => setImportMethod('paste')} className={`px-4 py-2 rounded-lg font-semibold ${importMethod === 'paste' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}`}>Paste Text</button>
                     </div>
-                     <div className="flex items-center space-x-2" title={!apiKeyAvailable ? "API Key missing" : "Toggle AI Processing"}>
-                        <span className={`text-sm font-medium ${!useAi ? 'text-indigo-600' : 'text-slate-500'}`}>Fast</span>
-                        <label htmlFor="ai-toggle" className="relative inline-flex items-center cursor-pointer">
-                            <input type="checkbox" id="ai-toggle" className="sr-only peer" checked={useAi} onChange={() => setUseAi(!useAi)} disabled={!apiKeyAvailable} />
-                            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                        </label>
-                        <span className={`text-sm font-medium ${useAi ? 'text-indigo-600' : 'text-slate-500'}`}>AI-Powered</span>
-                    </div>
                 </div>
 
                 {importMethod === 'upload' ? (
-                    <FileUpload 
-                      onFileUpload={handleFileUpload} 
-                      disabled={false} 
-                      accounts={accounts} 
-                      useAi={useAi} 
-                      onAddAccountRequested={() => setIsAccountModalOpen(true)}
-                    />
+                    <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} useAi={useAi} onAddAccountRequested={() => setIsAccountModalOpen(true)} />
                 ) : (
                     <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Select Account</label>
-                            <div className="flex gap-2">
-                                 {accounts.length > 0 ? (
-                                    <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="flex-grow">
-                                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                                    </select>
-                                 ) : (
-                                    <div className="flex-grow p-2 border rounded-md bg-red-50 text-red-600 text-sm font-medium border-red-100">No accounts found. Create one to continue.</div>
-                                 )}
-                                 <button 
-                                    onClick={() => setIsAccountModalOpen(true)} 
-                                    className="px-3 py-2 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-indigo-600"
-                                    title="Quick add account"
-                                 >
-                                    <AddIcon className="w-5 h-5" />
-                                 </button>
-                            </div>
-                        </div>
-                        <textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="Paste transaction text here (CSV rows, or table data from your bank website)..." className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none font-mono text-sm" />
-                        <button onClick={handleTextPaste} disabled={!textInput.trim() || accounts.length === 0} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 disabled:bg-slate-400">Process Text</button>
+                        <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full">
+                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                        </select>
+                        <textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="Paste CSV rows here..." className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm" />
+                        <button onClick={handleTextPaste} disabled={!textInput.trim() || accounts.length === 0} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">Process Text</button>
                     </div>
                 )}
-                
-                <div className="mt-6 pt-4 border-t border-slate-100">
-                     <label className="block text-sm font-medium text-slate-700 mb-2">Assign to User</label>
-                     <div className="flex flex-wrap gap-2 p-2 border rounded-lg bg-slate-50 shadow-inner max-h-48 overflow-y-auto">
-                        {users.map(u => (
-                            <label key={u.id} className="flex items-center gap-2 cursor-pointer group bg-white px-3 py-1.5 rounded-md border border-slate-200 hover:border-indigo-400 transition-colors">
-                                <input type="radio" name="importUser" value={u.id} checked={selectedUserId === u.id} onChange={() => setSelectedUserId(u.id)} className="text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
-                                <span className="text-sm font-medium text-slate-700 group-hover:text-indigo-700">{u.name}</span>
-                            </label>
-                        ))}
-                     </div>
-                </div>
             </div>
 
             <div className="mt-12 pt-8 border-t border-slate-200 overflow-hidden flex flex-col flex-1">
@@ -624,10 +512,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         ) : appState === 'processing' ? (
             <div className="py-12 flex-1 flex flex-col items-center justify-center space-y-4 text-center">
                 <svg className="animate-spin h-12 w-12 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                <div className="text-slate-600">
-                    <p className="font-bold text-xl">Processing Documents</p>
-                    <p className="text-sm text-slate-400 mt-1">{progressMessage}</p>
-                </div>
+                <div className="text-slate-600"><p className="font-bold text-xl">Processing Documents</p><p className="text-sm text-slate-400 mt-1">{progressMessage}</p></div>
             </div>
         ) : appState === 'verifying_import' ? (
             <ImportVerification 
@@ -640,90 +525,29 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                 payees={payees.concat(stagedNewPayees)} 
                 users={users} 
                 onCreateRule={handleTriggerCreateRule} 
+                existingTransactions={transactions}
             />
         ) : appState === 'reviewing_duplicates' ? (
             <DuplicateReview duplicates={duplicatesToReview} onComplete={handleReviewComplete} onCancel={handleClear} accounts={accounts} />
         ) : appState === 'post_import_edit' ? (
             <div className="flex-1 flex flex-col overflow-hidden animate-fade-in h-full">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 bg-slate-50 p-5 rounded-2xl border border-indigo-100 flex-shrink-0">
+                <div className="flex justify-between items-center mb-6 bg-slate-50 p-5 rounded-2xl border border-indigo-100 flex-shrink-0">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-                            <SparklesIcon className="w-6 h-6 text-indigo-600" />
-                            Import Ready for Review
-                        </h2>
-                        <p className="text-sm text-slate-500 mt-1">
-                            Successfully added <strong className="text-indigo-600 font-black">{justImportedTransactions.length}</strong> transactions. 
-                            You can refine them below before finishing.
-                        </p>
+                        <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> Import Ready for Review</h2>
+                        <p className="text-sm text-slate-500 mt-1">Added <strong className="text-indigo-600 font-black">{justImportedTransactions.length}</strong> transactions.</p>
                     </div>
-                    <div className="flex gap-3">
-                        <button 
-                            onClick={handleClear}
-                            className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all hover:-translate-y-0.5 active:translate-y-0"
-                        >
-                            <CheckCircleIcon className="w-5 h-5" />
-                            Finish & Exit
-                        </button>
-                    </div>
+                    <button onClick={handleClear} className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg">Finish & Exit</button>
                 </div>
-
                 <div className="flex-1 overflow-hidden border border-slate-200 rounded-2xl shadow-sm relative">
-                    <TransactionTable 
-                        transactions={justImportedTransactions} 
-                        accounts={accounts} 
-                        categories={categories} 
-                        tags={tags} 
-                        transactionTypes={transactionTypes} 
-                        payees={payees} 
-                        users={users} 
-                        onUpdateTransaction={onUpdateTransaction} 
-                        onDeleteTransaction={onDeleteTransaction} 
-                        visibleColumns={new Set(['date', 'description', 'payee', 'category', 'tags', 'user', 'amount', 'actions'])}
-                    />
-                </div>
-                
-                <div className="mt-4 flex justify-between items-center bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex-shrink-0">
-                    <div className="flex items-center gap-2 text-indigo-800">
-                        <InfoIcon className="w-5 h-5" />
-                        <p className="text-sm font-medium">Changes made here are saved directly to your permanent record.</p>
-                    </div>
-                    {duplicatesImported > 0 && (
-                        <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-100 px-2 py-1 rounded-full">
-                            Includes {duplicatesImported} overridden duplicate(s)
-                        </span>
-                    )}
+                    <TransactionTable transactions={justImportedTransactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} visibleColumns={new Set(['date', 'description', 'payee', 'category', 'amount', 'actions'])} />
                 </div>
             </div>
         ) : (
-            <ResultsDisplay appState={appState} error={error} progressMessage={progressMessage} transactions={finalizedTransactions} duplicatesIgnored={duplicatesIgnored} duplicatesImported={duplicatesImported} onClear={handleClear} />
+            <ResultsDisplay appState={appState as any} error={error} progressMessage={progressMessage} transactions={finalizedTransactions} duplicatesIgnored={duplicatesIgnored} duplicatesImported={duplicatesImported} onClear={handleClear} />
         )}
       </div>
 
-      <QuickAccountModal 
-        isOpen={isAccountModalOpen} 
-        onClose={() => setIsAccountModalOpen(false)} 
-        onSave={onAddAccount}
-        onAddType={onAddAccountType}
-        accountTypes={accountTypes}
-      />
-
-      {isRuleModalOpen && (
-        <RuleModal
-            isOpen={isRuleModalOpen}
-            onClose={() => setIsRuleModalOpen(false)}
-            onSaveRule={handleSaveRuleFromImport}
-            accounts={accounts}
-            transactionTypes={transactionTypes}
-            categories={categories}
-            tags={tags}
-            payees={payees}
-            transaction={txForRule}
-            onSaveCategory={onSaveCategory}
-            onSavePayee={onSavePayee}
-            onSaveTag={onSaveTag}
-            onAddTransactionType={onAddTransactionType}
-        />
-      )}
+      <QuickAccountModal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} onSave={onAddAccount} onAddType={onAddAccountType} accountTypes={accountTypes} />
     </div>
   );
 };
