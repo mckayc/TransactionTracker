@@ -356,7 +356,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                                                 {date.getDate()}
                                             </span>
                                         </div>
-                                        {(data?.income !== 0 || data?.expenses !== 0) && (
+                                        {data && (data.income !== 0 || data.expenses !== 0) && (
                                             <div className="text-[9px] font-mono text-right leading-tight">
                                                 {data.income > 0 && <p className="text-emerald-600 font-bold">+{Math.round(data.income)}</p>}
                                                 {data.expenses > 0 && <p className="text-rose-600 font-bold">-{Math.round(data.expenses)}</p>}
@@ -407,7 +407,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                   </div>
               </div>
 
-              {/* Day Detail Sidebar */}
+              {/* Day Detail Sidebar (Inspector) */}
               {selectedDate && (
                   <div className="w-full lg:w-[35%] bg-white rounded-2xl shadow-xl border-2 border-indigo-100 flex flex-col min-h-0 animate-slide-in-right overflow-hidden">
                       <div className="p-5 border-b bg-indigo-600 text-white flex justify-between items-center">
@@ -426,6 +426,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                       </div>
 
                       <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
+                          {/* Daily Stats Summary in Sidebar */}
                           <div className="grid grid-cols-2 gap-3">
                               <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl">
                                   <p className="text-[10px] font-black text-emerald-600 uppercase">Daily Income</p>
@@ -437,6 +438,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                               </div>
                           </div>
 
+                          {/* Tasks Section */}
                           <section>
                               <div className="flex items-center justify-between mb-3">
                                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -470,6 +472,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                               </div>
                           </section>
 
+                          {/* Transactions Section */}
                           <section>
                               <div className="flex items-center justify-between mb-3">
                                 <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
