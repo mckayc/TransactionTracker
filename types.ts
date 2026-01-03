@@ -86,7 +86,7 @@ export interface DuplicatePair {
 }
 
 export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'exists';
-export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata';
+export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata' | 'categoryId' | 'category';
 export type RuleLogic = 'AND' | 'OR';
 
 export interface RuleCondition {

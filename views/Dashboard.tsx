@@ -243,7 +243,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
 
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
-    const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
+    // Pass categories to rules engine for better matching
+    const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts, categories);
 
     const existingCategoryNames = new Set(categories.map(c => c.name.toLowerCase()));
     const newCategories: Category[] = [];

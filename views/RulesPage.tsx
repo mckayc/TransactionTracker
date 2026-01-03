@@ -40,11 +40,14 @@ const RuleCard: React.FC<{
             if (!first.field) return "Complex Rule";
             
             let text = "";
-            if (first.field === 'description') text = `Desc ${first.operator === 'contains' ? 'has' : first.operator} "${first.value}"`;
+            if (first.field === 'description') text = `Desc has "${first.value}"`;
+            else if (first.field === 'categoryId') {
+                const name = categories.find(c => c.id === first.value)?.name || first.value;
+                text = `Cat is "${name}"`;
+            }
             else if (first.field === 'amount') text = `Amt ${first.operator === 'equals' ? '=' : first.operator} ${first.value}`;
             else if (first.field === 'accountId') {
-                if (first.operator === 'equals') text = 'Acct Is (Exact Match)';
-                else text = `Acct Name ${first.operator === 'contains' ? 'contains' : first.operator} "${first.value}"`;
+                text = `Acct matches`;
             }
             
             if (rule.conditions.length > 1) {
@@ -182,7 +185,6 @@ const RuleEditorModal: React.FC<{
         }
     }, [isOpen, selectedRule]);
     
-    // Recursive helper for deep hierarchies (parents, children, grandchildren)
     const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
         return items
             .filter(i => i.parentId === parentId)
@@ -283,7 +285,7 @@ const RuleEditorModal: React.FC<{
                             <SparklesIcon className="w-4 h-4 text-indigo-500"/> 
                             If transactions match...
                         </h3>
-                        <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
+                        <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} categories={categories} />
                     </div>
                     <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
                         <div className="flex justify-between items-center mb-4">
@@ -457,9 +459,7 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                         </div>
                     ) : (
                         <div className="h-64 flex flex-col items-center justify-center text-slate-400 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
-                            <SparklesIcon className="w-12 h-12 mb-3 opacity-50" />
                             <p className="font-medium">No rules found.</p>
-                            <p className="text-sm text-slate-500">Try a different search or create a new rule.</p>
                         </div>
                     )}
                 </div>
