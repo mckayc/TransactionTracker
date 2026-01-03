@@ -11,7 +11,6 @@ import TransactionAuditor from '../components/TransactionAuditor';
 import VerifyModal from '../components/VerifyModal';
 import DonationModal from '../components/DonationModal';
 import SplitTransactionModal from '../components/SplitTransactionModal';
-// Added CheckCircleIcon to the imports from Icons.tsx
 import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, PrinterIcon, DownloadIcon, ShieldCheckIcon, HeartIcon, ChartPieIcon, CopyIcon, CheckCircleIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
@@ -408,6 +407,39 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       localStorage.setItem('transaction_columns', JSON.stringify(Array.from(visibleColumns)));
   }, [visibleColumns]);
 
+  // --- NEW HIERARCHICAL FILTER EXPANSION ---
+  const effectivePayeeIds = useMemo(() => {
+      if (selectedPayees.size === 0) return selectedPayees;
+      const result = new Set(selectedPayees);
+      const stack = Array.from(selectedPayees);
+      while (stack.length > 0) {
+          const currentId = stack.pop()!;
+          payees.forEach(p => {
+              if (p.parentId === currentId && !result.has(p.id)) {
+                  result.add(p.id);
+                  stack.push(p.id);
+              }
+          });
+      }
+      return result;
+  }, [selectedPayees, payees]);
+
+  const effectiveCategoryIds = useMemo(() => {
+      if (selectedCategories.size === 0) return selectedCategories;
+      const result = new Set(selectedCategories);
+      const stack = Array.from(selectedCategories);
+      while (stack.length > 0) {
+          const currentId = stack.pop()!;
+          categories.forEach(c => {
+              if (c.parentId === currentId && !result.has(c.id)) {
+                  result.add(c.id);
+                  stack.push(c.id);
+              }
+          });
+      }
+      return result;
+  }, [selectedCategories, categories]);
+
   const filteredTransactions = useMemo(() => {
     return transactions.filter(tx => {
       const txDate = new Date(tx.date);
@@ -448,16 +480,16 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
         }
       }
       
-      // Multi-select filters logic
-      if (selectedCategories.size > 0 && !selectedCategories.has(tx.categoryId)) return false;
+      // Multi-select filters logic - Using Hierarchical Effective IDs
+      if (effectiveCategoryIds.size > 0 && !effectiveCategoryIds.has(tx.categoryId)) return false;
       if (selectedTypes.size > 0 && !selectedTypes.has(tx.typeId)) return false;
       if (selectedAccounts.size > 0 && !selectedAccounts.has(tx.accountId || '')) return false;
       if (selectedUsers.size > 0 && !selectedUsers.has(tx.userId || '')) return false;
-      if (selectedPayees.size > 0 && !selectedPayees.has(tx.payeeId || '')) return false;
+      if (effectivePayeeIds.size > 0 && !effectivePayeeIds.has(tx.payeeId || '')) return false;
       
       return true;
     });
-  }, [transactions, debouncedSearchTerm, selectedCategories, selectedTypes, selectedAccounts, selectedUsers, selectedPayees, startDate, endDate, payees]);
+  }, [transactions, debouncedSearchTerm, effectiveCategoryIds, selectedTypes, selectedAccounts, selectedUsers, effectivePayeeIds, startDate, endDate, payees]);
   
   // Calculate Summaries based on Filtered Data
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
