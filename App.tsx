@@ -23,8 +23,8 @@ import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import ContentHub from './views/integrations/ContentHub';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
-// Fix: Added missing semicolon and completed truncated component logic
-import { MenuIcon, CloseIcon } from './components/Icons';
+// Fix: Added SparklesIcon to the imports to resolve the build error
+import { MenuIcon, CloseIcon, SparklesIcon } from './components/Icons';
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
 
@@ -100,9 +100,14 @@ const App: React.FC = () => {
                 ]);
                 setRules(data.rules || []);
                 setPayees(data.payees || []);
-                setUsers(data.users || [
-                    { id: 'user1', name: 'Primary User', isDefault: true }
-                ]);
+                
+                // Persistence Guard: If users exist in database, use them. Otherwise, use default.
+                if (data.users && Array.isArray(data.users) && data.users.length > 0) {
+                    setUsers(data.users);
+                } else {
+                    setUsers([{ id: 'user1', name: 'Primary User', isDefault: true }]);
+                }
+
                 setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
                 setDocumentFolders(data.documentFolders || []);
                 setBusinessDocuments(data.businessDocuments || []);
