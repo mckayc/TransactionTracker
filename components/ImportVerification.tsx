@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon } from './Icons';
 
 type VerifiableTransaction = RawTransaction & { 
     categoryId: string; 
@@ -24,27 +24,78 @@ interface ImportVerificationProps {
 type SortKey = 'date' | 'description' | 'payeeId' | 'categoryId' | 'amount' | '';
 type SortDirection = 'asc' | 'desc';
 
-const MetadataInspector: React.FC<{ metadata?: Record<string, string> }> = ({ metadata }) => {
-    if (!metadata || Object.keys(metadata).length === 0) return null;
+/**
+ * Side Drawer for inspecting every single column from the original CSV row.
+ */
+const MetadataDrawer: React.FC<{ 
+    tx: VerifiableTransaction | null; 
+    onClose: () => void;
+}> = ({ tx, onClose }) => {
+    if (!tx || !tx.metadata) return null;
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text);
+        // Simple visual feedback could be added here
+    };
 
     return (
-        <div className="relative group/inspector">
-            <button className="p-1 text-slate-300 hover:text-indigo-600 transition-colors">
-                <TableIcon className="w-4 h-4" />
-            </button>
-            <div className="absolute top-full right-0 mt-2 w-80 bg-slate-900 text-white rounded-xl shadow-2xl p-4 opacity-0 translate-y-1 pointer-events-none group-hover/inspector:opacity-100 group-hover/inspector:translate-y-0 transition-all z-[100]">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 border-b border-white/10 pb-2 mb-3 flex items-center gap-2">
-                    <TableIcon className="w-3 h-3" /> Original Source Row Details
-                </h4>
-                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
-                    {Object.entries(metadata).map(([key, value]) => (
-                        <div key={key} className="flex flex-col gap-0.5 border-b border-white/5 pb-1">
-                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{key}</span>
-                            <span className="text-xs font-medium text-slate-200 break-words">{value || <em className="text-slate-600 italic">Empty</em>}</span>
+        <div className="fixed inset-0 z-[100] flex justify-end">
+            {/* Backdrop */}
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" onClick={onClose} />
+            
+            {/* Drawer */}
+            <div className="relative w-full max-w-md bg-slate-900 shadow-2xl flex flex-col h-full animate-slide-in-right">
+                <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-800">
+                    <div>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                            <TableIcon className="w-6 h-6 text-indigo-400" />
+                            Source Data Inspector
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1 uppercase tracking-widest font-bold">Raw CSV Row Contents</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-full transition-all">
+                        <CloseIcon className="w-6 h-6" />
+                    </button>
+                </div>
+
+                <div className="p-6 bg-indigo-600/10 border-b border-indigo-500/20">
+                    <p className="text-xs text-indigo-300 leading-relaxed">
+                        <strong className="text-indigo-200">Tip:</strong> Use the copy icon next to a field name to use it in an <strong>Automation Rule</strong>.
+                    </p>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                    {Object.entries(tx.metadata).map(([key, value]) => (
+                        <div key={key} className="group/item bg-white/5 border border-white/5 rounded-xl p-4 hover:border-indigo-500/50 transition-all">
+                            <div className="flex justify-between items-center mb-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter">{key}</span>
+                                    <button 
+                                        onClick={() => copyToClipboard(key)}
+                                        className="opacity-0 group-hover/item:opacity-100 p-1 text-slate-500 hover:text-indigo-400 transition-all"
+                                        title="Copy column name for rules"
+                                    >
+                                        <CopyIcon className="w-3 h-3" />
+                                    </button>
+                                </div>
+                                {(!value || value.trim() === '') && <span className="text-[9px] font-bold text-slate-600 uppercase">Empty</span>}
+                            </div>
+                            <div className="text-sm text-slate-100 font-medium break-words selection:bg-indigo-500 selection:text-white">
+                                {value || <em className="text-slate-700 italic">No data</em>}
+                            </div>
                         </div>
                     ))}
                 </div>
-                <div className="absolute bottom-full right-2 border-8 border-transparent border-b-slate-900"></div>
+
+                <div className="p-6 border-t border-white/10 bg-slate-800 flex flex-col gap-3">
+                    <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase">
+                        <span>Mapped Description</span>
+                        <span className="text-slate-300">{tx.description}</span>
+                    </div>
+                    <button onClick={onClose} className="w-full py-3 bg-white/5 hover:bg-white/10 text-white font-bold rounded-xl transition-all">
+                        Close Inspector
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -65,6 +116,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const [editingCell, setEditingCell] = useState<{ id: string; field: keyof VerifiableTransaction } | null>(null);
     const [sortKey, setSortKey] = useState<SortKey>('');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+    const [inspectedTx, setInspectedTx] = useState<VerifiableTransaction | null>(null);
     
     useEffect(() => {
         setTransactions(initialTransactions);
@@ -304,7 +356,13 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                                 >
                                                     {tx.description}
                                                 </div>
-                                                <MetadataInspector metadata={tx.metadata} />
+                                                <button 
+                                                    onClick={() => setInspectedTx(tx)}
+                                                    className="p-1 text-slate-300 hover:text-indigo-600 transition-colors"
+                                                    title="View Original CSV Source Data"
+                                                >
+                                                    <TableIcon className="w-4 h-4" />
+                                                </button>
                                             </div>
                                         )}
                                     </td>
@@ -323,7 +381,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                                     <div className="group/info relative flex-shrink-0">
                                                         <InfoIcon className="w-3.5 h-3.5 text-indigo-400" />
                                                         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-24 p-1.5 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none z-[100] text-center font-bold uppercase tracking-tighter">
-                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-800"></div>
+                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-bottom-slate-800"></div>
                                                             Creating New Source
                                                         </div>
                                                     </div>
@@ -370,6 +428,9 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     <CheckCircleIcon className="w-4 h-4" /> Complete Import ({importCount} items)
                 </button>
             </div>
+
+            {/* Metadata Inspector Drawer */}
+            <MetadataDrawer tx={inspectedTx} onClose={() => setInspectedTx(null)} />
 
             {selectedIds.size > 0 && (
                 <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white border border-slate-200 p-3 rounded-xl shadow-2xl z-50 flex flex-col sm:flex-row items-center gap-4 animate-slide-up">
