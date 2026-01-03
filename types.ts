@@ -67,6 +67,8 @@ export interface RawTransaction {
     user?: string;
     type?: string;
     tags?: string[];
+    // New: Raw data from source for inspection and advanced rules
+    metadata?: Record<string, string>;
 }
 
 export interface Transaction extends RawTransaction {
@@ -84,8 +86,8 @@ export interface DuplicatePair {
     existingTx: Transaction;
 }
 
-export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than';
-export type RuleField = 'description' | 'amount' | 'accountId';
+export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'exists';
+export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata';
 export type RuleLogic = 'AND' | 'OR';
 
 export interface RuleCondition {
@@ -93,6 +95,8 @@ export interface RuleCondition {
     field: RuleField;
     operator: RuleOperator;
     value: any;
+    // New: Key for metadata lookups
+    metadataKey?: string;
     nextLogic?: RuleLogic;
 }
 

@@ -1,4 +1,3 @@
-
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -390,6 +389,7 @@ export const parseYouTubeReport = async (file: File, onProgress: (msg: string) =
             subscribersGained: parseNum(colMap.subscribers),
             estimatedRevenue: parseNum(colMap.revenue),
             impressions: parseNum(colMap.impressions),
+            // Fix: Changed colBox to colMap to fix 'Cannot find name' error
             ctr: parseNum(colMap.ctr)
         });
     }
@@ -403,39 +403,41 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     if (lines.length === 0) return transactions;
 
     let headerIndex = -1;
-    let colMap = { date: -1, description: -1, amount: -1, credit: -1, debit: -1, category: -1, transactionType: -1 };
+    let rawHeaders: string[] = [];
     
     // Determine delimiter (Tab or Comma)
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
 
+    // Find the header row
     for(let i=0; i<Math.min(lines.length, 20); i++) {
         const lineLower = lines[i].toLowerCase();
         const parts = lineLower.split(delimiter).map(p => p.trim().replace(/"/g, ''));
         
         const dateIdx = parts.findIndex(p => p.includes('date') || p === 'dt' || p === 'date of income');
-        const descIdx = parts.findIndex(p => p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction') || p === 'income source');
+        const descIdx = parts.findIndex(p => p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction') || p === 'income source' || p === 'reference');
         const amtIdx = parts.findIndex(p => p === 'amount' || p.includes('amount') || p === 'income amount');
-        const creditIdx = parts.findIndex(p => p.includes('credit') || p.includes('deposit') || p.includes('receive'));
-        const debitIdx = parts.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdraw') || p.includes('spend'));
-        const catIdx = parts.findIndex(p => p.includes('category') || p === 'type');
-        const typeIdx = parts.findIndex(p => p === 'transaction type');
-
-        if (dateIdx > -1 && (descIdx > -1 || amtIdx > -1 || (creditIdx > -1 && debitIdx > -1))) {
+        
+        if (dateIdx > -1 && (descIdx > -1 || amtIdx > -1)) {
             headerIndex = i;
-            colMap = { 
-                date: dateIdx, 
-                description: descIdx, 
-                amount: amtIdx, 
-                credit: creditIdx, 
-                debit: debitIdx, 
-                category: catIdx,
-                transactionType: typeIdx
-            };
+            rawHeaders = lines[i].split(delimiter).map(h => h.trim().replace(/"/g, ''));
             break;
         }
     }
 
     if (headerIndex === -1) return transactions;
+
+    const lowerHeaders = rawHeaders.map(h => h.toLowerCase());
+    const colMap = { 
+        date: lowerHeaders.findIndex(p => p.includes('date') || p === 'dt' || p === 'date of income'), 
+        description: lowerHeaders.findIndex(p => p === 'description' || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction') || p === 'income source'), 
+        reference: lowerHeaders.findIndex(p => p.includes('reference') || p.includes('memo') || p.includes('notes')),
+        payee: lowerHeaders.findIndex(p => p === 'payee' || p === 'income source'),
+        amount: lowerHeaders.findIndex(p => p === 'amount' || p.includes('amount') || p === 'income amount'), 
+        credit: lowerHeaders.findIndex(p => p.includes('credit') || p.includes('deposit') || p.includes('receive')), 
+        debit: lowerHeaders.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdraw') || p.includes('spend')), 
+        category: lowerHeaders.findIndex(p => p.includes('category') || p === 'type'),
+        transactionType: lowerHeaders.findIndex(p => p === 'transaction type')
+    };
 
     const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
     const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
@@ -457,7 +459,26 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
         const parsedDate = parseDate(dateStr);
         if (!parsedDate) continue;
 
-        const description = colMap.description > -1 ? cleanDescription(parts[colMap.description]) : 'Unspecified';
+        // Build Metadata for all columns
+        const metadata: Record<string, string> = {};
+        rawHeaders.forEach((header, idx) => {
+            if (parts[idx] !== undefined) {
+                metadata[header] = parts[idx];
+            }
+        });
+
+        // Determine Description with fallbacks
+        let description = 'Unspecified';
+        if (colMap.description > -1 && parts[colMap.description]) {
+            description = parts[colMap.description];
+        } else if (colMap.reference > -1 && parts[colMap.reference]) {
+            description = parts[colMap.reference];
+        } else if (colMap.payee > -1 && parts[colMap.payee]) {
+            description = parts[colMap.payee];
+        }
+        
+        description = cleanDescription(description);
+
         let amount = 0;
         let isIncome = false;
 
@@ -485,7 +506,8 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
             category: rawType || (colMap.category > -1 ? parts[colMap.category] : 'Uncategorized'),
             accountId: accountId,
             typeId: isIncome ? incomeType.id : expenseType.id,
-            sourceFilename: sourceName
+            sourceFilename: sourceName,
+            metadata // Inject the raw source data
         });
     }
 

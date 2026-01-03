@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import type { RuleCondition, Account } from '../types';
-import { DeleteIcon, AddIcon, DragHandleIcon } from './Icons';
+import { DeleteIcon, AddIcon, DragHandleIcon, InfoIcon } from './Icons';
 import { generateUUID } from '../utils';
 
 interface RuleBuilderProps {
@@ -92,7 +92,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
                     onDrop={(e) => handleDrop(e, index)}
                 >
                     {/* Condition Row */}
-                    <div className={`flex flex-col sm:flex-row gap-2 items-start sm:items-center bg-white p-3 rounded border border-slate-200 shadow-sm z-10 relative transition-all ${draggedIndex === index ? 'opacity-50 bg-indigo-50 border-indigo-300' : ''}`}>
+                    <div className={`flex flex-col lg:flex-row gap-2 items-start lg:items-center bg-white p-3 rounded border border-slate-200 shadow-sm z-10 relative transition-all ${draggedIndex === index ? 'opacity-50 bg-indigo-50 border-indigo-300' : ''}`}>
                         <div 
                             className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 p-1"
                             draggable
@@ -104,67 +104,93 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) 
                             {index + 1}
                         </div>
                         
-                        <select 
-                            value={condition.field} 
-                            onChange={(e) => handleUpdateCondition(index, 'field', e.target.value)}
-                            className="w-full sm:w-1/4 p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
-                        >
-                            <option value="description">Description</option>
-                            <option value="amount">Amount</option>
-                            <option value="accountId">Account</option>
-                        </select>
-                        
-                        <select 
-                            value={condition.operator} 
-                            onChange={(e) => handleUpdateCondition(index, 'operator', e.target.value)}
-                            className="w-full sm:w-1/4 p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
-                        >
-                            {condition.field === 'description' && (
-                                <>
-                                    <option value="contains">Contains</option>
-                                    <option value="does_not_contain">Does Not Contain</option>
-                                    <option value="starts_with">Starts With</option>
-                                    <option value="ends_with">Ends With</option>
-                                    <option value="equals">Equals</option>
-                                </>
-                            )}
-                            {condition.field === 'amount' && (
-                                <>
-                                    <option value="equals">Equals</option>
-                                    <option value="greater_than">Greater Than</option>
-                                    <option value="less_than">Less Than</option>
-                                </>
-                            )}
-                            {condition.field === 'accountId' && (
-                                <>
-                                    <option value="equals">Is (Exact Match)</option>
-                                    <option value="contains">Name Contains</option>
-                                    <option value="does_not_contain">Name Does Not Contain</option>
-                                </>
-                            )}
-                        </select>
-
-                        {condition.field === 'accountId' && condition.operator === 'equals' ? (
+                        <div className="flex flex-col sm:flex-row gap-2 w-full flex-grow items-start sm:items-center">
                             <select 
-                                value={condition.value} 
-                                onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                className="w-full sm:flex-grow p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
+                                value={condition.field} 
+                                onChange={(e) => handleUpdateCondition(index, 'field', e.target.value)}
+                                className="w-full sm:w-[160px] p-2 text-sm border rounded-md bg-slate-50 focus:bg-white font-bold"
                             >
-                                <option value="">Select Account...</option>
-                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                <option value="description">Description</option>
+                                <option value="amount">Amount</option>
+                                <option value="accountId">Account</option>
+                                <option value="metadata">Raw Metadata Field</option>
                             </select>
-                        ) : (
-                            <input 
-                                type={condition.field === 'amount' ? 'number' : 'text'} 
-                                step={condition.field === 'amount' ? '0.01' : undefined}
-                                value={condition.value} 
-                                onChange={(e) => handleUpdateCondition(index, 'value', condition.field === 'amount' ? e.target.value : e.target.value)}
-                                placeholder="Value"
-                                className="w-full sm:flex-grow p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
-                            />
-                        )}
 
-                        <button type="button" onClick={() => handleDeleteCondition(index)} className="p-2 text-slate-400 hover:text-red-500 transition-colors" title="Remove Condition">
+                            {condition.field === 'metadata' && (
+                                <div className="flex items-center gap-1 w-full sm:w-[180px]">
+                                    <input 
+                                        type="text" 
+                                        value={condition.metadataKey || ''} 
+                                        onChange={(e) => handleUpdateCondition(index, 'metadataKey', e.target.value)}
+                                        placeholder="Column Name (e.g. Reference)"
+                                        className="w-full p-2 text-sm border border-indigo-200 rounded-md bg-indigo-50/50 focus:bg-white placeholder:text-indigo-300 font-medium"
+                                    />
+                                    <div className="group relative">
+                                        <InfoIcon className="w-3 h-3 text-indigo-400 cursor-help" />
+                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+                                            Enter the exact column header from your CSV (e.g., "Reference", "Status", "Currency")
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            <select 
+                                value={condition.operator} 
+                                onChange={(e) => handleUpdateCondition(index, 'operator', e.target.value)}
+                                className="w-full sm:w-[160px] p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
+                            >
+                                {(condition.field === 'description' || condition.field === 'metadata') && (
+                                    <>
+                                        <option value="contains">Contains</option>
+                                        <option value="does_not_contain">Does Not Contain</option>
+                                        <option value="starts_with">Starts With</option>
+                                        <option value="ends_with">Ends With</option>
+                                        <option value="equals">Equals</option>
+                                        {condition.field === 'metadata' && <option value="exists">Exists / Is Not Empty</option>}
+                                    </>
+                                )}
+                                {condition.field === 'amount' && (
+                                    <>
+                                        <option value="equals">Equals</option>
+                                        <option value="greater_than">Greater Than</option>
+                                        <option value="less_than">Less Than</option>
+                                    </>
+                                )}
+                                {condition.field === 'accountId' && (
+                                    <>
+                                        <option value="equals">Is (Exact Match)</option>
+                                        <option value="contains">Name Contains</option>
+                                        <option value="does_not_contain">Name Does Not Contain</option>
+                                    </>
+                                )}
+                            </select>
+
+                            {condition.operator !== 'exists' && (
+                                <>
+                                    {condition.field === 'accountId' && condition.operator === 'equals' ? (
+                                        <select 
+                                            value={condition.value} 
+                                            onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                            className="w-full sm:flex-grow p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
+                                        >
+                                            <option value="">Select Account...</option>
+                                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                        </select>
+                                    ) : (
+                                        <input 
+                                            type={condition.field === 'amount' ? 'number' : 'text'} 
+                                            step={condition.field === 'amount' ? '0.01' : undefined}
+                                            value={condition.value} 
+                                            onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                            placeholder="Value"
+                                            className={`w-full sm:flex-grow p-2 text-sm border rounded-md bg-slate-50 focus:bg-white ${condition.field === 'metadata' ? 'border-indigo-100' : ''}`}
+                                        />
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        <button type="button" onClick={() => handleDeleteCondition(index)} className="p-2 text-slate-400 hover:text-red-500 transition-colors flex-shrink-0" title="Remove Condition">
                             <DeleteIcon className="w-4 h-4" />
                         </button>
                     </div>

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon } from './Icons';
 
 type VerifiableTransaction = RawTransaction & { 
     categoryId: string; 
@@ -23,6 +23,32 @@ interface ImportVerificationProps {
 
 type SortKey = 'date' | 'description' | 'payeeId' | 'categoryId' | 'amount' | '';
 type SortDirection = 'asc' | 'desc';
+
+const MetadataInspector: React.FC<{ metadata?: Record<string, string> }> = ({ metadata }) => {
+    if (!metadata || Object.keys(metadata).length === 0) return null;
+
+    return (
+        <div className="relative group/inspector">
+            <button className="p-1 text-slate-300 hover:text-indigo-600 transition-colors">
+                <TableIcon className="w-4 h-4" />
+            </button>
+            <div className="absolute top-full right-0 mt-2 w-80 bg-slate-900 text-white rounded-xl shadow-2xl p-4 opacity-0 translate-y-1 pointer-events-none group-hover/inspector:opacity-100 group-hover/inspector:translate-y-0 transition-all z-[100]">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-indigo-400 border-b border-white/10 pb-2 mb-3 flex items-center gap-2">
+                    <TableIcon className="w-3 h-3" /> Original Source Row Details
+                </h4>
+                <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar pr-1">
+                    {Object.entries(metadata).map(([key, value]) => (
+                        <div key={key} className="flex flex-col gap-0.5 border-b border-white/5 pb-1">
+                            <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">{key}</span>
+                            <span className="text-xs font-medium text-slate-200 break-words">{value || <em className="text-slate-600 italic">Empty</em>}</span>
+                        </div>
+                    ))}
+                </div>
+                <div className="absolute bottom-full right-2 border-8 border-transparent border-b-slate-900"></div>
+            </div>
+        </div>
+    );
+};
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
     initialTransactions, 
@@ -221,8 +247,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
             </div>
 
             <div className="max-h-[60vh] overflow-y-auto border rounded-lg shadow-sm bg-white overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 table-fixed">
-                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                <table className="min-w-full divide-y divide-slate-200 table-fixed border-separate border-spacing-0">
+                    <thead className="bg-slate-50 sticky top-0 z-[60] shadow-sm">
                         <tr>
                             <th className="px-4 py-3 w-10 text-center">
                                 <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={transactions.length > 0 && selectedIds.size === transactions.length} onChange={handleSelectAll} />
@@ -270,12 +296,15 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         {editingCell?.id === tx.tempId && editingCell.field === 'description' ? (
                                             <input type="text" defaultValue={tx.description} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'description')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'description')} className={commonInputClass} />
                                         ) : (
-                                            <div 
-                                                onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'description' })} 
-                                                className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`} 
-                                                title={tx.description}
-                                            >
-                                                {tx.description}
+                                            <div className="flex items-center gap-2 group">
+                                                <div 
+                                                    onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'description' })} 
+                                                    className={`p-1 flex-grow rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`} 
+                                                    title={tx.description}
+                                                >
+                                                    {tx.description}
+                                                </div>
+                                                <MetadataInspector metadata={tx.metadata} />
                                             </div>
                                         )}
                                     </td>
@@ -294,7 +323,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                                     <div className="group/info relative flex-shrink-0">
                                                         <InfoIcon className="w-3.5 h-3.5 text-indigo-400" />
                                                         <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-24 p-1.5 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none z-[100] text-center font-bold uppercase tracking-tighter">
-                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-bottom-slate-800"></div>
+                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-800"></div>
                                                             Creating New Source
                                                         </div>
                                                     </div>

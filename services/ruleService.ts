@@ -17,6 +17,24 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
             case 'ends_with': return txValue.endsWith(condValue);
             default: return false;
         }
+    } else if (condition.field === 'metadata') {
+        const key = condition.metadataKey || '';
+        const metadataValue = tx.metadata?.[key];
+        
+        if (condition.operator === 'exists') {
+            return metadataValue !== undefined && metadataValue !== null && metadataValue.trim() !== '';
+        }
+
+        txValue = (metadataValue || '').toLowerCase();
+        const condValue = String(condition.value || '').toLowerCase();
+        switch (condition.operator) {
+            case 'contains': return txValue.includes(condValue);
+            case 'does_not_contain': return !txValue.includes(condValue);
+            case 'equals': return txValue === condValue;
+            case 'starts_with': return txValue.startsWith(condValue);
+            case 'ends_with': return txValue.endsWith(condValue);
+            default: return false;
+        }
     } else if (condition.field === 'amount') {
         txValue = tx.amount;
         const condValue = Number(condition.value);
