@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Payee, Transaction } from '../types';
-import { DeleteIcon, EditIcon, AddIcon, ChevronRightIcon, ChevronDownIcon } from '../components/Icons';
+import { DeleteIcon, EditIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface PayeesPageProps {
@@ -19,11 +18,13 @@ const PayeeEditor: React.FC<{
 }> = ({ selectedPayee, payees, onSave, onCancel }) => {
     const [name, setName] = useState(selectedPayee?.name || '');
     const [parentId, setParentId] = useState(selectedPayee?.parentId || '');
+    const [notes, setNotes] = useState(selectedPayee?.notes || '');
 
     // Sync state when selection changes
     useEffect(() => {
         setName(selectedPayee?.name || '');
         setParentId(selectedPayee?.parentId || '');
+        setNotes(selectedPayee?.notes || '');
     }, [selectedPayee]);
 
     // Prevent circular dependency: Cannot select self or any descendant as parent
@@ -54,6 +55,7 @@ const PayeeEditor: React.FC<{
             id: selectedPayee?.id || generateUUID(),
             name: name.trim(),
             parentId: parentId || undefined,
+            notes: notes.trim() || undefined,
         });
     };
 
@@ -82,6 +84,15 @@ const PayeeEditor: React.FC<{
                     {validParents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
                 <p className="text-xs text-slate-500 mt-1">Organize hierarchically (e.g. Amazon &gt; Amazon EU)</p>
+            </div>
+            <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
+                <textarea 
+                    value={notes} 
+                    onChange={e => setNotes(e.target.value)} 
+                    placeholder="Add account details, contact info, or reference numbers..." 
+                    className="w-full p-2 border rounded-md min-h-[100px]"
+                />
             </div>
             <div className="flex justify-end gap-3 pt-4">
                 <button onClick={onCancel} className="px-4 py-2 font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200">Cancel</button>
@@ -113,11 +124,11 @@ const PayeeNode: React.FC<{
     return (
         <div className="select-none">
             <div 
-                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors border border-transparent ${isSelected ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-slate-50'}`}
+                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors border border-transparent group ${isSelected ? 'bg-indigo-50 border-indigo-200' : 'hover:bg-slate-50'}`}
                 style={{ marginLeft: `${level * 16}px` }}
                 onClick={(e) => { e.stopPropagation(); onSelect(payee); }}
             >
-                <div className="flex items-center gap-2 overflow-hidden">
+                <div className="flex items-center gap-2 overflow-hidden flex-1">
                     <button 
                         onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
                         className={`p-1 rounded hover:bg-slate-200 text-slate-400 ${hasChildren ? 'visible' : 'invisible'}`}
@@ -127,6 +138,8 @@ const PayeeNode: React.FC<{
                     <span className={`text-sm truncate ${isSelected ? 'font-bold text-indigo-700' : 'text-slate-700'}`}>
                         {payee.name}
                     </span>
+                    {/* Fix: Wrapped NotesIcon in a span to use the title attribute correctly, as icon components typically do not support title prop directly */}
+                    {payee.notes && <span title={payee.notes} className="flex-shrink-0"><NotesIcon className="w-3 h-3 text-slate-300" /></span>}
                 </div>
                 
                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

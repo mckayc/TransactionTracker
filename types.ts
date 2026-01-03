@@ -1,5 +1,4 @@
 
-
 export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation';
 
 export interface TransactionType {
@@ -25,6 +24,7 @@ export interface Payee {
     id: string;
     name: string;
     parentId?: string;
+    notes?: string;
 }
 
 export interface AccountType {
