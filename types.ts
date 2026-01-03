@@ -25,6 +25,7 @@ export interface Payee {
     name: string;
     parentId?: string;
     notes?: string;
+    userId?: string;
 }
 
 export interface AccountType {

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon } from './Icons';
 
 type VerifiableTransaction = RawTransaction & { 
     categoryId: string; 
@@ -228,6 +228,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     <tbody className="bg-white divide-y divide-slate-200">
                         {sortedTransactions.map(tx => {
                             const matchedSkipRule = tx.isIgnored && initialTransactions.find(it => it.tempId === tx.tempId)?.isIgnored;
+                            const isNewPayee = tx.payeeId?.startsWith('new-p-');
+
                             return (
                                 <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 grayscale bg-slate-50' : 'bg-green-50/30'} ${selectedIds.has(tx.tempId) ? 'ring-2 ring-inset ring-indigo-400' : 'hover:bg-slate-50'}`}>
                                     <td className="px-4 py-2 text-center">
@@ -264,7 +266,19 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                                 {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                             </select>
                                         ) : (
-                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">New Source</span>}</div>
+                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 flex items-center justify-between gap-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>
+                                                <span className={isNewPayee ? 'text-indigo-600 font-bold' : ''}>
+                                                    {payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">None</span>}
+                                                </span>
+                                                {isNewPayee && (
+                                                    <div className="group relative flex-shrink-0">
+                                                        <InfoIcon className="w-3.5 h-3.5 text-indigo-400" />
+                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-24 p-1.5 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center font-bold uppercase tracking-tighter">
+                                                            Creating New Source
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
                                     </td>
                                     <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">

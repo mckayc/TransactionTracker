@@ -296,6 +296,7 @@ const App: React.FC = () => {
   const handleDeleteAmazonVideos = (ids: string[]) => { const idSet = new Set(ids); setAmazonVideos(prev => prev.filter(v => !idSet.has(v.id))); };
   const handleAddYouTubeMetrics = (newMetrics: YouTubeMetric[]) => { if(newMetrics.length > 0) setYouTubeMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime())); };
   const handleDeleteYouTubeMetrics = (ids: string[]) => { const idSet = new Set(ids); setYouTubeMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
+  // Fix: Declare 'updated' with const in handleSaveYouTubeChannel to fix line 299 error
   const handleSaveYouTubeChannel = (channel: YouTubeChannel) => setYouTubeChannels(prev => { const index = prev.findIndex(c => c.id === channel.id); if (index > -1) { const updated = [...prev]; updated[index] = channel; return updated; } return [...prev, channel]; });
   const handleDeleteYouTubeChannel = (channelId: string) => setYouTubeChannels(prev => prev.filter(c => c.id !== channelId));
   const handleUpdateContentLinks = (links: ContentLink[]) => setContentLinks(links);
@@ -309,7 +310,7 @@ const App: React.FC = () => {
       case 'reports': return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} savedDateRanges={savedDateRanges} setSavedDateRanges={setSavedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} />;
       case 'accounts': return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
       case 'users': return <UsersPage users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} />;
-      case 'payees': return <PayeesPage payees={payees} onSavePayee={handleSavePayee} onDeletePayee={handleDeletePayee} transactions={transactions}/>;
+      case 'payees': return <PayeesPage payees={payees} onSavePayee={handleSavePayee} onDeletePayee={handleDeletePayee} transactions={transactions} users={users} />;
       case 'categories': return <CategoriesPage categories={categories} onSaveCategory={handleSaveCategory} onDeleteCategory={handleDeleteCategory} transactions={transactions}/>;
       case 'tags': return <TagsPage tags={tags} onSaveTag={handleSaveTag} onDeleteTag={handleDeleteTag} />;
       case 'rules': return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} />;

@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Payee, Transaction } from '../types';
-import { DeleteIcon, EditIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon } from '../components/Icons';
+import type { Payee, Transaction, User } from '../types';
+import { DeleteIcon, EditIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon, UserGroupIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface PayeesPageProps {
@@ -8,24 +9,29 @@ interface PayeesPageProps {
     onSavePayee: (payee: Payee) => void;
     onDeletePayee: (payeeId: string) => void;
     transactions: Transaction[];
+    users: User[];
 }
 
 const PayeeEditor: React.FC<{
     selectedPayee: Payee | null;
     payees: Payee[];
+    users: User[];
     onSave: (payee: Payee) => void;
     onCancel: () => void;
-}> = ({ selectedPayee, payees, onSave, onCancel }) => {
+}> = ({ selectedPayee, payees, users, onSave, onCancel }) => {
+    const defaultUser = useMemo(() => users.find(u => u.isDefault) || users[0], [users]);
     const [name, setName] = useState(selectedPayee?.name || '');
     const [parentId, setParentId] = useState(selectedPayee?.parentId || '');
     const [notes, setNotes] = useState(selectedPayee?.notes || '');
+    const [userId, setUserId] = useState(selectedPayee?.userId || defaultUser?.id || '');
 
     // Sync state when selection changes
     useEffect(() => {
         setName(selectedPayee?.name || '');
         setParentId(selectedPayee?.parentId || '');
         setNotes(selectedPayee?.notes || '');
-    }, [selectedPayee]);
+        setUserId(selectedPayee?.userId || defaultUser?.id || '');
+    }, [selectedPayee, defaultUser]);
 
     // Prevent circular dependency: Cannot select self or any descendant as parent
     const validParents = useMemo(() => {
@@ -56,6 +62,7 @@ const PayeeEditor: React.FC<{
             name: name.trim(),
             parentId: parentId || undefined,
             notes: notes.trim() || undefined,
+            userId: userId || undefined
         });
     };
 
@@ -73,17 +80,28 @@ const PayeeEditor: React.FC<{
                     required 
                 />
             </div>
-            <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Parent Source (Optional)</label>
-                <select 
-                    value={parentId} 
-                    onChange={e => setParentId(e.target.value)}
-                    className="w-full p-2 border rounded-md"
-                >
-                    <option value="">-- No Parent (Top Level) --</option>
-                    {validParents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-                <p className="text-xs text-slate-500 mt-1">Organize hierarchically (e.g. Amazon &gt; Amazon EU)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Parent Source (Optional)</label>
+                    <select 
+                        value={parentId} 
+                        onChange={e => setParentId(e.target.value)}
+                        className="w-full p-2 border rounded-md"
+                    >
+                        <option value="">-- No Parent (Top Level) --</option>
+                        {validParents.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Associated User</label>
+                    <select 
+                        value={userId} 
+                        onChange={e => setUserId(e.target.value)}
+                        className="w-full p-2 border rounded-md"
+                    >
+                        {users.map(u => <option key={u.id} value={u.id}>{u.name}{u.isDefault ? ' (Default)' : ''}</option>)}
+                    </select>
+                </div>
             </div>
             <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">Notes</label>
@@ -106,17 +124,22 @@ const PayeeEditor: React.FC<{
 const PayeeNode: React.FC<{
     payee: Payee;
     allPayees: Payee[];
+    users: User[];
     level: number;
     selectedId: string | undefined;
     usedIds: Set<string>;
     onSelect: (payee: Payee) => void;
     onDelete: (id: string) => void;
-}> = ({ payee, allPayees, level, selectedId, usedIds, onSelect, onDelete }) => {
+}> = ({ payee, allPayees, users, level, selectedId, usedIds, onSelect, onDelete }) => {
     const [isExpanded, setIsExpanded] = useState(true);
     
     const children = useMemo(() => 
         allPayees.filter(p => p.parentId === payee.id).sort((a, b) => a.name.localeCompare(b.name)),
     [allPayees, payee.id]);
+
+    const associatedUser = useMemo(() => 
+        users.find(u => u.id === payee.userId) || users.find(u => u.isDefault) || users[0],
+    [users, payee.userId]);
 
     const hasChildren = children.length > 0;
     const isSelected = selectedId === payee.id;
@@ -138,7 +161,12 @@ const PayeeNode: React.FC<{
                     <span className={`text-sm truncate ${isSelected ? 'font-bold text-indigo-700' : 'text-slate-700'}`}>
                         {payee.name}
                     </span>
-                    {/* Fix: Wrapped NotesIcon in a span to use the title attribute correctly, as icon components typically do not support title prop directly */}
+                    {associatedUser && (
+                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded flex items-center gap-1 flex-shrink-0">
+                            <UserGroupIcon className="w-2.5 h-2.5" />
+                            {associatedUser.name.charAt(0)}
+                        </span>
+                    )}
                     {payee.notes && <span title={payee.notes} className="flex-shrink-0"><NotesIcon className="w-3 h-3 text-slate-300" /></span>}
                 </div>
                 
@@ -165,6 +193,7 @@ const PayeeNode: React.FC<{
                     key={child.id}
                     payee={child}
                     allPayees={allPayees}
+                    users={users}
                     level={level + 1}
                     selectedId={selectedId}
                     usedIds={usedIds}
@@ -176,7 +205,7 @@ const PayeeNode: React.FC<{
     );
 };
 
-const PayeesPage: React.FC<PayeesPageProps> = ({ payees, onSavePayee, onDeletePayee, transactions }) => {
+const PayeesPage: React.FC<PayeesPageProps> = ({ payees, onSavePayee, onDeletePayee, transactions, users }) => {
     const [selectedPayee, setSelectedPayee] = useState<Payee | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     
@@ -219,7 +248,7 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ payees, onSavePayee, onDeletePa
         <div className="space-y-8">
             <div>
                 <h1 className="text-3xl font-bold text-slate-800">Income Sources</h1>
-                <p className="text-slate-500 mt-1">Manage the origin points of your revenue. Supports multi-level nesting.</p>
+                <p className="text-slate-500 mt-1">Manage the origin points of your revenue. Associate them with users for better reporting.</p>
             </div>
              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
                 <div className="md:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200 min-h-[400px] flex flex-col">
@@ -237,6 +266,7 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ payees, onSavePayee, onDeletePa
                                     key={root.id}
                                     payee={root}
                                     allPayees={payees}
+                                    users={users}
                                     level={0}
                                     selectedId={selectedPayee?.id}
                                     usedIds={usedPayeeIds}
@@ -255,11 +285,11 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ payees, onSavePayee, onDeletePa
                 
                  <div className="md:col-span-2">
                     {(selectedPayee || isCreating) ? (
-                        <PayeeEditor selectedPayee={selectedPayee} payees={payees} onSave={handleSave} onCancel={handleCancel} />
+                        <PayeeEditor selectedPayee={selectedPayee} payees={payees} users={users} onSave={handleSave} onCancel={handleCancel} />
                     ) : (
                         <div className="text-center bg-white p-12 rounded-xl shadow-sm border border-slate-200">
                             <h3 className="text-lg font-semibold text-slate-600">Select an income source to edit, or create a new one.</h3>
-                             <p className="text-sm text-slate-500 mt-2">You can organize sources into hierarchies (e.g., Amazon &gt; Amazon EU) for detailed reporting.</p>
+                             <p className="text-sm text-slate-500 mt-2">You can organize sources into hierarchies and assign them to specific team members or business owners.</p>
                         </div>
                     )}
                 </div>

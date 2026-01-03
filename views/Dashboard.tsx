@@ -209,6 +209,41 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
 
   const handleProgress = (msg: string) => setProgressMessage(msg);
 
+  /**
+   * Fuzzy matches a description to an existing payee based on keyword overlap.
+   */
+  const findSmartPayeeMatch = useCallback((description: string, existingPayees: Payee[]) => {
+      const cleanDesc = description.toLowerCase().trim();
+      if (!cleanDesc) return null;
+
+      // 1. Direct exact match
+      const exact = existingPayees.find(p => p.name.toLowerCase() === cleanDesc);
+      if (exact) return exact;
+
+      // 2. Contains match
+      const contains = existingPayees.find(p => cleanDesc.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanDesc));
+      if (contains) return contains;
+
+      // 3. Keyword Overlap
+      const descKeywords = cleanDesc.split(/[^a-z0-9]/).filter(w => w.length > 2);
+      if (descKeywords.length === 0) return null;
+
+      const candidates = existingPayees.map(p => {
+          const payeeKeywords = p.name.toLowerCase().split(/[^a-z0-9]/).filter(w => w.length > 2);
+          const overlap = descKeywords.filter(w => payeeKeywords.includes(w)).length;
+          return { payee: p, overlap };
+      }).filter(c => c.overlap > 0);
+
+      candidates.sort((a, b) => b.overlap - a.overlap);
+      
+      // If at least one significant keyword matches, we'll suggest it
+      if (candidates.length > 0 && candidates[0].overlap >= Math.max(1, descKeywords.length / 2)) {
+          return candidates[0].payee;
+      }
+
+      return null;
+  }, []);
+
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
     const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
@@ -221,8 +256,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     const existingPayeeNames = new Set(payees.map(p => p.name.toLowerCase()));
     const newPayees: Payee[] = [];
 
-    transactionsWithRules.forEach(tx => {
-        // Detect new categories
+    const incomeCategoryId = categories.find(c => c.name.toLowerCase() === 'income')?.id || '';
+    const otherCategoryId = categories.find(c => c.name.toLowerCase() === 'other')?.id || categories[0]?.id || '';
+
+    const processedTransactions = transactionsWithRules.map(tx => {
+        let matchedPayeeId = tx.payeeId;
+        const isIncome = transactionTypeMap.get(tx.typeId)?.balanceEffect === 'income';
+
+        // 1. Detect new categories
         if (tx.category && tx.category !== 'Uncategorized' && !existingCategoryNames.has(tx.category.toLowerCase())) {
             const newCategory: Category = {
                 id: `new-${tx.category.toLowerCase().replace(/\s+/g, '-')}-${generateUUID().slice(0,4)}`,
@@ -232,34 +273,45 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
             existingCategoryNames.add(tx.category.toLowerCase());
         }
 
-        // Detect new payees from description if not already handled by rules
-        if (!tx.payeeId) {
-            const cleanName = tx.description.trim();
-            if (cleanName && !existingPayeeNames.has(cleanName.toLowerCase())) {
-                 const newPayee: Payee = {
-                    id: `new-p-${generateUUID().slice(0,8)}`,
-                    name: cleanName
-                 };
-                 newPayees.push(newPayee);
-                 existingPayeeNames.add(cleanName.toLowerCase());
+        // 2. Payee Identification
+        if (!matchedPayeeId) {
+            const match = findSmartPayeeMatch(tx.description, [...payees, ...newPayees]);
+            if (match) {
+                matchedPayeeId = match.id;
+            } else {
+                const cleanName = tx.description.trim();
+                if (cleanName) {
+                    const newPayee: Payee = {
+                        id: `new-p-${generateUUID().slice(0,8)}`,
+                        name: cleanName
+                    };
+                    newPayees.push(newPayee);
+                    existingPayeeNames.add(cleanName.toLowerCase());
+                    matchedPayeeId = newPayee.id;
+                }
             }
         }
-    });
 
-    const categoryNameToIdMap = new Map([...categories, ...newCategories].map(c => [c.name.toLowerCase(), c.id]));
-    const payeeNameToIdMap = new Map([...payees, ...newPayees].map(p => [p.name.toLowerCase(), p.id]));
-    
-    const defaultCategoryId = categories.find(c => c.name === 'Other')?.id || categories[0]?.id || '';
+        // 3. Category Intelligence
+        // If income and no category was assigned by a rule, default to 'Income' category
+        let finalCategoryId = tx.categoryId;
+        if (!finalCategoryId) {
+             const categoryNameToIdMap = new Map([...categories, ...newCategories].map(c => [c.name.toLowerCase(), c.id]));
+             finalCategoryId = categoryNameToIdMap.get((tx.category || '').toLowerCase());
+             
+             if (!finalCategoryId) {
+                 finalCategoryId = isIncome && incomeCategoryId ? incomeCategoryId : otherCategoryId;
+             }
+        }
 
-    const transactionsWithStagedData = transactionsWithRules.map(tx => {
         const desc = (tx.description || '').toLowerCase();
         const typeStr = (tx.category || '').toLowerCase();
         const isTransfer = desc.includes('transfer') || typeStr.includes('transfer');
-        
+
         return {
             ...tx,
-            categoryId: tx.categoryId || categoryNameToIdMap.get(tx.category.toLowerCase()) || defaultCategoryId,
-            payeeId: tx.payeeId || payeeNameToIdMap.get(tx.description.trim().toLowerCase()),
+            payeeId: matchedPayeeId,
+            categoryId: finalCategoryId,
             tempId: generateUUID(),
             isIgnored: isTransfer
         };
@@ -267,8 +319,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
 
     setStagedNewCategories(newCategories);
     setStagedNewPayees(newPayees);
-    setRawTransactionsToVerify(transactionsWithStagedData);
-  }, [categories, payees, accounts]);
+    setRawTransactionsToVerify(processedTransactions);
+  }, [categories, payees, accounts, findSmartPayeeMatch, transactionTypes]);
 
   const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
     handleProgress('Applying automation rules...');
@@ -472,9 +524,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
           </div>
       )}
 
-      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
         {appState === 'idle' ? (
-          <div className="flex flex-col h-full overflow-hidden">
+          <div className="flex flex-col h-full">
             <h2 className="text-xl font-bold text-slate-700 mb-4">Import Transactions</h2>
             <div className="flex-shrink-0">
                 <div className="flex items-center justify-between mb-4">
@@ -526,9 +578,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                     </div>
                 )}
                 
-                <div className="mt-4 pt-4 border-t border-slate-100">
+                <div className="mt-6 pt-4 border-t border-slate-100">
                      <label className="block text-sm font-medium text-slate-700 mb-2">Assign to User</label>
-                     <div className="flex flex-wrap gap-x-6 gap-y-3 max-h-32 overflow-y-auto p-2 border rounded-lg bg-slate-50 shadow-inner">
+                     <div className="flex flex-wrap gap-2 p-2 border rounded-lg bg-slate-50 shadow-inner max-h-48 overflow-y-auto">
                         {users.map(u => (
                             <label key={u.id} className="flex items-center gap-2 cursor-pointer group bg-white px-3 py-1.5 rounded-md border border-slate-200 hover:border-indigo-400 transition-colors">
                                 <input type="radio" name="importUser" value={u.id} checked={selectedUserId === u.id} onChange={() => setSelectedUserId(u.id)} className="text-indigo-600 focus:ring-indigo-500 w-4 h-4" />
@@ -539,7 +591,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                 </div>
             </div>
 
-            <div className="mt-8 pt-8 border-t border-slate-200 overflow-hidden flex flex-col flex-1">
+            <div className="mt-12 pt-8 border-t border-slate-200 overflow-hidden flex flex-col flex-1">
                 <h2 className="text-xl font-bold text-slate-700 mb-4">Recent Global Transactions</h2>
                 <div className="flex-1 overflow-hidden relative">
                     <TransactionTable transactions={recentTransactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={() => {}} onDeleteTransaction={() => {}} visibleColumns={new Set(['date', 'description', 'amount', 'category', 'type'])} />
