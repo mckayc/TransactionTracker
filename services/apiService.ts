@@ -1,3 +1,4 @@
+
 // Simple API client to replace localStorage functionality
 
 export const api = {
@@ -5,12 +6,14 @@ export const api = {
         try {
             const response = await fetch('/api/data');
             if (!response.ok) {
-                throw new Error('Failed to load data');
+                throw new Error(`API Error: ${response.status} ${response.statusText}`);
             }
             return await response.json();
         } catch (error) {
             console.error("API Load Error:", error);
-            return {};
+            // Throwing allows the caller (App.tsx) to handle the failure state 
+            // instead of silently assuming the database is empty.
+            throw error;
         }
     },
 
@@ -27,15 +30,19 @@ export const api = {
 
     save: async (key: string, value: any): Promise<void> => {
         try {
-            await fetch(`/api/data/${key}`, {
+            const response = await fetch(`/api/data/${key}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(value),
             });
+            if (!response.ok) {
+                throw new Error(`Failed to save key ${key}: ${response.status}`);
+            }
         } catch (error) {
             console.error(`API Save Error (${key}):`, error);
+            throw error;
         }
     },
 

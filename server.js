@@ -40,6 +40,7 @@ const server = app.listen(PORT, '0.0.0.0', () => {
         }
     }
     console.log(`🚀 FINPARSER SERVER ON PORT: ${PORT}`);
+    console.log(`[DB] Using file: ${DB_PATH}`);
 });
 
 // 4. BACKGROUND INITIALIZATION
@@ -71,20 +72,28 @@ const deleteFileMeta = db.prepare('DELETE FROM files_meta WHERE id = ?');
 app.get('/api/data', (req, res) => {
   try {
     const rows = getAllAppStorage.all();
+    console.log(`[DB] Fetching all data (${rows.length} keys)`);
     const data = {};
     for (const row of rows) {
       try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
     }
     res.json(data);
-  } catch (e) { res.status(500).json({ error: 'Failed to read' }); }
+  } catch (e) { 
+    console.error("[DB] Failed to read all data:", e);
+    res.status(500).json({ error: 'Failed to read' }); 
+  }
 });
 
 app.get('/api/data/:key', (req, res) => {
     try {
+        console.log(`[DB] Fetching specific key: ${req.params.key}`);
         const row = getSpecificAppStorage.get(req.params.key);
         if (!row) return res.status(404).json({ error: 'Not found' });
         res.json(JSON.parse(row.value));
-    } catch (e) { res.status(500).json({ error: 'Failed to fetch' }); }
+    } catch (e) { 
+        console.error(`[DB] Failed to fetch key ${req.params.key}:`, e);
+        res.status(500).json({ error: 'Failed to fetch' }); 
+    }
 });
 
 app.post('/api/data/:key', (req, res) => {
@@ -100,6 +109,7 @@ app.post('/api/data/:key', (req, res) => {
 
 app.post('/api/admin/reset', (req, res) => {
     try {
+        console.warn("[DB] PURGE COMMAND RECEIVED");
         db.prepare('DELETE FROM app_storage').run();
         db.prepare('DELETE FROM files_meta').run();
         const files = fs.readdirSync(DOCUMENTS_DIR);
@@ -142,6 +152,7 @@ app.post('/api/files/:id', (req, res) => {
     const diskFilename = `${Date.now()}_${rawFilename.replace(/[^a-zA-Z0-9.]/g, '_')}`;
     fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), req.body);
     insertFileMeta.run(id, rawFilename, diskFilename, mimeType, req.body.length, new Date().toISOString());
+    console.log(`[FILE] Saved: ${rawFilename} as ${diskFilename}`);
     res.json({ success: true });
   } catch (e) { res.status(500).send(e.message); }
 });
@@ -161,6 +172,7 @@ app.delete('/api/files/:id', (req, res) => {
     if (meta) {
         fs.unlinkSync(path.join(DOCUMENTS_DIR, meta.disk_filename));
         deleteFileMeta.run(req.params.id);
+        console.log(`[FILE] Deleted: ${meta.original_name}`);
     }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: 'Failed' }); }

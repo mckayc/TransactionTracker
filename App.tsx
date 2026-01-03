@@ -23,7 +23,7 @@ import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import ContentHub from './views/integrations/ContentHub';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
-import { MenuIcon, CloseIcon, SparklesIcon } from './components/Icons';
+import { MenuIcon, CloseIcon, SparklesIcon, ExclamationTriangleIcon } from './components/Icons';
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
 
@@ -33,6 +33,7 @@ const App: React.FC = () => {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     // Core Data State
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -71,6 +72,7 @@ const App: React.FC = () => {
     useEffect(() => {
         const loadInitialData = async () => {
             setIsLoading(true);
+            setLoadError(null);
             try {
                 const data = await api.loadAll();
                 
@@ -97,7 +99,19 @@ const App: React.FC = () => {
                     { id: 'investment', name: 'Investment', balanceEffect: 'investment' },
                     { id: 'donation', name: 'Donation', balanceEffect: 'donation' }
                 ]);
-                setRules(data.rules || []);
+                
+                // DATA MIGRATION & PERSISTENCE KEY UNIFICATION
+                // Automation Rules was using 'rules' key internally but 'reconciliationRules' for backup.
+                // We now unify on 'reconciliationRules'.
+                const initialRules = data.reconciliationRules || data.rules || [];
+                setRules(initialRules);
+                
+                // Perform one-time migration to unified key if we found data in the old key
+                if (data.rules && !data.reconciliationRules) {
+                    console.log("[App] Migrating 'rules' to 'reconciliationRules' key for consistency.");
+                    api.save('reconciliationRules', data.rules);
+                }
+
                 setPayees(data.payees || []);
                 
                 // Persistence Guard: If users exist in database, use them. Otherwise, use default.
@@ -125,27 +139,35 @@ const App: React.FC = () => {
                 setFinancialPlan(data.financialPlan || null);
                 setContentLinks(data.contentLinks || []);
                 setSystemSettings(data.systemSettings || {});
+                
+                setIsLoading(false);
+                document.body.classList.add('loaded');
             } catch (err) {
                 console.error("Failed to load initial data", err);
-            } finally {
-                setIsLoading(false);
-                // CRITICAL: Signal to index.html that the splash screen should be removed
-                document.body.classList.add('loaded');
+                setLoadError("Engine startup failed. Please verify your server connection and database volume permissions.");
+                // We keep isLoading true to prevent the UI from overwriting state with defaults
             }
         };
         loadInitialData();
         
-        // Safety timeout to remove splash even if fetch hangs indefinitely
+        // Safety timeout to remove splash only if we are successful, or if we want to show the error
         const safety = setTimeout(() => {
-            document.body.classList.add('loaded');
-        }, 3000);
+            if (isLoading && !loadError) {
+                console.warn("[App] Loading safety timeout triggered.");
+            }
+        }, 10000);
         return () => clearTimeout(safety);
     }, []);
 
     // Helper for persisting state updates to the backend
     const updateData = async (key: string, value: any, setter: Function) => {
         setter(value);
-        await api.save(key, value);
+        try {
+            await api.save(key, value);
+        } catch (e) {
+            console.error(`Failed to persist data for key: ${key}`, e);
+            alert(`Persistence Error: Changes to ${key} may not be saved.`);
+        }
     };
 
     // Transaction Management
@@ -191,7 +213,7 @@ const App: React.FC = () => {
                         onSaveRule={(r) => {
                             const exists = rules.findIndex(x => x.id === r.id);
                             const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r];
-                            updateData('rules', updated, setRules);
+                            updateData('reconciliationRules', updated, setRules);
                         }}
                         onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
                         onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
@@ -218,7 +240,7 @@ const App: React.FC = () => {
                         onSaveRule={(r) => {
                             const exists = rules.findIndex(x => x.id === r.id);
                             const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r];
-                            updateData('rules', updated, setRules);
+                            updateData('reconciliationRules', updated, setRules);
                         }}
                         onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
                         onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
@@ -398,9 +420,9 @@ const App: React.FC = () => {
                         onSaveRule={(r) => {
                             const exists = rules.findIndex(x => x.id === r.id);
                             const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r];
-                            updateData('rules', updated, setRules);
+                            updateData('reconciliationRules', updated, setRules);
                         }}
-                        onDeleteRule={(id) => updateData('rules', rules.filter(x => x.id !== id), setRules)}
+                        onDeleteRule={(id) => updateData('reconciliationRules', rules.filter(x => x.id !== id), setRules)}
                         onUpdateTransactions={(txs) => {
                             const txMap = new Map(txs.map(t => [t.id, t]));
                             updateData('transactions', transactions.map(t => txMap.has(t.id) ? txMap.get(t.id)! : t), setTransactions);
@@ -501,6 +523,28 @@ const App: React.FC = () => {
                 return null;
         }
     };
+
+    if (loadError) {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen bg-slate-100 p-8 text-center">
+                <div className="bg-white p-12 rounded-[2rem] shadow-2xl border-4 border-red-50 max-w-lg">
+                    <div className="bg-red-100 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+                        <ExclamationTriangleIcon className="w-10 h-10 text-red-600" />
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-800 mb-4 uppercase tracking-tight">Database Connectivity Error</h2>
+                    <p className="text-slate-600 mb-8 leading-relaxed">
+                        {loadError}
+                    </p>
+                    <button 
+                        onClick={() => window.location.reload()}
+                        className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95"
+                    >
+                        Retry Connection
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     if (isLoading) {
         return (
