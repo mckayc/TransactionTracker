@@ -50,31 +50,19 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>(getDefaultState());
     const isEditMode = transaction !== null;
 
-    const sortedPayeeOptions = useMemo(() => {
-        const sorted: { id: string, name: string }[] = [];
-        const parents = payees.filter(p => !p.parentId).sort((a, b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-        sorted.push({ id: parent.id, name: parent.name });
-        const children = payees.filter(p => p.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-        children.forEach(child => {
-            sorted.push({ id: child.id, name: `  - ${child.name}` });
-        });
-        });
-        return sorted;
-    }, [payees]);
+    // Recursive helper for deep hierarchies (parents, children, grandchildren)
+    const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
+        return items
+            .filter(i => i.parentId === parentId)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .flatMap(item => [
+                { id: item.id, name: `${'\u00A0'.repeat(depth * 3)}${depth > 0 ? '⌞ ' : ''}${item.name}` },
+                ...getSortedOptions(items, item.id, depth + 1)
+            ]);
+    };
 
-    const sortedCategoryOptions = useMemo(() => {
-        const sorted: { id: string, name: string }[] = [];
-        const parents = categories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-          sorted.push({ id: parent.id, name: parent.name });
-          const children = categories.filter(c => c.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-          children.forEach(child => {
-            sorted.push({ id: child.id, name: `  - ${child.name}` });
-          });
-        });
-        return sorted;
-    }, [categories]);
+    const sortedPayeeOptions = useMemo(() => getSortedOptions(payees), [payees]);
+    const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
 
     // Only reset form when modal opens or specific transaction changes
     useEffect(() => {
@@ -83,9 +71,6 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                 setFormData({ ...transaction, tagIds: transaction.tagIds || [] });
             } else {
                 const defaultState = getDefaultState();
-                // We want to use the current accounts list to pick a default if needed, 
-                // but we don't want to reset if the user is already typing.
-                // This effect runs on open.
                 const defaultAccountId = accounts.length > 0 ? accounts[0].id : '';
                 setFormData({
                     ...defaultState,
@@ -93,7 +78,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                 });
             }
         }
-    }, [isOpen, transaction]); // Removed data dependencies to prevent form reset on background updates
+    }, [isOpen, transaction]);
 
     if (!isOpen) return null;
 
@@ -208,7 +193,6 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                         </select>
                     </div>
                     
-                    {/* Tags Input */}
                     <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">Tags</label>
                         <div className="flex flex-wrap gap-2">

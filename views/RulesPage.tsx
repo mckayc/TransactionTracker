@@ -23,7 +23,6 @@ interface RulesPageProps {
     onAddTransactionType: (type: TransactionType) => void;
 }
 
-// --- Rule Card Component ---
 const RuleCard: React.FC<{
     rule: ReconciliationRule;
     onEdit: (rule: ReconciliationRule) => void;
@@ -37,7 +36,7 @@ const RuleCard: React.FC<{
     
     const getConditionSummary = () => {
         if (rule.conditions && rule.conditions.length > 0) {
-            const first = rule.conditions[0] as RuleCondition; // cast for safety
+            const first = rule.conditions[0] as RuleCondition; 
             if (!first.field) return "Complex Rule";
             
             let text = "";
@@ -121,7 +120,6 @@ const RuleCard: React.FC<{
     );
 };
 
-// --- Rule Editor Modal ---
 const RuleEditorModal: React.FC<{
     isOpen: boolean;
     selectedRule: ReconciliationRule | null;
@@ -166,7 +164,6 @@ const RuleEditorModal: React.FC<{
                 setSetDescription(selectedRule.setDescription || '');
                 setAssignTagIds(new Set(selectedRule.assignTagIds || []));
             } else {
-                // New Rule Defaults
                 setName('');
                 setConditions([{ id: generateUUID(), field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
                 setSetCategoryId('');
@@ -178,31 +175,19 @@ const RuleEditorModal: React.FC<{
         }
     }, [isOpen, selectedRule]);
     
-     const sortedPayeeOptions = useMemo(() => {
-        const sorted: { id: string, name: string }[] = [];
-        const parents = payees.filter(p => !p.parentId).sort((a, b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-          sorted.push({ id: parent.id, name: parent.name });
-          const children = payees.filter(p => p.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-          children.forEach(child => {
-            sorted.push({ id: child.id, name: `  - ${child.name}` });
-          });
-        });
-        return sorted;
-    }, [payees]);
-    
-    const sortedCategoryOptions = useMemo(() => {
-        const sorted: { id: string, name: string }[] = [];
-        const parents = categories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-          sorted.push({ id: parent.id, name: parent.name });
-          const children = categories.filter(c => c.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-          children.forEach(child => {
-            sorted.push({ id: child.id, name: `  - ${child.name}` });
-          });
-        });
-        return sorted;
-    }, [categories]);
+    // Recursive helper for deep hierarchies (parents, children, grandchildren)
+    const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
+        return items
+            .filter(i => i.parentId === parentId)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .flatMap(item => [
+                { id: item.id, name: `${'\u00A0'.repeat(depth * 3)}${depth > 0 ? '⌞ ' : ''}${item.name}` },
+                ...getSortedOptions(items, item.id, depth + 1)
+            ]);
+    };
+
+    const sortedPayeeOptions = useMemo(() => getSortedOptions(payees), [payees]);
+    const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
 
     if (!isOpen) return null;
 
@@ -239,7 +224,7 @@ const RuleEditorModal: React.FC<{
             const newTag = { 
                 id: generateUUID(), 
                 name: name.trim(), 
-                color: 'bg-slate-100 text-slate-800' // Default color
+                color: 'bg-slate-100 text-slate-800' 
             };
             onSaveTag(newTag);
             setAssignTagIds(prev => new Set(prev).add(newTag.id));
@@ -260,7 +245,6 @@ const RuleEditorModal: React.FC<{
             alert('Rule Name is required.');
             return;
         }
-        
         onSave({
             id: selectedRule?.id || generateUUID(),
             name: name.trim(),
@@ -286,7 +270,6 @@ const RuleEditorModal: React.FC<{
                         <label className="block text-sm font-medium text-slate-700 mb-1">Rule Name</label>
                         <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g., Monthly Netflix Subscription" className="w-full p-2 border rounded-md" required />
                     </div>
-                    
                     <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
                         <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
                             <SparklesIcon className="w-4 h-4 text-indigo-500"/> 
@@ -294,7 +277,6 @@ const RuleEditorModal: React.FC<{
                         </h3>
                         <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
                     </div>
-                    
                     <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
                         <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
                             <CheckCircleIcon className="w-4 h-4 text-green-500"/>
@@ -371,13 +353,10 @@ const RuleEditorModal: React.FC<{
     );
 };
 
-// --- Main Page Component ---
 const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType }) => {
     const [selectedRule, setSelectedRule] = useState<ReconciliationRule | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [ruleToRun, setRuleToRun] = useState<ReconciliationRule | null>(null);
-    
-    // Filter & Sort State
     const [searchTerm, setSearchTerm] = useState('');
     const [sortBy, setSortBy] = useState<'name_asc' | 'name_desc'>('name_asc');
 
@@ -403,13 +382,11 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
 
     const filteredRules = useMemo(() => {
         let result = rules.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        
         result.sort((a, b) => {
             if (sortBy === 'name_asc') return a.name.localeCompare(b.name);
             if (sortBy === 'name_desc') return b.name.localeCompare(a.name);
             return 0;
         });
-        
         return result;
     }, [rules, searchTerm, sortBy]);
     
@@ -429,47 +406,24 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                         <span>Create Rule</span>
                     </button>
                 </div>
-
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0">
                     <div className="relative flex-grow">
                         <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                        <input 
-                            type="text" 
-                            placeholder="Search rules..." 
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"
-                        />
+                        <input type="text" placeholder="Search rules..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
                     </div>
                     <div className="relative min-w-[180px]">
                         <SortIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <select 
-                            value={sortBy} 
-                            onChange={(e) => setSortBy(e.target.value as any)}
-                            className="w-full pl-9 pr-8 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none bg-white"
-                        >
+                        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="w-full pl-9 pr-8 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none bg-white">
                             <option value="name_asc">Name (A-Z)</option>
                             <option value="name_desc">Name (Z-A)</option>
                         </select>
                     </div>
                 </div>
-
-                {/* Rules Grid - Updated for more density */}
                 <div className="flex-1 overflow-y-auto pr-2">
                     {filteredRules.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                             {filteredRules.map(rule => (
-                                <RuleCard 
-                                    key={rule.id}
-                                    rule={rule}
-                                    onEdit={handleOpenEditor}
-                                    onRun={setRuleToRun}
-                                    onDelete={onDeleteRule}
-                                    categories={categories}
-                                    payees={payees}
-                                    types={transactionTypes}
-                                    tags={tags}
-                                />
+                                <RuleCard key={rule.id} rule={rule} onEdit={handleOpenEditor} onRun={setRuleToRun} onDelete={onDeleteRule} categories={categories} payees={payees} types={transactionTypes} tags={tags}/>
                             ))}
                         </div>
                     ) : (
@@ -481,36 +435,9 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                     )}
                 </div>
             </div>
-
-            {/* Modals */}
-            <RuleEditorModal 
-                isOpen={isModalOpen} 
-                selectedRule={selectedRule} 
-                onSave={handleSave} 
-                onClose={handleCloseEditor} 
-                accounts={accounts} 
-                transactionTypes={transactionTypes} 
-                categories={categories} 
-                tags={tags} 
-                payees={payees} 
-                onSaveCategory={onSaveCategory}
-                onSavePayee={onSavePayee}
-                onSaveTag={onSaveTag}
-                onAddTransactionType={onAddTransactionType}
-            />
-
+            <RuleEditorModal isOpen={isModalOpen} selectedRule={selectedRule} onSave={handleSave} onClose={handleCloseEditor} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
             {ruleToRun && (
-                <RulePreviewModal
-                    isOpen={!!ruleToRun}
-                    onClose={() => setRuleToRun(null)}
-                    onApply={handleApplyRule}
-                    rule={ruleToRun}
-                    transactions={transactions}
-                    accounts={accounts}
-                    transactionTypes={transactionTypes}
-                    categories={categories}
-                    payees={payees}
-                />
+                <RulePreviewModal isOpen={!!ruleToRun} onClose={() => setRuleToRun(null)} onApply={handleApplyRule} rule={ruleToRun} transactions={transactions} accounts={accounts} transactionTypes={transactionTypes} categories={categories} payees={payees} />
             )}
         </>
     );

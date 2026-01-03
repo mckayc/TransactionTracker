@@ -61,31 +61,18 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
         }
     }, [isOpen, transaction]);
     
-    const sortedPayeeOptions = useMemo(() => {
-        const sorted: { id: string, name: string }[] = [];
-        const parents = payees.filter(p => !p.parentId).sort((a, b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-          sorted.push({ id: parent.id, name: parent.name });
-          const children = payees.filter(p => p.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-          children.forEach(child => {
-            sorted.push({ id: child.id, name: `  - ${child.name}` });
-          });
-        });
-        return sorted;
-    }, [payees]);
+    const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
+        return items
+            .filter(i => i.parentId === parentId)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .flatMap(item => [
+                { id: item.id, name: `${'\u00A0'.repeat(depth * 3)}${depth > 0 ? '⌞ ' : ''}${item.name}` },
+                ...getSortedOptions(items, item.id, depth + 1)
+            ]);
+    };
 
-    const sortedCategoryOptions = useMemo(() => {
-        const sorted: { id: string, name: string }[] = [];
-        const parents = categories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-          sorted.push({ id: parent.id, name: parent.name });
-          const children = categories.filter(c => c.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-          children.forEach(child => {
-            sorted.push({ id: child.id, name: `  - ${child.name}` });
-          });
-        });
-        return sorted;
-    }, [categories]);
+    const sortedPayeeOptions = useMemo(() => getSortedOptions(payees), [payees]);
+    const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
 
     if (!isOpen) return null;
 
@@ -166,7 +153,6 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[70] flex justify-center items-center p-4" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col" onClick={e => e.stopPropagation()}>
-                {/* Header with Actions */}
                 <div className="flex justify-between items-center p-6 border-b bg-white sticky top-0 z-20">
                     <h2 className="text-xl font-bold text-slate-800">Create Automation Rule</h2>
                     <div className="flex items-center gap-3">

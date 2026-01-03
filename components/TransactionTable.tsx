@@ -49,7 +49,6 @@ const generateGroupColor = (str: string): string => {
     for (let i = 0; i < str.length; i++) {
         hash = str.charCodeAt(i) + ((hash << 5) - hash);
     }
-    // Specific tailored palette for link icons (avoiding too light colors)
     const colors = [
         'text-red-500', 'text-orange-500', 'text-amber-600', 'text-yellow-600', 
         'text-lime-600', 'text-green-600', 'text-emerald-600', 'text-teal-600', 
@@ -98,33 +97,20 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const userMap = useMemo(() => new Map(users.map(u => [u.id, u.name])), [users]);
   const tagMap = useMemo(() => new Map(tags.map(t => [t.id, t])), [tags]);
 
-  const sortedPayeeOptions = useMemo(() => {
-    const sorted: { id: string, name: string }[] = [];
-    const parents = payees.filter(p => !p.parentId).sort((a, b) => a.name.localeCompare(b.name));
-    parents.forEach(parent => {
-      sorted.push({ id: parent.id, name: parent.name });
-      const children = payees.filter(p => p.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-      children.forEach(child => {
-        sorted.push({ id: child.id, name: `  - ${child.name}` });
-      });
-    });
-    return sorted;
-  }, [payees]);
+  // Recursive options helper to support any depth (grandchildren, etc.)
+  const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
+    return items
+        .filter(i => i.parentId === parentId)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .flatMap(item => [
+            { id: item.id, name: `${'\u00A0'.repeat(depth * 3)}${depth > 0 ? '⌞ ' : ''}${item.name}` },
+            ...getSortedOptions(items, item.id, depth + 1)
+        ]);
+  };
 
-  const sortedCategoryOptions = useMemo(() => {
-    const sorted: { id: string, name: string }[] = [];
-    const parents = categories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
-    parents.forEach(parent => {
-      sorted.push({ id: parent.id, name: parent.name });
-      const children = categories.filter(c => c.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-      children.forEach(child => {
-        sorted.push({ id: child.id, name: `  - ${child.name}` });
-      });
-    });
-    return sorted;
-  }, [categories]);
+  const sortedPayeeOptions = useMemo(() => getSortedOptions(payees), [payees]);
+  const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
 
-  // 1. First, sort the flat list of transactions
   const sortedTransactions = useMemo(() => {
     if (!sortKey) return transactions;
     
@@ -171,28 +157,23 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     return sortDirection === 'asc' ? sorted.reverse() : sorted;
   }, [transactions, sortKey, sortDirection, payeeMap, categoryMap, accountMap, userMap, transactionTypeMap]);
 
-  // 2. Then group them for display
   const displayItems = useMemo(() => {
       const items: DisplayItem[] = [];
       const processedGroupIds = new Set<string>();
 
       for (const tx of sortedTransactions) {
-          const groupId = tx.linkGroupId; // Ignoring legacy linkedTransactionId for grouping to simplify logic, only using new system
+          const groupId = tx.linkGroupId;
           
           if (groupId) {
-              if (processedGroupIds.has(groupId)) continue; // Already processed this group
-
-              // Find all siblings
+              if (processedGroupIds.has(groupId)) continue;
               const children = transactions.filter(t => t.linkGroupId === groupId);
-              
-              // Heuristic: Find the "Primary" transaction (usually the Transfer source/largest amount, or explicit Parent)
               let primaryTx = children.find(c => c.isParent) || children.reduce((prev, current) => (Math.abs(current.amount) > Math.abs(prev.amount) ? current : prev), children[0]);
               
               items.push({
                   type: 'group',
                   id: groupId,
                   primaryTx,
-                  children: children.filter(c => c.id !== primaryTx.id), // Children to show when expanded (excluding primary which is header)
+                  children: children.filter(c => c.id !== primaryTx.id),
                   totalAmount: primaryTx.amount 
               });
               processedGroupIds.add(groupId);
@@ -203,12 +184,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       return items;
   }, [sortedTransactions, transactions]);
 
-  // Reset pagination when data changes
   useEffect(() => {
       setCurrentPage(1);
   }, [displayItems.length]);
 
-  // 3. Paginate
   const totalPages = Math.ceil(displayItems.length / rowsPerPage);
   const startIndex = (currentPage - 1) * rowsPerPage;
   const endIndex = startIndex + rowsPerPage;
@@ -253,16 +232,12 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   };
 
   const handleSelectionChange = (e: React.ChangeEvent<HTMLInputElement>, id: string) => {
-      // Stop propagation to prevent row click
       e.stopPropagation();
-      
       const nativeEvent = e.nativeEvent as any;
       const isShiftKey = nativeEvent && nativeEvent.shiftKey;
-      
       const willSelect = e.target.checked;
 
       if (isShiftKey && lastClickedId && onBulkSelection) {
-          // Find index in the CURRENT VIEW (sortedTransactions), not just current page
           const start = sortedTransactions.findIndex(t => t.id === lastClickedId);
           const end = sortedTransactions.findIndex(t => t.id === id);
 
@@ -283,9 +258,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const handleGroupSelection = (e: React.ChangeEvent<HTMLInputElement>, group: GroupItem) => {
       e.stopPropagation();
       if (!onBulkSelection) return;
-      
       const allIds = [group.primaryTx.id, ...group.children.map(c => c.id)];
-      // Toggle all based on the new checked state of the checkbox
       onBulkSelection(allIds, e.target.checked);
   };
 
@@ -332,9 +305,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       const type = transactionTypeMap.get(typeId);
       if (type?.balanceEffect === 'expense') return 'text-red-600';
       if (type?.balanceEffect === 'investment') return 'text-purple-600';
-      if (type?.balanceEffect === 'donation') return 'text-blue-600'; // Donations are Blue
+      if (type?.balanceEffect === 'donation') return 'text-blue-600';
       if (type?.balanceEffect === 'income') return 'text-green-600';
-      return 'text-slate-600'; // Transfer
+      return 'text-slate-600';
   };
 
   const getAmountPrefix = (typeId: string) => {
@@ -344,8 +317,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       return '';
   };
 
-  // Note: sticky z-indices are set in index.css to ensure proper layering
-  // If check boxes are shown, we offset the Date column by 2.5rem (w-10)
   const dateColumnStyle = showCheckboxes ? { left: '2.5rem' } : {};
 
   const renderHeader = (label: string, key: SortKey, className: string = "", style: React.CSSProperties = {}) => (
@@ -360,7 +331,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const commonInputClass = "w-full p-1 text-xs rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none shadow-sm";
   const cellClass = (isEditable = false) => `px-3 py-2 whitespace-nowrap text-sm text-slate-600 ${isEditable ? 'cursor-pointer hover:text-indigo-600 hover:bg-slate-50' : ''}`;
 
-  // Helper to render a single transaction row
   const renderRow = (transaction: Transaction, isChild: boolean = false, groupData?: GroupItem) => {
         const typeName = transaction.type || transactionTypeMap.get(transaction.typeId)?.name || 'N/A';
         const categoryName = transaction.category || categoryMap.get(transaction.categoryId)?.name || 'Uncategorized';
@@ -370,10 +340,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         
         const amountColor = getAmountColor(transaction.typeId);
         const amountPrefix = getAmountPrefix(transaction.typeId);
-        
         const isSelected = selectedTxIds.has(transaction.id);
-        
-        // For single items (not part of group logic)
         const linkGroupId = transaction.linkGroupId || transaction.linkedTransactionId;
         const isLinkedLegacy = !!linkGroupId && !groupData; 
 
@@ -387,10 +354,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         }
 
         return (
-            <tr 
-                key={transaction.id} 
-                className={`transition-colors group ${stickyBgClass}`}
-            >
+            <tr key={transaction.id} className={`transition-colors group ${stickyBgClass}`}>
               {showCheckboxes && (
                   <td className={`w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-50 border-r border-transparent ${stickyBgClass}`}>
                       <div className={isChild ? "pl-4 border-l-2 border-slate-300" : ""}>
@@ -405,8 +369,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       </div>
                   </td>
               )}
-              
-              {/* Date */}
               {visibleColumns.has('date') && (
                   <td style={dateColumnStyle} className={`sticky-col-left ${cellClass(true)} ${stickyBgClass} z-20`}>
                     {editingCell?.id === transaction.id && editingCell.field === 'date' ? (
@@ -416,41 +378,26 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     )}
                   </td>
               )}
-
-              {/* Description */}
               {visibleColumns.has('description') && (
                   <td className="px-3 py-2 text-sm font-medium text-slate-900 w-64 min-w-[200px] max-w-xs relative">
                     <div className={`flex items-center gap-2 w-full ${isChild ? 'pl-4' : ''}`}>
-                        {/* Icons */}
                         {isLinkedLegacy && (
-                            <button 
-                                title={`Linked Transaction Group`} 
-                                onClick={(e) => { e.stopPropagation(); linkGroupId && onManageLink && onManageLink(linkGroupId); }} 
-                                className="cursor-pointer hover:scale-110 transition-transform p-1 hover:bg-sky-100 rounded flex-shrink-0"
-                            >
+                            <button title={`Linked Transaction Group`} onClick={(e) => { e.stopPropagation(); linkGroupId && onManageLink && onManageLink(linkGroupId); }} className="cursor-pointer hover:scale-110 transition-transform p-1 hover:bg-sky-100 rounded flex-shrink-0">
                                 <LinkIcon className={`w-3 h-3 ${generateGroupColor(linkGroupId!)}`} />
                             </button>
                         )}
                         {transaction.isParent && <span title="Split Parent (Container)" className="bg-indigo-100 text-indigo-600 text-[10px] px-1 rounded flex-shrink-0">Split</span>}
                         {transaction.notes && <span title={transaction.notes} className="flex-shrink-0"><NotesIcon className="w-3 h-3 text-indigo-500" /></span>}
-                        
-                        {/* Input or Text */}
                         {editingCell?.id === transaction.id && editingCell.field === 'description' ? (
                             <input type="text" defaultValue={transaction.description} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'description')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'description')} className={commonInputClass} />
                         ) : (
                             <div className="flex items-center gap-1.5 w-full min-w-0">
                                 <span onClick={() => setEditingCell({ id: transaction.id, field: 'description' })} className="truncate block cursor-pointer hover:text-indigo-600" title={transaction.description}>{transaction.description}</span>
-                                
                                 {transaction.originalDescription && transaction.originalDescription !== transaction.description && (
                                     <div className="group/tooltip relative flex items-center flex-shrink-0">
-                                        <button 
-                                            className="focus:outline-none" 
-                                            title={`Original: ${transaction.originalDescription}`}
-                                            onClick={(e) => { e.stopPropagation(); alert(`Original Description: ${transaction.originalDescription}`); }}
-                                        >
+                                        <button className="focus:outline-none" title={`Original: ${transaction.originalDescription}`} onClick={(e) => { e.stopPropagation(); alert(`Original Description: ${transaction.originalDescription}`); }}>
                                             <InfoIcon className="w-3 h-3 text-slate-400 cursor-help hover:text-indigo-500" />
                                         </button>
-                                        {/* Custom Tooltip */}
                                         <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden w-max max-w-[250px] p-2 bg-slate-800 text-white text-xs rounded shadow-lg group-hover/tooltip:block z-50 whitespace-normal text-center pointer-events-none">
                                             Original: {transaction.originalDescription}
                                             <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
@@ -462,8 +409,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     </div>
                   </td>
               )}
-
-              {/* Payee */}
               {visibleColumns.has('payee') && (
                   <td className={cellClass(true)}>
                     {editingCell?.id === transaction.id && editingCell.field === 'payeeId' ? (
@@ -476,8 +421,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     )}
                   </td>
               )}
-
-              {/* Category */}
               {visibleColumns.has('category') && (
                    <td className={cellClass(true)}>
                      {editingCell?.id === transaction.id && editingCell.field === 'categoryId' ? (
@@ -493,8 +436,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     )}
                   </td>
               )}
-
-              {/* Tags */}
               {visibleColumns.has('tags') && (
                   <td className={cellClass(false)}>
                       <div className="flex flex-wrap gap-1 max-w-[150px]">
@@ -502,20 +443,12 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                               transaction.tagIds.map(tagId => {
                                   const tag = tagMap.get(tagId);
                                   if (!tag) return null;
-                                  return (
-                                      <span key={tagId} className={`px-1.5 py-0.5 text-[10px] rounded-full border ${tag.color}`}>
-                                          {tag.name}
-                                      </span>
-                                  );
+                                  return (<span key={tagId} className={`px-1.5 py-0.5 text-[10px] rounded-full border ${tag.color}`}>{tag.name}</span>);
                               })
-                          ) : (
-                              <span className="text-slate-300 text-xs italic">--</span>
-                          )}
+                          ) : (<span className="text-slate-300 text-xs italic">--</span>)}
                       </div>
                   </td>
               )}
-
-              {/* Account */}
               {visibleColumns.has('account') && (
                   <td className={cellClass(true)}>
                       {editingCell?.id === transaction.id && editingCell.field === 'accountId' ? (
@@ -527,8 +460,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     )}
                   </td>
               )}
-
-              {/* Location */}
               {visibleColumns.has('location') && (
                   <td className={cellClass(true)}>
                     {editingCell?.id === transaction.id && editingCell.field === 'location' ? (
@@ -538,8 +469,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     )}
                   </td>
               )}
-
-              {/* User */}
               {visibleColumns.has('user') && (
                   <td className={cellClass(true)}>
                      {editingCell?.id === transaction.id && editingCell.field === 'userId' ? (
@@ -552,8 +481,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     )}
                   </td>
               )}
-
-              {/* Type */}
               {visibleColumns.has('type') && (
                   <td className={cellClass(true)}>
                     {editingCell?.id === transaction.id && editingCell.field === 'typeId' ? (
@@ -565,8 +492,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     )}
                   </td>
               )}
-
-              {/* Amount */}
               {visibleColumns.has('amount') && (
                   <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-medium pr-8 min-w-[120px]`}>
                      {editingCell?.id === transaction.id && editingCell.field === 'amount' ? (
@@ -578,8 +503,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     )}
                   </td>
               )}
-
-              {/* Actions */}
               {visibleColumns.has('actions') && (
                   <td className={`px-3 py-2 whitespace-nowrap text-center text-sm font-medium sticky-col-right ${stickyBgClass} z-20`}>
                       <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -588,7 +511,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                 <SparklesIcon className="w-4 h-4" />
                             </button>
                          )}
-                         {onSplit && !isChild && !groupData && ( // Only single items or parent items can be split
+                         {onSplit && !isChild && !groupData && ( 
                              <button onClick={(e) => { e.stopPropagation(); onSplit(transaction); }} className="text-slate-400 hover:text-indigo-600 p-1" title="Split Transaction">
                                  <SplitIcon className="w-4 h-4" />
                              </button>
@@ -603,36 +526,22 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         );
   };
 
-  // Helper to render a Group Header row
   const renderGroupHeader = (group: GroupItem) => {
       const isExpanded = expandedGroups.has(group.id);
       const allChildIds = [group.primaryTx.id, ...group.children.map(c => c.id)];
       const isFullySelected = allChildIds.every(id => selectedTxIds.has(id));
-      
       const primaryTx = group.primaryTx;
       const typeName = primaryTx.type || transactionTypeMap.get(primaryTx.typeId)?.name || 'Mix';
-      
       const amountColor = getAmountColor(primaryTx.typeId);
       const amountPrefix = getAmountPrefix(primaryTx.typeId);
 
       return (
-          <tr 
-            key={group.id} 
-            className={`bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer border-b border-slate-200 group`}
-            onClick={() => toggleGroup(group.id)}
-          >
+          <tr key={group.id} className={`bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer border-b border-slate-200 group`} onClick={() => toggleGroup(group.id)}>
               {showCheckboxes && (
                   <td className="w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-50 border-r border-transparent bg-slate-100">
-                      <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer pointer-events-auto"
-                          checked={isFullySelected}
-                          onChange={(e) => handleGroupSelection(e, group)}
-                          onClick={(e) => e.stopPropagation()}
-                      />
+                      <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer pointer-events-auto" checked={isFullySelected} onChange={(e) => handleGroupSelection(e, group)} onClick={(e) => e.stopPropagation()}/>
                   </td>
               )}
-              
               {visibleColumns.has('date') && (
                   <td style={dateColumnStyle} className="sticky-col-left px-3 py-2 whitespace-nowrap text-sm text-slate-600 bg-slate-100 z-20">
                       <div className="flex items-center gap-1">
@@ -641,7 +550,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       </div>
                   </td>
               )}
-
               {visibleColumns.has('description') && (
                   <td className="px-3 py-2 text-sm font-semibold text-slate-800">
                       <div className="flex items-center gap-2">
@@ -650,31 +558,21 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       </div>
                   </td>
               )}
-
               {visibleColumns.has('payee') && <td className="px-3 py-2 text-sm text-slate-500 italic">Multiple</td>}
               {visibleColumns.has('category') && <td className="px-3 py-2 text-sm text-slate-500 italic">Split / Multiple</td>}
               {visibleColumns.has('tags') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
               {visibleColumns.has('account') && <td className="px-3 py-2 text-sm text-slate-500">{primaryTx.account || accountMap.get(primaryTx.accountId || '')?.name}</td>}
               {visibleColumns.has('location') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
               {visibleColumns.has('user') && <td className="px-3 py-2 text-sm text-slate-500">--</td>}
-              
-              {visibleColumns.has('type') && (
-                  <td className="px-3 py-2 text-sm text-slate-600">{typeName}</td>
-              )}
-
+              {visibleColumns.has('type') && (<td className="px-3 py-2 text-sm text-slate-600">{typeName}</td>)}
               {visibleColumns.has('amount') && (
                   <td className={`px-3 py-2 whitespace-nowrap text-sm text-right font-bold pr-8 tabular-nums font-mono ${amountColor}`}>
                       {amountPrefix}{formatCurrency(Math.abs(primaryTx.amount))}
                   </td>
               )}
-
               {visibleColumns.has('actions') && (
                   <td className="px-3 py-2 whitespace-nowrap text-center text-sm font-medium sticky-col-right bg-slate-100 z-20">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); onManageLink && onManageLink(group.id); }} 
-                        className="text-indigo-600 hover:text-indigo-800 p-1"
-                        title="Manage Linked Group"
-                      >
+                      <button onClick={(e) => { e.stopPropagation(); onManageLink && onManageLink(group.id); }} className="text-indigo-600 hover:text-indigo-800 p-1" title="Manage Linked Group">
                           <LinkIcon className="w-4 h-4" />
                       </button>
                   </td>
@@ -691,13 +589,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             <tr>
                 {showCheckboxes && (
                 <th scope="col" className="w-10 px-3 py-3 bg-slate-50 sticky top-0 left-0 z-50 border-b border-slate-200">
-                    <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 pointer-events-auto"
-                        checked={transactions.length > 0 && selectedTxIds.size === transactions.length}
-                        onChange={onToggleSelectAll}
-                        aria-label="Select all transactions"
-                    />
+                    <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 pointer-events-auto" checked={transactions.length > 0 && selectedTxIds.size === transactions.length} onChange={onToggleSelectAll} aria-label="Select all transactions" />
                 </th>
                 )}
                 {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32 z-40', dateColumnStyle)}
@@ -746,48 +638,23 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         </table>
         </div>
         
-        {/* Pagination Controls */}
         {totalPages > 1 && (
             <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 sticky bottom-0 z-30 w-full min-w-0">
                 <div className="flex items-center text-sm text-slate-600">
                     <span className="mr-2 hidden sm:inline">Rows per page:</span>
-                    <select 
-                        value={rowsPerPage} 
-                        onChange={(e) => {
-                            setRowsPerPage(Number(e.target.value));
-                            setCurrentPage(1);
-                        }}
-                        className="p-1 border rounded text-xs bg-white focus:ring-indigo-500 w-16"
-                    >
+                    <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="p-1 border rounded text-xs bg-white focus:ring-indigo-500 w-16">
                         <option value={25}>25</option>
                         <option value={50}>50</option>
                         <option value={100}>100</option>
                         <option value={displayItems.length}>All</option>
                     </select>
                     <span className="mx-4 text-slate-400 hidden sm:inline">|</span>
-                    <span className="hidden sm:inline">
-                        {startIndex + 1}-{Math.min(endIndex, displayItems.length)} of {displayItems.length}
-                    </span>
+                    <span className="hidden sm:inline">{startIndex + 1}-{Math.min(endIndex, displayItems.length)} of {displayItems.length}</span>
                 </div>
-                
                 <div className="flex items-center gap-2">
-                    <button 
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                        className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
-                    >
-                        <ChevronLeftIcon className="w-5 h-5 text-slate-600" />
-                    </button>
-                    <span className="text-sm font-medium text-slate-700 min-w-[3rem] text-center">
-                        Page {currentPage} of {totalPages}
-                    </span>
-                    <button 
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
-                        className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"
-                    >
-                        <ChevronRightIcon className="w-5 h-5 text-slate-600" />
-                    </button>
+                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"><ChevronLeftIcon className="w-5 h-5 text-slate-600" /></button>
+                    <span className="text-sm font-medium text-slate-700 min-w-[3rem] text-center">Page {currentPage} of {totalPages}</span>
+                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30 disabled:hover:bg-transparent"><ChevronRightIcon className="w-5 h-5 text-slate-600" /></button>
                 </div>
             </div>
         )}

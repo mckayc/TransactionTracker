@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User } from '../types';
 import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon } from './Icons';
@@ -44,31 +45,19 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
     const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
 
-    const sortedPayeeOptions = useMemo(() => {
-        const sorted: { id: string, name: string }[] = [];
-        const parents = payees.filter(p => !p.parentId).sort((a, b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-          sorted.push({ id: parent.id, name: parent.name });
-          const children = payees.filter(p => p.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-          children.forEach(child => {
-            sorted.push({ id: child.id, name: `  - ${child.name}` });
-          });
-        });
-        return sorted;
-    }, [payees]);
+    // Recursive helper for deep hierarchies (parents, children, grandchildren)
+    const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
+        return items
+            .filter(i => i.parentId === parentId)
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .flatMap(item => [
+                { id: item.id, name: `${'\u00A0'.repeat(depth * 3)}${depth > 0 ? '⌞ ' : ''}${item.name}` },
+                ...getSortedOptions(items, item.id, depth + 1)
+            ]);
+    };
 
-    const sortedCategoryOptions = useMemo(() => {
-        const sorted: { id: string, name: string }[] = [];
-        const parents = categories.filter(c => !c.parentId).sort((a, b) => a.name.localeCompare(b.name));
-        parents.forEach(parent => {
-          sorted.push({ id: parent.id, name: parent.name });
-          const children = categories.filter(c => c.parentId === parent.id).sort((a, b) => a.name.localeCompare(b.name));
-          children.forEach(child => {
-            sorted.push({ id: child.id, name: `  - ${child.name}` });
-          });
-        });
-        return sorted;
-    }, [categories]);
+    const sortedPayeeOptions = useMemo(() => getSortedOptions(payees), [payees]);
+    const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
 
     const handleUpdate = (txId: string, field: keyof VerifiableTransaction, value: any) => {
         setTransactions(prev => prev.map(tx => {
@@ -185,12 +174,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                         <tr>
                             <th className="px-4 py-3 w-10 text-center">
-                                <input 
-                                    type="checkbox" 
-                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                    checked={transactions.length > 0 && selectedIds.size === transactions.length}
-                                    onChange={handleSelectAll}
-                                />
+                                <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={transactions.length > 0 && selectedIds.size === transactions.length} onChange={handleSelectAll} />
                             </th>
                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider w-20">Status</th>
                             {['Date', 'Description', 'Income Source', 'Category', 'Amount', 'Actions'].map(header => (
@@ -202,19 +186,10 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                         {transactions.map(tx => (
                             <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 grayscale bg-slate-50' : 'bg-green-50/30'} ${selectedIds.has(tx.tempId) ? 'ring-2 ring-inset ring-indigo-400' : 'hover:bg-slate-50'}`}>
                                 <td className="px-4 py-2 text-center">
-                                    <input 
-                                        type="checkbox" 
-                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                                        checked={selectedIds.has(tx.tempId)}
-                                        onChange={() => toggleSelection(tx.tempId)}
-                                    />
+                                    <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedIds.has(tx.tempId)} onChange={() => toggleSelection(tx.tempId)} />
                                 </td>
                                 <td className="px-4 py-2 text-center">
-                                    <button 
-                                        onClick={() => handleToggleIgnore(tx.tempId)}
-                                        className={`p-1.5 rounded-lg transition-colors ${tx.isIgnored ? 'text-slate-400 hover:text-indigo-600' : 'text-green-600 hover:text-red-500'}`}
-                                        title={tx.isIgnored ? "Mark for Import" : "Ignore / Skip"}
-                                    >
+                                    <button onClick={() => handleToggleIgnore(tx.tempId)} className={`p-1.5 rounded-lg transition-colors ${tx.isIgnored ? 'text-slate-400 hover:text-indigo-600' : 'text-green-600 hover:text-red-500'}`} title={tx.isIgnored ? "Mark for Import" : "Ignore / Skip"}>
                                         {tx.isIgnored ? <SlashIcon className="w-4 h-4" /> : <CheckCircleIcon className="w-5 h-5" />}
                                     </button>
                                 </td>
@@ -260,12 +235,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 </td>
                                 <td className="px-4 py-2 whitespace-nowrap text-center w-24">
                                     <div className="flex items-center justify-center gap-1">
-                                        <button onClick={() => onCreateRule?.(tx)} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Automation Rule from this row">
-                                            <SparklesIcon className="w-4 h-4" />
-                                        </button>
-                                        <button onClick={() => handleDelete(tx.tempId)} className="text-slate-400 hover:text-red-600 p-1" title="Delete from import">
-                                            <DeleteIcon className="w-4 h-4"/>
-                                        </button>
+                                        <button onClick={() => onCreateRule?.(tx)} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Automation Rule from this row"><SparklesIcon className="w-4 h-4" /></button>
+                                        <button onClick={() => handleDelete(tx.tempId)} className="text-slate-400 hover:text-red-600 p-1" title="Delete from import"><DeleteIcon className="w-4 h-4"/></button>
                                     </div>
                                 </td>
                             </tr>
@@ -277,62 +248,28 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
             <div className="flex justify-end items-center gap-3 pt-4 border-t">
                 <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
                 <button onClick={handleFinalize} className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 shadow-sm flex items-center gap-2">
-                    <CheckCircleIcon className="w-4 h-4" />
-                    Complete Import ({importCount} items)
+                    <CheckCircleIcon className="w-4 h-4" /> Complete Import ({importCount} items)
                 </button>
             </div>
 
-            {/* Bulk Action Bar */}
             {selectedIds.size > 0 && (
                 <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white border border-slate-200 p-3 rounded-xl shadow-2xl z-50 flex flex-col sm:flex-row items-center gap-4 animate-slide-up">
                     <div className="flex items-center gap-3 border-r border-slate-200 pr-4 mr-2">
                         <span className="font-bold text-slate-700 text-sm">{selectedIds.size} Selected</span>
-                        <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-slate-600 bg-slate-100 rounded-full p-1">
-                            <CloseIcon className="w-3 h-3" />
-                        </button>
+                        <button onClick={() => setSelectedIds(new Set())} className="text-slate-400 hover:text-slate-600 bg-slate-100 rounded-full p-1"><CloseIcon className="w-3 h-3" /></button>
                     </div>
-
                     <div className="flex items-center gap-2 border-r border-slate-100 pr-4 mr-2">
-                         <button 
-                            onClick={() => handleBulkStatusUpdate(false)} 
-                            className="bg-green-50 text-green-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-green-100 transition-colors uppercase tracking-wide border border-green-200"
-                        >
-                            Mark for Import
-                        </button>
-                        <button 
-                            onClick={() => handleBulkStatusUpdate(true)} 
-                            className="bg-slate-50 text-slate-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-slate-100 transition-colors uppercase tracking-wide border border-slate-200"
-                        >
-                            Skip / Ignore
-                        </button>
+                         <button onClick={() => handleBulkStatusUpdate(false)} className="bg-green-50 text-green-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-green-100 transition-colors uppercase tracking-wide border border-green-200">Mark for Import</button>
+                        <button onClick={() => handleBulkStatusUpdate(true)} className="bg-slate-50 text-slate-600 px-3 py-1.5 rounded text-xs font-bold hover:bg-slate-100 transition-colors uppercase tracking-wide border border-slate-200">Skip / Ignore</button>
                     </div>
-
                     <div className="flex items-center gap-2">
-                         <select 
-                            value={bulkCategoryId} 
-                            onChange={e => setBulkCategoryId(e.target.value)} 
-                            className="p-1.5 border rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none max-w-[140px]"
-                        >
+                         <select value={bulkCategoryId} onChange={e => setBulkCategoryId(e.target.value)} className="p-1.5 border rounded text-xs focus:ring-1 focus:ring-indigo-500 outline-none max-w-[140px]">
                             <option value="">Select Category...</option>
                             {sortedCategoryOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                          </select>
-                         <button 
-                            onClick={handleBulkCategoryUpdate} 
-                            disabled={!bulkCategoryId} 
-                            className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide"
-                        >
-                            Set Cat
-                        </button>
+                         <button onClick={handleBulkCategoryUpdate} disabled={!bulkCategoryId} className="bg-indigo-50 text-indigo-700 px-3 py-1.5 rounded text-xs font-bold hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide">Set Cat</button>
                     </div>
-
-                    <div className="border-l border-slate-200 pl-4 ml-2">
-                        <button 
-                            onClick={handleBulkDelete} 
-                            className="text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded text-xs font-bold transition-colors uppercase tracking-wide"
-                        >
-                            Delete
-                        </button>
-                    </div>
+                    <div className="border-l border-slate-200 pl-4 ml-2"><button onClick={handleBulkDelete} className="text-red-600 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded text-xs font-bold transition-colors uppercase tracking-wide">Delete</button></div>
                 </div>
             )}
         </div>

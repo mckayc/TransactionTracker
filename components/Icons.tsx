@@ -39,6 +39,8 @@ export const UsersIcon = Users;
 export const UserGroupIcon = UsersRound;
 export const TagIcon = Tag;
 export const DuplicateIcon = Copy;
+// Added CopyIcon alias to fix import error in AllTransactions.tsx
+export const CopyIcon = Copy;
 export const CheckBadgeIcon = BadgeCheck;
 export const PlayIcon = Play;
 export const WizardIcon = Wand2;

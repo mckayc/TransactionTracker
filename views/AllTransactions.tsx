@@ -10,9 +10,11 @@ import TransactionAuditor from '../components/TransactionAuditor';
 import VerifyModal from '../components/VerifyModal';
 import DonationModal from '../components/DonationModal';
 import SplitTransactionModal from '../components/SplitTransactionModal';
-import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, PrinterIcon, DownloadIcon, ShieldCheckIcon, HeartIcon, ChartPieIcon } from '../components/Icons';
+// Added CheckCircleIcon to the imports from Icons.tsx
+import { AddIcon, DuplicateIcon, DeleteIcon, CloseIcon, CalendarIcon, RobotIcon, EyeIcon, LinkIcon, TagIcon, UserGroupIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, PrinterIcon, DownloadIcon, ShieldCheckIcon, HeartIcon, ChartPieIcon, CopyIcon, CheckCircleIcon } from '../components/Icons';
 import { hasApiKey } from '../services/geminiService';
 import { generateUUID } from '../utils';
+import { getTodayDate } from '../dateUtils';
 import MultiSelect from '../components/MultiSelect';
 
 // A custom hook to debounce a value
@@ -28,6 +30,56 @@ function useDebounce<T>(value: T, delay: number): T {
   }, [value, delay]);
   return debouncedValue;
 }
+
+// Bulk Date Modal Component
+const BulkDateModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onApply: (date: string) => void;
+    count: number;
+}> = ({ isOpen, onClose, onApply, count }) => {
+    const [selectedDate, setSelectedDate] = useState<string>(getTodayDate());
+
+    useEffect(() => {
+        if(isOpen) setSelectedDate(getTodayDate());
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    const handleApply = () => {
+        if (selectedDate) {
+            onApply(selectedDate);
+            onClose();
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <div className="p-4 border-b flex justify-between items-center">
+                    <h3 className="font-bold text-slate-800">Change Date for {count} Transactions</h3>
+                    <button onClick={onClose}><CloseIcon className="w-5 h-5 text-slate-400 hover:text-slate-600" /></button>
+                </div>
+                <div className="p-6">
+                    <p className="text-sm text-slate-600 mb-4">Select the new date to apply to all selected transactions.</p>
+                    <div>
+                        <label className="block text-xs font-bold text-slate-500 uppercase mb-1">New Date</label>
+                        <input 
+                            type="date" 
+                            value={selectedDate} 
+                            onChange={(e) => setSelectedDate(e.target.value)}
+                            className="w-full p-2 border rounded-md"
+                        />
+                    </div>
+                </div>
+                <div className="p-4 border-t bg-slate-50 flex justify-end gap-2 rounded-b-xl">
+                    <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 font-medium hover:bg-slate-200 rounded-lg">Cancel</button>
+                    <button onClick={handleApply} className="px-4 py-2 text-sm text-white bg-indigo-600 font-medium rounded-lg hover:bg-indigo-700">Apply Date</button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // Bulk Tag Modal Component
 const BulkTagModal: React.FC<{
@@ -303,9 +355,11 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
   const [isLinkedGroupModalOpen, setIsLinkedGroupModalOpen] = useState(false);
   const [isBulkTagModalOpen, setIsBulkTagModalOpen] = useState(false);
   const [isBulkUserModalOpen, setIsBulkUserModalOpen] = useState(false);
+  const [isBulkDateModalOpen, setIsBulkDateModalOpen] = useState(false);
   const [selectedLinkGroupId, setSelectedLinkGroupId] = useState<string | null>(null);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
   
   // Split Logic
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
@@ -630,6 +684,49 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
           }
       });
       setSelectedTxIds(new Set());
+  };
+
+  const handleBulkChangeDate = (date: string) => {
+      selectedTxIds.forEach(id => {
+          const tx = transactions.find(t => t.id === id);
+          if (tx) {
+              onUpdateTransaction({ ...tx, date });
+          }
+      });
+      setSelectedTxIds(new Set());
+  };
+
+  const handleBulkCopy = async () => {
+      const selectedTxs = transactions.filter(tx => selectedTxIds.has(tx.id));
+      if (selectedTxs.length === 0) return;
+
+      // Define columns for TSV
+      const headers = ['Date', 'Description', 'Payee', 'Category', 'Account', 'Type', 'Amount'];
+      const accountMap = new Map(accounts.map(a => [a.id, a.name]));
+      const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+      const payeeMap = new Map(payees.map(p => [p.id, p.name]));
+      const typeMap = new Map(transactionTypes.map(t => [t.id, t.name]));
+
+      const rows = selectedTxs.map(tx => [
+          tx.date,
+          tx.description,
+          payeeMap.get(tx.payeeId || '') || '',
+          categoryMap.get(tx.categoryId) || '',
+          accountMap.get(tx.accountId || '') || '',
+          typeMap.get(tx.typeId) || '',
+          tx.amount.toFixed(2) // Raw number for spreadsheet
+      ]);
+
+      const tsvContent = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
+      
+      try {
+          await navigator.clipboard.writeText(tsvContent);
+          setIsCopied(true);
+          setTimeout(() => setIsCopied(false), 2000);
+      } catch (err) {
+          console.error('Failed to copy!', err);
+          alert("Failed to copy to clipboard.");
+      }
   };
 
   const handleManageLink = (groupId: string) => {
@@ -997,22 +1094,36 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             </div>
             <div className="flex items-center gap-2">
                  <button
+                    onClick={handleBulkCopy}
+                    className={`flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-full transition-all shadow-sm ${isCopied ? 'bg-green-600 hover:bg-green-500' : 'bg-indigo-600 hover:bg-indigo-500'}`}
+                >
+                    {isCopied ? <CheckCircleIcon className="w-4 h-4" /> : <DuplicateIcon className="w-4 h-4"/>}
+                    {isCopied ? 'Copied!' : 'Copy'}
+                </button>
+                 <button
+                    onClick={() => setIsBulkDateModalOpen(true)}
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 rounded-full transition-colors shadow-sm"
+                >
+                    <CalendarIcon className="w-4 h-4"/>
+                    Date
+                </button>
+                 <button
                     onClick={() => setIsBulkUserModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-50 rounded-full transition-colors shadow-sm"
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 rounded-full transition-colors shadow-sm"
                 >
                     <UserGroupIcon className="w-4 h-4"/>
                     User
                 </button>
                  <button
                     onClick={() => setIsBulkTagModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-50 rounded-full transition-colors shadow-sm"
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 rounded-full transition-colors shadow-sm"
                 >
                     <TagIcon className="w-4 h-4"/>
                     Tags
                 </button>
                  <button
                     onClick={handleBulkLink}
-                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-50 rounded-full transition-colors shadow-sm"
+                    className="flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 rounded-full transition-colors shadow-sm"
                 >
                     <LinkIcon className="w-4 h-4"/>
                     Link
@@ -1090,6 +1201,14 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
             onClose={() => setIsBulkUserModalOpen(false)}
             users={users}
             onApply={handleBulkAssignUser}
+            count={selectedTxIds.size}
+          />
+      )}
+      {isBulkDateModalOpen && (
+          <BulkDateModal 
+            isOpen={isBulkDateModalOpen}
+            onClose={() => setIsBulkDateModalOpen(false)}
+            onApply={handleBulkChangeDate}
             count={selectedTxIds.size}
           />
       )}

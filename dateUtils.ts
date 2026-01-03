@@ -1,4 +1,13 @@
+
 import type { RecurrenceRule, DateRangeUnit, DateRangePreset, CustomDateRange } from './types';
+
+/**
+ * Parses a YYYY-MM-DD string into a local Date object without UTC shifting.
+ */
+export const parseISOLocal = (dateStr: string): Date => {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+};
 
 /**
  * Formats a date object or string to YYYY-MM-DD format.
@@ -6,6 +15,12 @@ import type { RecurrenceRule, DateRangeUnit, DateRangePreset, CustomDateRange } 
  */
 export const formatDate = (date: Date | string): string => {
     if (!date) return '';
+    
+    // If it's already a standard ISO date string, return it as-is to avoid parsing errors
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return date;
+    }
+
     const d = new Date(date);
     // Handle invalid dates gracefully
     if (isNaN(d.getTime())) return String(date);
@@ -18,15 +33,9 @@ export const formatDate = (date: Date | string): string => {
 
 /**
  * Calculates the next due date based on a recurrence rule.
- * @param currentDateStr The current due date string (YYYY-MM-DD)
- * @param rule The recurrence rule configuration
- * @returns The next date string (YYYY-MM-DD)
  */
 export const calculateNextDate = (currentDateStr: string, rule: RecurrenceRule): string => {
-    // Parse YYYY-MM-DD explicitly to avoid timezone shifts
-    const parts = currentDateStr.split('-');
-    const current = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-    
+    const current = parseISOLocal(currentDateStr);
     const interval = rule.interval && rule.interval > 0 ? rule.interval : 1;
 
     switch (rule.frequency) {
@@ -36,51 +45,35 @@ export const calculateNextDate = (currentDateStr: string, rule: RecurrenceRule):
             
         case 'weekly':
             if (rule.byWeekDays && rule.byWeekDays.length > 0) {
-                // Find the next occurrence of one of the specified days
-                // Sort days (0-6)
                 const targetDays = [...rule.byWeekDays].sort((a, b) => a - b);
                 const currentDay = current.getDay();
-                
-                // Check if there is a remaining day in the *current* week
                 const nextDayInWeek = targetDays.find(d => d > currentDay);
                 
                 if (nextDayInWeek !== undefined) {
-                    // Same week, just move to that day
                     const diff = nextDayInWeek - currentDay;
                     current.setDate(current.getDate() + diff);
                 } else {
-                    // Next week (or next interval weeks), first available day
-                    const daysUntilNextWeek = 7 - currentDay; // Days to finish current week
-                    const daysToFirstTarget = targetDays[0]; // Days from Sunday to target
-                    // Add interval - 1 weeks (since we are crossing a week boundary)
+                    const daysUntilNextWeek = 7 - currentDay;
+                    const daysToFirstTarget = targetDays[0];
                     const weeksToAdd = Math.max(0, interval - 1);
-                    
                     current.setDate(current.getDate() + daysUntilNextWeek + (weeksToAdd * 7) + daysToFirstTarget);
                 }
             } else {
-                // Simple interval
                 current.setDate(current.getDate() + (interval * 7));
             }
             break;
             
         case 'monthly':
-            // Logic for "First Day", "Last Day", or "Specific Day"
-            // Move forward by interval months first
             current.setMonth(current.getMonth() + interval);
-            
             if (rule.byMonthDay !== undefined) {
                 if (rule.byMonthDay === -1) {
-                    // Last day of the month: Move to 1st of next month, then subtract 1 day
                     current.setMonth(current.getMonth() + 1, 0); 
                 } else {
-                    // Specific day (e.g. 1st, 15th)
-                    // Ensure valid day (e.g. don't set Feb 30th)
                     const maxDays = new Date(current.getFullYear(), current.getMonth() + 1, 0).getDate();
                     const dayToSet = Math.min(rule.byMonthDay, maxDays);
                     current.setDate(dayToSet);
                 }
             }
-            // If no byMonthDay, it keeps the relative day from the original date (standard setMonth behavior)
             break;
             
         case 'yearly':
@@ -101,21 +94,11 @@ export const getTodayDate = (): string => {
 export const applyOffset = (date: Date, value: number, unit: DateRangeUnit) => {
     const d = new Date(date);
     switch (unit) {
-        case 'day':
-            d.setDate(d.getDate() - value);
-            break;
-        case 'week':
-            d.setDate(d.getDate() - (value * 7));
-            break;
-        case 'month':
-            d.setMonth(d.getMonth() - value);
-            break;
-        case 'quarter':
-            d.setMonth(d.getMonth() - (value * 3));
-            break;
-        case 'year':
-            d.setFullYear(d.getFullYear() - value);
-            break;
+        case 'day': d.setDate(d.getDate() - value); break;
+        case 'week': d.setDate(d.getDate() - (value * 7)); break;
+        case 'month': d.setMonth(d.getMonth() - value); break;
+        case 'quarter': d.setMonth(d.getMonth() - (value * 3)); break;
+        case 'year': d.setFullYear(d.getFullYear() - value); break;
     }
     return d;
 };
@@ -141,7 +124,6 @@ export const calculateDateRange = (preset: DateRangePreset, customStart: string 
         
         if (customRange.type === 'fixed_period') {
             let anchor = new Date(now);
-            
             if (customRange.offsets && customRange.offsets.length > 0) {
                 customRange.offsets.forEach(offset => {
                     anchor = applyOffset(anchor, offset.value, offset.unit);
@@ -170,7 +152,6 @@ export const calculateDateRange = (preset: DateRangePreset, customStart: string 
                 start = new Date(anchor.getFullYear(), 0, 1);
                 end = new Date(anchor.getFullYear(), 11, 31);
             }
-
         } else {
             end = new Date(); 
             start = new Date();
@@ -204,8 +185,8 @@ export const calculateDateRange = (preset: DateRangePreset, customStart: string 
                 label = 'All Time';
                 break;
             case 'custom':
-                start = customStart ? new Date(customStart) : new Date();
-                end = customEnd ? new Date(customEnd) : new Date();
+                start = customStart ? parseISOLocal(customStart) : new Date();
+                end = customEnd ? parseISOLocal(customEnd) : new Date();
                 label = `${formatDate(start)} - ${formatDate(end)}`;
                 break;
             case 'last3Months':
