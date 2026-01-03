@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag, SavedReport, ReportConfig } from '../types';
 import TransactionTable from '../components/TransactionTable';
@@ -719,13 +720,44 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
 
       const tsvContent = [headers.join('\t'), ...rows.map(r => r.join('\t'))].join('\n');
       
-      try {
-          await navigator.clipboard.writeText(tsvContent);
+      // Robust Copy Implementation for Self-Hosted (HTTP or HTTPS)
+      const executeCopy = async (text: string) => {
+          // Attempt 1: Modern Clipboard API (Requires Secure Context / HTTPS)
+          if (navigator.clipboard && window.isSecureContext) {
+              try {
+                  await navigator.clipboard.writeText(text);
+                  return true;
+              } catch (err) {
+                  console.warn('Modern Clipboard API failed, attempting fallback...', err);
+              }
+          }
+
+          // Attempt 2: Legacy execCommand Fallback (Works in HTTP)
+          try {
+              const textArea = document.createElement("textarea");
+              textArea.value = text;
+              // Ensure it's hidden but focusable
+              textArea.style.position = "fixed";
+              textArea.style.left = "-9999px";
+              textArea.style.top = "0";
+              document.body.appendChild(textArea);
+              textArea.focus();
+              textArea.select();
+              const successful = document.execCommand('copy');
+              document.body.removeChild(textArea);
+              return successful;
+          } catch (err) {
+              console.error('Fallback copy method failed:', err);
+              return false;
+          }
+      };
+
+      const success = await executeCopy(tsvContent);
+      if (success) {
           setIsCopied(true);
           setTimeout(() => setIsCopied(false), 2000);
-      } catch (err) {
-          console.error('Failed to copy!', err);
-          alert("Failed to copy to clipboard.");
+      } else {
+          alert("Failed to copy to clipboard. Please ensure your browser allows clipboard access.");
       }
   };
 
