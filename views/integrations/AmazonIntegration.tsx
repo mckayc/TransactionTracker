@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
@@ -103,7 +104,7 @@ const MultiTitleDisplay: React.FC<{ metric: AmazonMetric }> = ({ metric }) => {
                 {primary.value}
             </div>
             {alternates.length > 0 && (
-                <div className="absolute bottom-full left-0 mb-2 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none group-hover/titles:opacity-100 group-hover/titles:translate-y-0 transition-all z-[70]">
+                <div className="absolute bottom-full left-0 mb-2 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none group-hover/titles:opacity-100 group-hover/titles:translate-y-0 transition-all z-70">
                     <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 border-b border-white/10 pb-1">Alternative Titles</p>
                     <div className="space-y-3">
                         {alternates.map((alt, i) => (
@@ -176,13 +177,16 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     const [mergeProgress, setMergeProgress] = useState<{ current: number; total: number } | null>(null);
 
-    // Helper for complex type filtering
-    const matchesReportType = (metric: AmazonMetric, selectedFilter: string) => {
-        if (!selectedFilter) return true;
-        if (selectedFilter === 'creator_connections_onsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'onsite';
-        if (selectedFilter === 'creator_connections_offsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'offsite';
-        return metric.reportType === selectedFilter;
-    };
+    // Comprehensive list of years for selection
+    const selectableYears = useMemo(() => {
+        const startYear = 2000;
+        const endYear = 2050;
+        const years = [];
+        for (let y = endYear; y >= startYear; y--) {
+            years.push(y.toString());
+        }
+        return years;
+    }, []);
 
     const { availableReportYears, availableCreatedYears } = useMemo(() => {
         const reportYears = new Set<string>();
@@ -323,29 +327,22 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 const fileName = file.name.toLowerCase();
                 
                 // --- IMPROVED YEAR DETECTION FROM FILENAME ---
-                // 1. Look for a year range first (e.g., 2023-2024 or 2023_2024)
-                const rangeMatch = fileName.match(/(20\d{2})[-_](20\d{2})/);
+                // Try to find any 4-digit year starting with 20 (e.g. 2025, 2024)
+                // We use a broader regex to catch 2025-Onsite, Onsite-2025, etc.
+                const yearMatch = fileName.match(/20\d{2}/);
                 let detectedYear = '';
                 
-                if (rangeMatch) {
-                    // Pick the first year in the range
-                    detectedYear = rangeMatch[1];
+                if (yearMatch) {
+                    detectedYear = yearMatch[0];
                 } else {
-                    // 2. Fallback to a single 4-digit year in the filename
-                    const singleMatch = fileName.match(/\b(20\d{2})\b/);
-                    if (singleMatch) {
-                        detectedYear = singleMatch[1];
-                    } else {
-                        // 3. Data Fallback: Find the most frequent or most recent year in the data records
-                        const yearsInFile = newMetrics
-                            .map(m => m.saleDate ? m.saleDate.substring(0, 4) : '')
-                            .filter(y => y.length === 4 && !isNaN(parseInt(y)));
-                        
-                        if (yearsInFile.length > 0) {
-                            // Find earliest year in file if multiple exist (to represent the start of the report)
-                            yearsInFile.sort((a, b) => a.localeCompare(b));
-                            detectedYear = yearsInFile[0];
-                        }
+                    // Data Fallback: Find the most frequent or most recent year in the data records
+                    const yearsInFile = newMetrics
+                        .map(m => m.saleDate ? m.saleDate.substring(0, 4) : '')
+                        .filter(y => y.length === 4 && !isNaN(parseInt(y)));
+                    
+                    if (yearsInFile.length > 0) {
+                        yearsInFile.sort((a, b) => b.localeCompare(a));
+                        detectedYear = yearsInFile[0];
                     }
                 }
 
@@ -384,13 +381,11 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 creatorConnectionsType: uploadType === 'creator_connections' ? (uploadCCType !== 'unknown' ? (uploadCCType as AmazonCCType) : undefined) : undefined
             }));
             
-            // Smarter Merge: Use deterministic ID to prevent duplicates if user imports same file
             const existingIds = new Set(metrics.map(m => m.id));
             const toAdd = metricsWithMeta.filter(m => !existingIds.has(m.id));
             const toUpdate = metricsWithMeta.filter(m => existingIds.has(m.id));
 
             if (toUpdate.length > 0) {
-                // If records exist, we update them (overwriting)
                 const updatedAll = metrics.map(m => {
                     const match = toUpdate.find(u => u.id === m.id);
                     return match ? match : m;
@@ -567,7 +562,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         return dir === 'asc' ? <SortIcon className="w-3 h-3 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-indigo-600" />;
     };
 
-    // Creator Connections Matcher Logic
     const handleScanForMatches = async () => {
         setIsScanningMatches(true);
         await new Promise(r => setTimeout(r, 100));
@@ -598,6 +592,13 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         setMatchingMatches(results);
         setIsScanningMatches(false);
         setIsMatchModalOpen(true);
+    };
+
+    const matchesReportType = (metric: AmazonMetric, selectedFilter: string) => {
+        if (!selectedFilter) return true;
+        if (selectedFilter === 'creator_connections_onsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'onsite';
+        if (selectedFilter === 'creator_connections_offsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'offsite';
+        return metric.reportType === selectedFilter;
     };
 
     return (
@@ -648,7 +649,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <SparklesIcon className="w-5 h-5 text-orange-500" />
                                         <h3 className="font-bold text-slate-800 text-lg">Top Content Insights</h3>
                                     </div>
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex flex-wrap items-center gap-3">
                                         <div className="relative group">
                                             <select 
                                                 value={filterType} 
@@ -991,7 +992,17 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                             <div className="bg-white p-6 rounded-[2rem] border-2 border-orange-500 shadow-xl space-y-6 animate-slide-up">
                                 <h3 className="text-2xl font-black text-slate-800">Verify Import</h3>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div><label className="text-[10px] font-black text-slate-400 uppercase">Report Year</label><select value={uploadYear} onChange={e => setUploadYear(e.target.value)} className="w-full p-2 border rounded-lg font-bold">{availableReportYears.map(y => <option key={y} value={y}>{y}</option>)}</select></div>
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase">Report Year</label>
+                                        <select 
+                                            value={uploadYear} 
+                                            onChange={e => setUploadYear(e.target.value)} 
+                                            className="w-full p-2 border rounded-lg font-bold bg-white"
+                                        >
+                                            <option value="">Select Year...</option>
+                                            {selectableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                                        </select>
+                                    </div>
                                     <div><label className="text-[10px] font-black text-slate-400 uppercase">Traffic Type</label><select value={uploadType} onChange={e => setUploadType(e.target.value as any)} className="w-full p-2 border rounded-lg font-bold"><option value="onsite">Onsite</option><option value="offsite">Offsite</option><option value="creator_connections">Creator Connections</option></select></div>
                                     {uploadType === 'creator_connections' && (
                                         <div className="col-span-2">
