@@ -23,7 +23,6 @@ import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import ContentHub from './views/integrations/ContentHub';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
-// Fix: Added SparklesIcon to the imports to resolve the build error
 import { MenuIcon, CloseIcon, SparklesIcon } from './components/Icons';
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
@@ -75,7 +74,7 @@ const App: React.FC = () => {
             try {
                 const data = await api.loadAll();
                 
-                // Set data from storage or apply sane defaults for a fresh environment
+                // Hydrate Core Data
                 setTransactions(data.transactions || []);
                 setAccounts(data.accounts || []);
                 setAccountTypes(data.accountTypes || [
@@ -130,9 +129,17 @@ const App: React.FC = () => {
                 console.error("Failed to load initial data", err);
             } finally {
                 setIsLoading(false);
+                // CRITICAL: Signal to index.html that the splash screen should be removed
+                document.body.classList.add('loaded');
             }
         };
         loadInitialData();
+        
+        // Safety timeout to remove splash even if fetch hangs indefinitely
+        const safety = setTimeout(() => {
+            document.body.classList.add('loaded');
+        }, 3000);
+        return () => clearTimeout(safety);
     }, []);
 
     // Helper for persisting state updates to the backend
@@ -151,6 +158,14 @@ const App: React.FC = () => {
         updateData('transactions', updatedTxs, setTransactions);
         updateData('categories', updatedCats, setCategories);
     };
+
+    const userInitials = useMemo(() => {
+        if (users.length === 0) return "U";
+        const primary = users.find(u => u.isDefault) || users[0];
+        const names = primary.name.split(' ');
+        if (names.length > 1) return (names[0][0] + names[1][0]).toUpperCase();
+        return names[0].substring(0, 2).toUpperCase();
+    }, [users]);
 
     // Main Router
     const renderCurrentView = () => {
@@ -529,7 +544,7 @@ const App: React.FC = () => {
                             <SparklesIcon className="w-5 h-5" />
                         </button>
                         <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border-2 border-white shadow-sm">
-                            JD
+                            {userInitials}
                         </div>
                     </div>
                 </header>
