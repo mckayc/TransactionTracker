@@ -67,7 +67,6 @@ export interface RawTransaction {
     user?: string;
     type?: string;
     tags?: string[];
-    // New: Raw data from source for inspection and advanced rules
     metadata?: Record<string, string>;
 }
 
@@ -95,7 +94,6 @@ export interface RuleCondition {
     field: RuleField;
     operator: RuleOperator;
     value: any;
-    // New: Key for metadata lookups
     metadataKey?: string;
     nextLogic?: RuleLogic;
 }
@@ -374,9 +372,6 @@ export interface YouTubeMetric {
     ctr: number;
 }
 
-/**
- * Maps a single Content entity across platforms.
- */
 export interface ContentLink {
     id: string;
     youtubeVideoId: string;
@@ -392,7 +387,4 @@ export interface IntegrationConfig {
     isEnabled: boolean;
 }
 
-/**
- * Shared View Type for navigation
- */
-export type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'payees' | 'categories' | 'tags' | 'users' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';
+export type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';

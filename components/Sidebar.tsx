@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction, View } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon } from './Icons';
 
 interface SidebarProps {
   currentView: View;
@@ -14,7 +14,6 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions, onChatToggle, isCollapsed = false, onToggleCollapse }) => {
-  const [isManagementOpen, setIsManagementOpen] = useState(false);
 
   const mainNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
@@ -30,11 +29,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
 
   const managementNavItems = [
     { id: 'accounts', label: 'Accounts', icon: CreditCardIcon },
-    { id: 'users', label: 'Users', icon: UserGroupIcon },
-    { id: 'payees', label: 'Income Source', icon: UsersIcon },
-    { id: 'categories', label: 'Categories', icon: TagIcon },
-    { id: 'tags', label: 'Tags', icon: TagIcon },
-    { id: 'rules', label: 'Rules', icon: LinkIcon },
+    { id: 'management', label: 'Organize Data', icon: ChecklistIcon },
+    { id: 'rules', label: 'Automation Rules', icon: LinkIcon },
   ];
 
   const sidebarWidthClass = isCollapsed ? 'w-20' : 'w-64';
@@ -79,39 +75,24 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
               </button>
             ))}
             
-            {/* Collapsible Management Section */}
-            {!isCollapsed ? (
-                <div className="pt-4 pb-1">
-                    <button 
-                        onClick={() => setIsManagementOpen(!isManagementOpen)}
-                        className="w-full flex items-center justify-between px-3 py-2 text-xs uppercase font-bold text-slate-500 hover:text-slate-300"
+            <div className="pt-6 pb-1">
+                {!isCollapsed && <p className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">System Control</p>}
+                {managementNavItems.map(item => (
+                    <button
+                        key={item.id}
+                        onClick={() => onNavigate(item.id as View)}
+                        title={isCollapsed ? item.label : ''}
+                        className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'space-x-3 px-3 py-2'} rounded-md text-sm font-medium transition-colors ${
+                            currentView === item.id
+                            ? 'bg-slate-900 text-white'
+                            : 'hover:bg-slate-700'
+                        }`}
                     >
-                        <span>Management</span>
-                        <svg className={`w-4 h-4 transition-transform ${isManagementOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                        </svg>
+                        <item.icon className="w-5 h-5 flex-shrink-0" />
+                        {!isCollapsed && <span>{item.label}</span>}
                     </button>
-                </div>
-            ) : (
-                <div className="my-2 border-t border-slate-700 pt-2"></div>
-            )}
-            
-            {/* Show Management Items if expanded OR if sidebar is collapsed (icons only) */}
-            {(isManagementOpen || isCollapsed) && managementNavItems.map(item => (
-                <button
-                key={item.id}
-                onClick={() => onNavigate(item.id as View)}
-                title={isCollapsed ? item.label : ''}
-                className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'space-x-3 px-3 py-2'} rounded-md text-sm font-medium transition-colors ${
-                    currentView === item.id
-                    ? 'bg-slate-900 text-white'
-                    : 'hover:bg-slate-700'
-                }`}
-                >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
-                {!isCollapsed && <span>{item.label}</span>}
-                </button>
-            ))}
+                ))}
+            </div>
 
             <div className={!isCollapsed ? "pt-4" : "pt-2 border-t border-slate-700 mt-2"}>
                <button
@@ -145,7 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             <>
               <CalendarView transactions={transactions} />
               <div className="text-center pb-2">
-                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.0.33</span>
+                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.0.53</span>
               </div>
             </>
           )}
