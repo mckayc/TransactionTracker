@@ -1,22 +1,35 @@
-
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account, Category } from '../types';
 
-const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = [], categories: Category[] = []): boolean => {
+// Added export to fix 'Module declares evaluateCondition locally but it is not exported' error in RulePreviewModal.tsx
+export const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = [], categories: Category[] = []): boolean => {
     let txValue: any;
     
     if (!condition || !condition.field) return true;
 
     if (condition.field === 'description') {
-        txValue = (tx.description || '').toLowerCase();
+        const currentDesc = (tx.description || '').toLowerCase();
+        const originalDesc = (tx.originalDescription || '').toLowerCase();
         const condValue = String(condition.value || '').toLowerCase();
-        switch (condition.operator) {
-            case 'contains': return txValue.includes(condValue);
-            case 'does_not_contain': return !txValue.includes(condValue);
-            case 'equals': return txValue === condValue;
-            case 'starts_with': return txValue.startsWith(condValue);
-            case 'ends_with': return txValue.endsWith(condValue);
-            default: return false;
+
+        const checkValue = (val: string) => {
+            switch (condition.operator) {
+                case 'contains': return val.includes(condValue);
+                case 'does_not_contain': return !val.includes(condValue);
+                case 'equals': return val === condValue;
+                case 'starts_with': return val.startsWith(condValue);
+                case 'ends_with': return val.endsWith(condValue);
+                default: return false;
+            }
+        };
+
+        // For negative operators (does_not_contain), it must be true for BOTH
+        if (condition.operator === 'does_not_contain') {
+            return checkValue(currentDesc) && (originalDesc ? checkValue(originalDesc) : true);
         }
+
+        // For positive operators, if either matches, it's a match
+        return checkValue(currentDesc) || (originalDesc ? checkValue(originalDesc) : false);
+
     } else if (condition.field === 'categoryId' || condition.field === 'category') {
         // Handle both the assigned internal ID and the raw bank category string
         const internalId = tx.categoryId || '';
@@ -113,7 +126,11 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule,
 
     // Fallback to legacy fields
     if (rule.descriptionContains) {
-        if (!tx.description.toLowerCase().includes(rule.descriptionContains.toLowerCase())) {
+        const currentDesc = tx.description.toLowerCase();
+        const originalDesc = (tx.originalDescription || '').toLowerCase();
+        const matchValue = rule.descriptionContains.toLowerCase();
+        
+        if (!currentDesc.includes(matchValue) && !originalDesc.includes(matchValue)) {
             return false;
         }
     }

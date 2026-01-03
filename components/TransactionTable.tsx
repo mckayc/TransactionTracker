@@ -122,8 +122,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
           aValue = a.payee || payeeMap.get(a.payeeId || '')?.name || '';
           bValue = b.payee || payeeMap.get(b.payeeId || '')?.name || '';
       } else if (sortKey === 'categoryId') {
-          aValue = a.category || categoryMap.get(a.categoryId)?.name || '';
-          bValue = b.category || categoryMap.get(b.categoryId)?.name || '';
+          aValue = categoryMap.get(a.categoryId)?.name || a.category || '';
+          bValue = categoryMap.get(b.categoryId)?.name || b.category || '';
       } else if (sortKey === 'accountId') {
           aValue = a.account || accountMap.get(a.accountId || '')?.name || '';
           bValue = b.account || accountMap.get(b.accountId || '')?.name || '';
@@ -198,11 +198,21 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     if (field === 'amount') {
       updatedValue = parseFloat(value) || 0;
     }
-    if (transaction[field] === updatedValue) {
+    
+    if (transaction[field] === updatedValue && field !== 'categoryId') {
         setEditingCell(null);
         return;
     }
-    const updatedTransaction = { ...transaction, [field]: updatedValue };
+
+    let updatedTransaction = { ...transaction, [field]: updatedValue };
+
+    // FIX: If we are updating Category, also update the category name string to prevent old strings (like "Revenue") 
+    // from taking precedence in the display logic.
+    if (field === 'categoryId') {
+        const catName = categoryMap.get(value)?.name || '';
+        updatedTransaction.category = catName;
+    }
+
     onUpdateTransaction(updatedTransaction);
     setEditingCell(null);
   };
@@ -332,7 +342,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         const type = transactionTypeMap.get(transaction.typeId);
         const typeName = transaction.type || type?.name || 'N/A';
         const isIncome = type?.balanceEffect === 'income';
-        const categoryName = transaction.category || categoryMap.get(transaction.categoryId)?.name || 'Uncategorized';
+        
+        // FIX: Prioritize mapping via Category ID. Only fall back to transaction.category text if mapping fails.
+        const categoryName = categoryMap.get(transaction.categoryId)?.name || transaction.category || 'Uncategorized';
+        
         const payeeName = transaction.payee || payeeMap.get(transaction.payeeId || '')?.name || '';
         const userName = transaction.user || userMap.get(transaction.userId || '') || 'N/A';
         const accountName = transaction.account || accountMap.get(transaction.accountId || '')?.name || 'N/A';
@@ -425,7 +438,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                    <td className={cellClass(true)}>
                      {editingCell?.id === transaction.id && editingCell.field === 'categoryId' ? (
                         <select defaultValue={transaction.categoryId} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'categoryId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'categoryId')} className={commonInputClass}>
-                            {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                            {sortedCategoryOptions.map(cat => (
+                                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                            ))}
                         </select>
                     ) : (
                         <div onClick={() => setEditingCell({ id: transaction.id, field: 'categoryId' })}>

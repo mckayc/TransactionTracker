@@ -105,6 +105,9 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, ca
                         </div>
                         
                         <div className="xl:col-span-2">
+                            <div className="flex items-center gap-1.5 mb-1 xl:hidden">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Field</label>
+                            </div>
                             <select 
                                 value={condition.field} 
                                 onChange={(e) => handleUpdateCondition(index, 'field', e.target.value)}
@@ -134,6 +137,9 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, ca
                         </div>
 
                         <div className={`${condition.field === 'metadata' ? 'xl:col-span-2' : 'xl:col-span-3'}`}>
+                             <div className="flex items-center gap-1.5 mb-1 xl:hidden">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Operator</label>
+                            </div>
                             <select 
                                 value={condition.operator} 
                                 onChange={(e) => handleUpdateCondition(index, 'operator', e.target.value)}
@@ -167,34 +173,48 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, ca
                         </div>
 
                         <div className={`${condition.operator === 'exists' ? 'hidden' : condition.field === 'metadata' ? 'xl:col-span-3' : 'xl:col-span-5'}`}>
-                            {condition.field === 'accountId' && condition.operator === 'equals' ? (
-                                <select 
-                                    value={condition.value} 
-                                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                    className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
-                                >
-                                    <option value="">Select Account...</option>
-                                    {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                                </select>
-                            ) : condition.field === 'categoryId' && condition.operator === 'equals' ? (
-                                <select 
-                                    value={condition.value} 
-                                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                    className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
-                                >
-                                    <option value="">Select Category...</option>
-                                    {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                                </select>
-                            ) : (
-                                <input 
-                                    type={condition.field === 'amount' ? 'number' : 'text'} 
-                                    step={condition.field === 'amount' ? '0.01' : undefined}
-                                    value={condition.value} 
-                                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                    placeholder="Value"
-                                    className={`w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white`}
-                                />
-                            )}
+                            <div className="flex items-center gap-1.5 mb-1 xl:hidden">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Value</label>
+                            </div>
+                            <div className="relative group/val">
+                                {condition.field === 'accountId' && condition.operator === 'equals' ? (
+                                    <select 
+                                        value={condition.value} 
+                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                        className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
+                                    >
+                                        <option value="">Select Account...</option>
+                                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                    </select>
+                                ) : condition.field === 'categoryId' && condition.operator === 'equals' ? (
+                                    <select 
+                                        value={condition.value} 
+                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                        className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
+                                    >
+                                        <option value="">Select Category...</option>
+                                        {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                                    </select>
+                                ) : (
+                                    <input 
+                                        type={condition.field === 'amount' ? 'number' : 'text'} 
+                                        step={condition.field === 'amount' ? '0.01' : undefined}
+                                        value={condition.value} 
+                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                        placeholder="Value"
+                                        className={`w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white`}
+                                    />
+                                )}
+                                
+                                {condition.field === 'description' && (
+                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center group/tip">
+                                        <InfoIcon className="w-3.5 h-3.5 text-slate-300 cursor-help hover:text-indigo-500 transition-colors" />
+                                        <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded shadow-xl opacity-0 group-hover/tip:opacity-100 pointer-events-none transition-opacity z-20 leading-relaxed">
+                                            Smart Match: This will check both the current name and the **original bank text**.
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="xl:col-span-1 flex justify-end">
