@@ -20,7 +20,7 @@ const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // 2. IMMEDIATE MIDDLEWARE
-app.use(express.json({ limit: '100mb' }));
+app.use(express.json({ limit: '200mb' })); // Increased limit for massive imports
 // Scoped raw parser for files to avoid interfering with JSON data routes
 app.use('/api/files', express.raw({ type: '*/*', limit: '100mb' }));
 
@@ -29,16 +29,6 @@ app.get('/api/health', (req, res) => res.status(200).json({ status: 'live', time
 
 // 3. START LISTENING
 const server = app.listen(PORT, '0.0.0.0', () => {
-    const interfaces = os.networkInterfaces();
-    const addresses = [];
-    for (const k in interfaces) {
-        for (const k2 in interfaces[k]) {
-            const address = interfaces[k][k2];
-            if (address.family === 'IPv4' && !address.internal) {
-                addresses.push(address.address);
-            }
-        }
-    }
     console.log(`🚀 FINPARSER SERVER ON PORT: ${PORT}`);
     console.log(`[DB] Using file: ${DB_PATH}`);
 });
@@ -52,13 +42,13 @@ let db;
 try {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
-    // HARDENING: Wait up to 5 seconds for other connections to release locks
-    db.pragma('busy_timeout = 5000');
+    // INCREASED TIMEOUT: Essential for multi-tab or concurrent rule/import processes
+    db.pragma('busy_timeout = 10000'); 
     db.exec(`
       CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
     `);
-    console.log("[DB] Ready with 5s busy_timeout.");
+    console.log("[DB] Ready with 10s busy_timeout and WAL mode.");
 } catch (dbErr) {
     console.error("[DB] Critical error:", dbErr);
 }
@@ -81,7 +71,7 @@ app.get('/api/data', (req, res) => {
     res.json(data);
   } catch (e) { 
     console.error("[DB] Failed to read all data:", e);
-    res.status(500).json({ error: 'Database is busy or unavailable. Please try again.' }); 
+    res.status(500).json({ error: 'Database is busy. Refreshing may help.' }); 
   }
 });
 
@@ -92,7 +82,7 @@ app.get('/api/data/:key', (req, res) => {
         res.json(JSON.parse(row.value));
     } catch (e) { 
         console.error(`[DB] Failed to fetch key ${req.params.key}:`, e);
-        res.status(500).json({ error: 'Failed to fetch' }); 
+        res.status(500).json({ error: 'Database error' }); 
     }
 });
 
@@ -102,19 +92,23 @@ app.post('/api/data/:key', (req, res) => {
     res.json({ success: true });
   } catch (e) { 
       console.error(`[DB] Save error for ${req.params.key}:`, e);
-      res.status(500).json({ error: 'Failed to save' }); 
+      res.status(500).json({ error: 'Database locked or full. Please wait a moment.' }); 
   }
 });
 
 app.post('/api/admin/reset', (req, res) => {
     try {
         console.warn("[DB] PURGE COMMAND RECEIVED");
-        db.prepare('DELETE FROM app_storage').run();
-        db.prepare('DELETE FROM files_meta').run();
+        const purge = db.transaction(() => {
+            db.prepare('DELETE FROM app_storage').run();
+            db.prepare('DELETE FROM files_meta').run();
+        });
+        purge();
+        
         const files = fs.readdirSync(DOCUMENTS_DIR);
         for (const file of files) fs.unlinkSync(path.join(DOCUMENTS_DIR, file));
         res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: 'Reset failed' }); }
+    } catch (e) { res.status(500).json({ error: 'Database reset failed.' }); }
 });
 
 // 6. AI PROXY ROUTES
@@ -151,7 +145,6 @@ app.post('/api/files/:id', (req, res) => {
     const diskFilename = `${Date.now()}_${rawFilename.replace(/[^a-zA-Z0-9.]/g, '_')}`;
     fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), req.body);
     insertFileMeta.run(id, rawFilename, diskFilename, mimeType, req.body.length, new Date().toISOString());
-    console.log(`[FILE] Saved: ${rawFilename} as ${diskFilename}`);
     res.json({ success: true });
   } catch (e) { res.status(500).send(e.message); }
 });
@@ -171,7 +164,6 @@ app.delete('/api/files/:id', (req, res) => {
     if (meta) {
         fs.unlinkSync(path.join(DOCUMENTS_DIR, meta.disk_filename));
         deleteFileMeta.run(req.params.id);
-        console.log(`[FILE] Deleted: ${meta.original_name}`);
     }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: 'Failed' }); }

@@ -7,7 +7,7 @@ import { CloseIcon, InfoIcon } from './Icons';
 interface RulePreviewModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onApply: (transactionsToUpdate: Transaction[]) => void;
+    onApply: (transactionsToUpdate: Transaction[]) => Promise<void>; // Fixed signature to allow async
     rule: ReconciliationRule;
     transactions: Transaction[];
     accounts: Account[];
@@ -29,6 +29,7 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
     }, [isOpen, transactions, rule, accounts, categories]);
 
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [isApplying, setIsApplying] = useState(false);
 
     useEffect(() => {
         if (matchingPairs.length > 0) {
@@ -56,11 +57,20 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
         }
     };
     
-    const handleApply = () => {
-        const transactionsToUpdate = matchingPairs
-            .filter(pair => selectedIds.has(pair.original.id))
-            .map(pair => pair.updated);
-        onApply(transactionsToUpdate);
+    const handleApply = async () => {
+        setIsApplying(true);
+        try {
+            const transactionsToUpdate = matchingPairs
+                .filter(pair => selectedIds.has(pair.original.id))
+                .map(pair => pair.updated);
+            await onApply(transactionsToUpdate);
+            onClose();
+        } catch (e) {
+            console.error(e);
+            alert("Failed to apply updates. Please try again.");
+        } finally {
+            setIsApplying(false);
+        }
     };
     
     const renderChange = (label: string, originalId: string | undefined, updatedId: string | undefined, map: Map<string, string>) => {
@@ -183,10 +193,10 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
                         <button
                             type="button"
                             onClick={handleApply}
-                            disabled={selectedIds.size === 0}
+                            disabled={selectedIds.size === 0 || isApplying}
                             className="flex-[2] sm:flex-none px-10 py-2.5 font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-indigo-100 transition-all active:scale-95"
                         >
-                            Update History
+                            {isApplying ? 'Applying...' : 'Update History'}
                         </button>
                     </div>
                 </footer>

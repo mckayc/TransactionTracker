@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
@@ -36,6 +36,9 @@ const App: React.FC = () => {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncError, setSyncError] = useState(false);
+    
+    // Safety lock to prevent background refreshes from clobbering active edits
+    const isEditingRef = useRef(false);
 
     // Core Data State
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -71,6 +74,8 @@ const App: React.FC = () => {
     const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
 
     const loadInitialData = async (showLoader = true) => {
+        if (isEditingRef.current && !showLoader) return; // Don't background-sync if user is doing something
+
         if (showLoader) {
             setIsLoading(true);
             setLoadError(null);
@@ -172,7 +177,7 @@ const App: React.FC = () => {
         } catch (err) {
             console.error("Failed to load initial data", err);
             if (showLoader) {
-                setLoadError("Engine startup failed after multiple attempts. Please verify your server connection and firewall.");
+                setLoadError("Engine startup failed. SQLite database may be locked by another process.");
             } else {
                 setSyncError(true);
                 setIsSyncing(false);
@@ -203,22 +208,32 @@ const App: React.FC = () => {
     }, []);
 
     const updateData = async (key: string, value: any, setter: Function) => {
-        setter(value);
+        isEditingRef.current = true;
+        setter(value); // Optimistic UI update
         try { 
             await api.save(key, value); 
             syncChannel.postMessage('REFRESH_REQUIRED');
         } catch (e) { 
-            console.error(`Failed to persist key: ${key}`, e); 
-            // Optional: Show toast error here
+            console.error(`Failed to persist key: ${key}`, e);
+            alert(`Save error: The database is busy or unavailable. Please try again.`);
+            // Rollback could be implemented here, but for now we warn the user
+        } finally {
+            isEditingRef.current = false;
         }
     };
 
-    const handleTransactionsAdded = (newTxs: Transaction[], newCats: Category[]) => {
+    const handleTransactionsAdded = async (newTxs: Transaction[], newCats: Category[]) => {
+        setIsSyncing(true);
         const updatedTxs = [...transactions, ...newTxs];
         const updatedCats = [...categories];
         newCats.forEach(cat => { if (!updatedCats.find(c => c.id === cat.id)) updatedCats.push(cat); });
-        updateData('transactions', updatedTxs, setTransactions);
-        updateData('categories', updatedCats, setCategories);
+        
+        await updateData('transactions', updatedTxs, setTransactions);
+        if (newCats.length > 0) await updateData('categories', updatedCats, setCategories);
+        
+        // Force a fresh reload after large imports to ensure signatures and duplicate detection are spot-on
+        await loadInitialData(false);
+        setIsSyncing(false);
     };
 
     const userInitials = useMemo(() => {
@@ -351,7 +366,10 @@ const App: React.FC = () => {
                         rules={rules} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions}
                         onSaveRule={(r) => { const exists = rules.findIndex(x => x.id === r.id); const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r]; updateData('reconciliationRules', updated, setRules); }}
                         onDeleteRule={(id) => updateData('reconciliationRules', rules.filter(x => x.id !== id), setRules)}
-                        onUpdateTransactions={(txs) => { const txMap = new Map(txs.map(t => [t.id, t])); updateData('transactions', transactions.map(t => txMap.has(t.id) ? txMap.get(t.id)! : t), setTransactions); }}
+                        onUpdateTransactions={async (txs) => { 
+                            const txMap = new Map(txs.map(t => [t.id, t])); 
+                            await updateData('transactions', transactions.map(t => txMap.has(t.id) ? txMap.get(t.id)! : t), setTransactions); 
+                        }}
                         onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
                         onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
                         onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}

@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon } from '../components/Icons';
@@ -16,7 +15,8 @@ interface RulesPageProps {
     tags: Tag[];
     payees: Payee[];
     transactions: Transaction[];
-    onUpdateTransactions: (transactions: Transaction[]) => void;
+    // Fix: Updated onUpdateTransactions signature to return Promise<void> to match async persistence logic
+    onUpdateTransactions: (transactions: Transaction[]) => Promise<void>;
     onSaveCategory: (category: Category) => void;
     onSavePayee: (payee: Payee) => void;
     onSaveTag: (tag: Tag) => void;
@@ -406,8 +406,9 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
         handleCloseEditor();
     };
 
-    const handleApplyRule = (transactionsToUpdate: Transaction[]) => {
-        onUpdateTransactions(transactionsToUpdate);
+    /* Fix: Updated handleApplyRule to be async and return Promise<void> to match RulePreviewModal's onApply requirement */
+    const handleApplyRule = async (transactionsToUpdate: Transaction[]) => {
+        await onUpdateTransactions(transactionsToUpdate);
         setRuleToRun(null);
     };
 
