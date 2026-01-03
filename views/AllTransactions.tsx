@@ -204,7 +204,7 @@ const SummaryCard: React.FC<{ title: string; value: number; type: BalanceEffect 
         income: 'text-green-600 bg-green-50 border-green-100',
         expense: 'text-red-600 bg-red-50 border-red-100',
         investment: 'text-purple-600 bg-purple-50 border-purple-100',
-        donation: 'text-blue-600 bg-blue-50 border-blue-100',
+        donation: 'text-sky-600 bg-sky-50 border-sky-100',
         tax: 'text-orange-600 bg-orange-50 border-orange-100',
         savings: 'text-indigo-600 bg-indigo-50 border-indigo-100',
         debt: 'text-slate-600 bg-slate-100 border-slate-200',
