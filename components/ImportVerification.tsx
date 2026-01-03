@@ -245,7 +245,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                             const { color, prefix } = getAmountStyles(tx);
 
                             return (
-                                <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 grayscale bg-slate-50' : 'bg-green-50/30'} ${selectedIds.has(tx.tempId) ? 'ring-2 ring-inset ring-indigo-400' : 'hover:bg-slate-50'}`}>
+                                <tr key={tx.tempId} className={`transition-all hover:relative hover:z-50 ${tx.isIgnored ? 'opacity-40 grayscale bg-slate-50' : 'bg-green-50/30'} ${selectedIds.has(tx.tempId) ? 'ring-2 ring-inset ring-indigo-400' : 'hover:bg-slate-50'}`}>
                                     <td className="px-4 py-2 text-center">
                                         <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedIds.has(tx.tempId)} onChange={() => toggleSelection(tx.tempId)} />
                                     </td>
@@ -266,7 +266,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'date' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{tx.date}</div>
                                         )}
                                     </td>
-                                    <td className="px-4 py-2 text-sm font-medium text-slate-900 w-64 max-w-xs">
+                                    <td className="px-4 py-2 text-sm font-medium text-slate-900 w-64 max-w-xs overflow-visible">
                                         {editingCell?.id === tx.tempId && editingCell.field === 'description' ? (
                                             <input type="text" defaultValue={tx.description} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'description')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'description')} className={commonInputClass} />
                                         ) : (
@@ -279,21 +279,22 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             </div>
                                         )}
                                     </td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48 max-w-[180px]">
+                                    <td className="px-4 py-2 text-sm text-slate-500 w-48 max-w-[180px] overflow-visible">
                                          {editingCell?.id === tx.tempId && editingCell.field === 'payeeId' ? (
                                             <select defaultValue={tx.payeeId || ''} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'payeeId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'payeeId')} className={commonInputClass}>
                                                 <option value="">-- No Source --</option>
                                                 {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                             </select>
                                         ) : (
-                                            <div onClick={() => !tx.isIgnored && isIncome && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 flex items-center justify-between gap-1 rounded-md truncate ${!tx.isIgnored && isIncome ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : 'bg-slate-50/50 grayscale opacity-50'}`}>
+                                            <div onClick={() => !tx.isIgnored && isIncome && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 flex items-center justify-between gap-1 rounded-md relative ${!tx.isIgnored && isIncome ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : 'bg-slate-50/50 grayscale opacity-50'}`}>
                                                 <span className={`${isNewPayee ? 'text-indigo-600 font-bold' : ''} truncate`}>
                                                     {isIncome ? (payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">None</span>) : '--'}
                                                 </span>
                                                 {isNewPayee && (
-                                                    <div className="group relative flex-shrink-0">
+                                                    <div className="group/info relative flex-shrink-0">
                                                         <InfoIcon className="w-3.5 h-3.5 text-indigo-400" />
-                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 w-24 p-1.5 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center font-bold uppercase tracking-tighter">
+                                                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 w-24 p-1.5 bg-slate-800 text-white text-[9px] rounded shadow-lg opacity-0 group-hover/info:opacity-100 transition-opacity pointer-events-none z-[100] text-center font-bold uppercase tracking-tighter">
+                                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-bottom-slate-800"></div>
                                                             Creating New Source
                                                         </div>
                                                     </div>
@@ -301,7 +302,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             </div>
                                         )}
                                     </td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48 max-w-[180px]">
+                                    <td className="px-4 py-2 text-sm text-slate-500 w-48 max-w-[180px] overflow-visible">
                                          {editingCell?.id === tx.tempId && editingCell.field === 'categoryId' ? (
                                             <select defaultValue={tx.categoryId} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'categoryId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'categoryId')} className={commonInputClass}>
                                                 {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}

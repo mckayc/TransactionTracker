@@ -348,7 +348,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         }
 
         return (
-            <tr key={transaction.id} className={`transition-colors group ${stickyBgClass}`}>
+            <tr key={transaction.id} className={`transition-colors group hover:relative hover:z-50 ${stickyBgClass}`}>
               {showCheckboxes && (
                   <td className={`w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-50 border-r border-transparent ${stickyBgClass}`}>
                       <div className={isChild ? "pl-4 border-l-2 border-slate-300" : ""}>
@@ -373,7 +373,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   </td>
               )}
               {visibleColumns.has('description') && (
-                  <td className="px-3 py-2 text-sm font-medium text-slate-900 w-64 min-w-[200px] max-w-xs relative">
+                  <td className="px-3 py-2 text-sm font-medium text-slate-900 w-64 min-w-[200px] max-w-xs overflow-visible">
                     <div className={`flex items-center gap-2 w-full ${isChild ? 'pl-4' : ''}`}>
                         {isLinkedLegacy && (
                             <button title={`Linked Transaction Group`} onClick={(e) => { e.stopPropagation(); linkGroupId && onManageLink && onManageLink(linkGroupId); }} className="cursor-pointer hover:scale-110 transition-transform p-1 hover:bg-sky-100 rounded flex-shrink-0">
@@ -385,16 +385,16 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         {editingCell?.id === transaction.id && editingCell.field === 'description' ? (
                             <input type="text" defaultValue={transaction.description} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'description')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'description')} className={commonInputClass} />
                         ) : (
-                            <div className="flex items-center gap-1.5 w-full min-w-0">
+                            <div className="flex items-center gap-1.5 w-full min-w-0 relative">
                                 <span onClick={() => setEditingCell({ id: transaction.id, field: 'description' })} className="truncate block cursor-pointer hover:text-indigo-600" title={transaction.description}>{transaction.description}</span>
                                 {transaction.originalDescription && transaction.originalDescription !== transaction.description && (
                                     <div className="group/tooltip relative flex items-center flex-shrink-0">
                                         <button className="focus:outline-none" title={`Original: ${transaction.originalDescription}`} onClick={(e) => { e.stopPropagation(); alert(`Original Description: ${transaction.originalDescription}`); }}>
                                             <InfoIcon className="w-3 h-3 text-slate-400 cursor-help hover:text-indigo-500" />
                                         </button>
-                                        <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 hidden w-max max-w-[250px] p-2 bg-slate-800 text-white text-xs rounded shadow-lg group-hover/tooltip:block z-50 whitespace-normal text-center pointer-events-none">
+                                        <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 hidden w-max max-w-[250px] p-2 bg-slate-800 text-white text-xs rounded shadow-lg group-hover/tooltip:block z-[100] whitespace-normal text-center pointer-events-none">
+                                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-800"></div>
                                             Original: {transaction.originalDescription}
-                                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
                                         </div>
                                     </div>
                                 )}
@@ -531,7 +531,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       const { color, prefix } = getAmountStyles(primaryTx.typeId);
 
       return (
-          <tr key={group.id} className={`bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer border-b border-slate-200 group`} onClick={() => toggleGroup(group.id)}>
+          <tr key={group.id} className={`bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer border-b border-slate-200 group hover:relative hover:z-50`} onClick={() => toggleGroup(group.id)}>
               {showCheckboxes && (
                   <td className="w-10 px-3 py-2 whitespace-nowrap sticky left-0 z-50 border-r border-transparent bg-slate-100">
                       <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer pointer-events-auto" checked={isFullySelected} onChange={(e) => handleGroupSelection(e, group)} onClick={(e) => e.stopPropagation()}/>
@@ -546,7 +546,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   </td>
               )}
               {visibleColumns.has('description') && (
-                  <td className="px-3 py-2 text-sm font-semibold text-slate-800">
+                  <td className="px-3 py-2 text-sm font-semibold text-slate-800 overflow-visible">
                       <div className="flex items-center gap-2">
                           <LinkIcon className={`w-3 h-3 ${generateGroupColor(group.id)}`} />
                           <span className="truncate">{primaryTx.description} (and {group.children.length} others)</span>

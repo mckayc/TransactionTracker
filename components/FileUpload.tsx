@@ -1,6 +1,7 @@
 
-import React, { useState, useCallback, useRef } from 'react';
-import { UploadIcon, AddIcon } from './Icons';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+/* Added CheckCircleIcon to fix 'Cannot find name' error on line 172 */
+import { UploadIcon, AddIcon, CheckCircleIcon } from './Icons';
 import type { Account } from '../types';
 
 interface FileUploadProps {
@@ -21,6 +22,25 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Predict account based on filename when files are selected
+  useEffect(() => {
+    if (selectedFiles.length > 0 && accounts.length > 0) {
+      // Logic: Look at filenames and try to find a match in account names or identifiers
+      const allFileNames = selectedFiles.map(f => f.name.toLowerCase()).join(' ');
+      
+      const bestMatch = accounts.find(acc => {
+        const name = acc.name.toLowerCase();
+        const ident = acc.identifier.toLowerCase();
+        // Match if identifier (e.g. 1234) or full account name is in the filename
+        return (ident.length >= 3 && allFileNames.includes(ident)) || allFileNames.includes(name);
+      });
+
+      if (bestMatch) {
+        setSelectedAccountId(bestMatch.id);
+      }
+    }
+  }, [selectedFiles, accounts]);
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -113,7 +133,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
       </div>
       
       {selectedFiles.length > 0 && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start animate-fade-in">
             <div className="space-y-2">
                 <h4 className="font-medium text-slate-700">Selected files:</h4>
                 <ul className="text-sm text-slate-600 list-disc list-inside max-h-24 overflow-y-auto bg-slate-50 p-2 rounded-md">
@@ -130,7 +150,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
                             value={selectedAccountId}
                             onChange={(e) => setSelectedAccountId(e.target.value)}
                             disabled={disabled}
-                            className="flex-grow"
+                            className={`flex-grow transition-all ${selectedAccountId ? 'border-green-400 ring-2 ring-green-100' : 'border-slate-300'}`}
                         >
                             <option value="" disabled>Select an account</option>
                             {accounts.map(account => (
@@ -148,6 +168,11 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
                         <AddIcon className="w-5 h-5" />
                     </button>
                  </div>
+                 {selectedAccountId && (
+                   <p className="text-[10px] text-green-600 font-bold uppercase flex items-center gap-1">
+                     <CheckCircleIcon className="w-3 h-3" /> Account Predicted Successfully
+                   </p>
+                 )}
             </div>
         </div>
       )}

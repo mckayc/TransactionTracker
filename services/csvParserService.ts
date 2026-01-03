@@ -11,7 +11,16 @@ const cleanDescription = (string: string): string => {
   cleaned = cleaned.replace(/\s+/g, ' ');
   cleaned = cleaned.replace(/^["']+|["']+$/g, '');
   cleaned = cleaned.replace(/[,.]+$/, '');
+  
+  // Strip common bank prefix noises
   cleaned = cleaned.replace(/^(Pos Debit|Debit Purchase|Recurring Payment|Preauthorized Debit|Checkcard|Visa Purchase) - /i, '');
+  
+  // Strip merchant ID garbage if detected
+  cleaned = cleaned.replace(/PAYMENTS ID NBR:.*$/i, '');
+  cleaned = cleaned.replace(/ID NBR:.*$/i, '');
+  cleaned = cleaned.replace(/EDI PYMNTS.*$/i, '');
+  cleaned = cleaned.replace(/ACH ITEMS.*$/i, '');
+  
   return cleaned.trim();
 };
 
