@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Category, Tag, Payee, User, TransactionType, Transaction, AccountType, Account } from '../types';
+import type { Category, Tag, Payee, User, TransactionType, Transaction, AccountType, Account, BalanceEffect } from '../types';
 /* Added TableIcon and LightBulbIcon to fix 'Cannot find name' errors on line 358 and 379 */
 import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, DeleteIcon, EditIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon, CloseIcon, SparklesIcon, TableIcon, LightBulbIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
@@ -46,7 +46,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const [color, setColor] = useState('bg-slate-100 text-slate-800');
     const [notes, setNotes] = useState('');
     const [userId, setUserId] = useState('');
-    const [balanceEffect, setBalanceEffect] = useState<'income' | 'expense' | 'transfer' | 'investment' | 'donation'>('expense');
+    const [balanceEffect, setBalanceEffect] = useState<BalanceEffect>('expense');
 
     // Usage analysis
     const usageCounts = useMemo(() => {
@@ -333,13 +333,13 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                     {activeTab === 'transactionTypes' && (
                                         <div>
                                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Net Worth / Balance Effect</label>
-                                            <div className="grid grid-cols-2 gap-2">
-                                                {(['income', 'expense', 'transfer', 'investment', 'donation'] as const).map(effect => (
+                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                                {(['income', 'expense', 'transfer', 'investment', 'donation', 'tax', 'savings'] as const).map(effect => (
                                                     <button 
                                                         key={effect} 
                                                         type="button"
                                                         onClick={() => setBalanceEffect(effect)}
-                                                        className={`p-3 rounded-xl border-2 text-xs font-black uppercase tracking-wider transition-all ${balanceEffect === effect ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-100'}`}
+                                                        className={`p-3 rounded-xl border-2 text-[10px] font-black uppercase tracking-wider transition-all ${balanceEffect === effect ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-100'}`}
                                                     >
                                                         {effect}
                                                     </button>
@@ -368,7 +368,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                             </div>
 
                             <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
-                                <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Discard</button>
+                                <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="px-6 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Discard</button>
                                 <button type="submit" className="px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95">
                                     {isCreating ? 'Create Entry' : 'Update Item'}
                                 </button>

@@ -1,5 +1,5 @@
 
-export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation';
+export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation' | 'tax' | 'savings';
 
 export interface TransactionType {
     id: string;

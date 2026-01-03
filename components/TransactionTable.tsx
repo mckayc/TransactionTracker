@@ -306,7 +306,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       if (!type) return { color: 'text-slate-600', prefix: '' };
       
       if (type.balanceEffect === 'income') return { color: 'text-emerald-600', prefix: '+' };
-      if (type.balanceEffect === 'expense' || type.balanceEffect === 'investment' || type.balanceEffect === 'donation') return { color: 'text-rose-600', prefix: '-' };
+      if (['expense', 'investment', 'donation', 'tax', 'savings'].includes(type.balanceEffect)) return { color: 'text-rose-600', prefix: '-' };
       return { color: 'text-slate-400', prefix: '' };
   };
 
@@ -635,7 +635,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         
         {totalPages > 1 && (
             <div className="border-t border-slate-200 p-3 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-3 sticky bottom-0 z-30 w-full min-w-0">
-                <div className="flex items-center text-sm text-slate-600">
+                <div className="flex items-center gap-4 text-sm text-slate-600">
                     <span className="mr-2 hidden sm:inline">Rows per page:</span>
                     <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="p-1 border rounded text-xs bg-white focus:ring-indigo-500 w-16">
                         <option value={25}>25</option>

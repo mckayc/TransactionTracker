@@ -92,7 +92,9 @@ const App: React.FC = () => {
                     { id: 'income', name: 'Income', balanceEffect: 'income' },
                     { id: 'transfer', name: 'Transfer', balanceEffect: 'transfer' },
                     { id: 'investment', name: 'Investment', balanceEffect: 'investment' },
-                    { id: 'donation', name: 'Donation', balanceEffect: 'donation' }
+                    { id: 'donation', name: 'Donation', balanceEffect: 'donation' },
+                    { id: 'tax', name: 'Tax Payment', balanceEffect: 'tax' },
+                    { id: 'savings', name: 'Savings Outflow', balanceEffect: 'savings' }
                 ]);
                 
                 const initialRules = data.reconciliationRules || data.rules || [];

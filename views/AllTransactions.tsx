@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag, SavedReport, ReportConfig } from '../types';
+import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag, SavedReport, ReportConfig, BalanceEffect } from '../types';
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import RuleModal from '../components/RuleModal';
@@ -199,18 +199,21 @@ const BulkUserModal: React.FC<{
 };
 
 // --- Filter Summary Card ---
-const SummaryCard: React.FC<{ title: string; value: number; type: 'income' | 'expense' | 'investment' | 'donation' }> = ({ title, value, type }) => {
-    const colors = {
+const SummaryCard: React.FC<{ title: string; value: number; type: BalanceEffect }> = ({ title, value, type }) => {
+    const colors: Record<string, string> = {
         income: 'text-green-600 bg-green-50 border-green-100',
         expense: 'text-red-600 bg-red-50 border-red-100',
         investment: 'text-purple-600 bg-purple-50 border-purple-100',
-        donation: 'text-blue-600 bg-blue-50 border-blue-100'
+        donation: 'text-blue-600 bg-blue-50 border-blue-100',
+        tax: 'text-orange-600 bg-orange-50 border-orange-100',
+        savings: 'text-indigo-600 bg-indigo-50 border-indigo-100',
+        transfer: 'text-slate-600 bg-slate-50 border-slate-100'
     };
     
     return (
-        <div className={`p-4 rounded-xl border ${colors[type]} flex flex-col`}>
-            <span className="text-xs font-bold uppercase tracking-wider opacity-70 mb-1">{title}</span>
-            <span className="text-xl font-bold">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)}</span>
+        <div className={`p-4 rounded-xl border ${colors[type] || colors.expense} flex flex-col`}>
+            <span className="text-[10px] font-bold uppercase tracking-wider opacity-70 mb-1">{title}</span>
+            <span className="text-lg font-bold truncate">{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)}</span>
         </div>
     );
 };
@@ -463,6 +466,8 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       let expenses = 0;
       let investments = 0;
       let donations = 0;
+      let taxes = 0;
+      let savings = 0;
 
       filteredTransactions.forEach(tx => {
           // Skip Parent transactions in sums to avoid double counting
@@ -473,9 +478,11 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
           else if (type?.balanceEffect === 'expense') expenses += tx.amount;
           else if (type?.balanceEffect === 'investment') investments += tx.amount;
           else if (type?.balanceEffect === 'donation') donations += tx.amount;
+          else if (type?.balanceEffect === 'tax') taxes += tx.amount;
+          else if (type?.balanceEffect === 'savings') savings += tx.amount;
       });
 
-      return { income, expenses, investments, donations };
+      return { income, expenses, investments, donations, taxes, savings };
   }, [filteredTransactions, transactionTypeMap]);
 
   const clearFilters = () => {
@@ -902,11 +909,13 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({ transactions, account
       <div className="flex flex-col h-full overflow-hidden gap-4 w-full max-w-full">
         
         {/* Dynamic Summary Cards (Based on Filters) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 flex-shrink-0 print:hidden">
+        <div className="grid grid-cols-3 md:grid-cols-6 gap-3 flex-shrink-0 print:hidden">
             <SummaryCard title="Income" value={summaries.income} type="income" />
             <SummaryCard title="Expenses" value={summaries.expenses} type="expense" />
-            <SummaryCard title="Investments" value={summaries.investments} type="investment" />
-            <SummaryCard title="Donations" value={summaries.donations} type="donation" />
+            <SummaryCard title="Taxes" value={summaries.taxes} type="tax" />
+            <SummaryCard title="Savings" value={summaries.savings} type="savings" />
+            <SummaryCard title="Invest" value={summaries.investments} type="investment" />
+            <SummaryCard title="Donation" value={summaries.donations} type="donation" />
         </div>
 
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex-shrink-0 print:hidden">

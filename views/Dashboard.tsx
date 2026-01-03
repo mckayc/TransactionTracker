@@ -463,6 +463,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const totalExpenses = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'expense').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
   const totalInvestments = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'investment').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
   const totalDonations = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'donation').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
+  const totalTaxes = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'tax').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
+  const totalSavings = useMemo(() => dashboardTransactions.filter(t => transactionTypeMap.get(t.typeId)?.balanceEffect === 'savings').reduce((sum, t) => sum + t.amount, 0), [dashboardTransactions, transactionTypeMap]);
+  
   const nextDeadline = useMemo(() => getNextTaxDeadline(), []);
 
   const getRangeLabel = () => {
@@ -495,6 +498,8 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     return transactions.filter(tx => importedTxIds.has(tx.id));
   }, [transactions, importedTxIds]);
 
+  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+
   return (
     <div className="space-y-8 h-full flex flex-col min-h-0">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-shrink-0">
@@ -520,12 +525,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       </div>
       
       {appState === 'idle' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 flex-shrink-0">
-            <SummaryWidget title="Total Income" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalIncome)} helpText={getRangeLabel()} />
-            <SummaryWidget title="Total Expenses" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalExpenses)} helpText={getRangeLabel()} />
-            <SummaryWidget title="Investments" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalInvestments)} helpText={getRangeLabel()} />
-            <SummaryWidget title="Donations" value={new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(totalDonations)} helpText={getRangeLabel()} />
-            <SummaryWidget title={nextDeadline.label} value={`${nextDeadline.daysLeft} Days`} helpText={`Due by ${nextDeadline.dateStr}`} icon={<CalendarIcon className="w-6 h-6 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 flex-shrink-0">
+            <SummaryWidget title="Income" value={formatCurrency(totalIncome)} helpText={getRangeLabel()} className="border-emerald-100" />
+            <SummaryWidget title="Expenses" value={formatCurrency(totalExpenses)} helpText={getRangeLabel()} className="border-rose-100" />
+            <SummaryWidget title="Taxes Paid" value={formatCurrency(totalTaxes)} helpText={getRangeLabel()} className="border-amber-100 bg-amber-50/30" />
+            <SummaryWidget title="Investments" value={formatCurrency(totalInvestments)} helpText={getRangeLabel()} className="border-purple-100" />
+            <SummaryWidget title="Donations" value={formatCurrency(totalDonations)} helpText={getRangeLabel()} className="border-blue-100" />
+            <SummaryWidget title="Savings" value={formatCurrency(totalSavings)} helpText={getRangeLabel()} className="border-indigo-100" />
+            <SummaryWidget title={nextDeadline.label} value={`${nextDeadline.daysLeft} Days`} helpText={`Due ${nextDeadline.dateStr}`} icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
           </div>
       )}
 
