@@ -20,7 +20,7 @@ import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import ContentHub from './views/integrations/ContentHub';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
-import { MenuIcon, CloseIcon, SparklesIcon, ExclamationTriangleIcon } from './components/Icons';
+import { MenuIcon, CloseIcon, SparklesIcon, ExclamationTriangleIcon, RepeatIcon } from './components/Icons';
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
 
@@ -34,6 +34,8 @@ const App: React.FC = () => {
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncError, setSyncError] = useState(false);
 
     // Core Data State
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -69,8 +71,14 @@ const App: React.FC = () => {
     const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
 
     const loadInitialData = async (showLoader = true) => {
-        if (showLoader) setIsLoading(true);
-        setLoadError(null);
+        if (showLoader) {
+            setIsLoading(true);
+            setLoadError(null);
+        } else {
+            setIsSyncing(true);
+            setSyncError(false);
+        }
+
         try {
             const data = await api.loadAll();
             
@@ -92,7 +100,6 @@ const App: React.FC = () => {
             let migrationHappened = false;
             loadedTypes = loadedTypes.map((t: TransactionType) => {
                 const nameLower = t.name.toLowerCase();
-                // Ensure existing types use the correct balance effects added in recent versions
                 if ((nameLower.includes('tax') || nameLower.includes('tithing')) && t.balanceEffect === 'expense') {
                     migrationHappened = true;
                     return { ...t, balanceEffect: 'tax' };
@@ -108,15 +115,12 @@ const App: React.FC = () => {
                 return t;
             });
 
-            // Ensure 'debt' effect type exists if missing
             if (!loadedTypes.find((t: TransactionType) => t.balanceEffect === 'debt')) {
                 loadedTypes.push({ id: 'debt', name: 'Debt Repayment', balanceEffect: 'debt' });
                 migrationHappened = true;
             }
 
-            if (migrationHappened) {
-                await api.save('transactionTypes', loadedTypes);
-            }
+            if (migrationHappened) await api.save('transactionTypes', loadedTypes);
             setTransactionTypes(loadedTypes);
 
             // 2. Categories
@@ -137,15 +141,10 @@ const App: React.FC = () => {
                 { id: 'cc', name: 'Credit Card' },
                 { id: 'cash', name: 'Cash' }
             ]);
-            
             setTags(data.tags || []);
-            
-            const initialRules = data.reconciliationRules || data.rules || [];
-            setRules(initialRules);
-            if (data.rules && !data.reconciliationRules) api.save('reconciliationRules', data.rules);
-
+            setRules(data.reconciliationRules || data.rules || []);
             setPayees(data.payees || []);
-            if (data.users && Array.isArray(data.users) && data.users.length > 0) setUsers(data.users);
+            if (data.users?.length > 0) setUsers(data.users);
             else setUsers([{ id: 'user1', name: 'Primary User', isDefault: true }]);
 
             setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
@@ -168,10 +167,16 @@ const App: React.FC = () => {
             setSystemSettings(data.systemSettings || {});
             
             if (showLoader) setIsLoading(false);
+            setIsSyncing(false);
             document.body.classList.add('loaded');
         } catch (err) {
             console.error("Failed to load initial data", err);
-            setLoadError("Engine startup failed. Please verify your server connection.");
+            if (showLoader) {
+                setLoadError("Engine startup failed after multiple attempts. Please verify your server connection and firewall.");
+            } else {
+                setSyncError(true);
+                setIsSyncing(false);
+            }
         }
     };
 
@@ -182,13 +187,12 @@ const App: React.FC = () => {
         // Listen for sync messages from other tabs
         const handleSync = (event: MessageEvent) => {
             if (event.data === 'REFRESH_REQUIRED') {
-                console.log("Tab sync: Refreshing data from server...");
                 loadInitialData(false); // Background refresh
             }
         };
         syncChannel.addEventListener('message', handleSync);
 
-        // Also refresh when tab regains focus to handle long periods of inactivity
+        // Also refresh when tab regains focus
         const handleFocus = () => loadInitialData(false);
         window.addEventListener('focus', handleFocus);
 
@@ -202,10 +206,10 @@ const App: React.FC = () => {
         setter(value);
         try { 
             await api.save(key, value); 
-            // Notify other tabs that data has changed
             syncChannel.postMessage('REFRESH_REQUIRED');
         } catch (e) { 
             console.error(`Failed to persist key: ${key}`, e); 
+            // Optional: Show toast error here
         }
     };
 
@@ -373,11 +377,44 @@ const App: React.FC = () => {
         }
     };
 
-    if (loadError) return <div className="flex flex-col items-center justify-center h-screen p-8 text-center"><div className="bg-white p-12 rounded-[2rem] shadow-2xl border-4 border-red-50 max-w-lg"><ExclamationTriangleIcon className="w-10 h-10 text-red-600 mx-auto mb-6" /><h2 className="text-2xl font-black text-slate-800 mb-4 uppercase">Database Connectivity Error</h2><p className="text-slate-600 mb-8">{loadError}</p><button onClick={() => window.location.reload()} className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl">Retry Connection</button></div></div>;
+    if (loadError) return (
+        <div className="flex flex-col items-center justify-center h-screen p-8 text-center bg-slate-50">
+            <div className="bg-white p-12 rounded-[2rem] shadow-2xl border-4 border-red-50 max-w-lg">
+                <ExclamationTriangleIcon className="w-10 h-10 text-red-600 mx-auto mb-6" />
+                <h2 className="text-2xl font-black text-slate-800 mb-4 uppercase tracking-tighter">Connectivity Failure</h2>
+                <p className="text-slate-600 mb-8">{loadError}</p>
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={() => { setLoadError(null); loadInitialData(true); }} 
+                        className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl transition-all active:scale-95"
+                    >
+                        Attempt Reconnection
+                    </button>
+                    <button onClick={() => window.location.reload()} className="text-sm font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest">Hard Refresh</button>
+                </div>
+            </div>
+        </div>
+    );
+
     if (isLoading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-50 gap-4"><Loader message="Initializing Data Engine..." /></div>;
 
     return (
-        <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+        <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
+            {/* Soft Error Indicator (Sync blips) */}
+            {syncError && (
+                <div className="absolute top-4 right-4 z-[100] bg-red-600 text-white px-4 py-2 rounded-xl shadow-xl flex items-center gap-2 animate-bounce-subtle border-2 border-red-500">
+                    <ExclamationTriangleIcon className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase">Sync Lagging - Reconnecting...</span>
+                </div>
+            )}
+
+            {isSyncing && !syncError && (
+                <div className="absolute top-4 right-4 z-[100] bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-xl flex items-center gap-2 border-2 border-indigo-500 opacity-80">
+                    <RepeatIcon className="w-4 h-4 animate-spin" />
+                    <span className="text-xs font-bold uppercase">Updating...</span>
+                </div>
+            )}
+
             <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onChatToggle={() => setIsChatOpen(!isChatOpen)} />
             <main className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
                 <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 z-30">

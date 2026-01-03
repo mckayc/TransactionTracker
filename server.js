@@ -52,11 +52,13 @@ let db;
 try {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
+    // HARDENING: Wait up to 5 seconds for other connections to release locks
+    db.pragma('busy_timeout = 5000');
     db.exec(`
       CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
     `);
-    console.log("[DB] Ready.");
+    console.log("[DB] Ready with 5s busy_timeout.");
 } catch (dbErr) {
     console.error("[DB] Critical error:", dbErr);
 }
@@ -72,7 +74,6 @@ const deleteFileMeta = db.prepare('DELETE FROM files_meta WHERE id = ?');
 app.get('/api/data', (req, res) => {
   try {
     const rows = getAllAppStorage.all();
-    console.log(`[DB] Fetching all data (${rows.length} keys)`);
     const data = {};
     for (const row of rows) {
       try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
@@ -80,13 +81,12 @@ app.get('/api/data', (req, res) => {
     res.json(data);
   } catch (e) { 
     console.error("[DB] Failed to read all data:", e);
-    res.status(500).json({ error: 'Failed to read' }); 
+    res.status(500).json({ error: 'Database is busy or unavailable. Please try again.' }); 
   }
 });
 
 app.get('/api/data/:key', (req, res) => {
     try {
-        console.log(`[DB] Fetching specific key: ${req.params.key}`);
         const row = getSpecificAppStorage.get(req.params.key);
         if (!row) return res.status(404).json({ error: 'Not found' });
         res.json(JSON.parse(row.value));
@@ -98,7 +98,6 @@ app.get('/api/data/:key', (req, res) => {
 
 app.post('/api/data/:key', (req, res) => {
   try {
-    console.log(`[DB] Saving key: ${req.params.key}`);
     upsertAppStorage.run(req.params.key, JSON.stringify(req.body));
     res.json({ success: true });
   } catch (e) { 
