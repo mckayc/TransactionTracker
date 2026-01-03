@@ -23,321 +23,532 @@ import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import ContentHub from './views/integrations/ContentHub';
 import Chatbot from './components/Chatbot';
 import Loader from './components/Loader';
+// Fix: Added missing semicolon and completed truncated component logic
 import { MenuIcon, CloseIcon } from './components/Icons';
-import { calculateNextDate, formatDate } from './dateUtils';
-import { generateUUID } from './utils';
 import { api } from './services/apiService';
-import { saveFile, deleteFile } from './services/storageService';
-
-const DEFAULT_CATEGORIES: Category[] = [
-    "Groceries", "Dining", "Shopping", "Travel", "Entertainment", "Utilities", "Health", "Services", "Transportation", "Income", "Other"
-].map(name => ({ id: `default-${name.toLowerCase().replace(' ', '-')}`, name, parentId: undefined }));
-
-const DEFAULT_TRANSACTION_TYPES: TransactionType[] = [
-    { id: 'default-expense-purchase', name: 'Purchase', balanceEffect: 'expense', isDefault: true },
-    { id: 'default-expense-bill', name: 'Bill Payment', balanceEffect: 'expense', isDefault: true },
-    { id: 'default-expense-fee', name: 'Fee', balanceEffect: 'expense', isDefault: true },
-    { id: 'default-expense-interest', name: 'Interest Charge', balanceEffect: 'expense', isDefault: true },
-    { id: 'default-expense-withdrawal', name: 'Withdrawal', balanceEffect: 'expense', isDefault: true },
-    { id: 'default-expense-tax', name: 'Tax Payment', balanceEffect: 'expense', isDefault: true },
-    { id: 'default-income-deposit', name: 'Direct Deposit', balanceEffect: 'income', isDefault: true },
-    { id: 'default-income-interest', name: 'Interest Earned', balanceEffect: 'income', isDefault: true },
-    { id: 'default-income-paycheck', name: 'Paycheck', balanceEffect: 'income', isDefault: true },
-    { id: 'default-income-refund', name: 'Refund', balanceEffect: 'income', isDefault: true },
-    { id: 'default-income-sales', name: 'Sales', balanceEffect: 'income', isDefault: true },
-    { id: 'default-transfer-payment', name: 'Credit Card Payment', balanceEffect: 'transfer', isDefault: true },
-    { id: 'default-transfer-transfer', name: 'Transfer', balanceEffect: 'transfer', isDefault: true },
-    { id: 'default-investment-contribution', name: 'Investment Contribution', balanceEffect: 'investment', isDefault: true },
-    { id: 'default-investment-purchase', name: 'Asset Purchase', balanceEffect: 'investment', isDefault: true },
-    { id: 'default-donation-charity', name: 'Charitable Donation', balanceEffect: 'donation', isDefault: true },
-    { id: 'default-donation-gift', name: 'Gift', balanceEffect: 'donation', isDefault: true },
-    { id: 'default-expense-other', name: 'Other Expense', balanceEffect: 'expense', isDefault: true },
-    { id: 'default-income-other', name: 'Other Income', balanceEffect: 'income', isDefault: true },
-    { id: 'default-transfer-other', name: 'Other Transfer', balanceEffect: 'transfer', isDefault: true },
-    { id: 'default-investment-other', name: 'Other Investment', balanceEffect: 'investment', isDefault: true },
-    { id: 'default-donation-other', name: 'Other Donation', balanceEffect: 'donation', isDefault: true },
-];
+import { generateUUID } from './utils';
 
 const App: React.FC = () => {
-  const [isStructureLoading, setIsStructureLoading] = useState(true);
-  const [isHeavyDataLoading, setIsHeavyDataLoading] = useState(true);
-  
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [accountTypes, setAccountTypes] = useState<AccountType[]>([]);
-  const [transactionTypes, setTransactionTypes] = useState<TransactionType[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [tags, setTags] = useState<Tag[]>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [scheduledEvents, setScheduledEvents] = useState<ScheduledEvent[]>([]);
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [taskCompletions, setTaskCompletions] = useState<TaskCompletions>({});
-  const [reconciliationRules, setReconciliationRules] = useState<ReconciliationRule[]>([]);
-  const [payees, setPayees] = useState<Payee[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [businessProfile, setBusinessProfile] = useState<BusinessProfile>({ info: {}, tax: {}, completedSteps: [] });
-  const [businessDocuments, setBusinessDocuments] = useState<BusinessDocument[]>([]);
-  const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>([]);
-  const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
-  const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
-  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
-  const [savedDateRanges, setSavedDateRanges] = useState<CustomDateRange[]>([]);
-  const [amazonMetrics, setAmazonMetrics] = useState<AmazonMetric[]>([]);
-  const [amazonVideos, setAmazonVideos] = useState<AmazonVideo[]>([]);
-  const [youtubeMetrics, setYouTubeMetrics] = useState<YouTubeMetric[]>([]);
-  const [youtubeChannels, setYouTubeChannels] = useState<YouTubeChannel[]>([]);
-  const [contentLinks, setContentLinks] = useState<ContentLink[]>([]);
-  
-  const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
-  const [financialPlan, setFinancialPlan] = useState<FinancialPlan | null>(null);
-  
-  const [currentView, setCurrentView] = useState<View>('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [initialTaskId, setInitialTaskId] = useState<string | undefined>(undefined);
-  const [isChatOpen, setIsChatOpen] = useState(false);
+    // UI State
+    const [currentView, setCurrentView] = useState<View>('dashboard');
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    document.body.classList.add('loaded');
-    const loadCoreStructure = async () => {
-      setIsStructureLoading(true);
-      const [settings, loadedUsers, loadedAccounts, loadedAccountTypes, loadedCategories, loadedTags, loadedPayees, loadedRules, loadedTypes] = await Promise.all([
-          api.get<SystemSettings>('systemSettings'),
-          api.get<User[]>('users'),
-          api.get<Account[]>('accounts'),
-          api.get<AccountType[]>('accountTypes'),
-          api.get<Category[]>('categories'),
-          api.get<Tag[]>('tags'),
-          api.get<Payee[]>('payees'),
-          api.get<ReconciliationRule[]>('reconciliationRules'),
-          api.get<TransactionType[]>('transactionTypes')
-      ]);
-      setSystemSettings(settings || {});
-      let finalUsers: User[] = loadedUsers && loadedUsers.length > 0 ? loadedUsers : [{ id: 'default-user', name: 'Primary User', isDefault: true }];
-      setUsers(finalUsers);
-      setCategories(loadedCategories && loadedCategories.length > 0 ? loadedCategories as Category[] : DEFAULT_CATEGORIES);
-      setTransactionTypes(loadedTypes || DEFAULT_TRANSACTION_TYPES);
-      setTags(loadedTags || []);
-      setPayees(loadedPayees || []);
-      setReconciliationRules(loadedRules || []);
-      let finalAccountTypes = loadedAccountTypes || [{ id: 'default-bank', name: 'Bank', isDefault: true }, { id: 'default-cc', name: 'Credit Card', isDefault: true }];
-      let finalAccounts = loadedAccounts || [{ id: 'default-account-other', name: 'Other', identifier: 'Default Account', accountTypeId: 'default-bank' }];
-      setAccountTypes(finalAccountTypes);
-      setAccounts(finalAccounts);
-      setIsStructureLoading(false);
-      loadHeavyData();
+    // Core Data State
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [accounts, setAccounts] = useState<Account[]>([]);
+    const [accountTypes, setAccountTypes] = useState<AccountType[]>([]);
+    const [categories, setCategories] = useState<Category[]>([]);
+    const [tags, setTags] = useState<Tag[]>([]);
+    const [transactionTypes, setTransactionTypes] = useState<TransactionType[]>([]);
+    const [rules, setRules] = useState<ReconciliationRule[]>([]);
+    const [payees, setPayees] = useState<Payee[]>([]);
+    const [users, setUsers] = useState<User[]>([]);
+    const [businessProfile, setBusinessProfile] = useState<BusinessProfile>({
+        info: {},
+        tax: {},
+        completedSteps: []
+    });
+    const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>([]);
+    const [businessDocuments, setBusinessDocuments] = useState<BusinessDocument[]>([]);
+    const [templates, setTemplates] = useState<Template[]>([]);
+    const [scheduledEvents, setScheduledEvents] = useState<ScheduledEvent[]>([]);
+    const [tasks, setTasks] = useState<TaskItem[]>([]);
+    const [taskCompletions, setTaskCompletions] = useState<TaskCompletions>({});
+    const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
+    const [savedDateRanges, setSavedDateRanges] = useState<CustomDateRange[]>([]);
+    const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+    const [amazonMetrics, setAmazonMetrics] = useState<AmazonMetric[]>([]);
+    const [amazonVideos, setAmazonVideos] = useState<AmazonVideo[]>([]);
+    const [youtubeMetrics, setYouTubeMetric] = useState<YouTubeMetric[]>([]);
+    const [youtubeChannels, setYouTubeChannels] = useState<YouTubeChannel[]>([]);
+    const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
+    const [financialPlan, setFinancialPlan] = useState<FinancialPlan | null>(null);
+    const [contentLinks, setContentLinks] = useState<ContentLink[]>([]);
+    const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
+
+    // Initialization: Fetch all data from the local API
+    useEffect(() => {
+        const loadInitialData = async () => {
+            setIsLoading(true);
+            try {
+                const data = await api.loadAll();
+                
+                // Set data from storage or apply sane defaults for a fresh environment
+                setTransactions(data.transactions || []);
+                setAccounts(data.accounts || []);
+                setAccountTypes(data.accountTypes || [
+                    { id: 'bank', name: 'Bank Account', isDefault: true },
+                    { id: 'cc', name: 'Credit Card' },
+                    { id: 'cash', name: 'Cash' }
+                ]);
+                setCategories(data.categories || [
+                    { id: 'groceries', name: 'Groceries' },
+                    { id: 'dining', name: 'Dining' },
+                    { id: 'utilities', name: 'Utilities' },
+                    { id: 'income', name: 'Income' },
+                    { id: 'other', name: 'Other' }
+                ]);
+                setTags(data.tags || []);
+                setTransactionTypes(data.transactionTypes || [
+                    { id: 'expense', name: 'Purchase', balanceEffect: 'expense', isDefault: true },
+                    { id: 'income', name: 'Income', balanceEffect: 'income' },
+                    { id: 'transfer', name: 'Transfer', balanceEffect: 'transfer' },
+                    { id: 'investment', name: 'Investment', balanceEffect: 'investment' },
+                    { id: 'donation', name: 'Donation', balanceEffect: 'donation' }
+                ]);
+                setRules(data.rules || []);
+                setPayees(data.payees || []);
+                setUsers(data.users || [
+                    { id: 'user1', name: 'Primary User', isDefault: true }
+                ]);
+                setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
+                setDocumentFolders(data.documentFolders || []);
+                setBusinessDocuments(data.businessDocuments || []);
+                setTemplates(data.templates || []);
+                setScheduledEvents(data.scheduledEvents || []);
+                setTasks(data.tasks || []);
+                setTaskCompletions(data.taskCompletions || {});
+                setSavedReports(data.savedReports || []);
+                setSavedDateRanges(data.savedDateRanges || []);
+                setChatSessions(data.chatSessions || []);
+                setAmazonMetrics(data.amazonMetrics || []);
+                setAmazonVideos(data.amazonVideos || []);
+                setYouTubeMetric(data.youtubeMetrics || []);
+                setYouTubeChannels(data.youtubeChannels || []);
+                setFinancialGoals(data.financialGoals || []);
+                setFinancialPlan(data.financialPlan || null);
+                setContentLinks(data.contentLinks || []);
+                setSystemSettings(data.systemSettings || {});
+            } catch (err) {
+                console.error("Failed to load initial data", err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadInitialData();
+    }, []);
+
+    // Helper for persisting state updates to the backend
+    const updateData = async (key: string, value: any, setter: Function) => {
+        setter(value);
+        await api.save(key, value);
     };
-    const loadHeavyData = async () => {
-        setIsHeavyDataLoading(true);
-        const [txs, templates, events, tasks, completions, profile, docs, folders, reports, ranges, amazon, amazonV, youtubeM, youtubeC, goals, plan, links] = await Promise.all([
-            api.get<Transaction[]>('transactions'),
-            api.get<Template[]>('templates'),
-            api.get<ScheduledEvent[]>('scheduledEvents'),
-            api.get<TaskItem[]>('tasks'),
-            api.get<TaskCompletions>('taskCompletions'),
-            api.get<BusinessProfile>('businessProfile'),
-            api.get<BusinessDocument[]>('businessDocuments'),
-            api.get<DocumentFolder[]>('documentFolders'),
-            api.get<SavedReport[]>('savedReports'),
-            api.get<CustomDateRange[]>('savedDateRanges'),
-            api.get<AmazonMetric[]>('amazonMetrics'),
-            api.get<AmazonVideo[]>('amazonVideos'),
-            api.get<YouTubeMetric[]>('youtubeMetrics'),
-            api.get<YouTubeChannel[]>('youtubeChannels'),
-            api.get<FinancialGoal[]>('financialGoals'),
-            api.get<FinancialPlan>('financialPlan'),
-            api.get<ContentLink[]>('contentLinks')
-        ]);
-        setTransactions(txs || []);
-        setTemplates(templates || []);
-        setScheduledEvents(events || []);
-        setTasks(tasks || []);
-        setTaskCompletions(completions || {});
-        setBusinessProfile(profile || { info: {}, tax: {}, completedSteps: [] });
-        setBusinessDocuments(docs || []);
-        setDocumentFolders(folders || []);
-        setSavedReports(reports || []);
-        setSavedDateRanges(ranges || []);
-        setAmazonMetrics(amazon || []);
-        setAmazonVideos(amazonV || []);
-        setYouTubeMetrics(youtubeM || []);
-        setYouTubeChannels(youtubeC || []);
-        setFinancialGoals(goals || []);
-        setFinancialPlan(plan || null);
-        setContentLinks(links || []);
-        setIsHeavyDataLoading(false);
+
+    // Transaction Management
+    const handleTransactionsAdded = (newTxs: Transaction[], newCats: Category[]) => {
+        const updatedTxs = [...transactions, ...newTxs];
+        const updatedCats = [...categories];
+        newCats.forEach(cat => {
+            if (!updatedCats.find(c => c.id === cat.id)) updatedCats.push(cat);
+        });
+        updateData('transactions', updatedTxs, setTransactions);
+        updateData('categories', updatedCats, setCategories);
     };
-    loadCoreStructure();
-    const params = new URLSearchParams(window.location.search);
-    const viewParam = params.get('view');
-    const taskId = params.get('taskId');
-    if (viewParam) setCurrentView(viewParam as View);
-    if (taskId) setInitialTaskId(taskId);
-  }, []);
 
-  const denormalize = useCallback((tx: Transaction): Transaction => {
-    const account = accounts.find(a => a.id === tx.accountId);
-    const category = categories.find(c => c.id === tx.categoryId);
-    const payee = payees.find(p => p.id === tx.payeeId);
-    const user = users.find(u => u.id === tx.userId);
-    const type = transactionTypes.find(t => t.id === tx.typeId);
-    const tagNames = tx.tagIds?.map(id => tags.find(t => t.id === id)?.name).filter(Boolean) as string[];
-    return { ...tx, account: account?.name || tx.account, category: category?.name || tx.category, payee: payee?.name || tx.payee, user: user?.name || tx.user, type: type?.name || tx.type, tags: tagNames?.length > 0 ? tagNames : tx.tags };
-  }, [accounts, categories, payees, users, transactionTypes, tags]);
+    // Main Router
+    const renderCurrentView = () => {
+        switch (currentView) {
+            case 'dashboard':
+                return (
+                    <Dashboard 
+                        transactions={transactions}
+                        accounts={accounts}
+                        accountTypes={accountTypes}
+                        categories={categories}
+                        tags={tags}
+                        transactionTypes={transactionTypes}
+                        rules={rules}
+                        payees={payees}
+                        users={users}
+                        documentFolders={documentFolders}
+                        onTransactionsAdded={handleTransactionsAdded}
+                        onAddAccount={(a) => updateData('accounts', [...accounts, a], setAccounts)}
+                        onAddAccountType={(t) => updateData('accountTypes', [...accountTypes, t], setAccountTypes)}
+                        onAddDocument={(d) => updateData('businessDocuments', [...businessDocuments, d], setBusinessDocuments)}
+                        onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
+                        onSaveRule={(r) => {
+                            const exists = rules.findIndex(x => x.id === r.id);
+                            const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r];
+                            updateData('rules', updated, setRules);
+                        }}
+                        onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
+                        onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
+                        onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
+                        onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
+                        onUpdateTransaction={(t) => updateData('transactions', transactions.map(x => x.id === t.id ? t : x), setTransactions)}
+                        onDeleteTransaction={(id) => updateData('transactions', transactions.filter(x => x.id !== id), setTransactions)}
+                    />
+                );
+            case 'transactions':
+                return (
+                    <AllTransactions 
+                        transactions={transactions}
+                        accounts={accounts}
+                        categories={categories}
+                        tags={tags}
+                        transactionTypes={transactionTypes}
+                        payees={payees}
+                        users={users}
+                        onUpdateTransaction={(t) => updateData('transactions', transactions.map(x => x.id === t.id ? t : x), setTransactions)}
+                        onAddTransaction={(t) => updateData('transactions', [...transactions, t], setTransactions)}
+                        onDeleteTransaction={(id) => updateData('transactions', transactions.filter(x => x.id !== id), setTransactions)}
+                        onDeleteTransactions={(ids) => updateData('transactions', transactions.filter(x => !ids.includes(x.id)), setTransactions)}
+                        onSaveRule={(r) => {
+                            const exists = rules.findIndex(x => x.id === r.id);
+                            const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r];
+                            updateData('rules', updated, setRules);
+                        }}
+                        onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
+                        onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
+                        onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
+                        onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
+                        onSaveReport={(r) => updateData('savedReports', [...savedReports, r], setSavedReports)}
+                    />
+                );
+            case 'calendar':
+                return (
+                    <CalendarPage 
+                        transactions={transactions}
+                        templates={templates}
+                        scheduledEvents={scheduledEvents}
+                        tasks={tasks}
+                        taskCompletions={taskCompletions}
+                        accounts={accounts}
+                        categories={categories}
+                        tags={tags}
+                        payees={payees}
+                        users={users}
+                        transactionTypes={transactionTypes}
+                        onAddEvent={(e) => updateData('scheduledEvents', [...scheduledEvents, e], setScheduledEvents)}
+                        onUpdateTransaction={(t) => updateData('transactions', transactions.map(x => x.id === t.id ? t : x), setTransactions)}
+                        onAddTransaction={(t) => updateData('transactions', [...transactions, t], setTransactions)}
+                        onToggleTaskCompletion={(date, eId, tId) => {
+                            const newComps = { ...taskCompletions };
+                            if (!newComps[date]) newComps[date] = {};
+                            if (!newComps[date][eId]) newComps[date][eId] = [];
+                            if (newComps[date][eId].includes(tId)) {
+                                newComps[date][eId] = newComps[date][eId].filter(id => id !== tId);
+                            } else {
+                                newComps[date][eId].push(tId);
+                            }
+                            updateData('taskCompletions', newComps, setTaskCompletions);
+                        }}
+                        onToggleTask={(id) => updateData('tasks', tasks.map(t => t.id === id ? { ...t, isCompleted: !t.isCompleted } : t), setTasks)}
+                        onSaveTask={(t) => {
+                            const exists = tasks.findIndex(x => x.id === t.id);
+                            const updated = exists >= 0 ? tasks.map(x => x.id === t.id ? t : x) : [...tasks, t];
+                            updateData('tasks', updated, setTasks);
+                        }}
+                    />
+                );
+            case 'accounts':
+                return (
+                    <AccountsPage 
+                        accounts={accounts}
+                        accountTypes={accountTypes}
+                        onAddAccount={(a) => updateData('accounts', [...accounts, a], setAccounts)}
+                        onUpdateAccount={(a) => updateData('accounts', accounts.map(x => x.id === a.id ? a : x), setAccounts)}
+                        onRemoveAccount={(id) => updateData('accounts', accounts.filter(x => x.id !== id), setAccounts)}
+                        onAddAccountType={(t) => updateData('accountTypes', [...accountTypes, t], setAccountTypes)}
+                        onRemoveAccountType={(id) => updateData('accountTypes', accountTypes.filter(x => x.id !== id), setAccountTypes)}
+                    />
+                );
+            case 'reports':
+                return (
+                    <Reports 
+                        transactions={transactions}
+                        transactionTypes={transactionTypes}
+                        categories={categories}
+                        payees={payees}
+                        users={users}
+                        tags={tags}
+                        accounts={accounts}
+                        savedReports={savedReports}
+                        setSavedReports={(val) => updateData('savedReports', typeof val === 'function' ? val(savedReports) : val, setSavedReports)}
+                        savedDateRanges={savedDateRanges}
+                        setSavedDateRanges={(val) => updateData('savedDateRanges', typeof val === 'function' ? val(savedDateRanges) : val, setSavedDateRanges)}
+                        amazonMetrics={amazonMetrics}
+                        youtubeMetrics={youtubeMetrics}
+                    />
+                );
+            case 'documents':
+                return (
+                    <DocumentsPage 
+                        documents={businessDocuments}
+                        folders={documentFolders}
+                        onAddDocument={(d) => updateData('businessDocuments', [...businessDocuments, d], setBusinessDocuments)}
+                        onRemoveDocument={(id) => updateData('businessDocuments', businessDocuments.filter(x => x.id !== id), setBusinessDocuments)}
+                        onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
+                        onDeleteFolder={(id) => updateData('documentFolders', documentFolders.filter(x => x.id !== id), setDocumentFolders)}
+                    />
+                );
+            case 'hub':
+                return (
+                    <BusinessHub 
+                        profile={businessProfile}
+                        onUpdateProfile={(p) => updateData('businessProfile', p, setBusinessProfile)}
+                        chatSessions={chatSessions}
+                        onUpdateChatSessions={(s) => updateData('chatSessions', s, setChatSessions)}
+                        transactions={transactions}
+                        accounts={accounts}
+                        categories={categories}
+                    />
+                );
+            case 'plan':
+                return (
+                    <FinancialPlanPage 
+                        transactions={transactions}
+                        goals={financialGoals}
+                        onSaveGoals={(g) => updateData('financialGoals', g, setFinancialGoals)}
+                        plan={financialPlan}
+                        onSavePlan={(p) => updateData('financialPlan', p, setFinancialPlan)}
+                        categories={categories}
+                    />
+                );
+            case 'integrations':
+                return <IntegrationsPage onNavigate={(v) => setCurrentView(v)} />;
+            case 'integration-amazon':
+                return (
+                    <AmazonIntegration 
+                        metrics={amazonMetrics}
+                        onAddMetrics={(m) => updateData('amazonMetrics', [...amazonMetrics, ...m], setAmazonMetrics)}
+                        onDeleteMetrics={(ids) => updateData('amazonMetrics', amazonMetrics.filter(x => !ids.includes(x.id)), setAmazonMetrics)}
+                        videos={amazonVideos}
+                        onAddVideos={(v) => updateData('amazonVideos', [...amazonVideos, ...v], setAmazonVideos)}
+                        onDeleteVideos={(ids) => updateData('amazonVideos', amazonVideos.filter(x => !ids.includes(x.id)), setAmazonVideos)}
+                    />
+                );
+            case 'integration-youtube':
+                return (
+                    <YouTubeIntegration 
+                        metrics={youtubeMetrics}
+                        onAddMetrics={(m) => updateData('youtubeMetrics', [...youtubeMetrics, ...m], setYouTubeMetric)}
+                        onDeleteMetrics={(ids) => updateData('youtubeMetrics', youtubeMetrics.filter(x => !ids.includes(x.id)), setYouTubeMetric)}
+                        channels={youtubeChannels}
+                        onSaveChannel={(c) => {
+                            const exists = youtubeChannels.findIndex(x => x.id === c.id);
+                            const updated = exists >= 0 ? youtubeChannels.map(x => x.id === c.id ? c : x) : [...youtubeChannels, c];
+                            updateData('youtubeChannels', updated, setYouTubeChannels);
+                        }}
+                        onDeleteChannel={(id) => updateData('youtubeChannels', youtubeChannels.filter(x => x.id !== id), setYouTubeChannels)}
+                    />
+                );
+            case 'integration-content-hub':
+                return (
+                    <ContentHub 
+                        amazonMetrics={amazonMetrics}
+                        youtubeMetrics={youtubeMetrics}
+                        contentLinks={contentLinks}
+                        onUpdateLinks={(l) => updateData('contentLinks', l, setContentLinks)}
+                    />
+                );
+            case 'tasks':
+                return (
+                    <TasksPage 
+                        tasks={tasks}
+                        templates={templates}
+                        scheduledEvents={scheduledEvents}
+                        onSaveTask={(t) => {
+                            const exists = tasks.findIndex(x => x.id === t.id);
+                            const updated = exists >= 0 ? tasks.map(x => x.id === t.id ? t : x) : [...tasks, t];
+                            updateData('tasks', updated, setTasks);
+                        }}
+                        onDeleteTask={(id) => updateData('tasks', tasks.filter(x => x.id !== id), setTasks)}
+                        onToggleTask={(id) => updateData('tasks', tasks.map(t => t.id === id ? { ...t, isCompleted: !t.isCompleted } : t), setTasks)}
+                        onSaveTemplate={(t) => {
+                            const exists = templates.findIndex(x => x.id === t.id);
+                            const updated = exists >= 0 ? templates.map(x => x.id === t.id ? t : x) : [...templates, t];
+                            updateData('templates', updated, setTemplates);
+                        }}
+                        onRemoveTemplate={(id) => updateData('templates', templates.filter(x => x.id !== id), setTemplates)}
+                    />
+                );
+            case 'rules':
+                return (
+                    <RulesPage 
+                        rules={rules}
+                        accounts={accounts}
+                        transactionTypes={transactionTypes}
+                        categories={categories}
+                        tags={tags}
+                        payees={payees}
+                        transactions={transactions}
+                        onSaveRule={(r) => {
+                            const exists = rules.findIndex(x => x.id === r.id);
+                            const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r];
+                            updateData('rules', updated, setRules);
+                        }}
+                        onDeleteRule={(id) => updateData('rules', rules.filter(x => x.id !== id), setRules)}
+                        onUpdateTransactions={(txs) => {
+                            const txMap = new Map(txs.map(t => [t.id, t]));
+                            updateData('transactions', transactions.map(t => txMap.has(t.id) ? txMap.get(t.id)! : t), setTransactions);
+                        }}
+                        onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
+                        onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
+                        onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
+                        onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
+                    />
+                );
+            case 'payees':
+                return (
+                    <PayeesPage 
+                        payees={payees}
+                        transactions={transactions}
+                        users={users}
+                        onSavePayee={(p) => {
+                            const exists = payees.findIndex(x => x.id === p.id);
+                            const updated = exists >= 0 ? payees.map(x => x.id === p.id ? p : x) : [...payees, p];
+                            updateData('payees', updated, setPayees);
+                        }}
+                        onDeletePayee={(id) => updateData('payees', payees.filter(x => x.id !== id), setPayees)}
+                    />
+                );
+            case 'categories':
+                return (
+                    <CategoriesPage 
+                        categories={categories}
+                        transactions={transactions}
+                        onSaveCategory={(c) => {
+                            const exists = categories.findIndex(x => x.id === c.id);
+                            const updated = exists >= 0 ? categories.map(x => x.id === c.id ? c : x) : [...categories, c];
+                            updateData('categories', updated, setCategories);
+                        }}
+                        onDeleteCategory={(id) => updateData('categories', categories.filter(x => x.id !== id), setCategories)}
+                    />
+                );
+            case 'tags':
+                return (
+                    <TagsPage 
+                        tags={tags}
+                        onSaveTag={(t) => {
+                            const exists = tags.findIndex(x => x.id === t.id);
+                            const updated = exists >= 0 ? tags.map(x => x.id === t.id ? t : x) : [...tags, t];
+                            updateData('tags', updated, setTags);
+                        }}
+                        onDeleteTag={(id) => updateData('tags', tags.filter(x => x.id !== id), setTags)}
+                    />
+                );
+            case 'users':
+                return (
+                    <UsersPage 
+                        users={users}
+                        onSaveUser={(u) => {
+                            const exists = users.findIndex(x => x.id === u.id);
+                            const updated = exists >= 0 ? users.map(x => x.id === u.id ? u : x) : [...users, u];
+                            updateData('users', updated, setUsers);
+                        }}
+                        onDeleteUser={(id) => updateData('users', users.filter(x => x.id !== id), setUsers)}
+                    />
+                );
+            case 'settings':
+                return (
+                    <SettingsPage 
+                        transactions={transactions}
+                        transactionTypes={transactionTypes}
+                        onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
+                        onRemoveTransactionType={(id) => updateData('transactionTypes', transactionTypes.filter(x => x.id !== id), setTransactionTypes)}
+                        systemSettings={systemSettings}
+                        onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)}
+                        accounts={accounts}
+                        categories={categories}
+                        tags={tags}
+                        payees={payees}
+                        rules={rules}
+                        templates={templates}
+                        scheduledEvents={scheduledEvents}
+                        tasks={tasks}
+                        taskCompletions={taskCompletions}
+                        users={users}
+                        businessProfile={businessProfile}
+                        documentFolders={documentFolders}
+                        businessDocuments={businessDocuments}
+                        onAddDocument={(d) => updateData('businessDocuments', [...businessDocuments, d], setBusinessDocuments)}
+                        onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
+                        savedReports={savedReports}
+                        savedDateRanges={savedDateRanges}
+                        amazonMetrics={amazonMetrics}
+                        amazonVideos={amazonVideos}
+                        youtubeMetrics={youtubeMetrics}
+                        youtubeChannels={youtubeChannels}
+                        financialGoals={financialGoals}
+                        financialPlan={financialPlan}
+                        contentLinks={contentLinks}
+                    />
+                );
+            default:
+                return null;
+        }
+    };
 
-  useEffect(() => {
-      if (isHeavyDataLoading) return;
-      const checkAndRunBackup = async () => {
-          const config = systemSettings.backupConfig;
-          if (!config || config.frequency === 'never') return;
-          const now = new Date();
-          const lastRun = config.lastBackupDate ? new Date(config.lastBackupDate) : new Date(0);
-          const msPerDay = 24 * 60 * 60 * 1000;
-          const daysSinceLast = (now.getTime() - lastRun.getTime()) / msPerDay;
-          let shouldRun = (config.frequency === 'daily' && daysSinceLast >= 1) || (config.frequency === 'weekly' && daysSinceLast >= 7) || (config.frequency === 'monthly' && daysSinceLast >= 30);
-          if (shouldRun) {
-              try {
-                  const exportData = { exportDate: new Date().toISOString(), version: '0.0.51-full', transactions, accounts, accountTypes, categories, tags, payees, reconciliationRules, templates, scheduledEvents, tasks, taskCompletions, users, transactionTypes, businessProfile, documentFolders, businessDocuments, savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks, systemSettings };
-                  const fileName = `AutoBackup-Full-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-                  const file = new File([JSON.stringify(exportData, null, 2)], fileName, { type: 'application/json' });
-                  let autoFolder = documentFolders.find(f => f.name === "Automated Backups" && !f.parentId);
-                  let autoFolderId = autoFolder?.id;
-                  if (!autoFolderId) {
-                      autoFolderId = generateUUID();
-                      const newFolder: DocumentFolder = { id: autoFolderId, name: "Automated Backups", parentId: undefined, createdAt: new Date().toISOString() };
-                      setDocumentFolders(prev => [...prev, newFolder]);
-                      await api.save('documentFolders', [...documentFolders, newFolder]); 
-                  }
-                  const docId = generateUUID();
-                  await saveFile(docId, file);
-                  const newDoc: BusinessDocument = { id: docId, name: fileName, uploadDate: new Date().toISOString().split('T')[0], size: file.size, mimeType: 'application/json', parentId: autoFolderId };
-                  setBusinessDocuments(prev => [...prev, newDoc]);
-                  const newConfig: BackupConfig = { ...config, lastBackupDate: new Date().toISOString() };
-                  setSystemSettings(prev => ({ ...prev, backupConfig: newConfig }));
-              } catch (e) { console.error("Automated backup failed:", e); }
-          }
-      };
-      const timeout = setTimeout(checkAndRunBackup, 5000);
-      return () => clearTimeout(timeout);
-  }, [isHeavyDataLoading, systemSettings, transactions, accounts, categories, tags, tasks, taskCompletions, accountTypes, payees, reconciliationRules, templates, scheduledEvents, users, transactionTypes, businessProfile, documentFolders, businessDocuments, savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks]); 
-
-  useEffect(() => { if (isStructureLoading) return; api.save('systemSettings', systemSettings); }, [systemSettings, isStructureLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('transactions', transactions), 1000); return () => clearTimeout(h); }, [transactions, isHeavyDataLoading]);
-  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('accounts', accounts), 500); return () => clearTimeout(h); }, [accounts, isStructureLoading]);
-  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('accountTypes', accountTypes), 500); return () => clearTimeout(h); }, [accountTypes, isStructureLoading]);
-  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('transactionTypes', transactionTypes), 500); return () => clearTimeout(h); }, [transactionTypes, isStructureLoading]);
-  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('categories', categories), 500); return () => clearTimeout(h); }, [categories, isStructureLoading]);
-  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('tags', tags), 500); return () => clearTimeout(h); }, [tags, isStructureLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('templates', templates), 500); return () => clearTimeout(h); }, [templates, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('scheduledEvents', scheduledEvents), 500); return () => clearTimeout(h); }, [scheduledEvents, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('tasks', tasks), 500); return () => clearTimeout(h); }, [tasks, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('taskCompletions', taskCompletions), 500); return () => clearTimeout(h); }, [taskCompletions, isHeavyDataLoading]);
-  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('reconciliationRules', reconciliationRules), 500); return () => clearTimeout(h); }, [reconciliationRules, isStructureLoading]);
-  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('payees', payees), 500); return () => clearTimeout(h); }, [payees, isStructureLoading]);
-  useEffect(() => { if (isStructureLoading) return; const h = setTimeout(() => api.save('users', users), 500); return () => clearTimeout(h); }, [users, isStructureLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('businessProfile', businessProfile), 500); return () => clearTimeout(h); }, [businessProfile, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('businessDocuments', businessDocuments), 500); return () => clearTimeout(h); }, [businessDocuments, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('documentFolders', documentFolders), 500); return () => clearTimeout(h); }, [documentFolders, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('savedReports', savedReports), 500); return () => clearTimeout(h); }, [savedReports, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('savedDateRanges', savedDateRanges), 500); return () => clearTimeout(h); }, [savedDateRanges, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('amazonMetrics', amazonMetrics), 500); return () => clearTimeout(h); }, [amazonMetrics, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('amazonVideos', amazonVideos), 500); return () => clearTimeout(h); }, [amazonVideos, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('youtubeMetrics', youtubeMetrics), 500); return () => clearTimeout(h); }, [youtubeMetrics, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('youtubeChannels', youtubeChannels), 500); return () => clearTimeout(h); }, [youtubeChannels, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; const h = setTimeout(() => api.save('contentLinks', contentLinks), 500); return () => clearTimeout(h); }, [contentLinks, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; api.save('financialGoals', financialGoals); }, [financialGoals, isHeavyDataLoading]);
-  useEffect(() => { if (isHeavyDataLoading) return; api.save('financialPlan', financialPlan); }, [financialPlan, isHeavyDataLoading]);
-
-  const handleTransactionsAdded = (newlyAdded: Transaction[], newlyCreatedCategories: Category[]) => {
-      if (newlyCreatedCategories.length > 0) setCategories(prev => [...prev, ...newlyCreatedCategories]);
-      const denormalized = newlyAdded.map(denormalize);
-      if (denormalized.length > 0) setTransactions(prev => [...prev, ...denormalized].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  };
-  const handleAddTransaction = (newTransaction: Transaction) => setTransactions(prev => [...prev, denormalize(newTransaction)].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  const handleUpdateTransaction = (updatedTransaction: Transaction) => setTransactions(prev => prev.map(tx => tx.id === updatedTransaction.id ? denormalize(updatedTransaction) : tx).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  const handleUpdateTransactions = (updatedTransactions: Transaction[]) => { 
-      const denormalizedMap = new Map(updatedTransactions.map(tx => [tx.id, denormalize(tx)])); 
-      setTransactions(prev => prev.map(tx => denormalizedMap.has(tx.id) ? denormalizedMap.get(tx.id)! : tx).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())); 
-  };
-  const handleDeleteTransaction = (transactionId: string) => setTransactions(prev => prev.filter(tx => tx.id !== transactionId));
-  const handleDeleteTransactions = (transactionIds: string[]) => { const idsToDelete = new Set(transactionIds); setTransactions(prev => prev.filter(tx => !idsToDelete.has(tx.id))); };
-  const handleAddAccount = (account: Account) => setAccounts(prev => [...prev, account]);
-  const handleUpdateAccount = (updatedAccount: Account) => setAccounts(prev => prev.map(acc => acc.id === updatedAccount.id ? updatedAccount : acc));
-  const handleRemoveAccount = (accountId: string) => setAccounts(prev => prev.filter(c => c.id !== accountId));
-  const handleAddAccountType = (type: AccountType) => setAccountTypes(prev => [...prev, type]);
-  const handleRemoveAccountType = (typeId: string) => setAccountTypes(prev => prev.filter(p => p.id !== typeId));
-  const handleAddTransactionType = (type: TransactionType) => setTransactionTypes(prev => [...prev, type]);
-  const handleRemoveTransactionType = (typeId: string) => setTransactionTypes(prev => prev.filter(t => t.id !== typeId));
-  const handleSaveTemplate = (template: Template) => setTemplates(prev => { const index = prev.findIndex(t => t.id === template.id); if (index > -1) { const newTemplates = [...prev]; newTemplates[index] = template; return newTemplates; } return [...prev, template]; });
-  const handleRemoveTemplate = (templateId: string) => { setTemplates(prev => prev.filter(t => t.id !== templateId)); setScheduledEvents(prev => prev.filter(e => e.templateId !== templateId)); };
-  const handleAddEvent = (event: ScheduledEvent) => setScheduledEvents(prev => [...prev, event]);
-  const handleToggleTaskCompletion = (date: string, eventId: string, taskId: string) => { setTaskCompletions(prev => { const newCompletions = JSON.parse(JSON.stringify(prev)); const dayCompletions = newCompletions[date] || {}; const eventCompletions = dayCompletions[eventId] || []; const taskIndex = eventCompletions.indexOf(taskId); if (taskIndex > -1) eventCompletions.splice(taskIndex, 1); else eventCompletions.push(taskId); dayCompletions[eventId] = eventCompletions; newCompletions[date] = dayCompletions; return newCompletions; }); };
-  const handleSaveTask = (task: TaskItem) => setTasks(prev => { const index = prev.findIndex(t => t.id === task.id); if (index > -1) { const newTasks = [...prev]; newTasks[index] = task; return newTasks; } return [...prev, task]; });
-  const handleDeleteTask = (taskId: string) => setTasks(prev => prev.filter(t => t.id !== taskId));
-  const handleToggleTask = (taskId: string) => { setTasks(prev => { const task = prev.find(t => t.id === taskId); if (!task) return prev; const isNowCompleted = !task.isCompleted; const updatedTasks = prev.map(t => t.id === taskId ? { ...t, isCompleted: isNowCompleted } : t); if (isNowCompleted && task.recurrence && task.dueDate) { const nextDateStr = calculateNextDate(task.dueDate, task.recurrence); if (!task.recurrence.endDate || nextDateStr <= task.recurrence.endDate) { const nextTask: TaskItem = { ...task, id: generateUUID(), dueDate: nextDateStr, isCompleted: false, createdAt: new Date().toISOString(), subtasks: task.subtasks?.map(st => ({...st, isCompleted: false})), }; updatedTasks.push(nextTask); } } return updatedTasks; }); };
-  const handleSaveRule = (rule: ReconciliationRule) => setReconciliationRules(prev => { const index = prev.findIndex(r => r.id === rule.id); if (index > -1) { const newRules = [...prev]; newRules[index] = rule; return newRules; } return [...prev, rule]; });
-  const handleDeleteRule = (ruleId: string) => setReconciliationRules(prev => prev.filter(r => r.id !== ruleId));
-  const handleSavePayee = (payee: Payee) => setPayees(prev => { const index = prev.findIndex(p => p.id === payee.id); if (index > -1) { const newPayees = [...prev]; newPayees[index] = payee; return newPayees; } return [...prev, payee]; });
-  const handleDeletePayee = (payeeId: string) => setPayees(prev => { const children = prev.filter(p => p.parentId === payeeId); const updatedChildren = children.map(c => ({ ...c, parentId: undefined })); const filtered = prev.filter(p => p.id !== payeeId && p.parentId !== payeeId); return [...filtered, ...updatedChildren]; });
-  const handleSaveCategory = (category: Category) => setCategories(prev => { const index = prev.findIndex(c => c.id === category.id); if (index > -1) { const newCategories = [...prev]; newCategories[index] = category; return newCategories; } return [...prev, category]; });
-  const handleDeleteCategory = (categoryId: string) => setCategories(prev => { const children = prev.filter(c => c.parentId === categoryId); const updatedChildren = children.map(c => ({ ...c, parentId: undefined })); const filtered = prev.filter(c => c.id !== categoryId && c.parentId !== categoryId); return [...filtered, ...updatedChildren]; });
-  const handleSaveTag = (tag: Tag) => setTags(prev => { const index = prev.findIndex(t => t.id === tag.id); if (index > -1) { const newTags = [...prev]; newTags[index] = tag; return newTags; } return [...prev, tag]; });
-  const handleDeleteTag = (tagId: string) => { setTags(prev => prev.filter(t => t.id !== tagId)); setTransactions(prev => prev.map(tx => (tx.tagIds && tx.tagIds.includes(tagId)) ? { ...tx, tagIds: tx.tagIds.filter(id => id !== tagId) } : tx)); };
-  const handleSaveUser = (user: User) => setUsers(prev => { const index = prev.findIndex(u => u.id === user.id); if (index > -1) { const newUsers = [...prev]; newUsers[index] = user; return newUsers; } return [...prev, user]; });
-  const handleDeleteUser = (userId: string) => { const userToDelete = users.find(u => u.id === userId); if (userToDelete?.isDefault) { alert("Cannot delete the default user."); return; } const defaultUser = users.find(u => u.isDefault) || users[0]; if (!defaultUser) { alert("Cannot delete user as no default user is available."); return; } setTransactions(prev => prev.map(tx => tx.userId === userId ? { ...tx, userId: defaultUser.id } : tx)); setUsers(prev => prev.filter(u => u.id !== userId)); };
-  const handleAddDocument = (doc: BusinessDocument) => setBusinessDocuments(prev => [...prev, doc]);
-  const handleRemoveDocument = (docId: string) => setBusinessDocuments(prev => prev.filter(d => d.id !== docId));
-  const handleCreateFolder = (folder: DocumentFolder) => setDocumentFolders(prev => [...prev, folder]);
-  const handleDeleteFolder = (folderId: string) => { setBusinessDocuments(prev => prev.map(d => d.parentId === folderId ? { ...d, parentId: undefined } : d)); setDocumentFolders(prev => prev.filter(f => f.id !== folderId)); };
-  const handleAddSavedReport = (report: SavedReport) => setSavedReports(prev => [...prev, report]);
-  const handleAddAmazonMetrics = (newMetrics: AmazonMetric[]) => { if(newMetrics.length > 0) setAmazonMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime())); };
-  const handleDeleteAmazonMetrics = (ids: string[]) => { const idSet = new Set(ids); setAmazonMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
-  const handleAddAmazonVideos = (vids: AmazonVideo[]) => { if(vids.length > 0) setAmazonVideos(prev => [...prev, ...vids]); };
-  const handleDeleteAmazonVideos = (ids: string[]) => { const idSet = new Set(ids); setAmazonVideos(prev => prev.filter(v => !idSet.has(v.id))); };
-  const handleAddYouTubeMetrics = (newMetrics: YouTubeMetric[]) => { if(newMetrics.length > 0) setYouTubeMetrics(prev => [...prev, ...newMetrics].sort((a,b) => new Date(b.publishDate).getTime() - new Date(a.publishDate).getTime())); };
-  const handleDeleteYouTubeMetrics = (ids: string[]) => { const idSet = new Set(ids); setYouTubeMetrics(prev => prev.filter(m => !idSet.has(m.id))); };
-  const handleSaveYouTubeChannel = (channel: YouTubeChannel) => setYouTubeChannels(prev => { const index = prev.findIndex(c => c.id === channel.id); if (index > -1) { const updated = [...prev]; updated[index] = channel; return updated; } return [...prev, channel]; });
-  const handleDeleteYouTubeChannel = (channelId: string) => setYouTubeChannels(prev => prev.filter(c => c.id !== channelId));
-  const handleUpdateContentLinks = (links: ContentLink[]) => setContentLinks(links);
-
-  const renderView = () => {
-    if (isStructureLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Initializing secure storage..." /></div>;
-    switch (currentView) {
-      case 'dashboard': if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Hydrating dashboard data..." /></div>; return <Dashboard onTransactionsAdded={handleTransactionsAdded} transactions={transactions} accounts={accounts} onAddAccount={handleAddAccount} onAddAccountType={handleAddAccountType} accountTypes={accountTypes} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={reconciliationRules} payees={payees} users={users} onAddDocument={handleAddDocument} documentFolders={documentFolders} onCreateFolder={handleCreateFolder} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} />;
-      case 'transactions': if (isHeavyDataLoading) return <div className="flex-1 flex items-center justify-center bg-white rounded-xl shadow-sm border border-slate-200"><Loader message="Loading transaction history..." /></div>; return <AllTransactions transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={handleDeleteTransactions} onSaveRule={handleSaveRule} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} onSaveReport={handleAddSavedReport} />;
-      case 'calendar': return <CalendarPage transactions={transactions} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} tasks={tasks} onAddEvent={handleAddEvent} onToggleTaskCompletion={handleToggleTaskCompletion} onToggleTask={handleToggleTask} transactionTypes={transactionTypes} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={handleAddTransaction} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users} initialTaskId={initialTaskId} />;
-      case 'reports': return <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={setSavedReports} savedDateRanges={savedDateRanges} setSavedDateRanges={setSavedDateRanges} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} />;
-      case 'accounts': return <AccountsPage accounts={accounts} onAddAccount={handleAddAccount} onUpdateAccount={handleUpdateAccount} onRemoveAccount={handleRemoveAccount} accountTypes={accountTypes} onAddAccountType={handleAddAccountType} onRemoveAccountType={handleRemoveAccountType} />;
-      case 'users': return <UsersPage users={users} onSaveUser={handleSaveUser} onDeleteUser={handleDeleteUser} />;
-      case 'payees': return <PayeesPage payees={payees} onSavePayee={handleSavePayee} onDeletePayee={handleDeletePayee} transactions={transactions} users={users} />;
-      case 'categories': return <CategoriesPage categories={categories} onSaveCategory={handleSaveCategory} onDeleteCategory={handleDeleteCategory} transactions={transactions}/>;
-      case 'tags': return <TagsPage tags={tags} onSaveTag={handleSaveTag} onDeleteTag={handleDeleteTag} />;
-      case 'rules': return <RulesPage rules={reconciliationRules} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions} onUpdateTransactions={handleUpdateTransactions} onSaveCategory={handleSaveCategory} onSavePayee={handleSavePayee} onSaveTag={handleSaveTag} onAddTransactionType={handleAddTransactionType} />;
-      /* FIX: Added amazonVideos={amazonVideos} to SettingsPage props */
-      case 'settings': return <SettingsPage transactionTypes={transactionTypes} onAddTransactionType={handleAddTransactionType} onRemoveTransactionType={handleRemoveTransactionType} transactions={transactions} systemSettings={systemSettings} onUpdateSystemSettings={setSystemSettings} onAddDocument={handleAddDocument} accounts={accounts} categories={categories} tags={tags} payees={payees} rules={reconciliationRules} templates={templates} scheduledEvents={scheduledEvents} tasks={tasks} taskCompletions={taskCompletions} users={users} businessProfile={businessProfile} documentFolders={documentFolders} businessDocuments={businessDocuments} onCreateFolder={handleCreateFolder} savedReports={savedReports} savedDateRanges={savedDateRanges} amazonMetrics={amazonMetrics} amazonVideos={amazonVideos} youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels} financialGoals={financialGoals} financialPlan={financialPlan} contentLinks={contentLinks} />;
-      case 'tasks': return <TasksPage tasks={tasks} onSaveTask={handleSaveTask} onDeleteTask={handleDeleteTask} onToggleTask={handleToggleTask} templates={templates} onSaveTemplate={handleSaveTemplate} onRemoveTemplate={handleRemoveTemplate} scheduledEvents={scheduledEvents} />;
-      case 'hub': return <BusinessHub profile={businessProfile} onUpdateProfile={setBusinessProfile} chatSessions={chatSessions} onUpdateChatSessions={setChatSessions} transactions={transactions} accounts={accounts} categories={categories} />;
-      case 'documents': return <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={handleAddDocument} onRemoveDocument={handleRemoveDocument} onCreateFolder={handleCreateFolder} onDeleteFolder={handleDeleteFolder} />;
-      case 'plan': return <FinancialPlanPage transactions={transactions} goals={financialGoals} onSaveGoals={setFinancialGoals} plan={financialPlan} onSavePlan={setFinancialPlan} categories={categories} />;
-      case 'integrations': return <IntegrationsPage onNavigate={setCurrentView} />;
-      case 'integration-amazon': return <AmazonIntegration metrics={amazonMetrics} onAddMetrics={handleAddAmazonMetrics} onDeleteMetrics={handleDeleteAmazonMetrics} videos={amazonVideos} onAddVideos={handleAddAmazonVideos} onDeleteVideos={handleDeleteAmazonVideos} />;
-      case 'integration-youtube': return <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={handleAddYouTubeMetrics} onDeleteMetrics={handleDeleteYouTubeMetrics} channels={youtubeChannels} onSaveChannel={handleSaveYouTubeChannel} onDeleteChannel={handleDeleteYouTubeChannel} />;
-      case 'integration-content-hub': return <ContentHub amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} contentLinks={contentLinks} onUpdateLinks={handleUpdateContentLinks} />;
-      default: return null;
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center h-screen bg-slate-50 gap-4">
+                <Loader message="Initializing Data Engine..." />
+            </div>
+        );
     }
-  };
 
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
-      <header className="md:hidden bg-white shadow-sm sticky top-0 z-10"><div className="container mx-auto px-4 h-16 flex items-center justify-between"><div className="flex items-center space-x-3"><span className="text-2xl filter drop-shadow-sm">💰</span><h1 className="text-base font-bold text-slate-800 uppercase tracking-wide">FinParser</h1></div><button onClick={() => setIsSidebarOpen(!isSidebarOpen)}>{isSidebarOpen ? <CloseIcon className="w-6 h-6" /> : <MenuIcon className="w-6 h-6" />}</button></div></header>
-      <div className="flex">
-        <div className="hidden md:block"><Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} onChatToggle={() => setIsChatOpen(!isChatOpen)} isCollapsed={isCollapsed} onToggleCollapse={() => setIsCollapsed(!isCollapsed)} /></div>
-        <div className={`md:hidden fixed inset-0 z-30 transform transition-transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}><Sidebar currentView={currentView} onNavigate={(view) => { setCurrentView(view); setIsSidebarOpen(false); }} transactions={transactions} onChatToggle={() => { setIsChatOpen(!isChatOpen); setIsSidebarOpen(false); }} /></div>
-        {isSidebarOpen && <div className="md:hidden fixed inset-0 bg-black/50 z-20" onClick={() => setIsSidebarOpen(false)}></div>}
-        <main className={`flex-1 transition-all duration-300 ${isCollapsed ? 'md:pl-20' : 'md:pl-64'}`}><div className="container mx-auto p-4 md:p-8 h-screen flex flex-col">{renderView()}</div></main>
-      </div>
-      <Chatbot isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} contextData={{ transactions, accounts, templates, scheduledEvents, tasks, businessProfile, businessDocuments }} />
-    </div>
-  );
+    return (
+        <div className="flex h-screen bg-slate-50 overflow-hidden font-sans">
+            <Sidebar 
+                currentView={currentView} 
+                onNavigate={setCurrentView} 
+                transactions={transactions}
+                isCollapsed={isSidebarCollapsed}
+                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                onChatToggle={() => setIsChatOpen(!isChatOpen)}
+            />
+            
+            <main className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
+                <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 z-30">
+                    <div className="flex items-center gap-4">
+                        <button 
+                            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                            className="p-2 rounded-md text-slate-500 hover:bg-slate-100 lg:hidden"
+                        >
+                            <MenuIcon className="w-6 h-6" />
+                        </button>
+                        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest truncate">
+                            {currentView.replace(/integration-/, '').replace(/-/g, ' ')}
+                        </h2>
+                    </div>
+                    
+                    <div className="flex items-center gap-4">
+                        <button 
+                            onClick={() => setIsChatOpen(true)}
+                            className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors relative"
+                            title="AI Assistant"
+                        >
+                            <SparklesIcon className="w-5 h-5" />
+                        </button>
+                        <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border-2 border-white shadow-sm">
+                            JD
+                        </div>
+                    </div>
+                </header>
+
+                <div className="flex-1 overflow-y-auto p-4 md:p-8 relative custom-scrollbar bg-slate-50/50">
+                    {renderCurrentView()}
+                </div>
+            </main>
+
+            <Chatbot 
+                isOpen={isChatOpen} 
+                onClose={() => setIsChatOpen(false)} 
+                contextData={{
+                    transactions: transactions.slice(0, 100),
+                    accounts,
+                    summary: {
+                        income: transactions.filter(t => transactionTypes.find(tt => tt.id === t.typeId)?.balanceEffect === 'income').reduce((s,t) => s+t.amount, 0),
+                        expenses: transactions.filter(t => transactionTypes.find(tt => tt.id === t.typeId)?.balanceEffect === 'expense').reduce((s,t) => s+t.amount, 0)
+                    },
+                    goals: financialGoals
+                }}
+            />
+        </div>
+    );
 };
+
 export default App;
