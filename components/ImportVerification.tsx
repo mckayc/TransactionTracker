@@ -183,64 +183,74 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-200">
-                        {transactions.map(tx => (
-                            <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 grayscale bg-slate-50' : 'bg-green-50/30'} ${selectedIds.has(tx.tempId) ? 'ring-2 ring-inset ring-indigo-400' : 'hover:bg-slate-50'}`}>
-                                <td className="px-4 py-2 text-center">
-                                    <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedIds.has(tx.tempId)} onChange={() => toggleSelection(tx.tempId)} />
-                                </td>
-                                <td className="px-4 py-2 text-center">
-                                    <button onClick={() => handleToggleIgnore(tx.tempId)} className={`p-1.5 rounded-lg transition-colors ${tx.isIgnored ? 'text-slate-400 hover:text-indigo-600' : 'text-green-600 hover:text-red-500'}`} title={tx.isIgnored ? "Mark for Import" : "Ignore / Skip"}>
-                                        {tx.isIgnored ? <SlashIcon className="w-4 h-4" /> : <CheckCircleIcon className="w-5 h-5" />}
-                                    </button>
-                                </td>
-                                <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-32">
-                                     {editingCell?.id === tx.tempId && editingCell.field === 'date' ? (
-                                        <input type="date" defaultValue={tx.date} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'date')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'date')} className={commonInputClass} />
-                                    ) : (
-                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'date' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{tx.date}</div>
-                                    )}
-                                </td>
-                                <td className="px-4 py-2 text-sm font-medium text-slate-900 max-w-sm">
-                                    {editingCell?.id === tx.tempId && editingCell.field === 'description' ? (
-                                        <input type="text" defaultValue={tx.description} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'description')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'description')} className={commonInputClass} />
-                                    ) : (
-                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'description' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`} title={tx.description}>{tx.description}</div>
-                                    )}
-                                </td>
-                                <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">
-                                     {editingCell?.id === tx.tempId && editingCell.field === 'payeeId' ? (
-                                        <select defaultValue={tx.payeeId || ''} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'payeeId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'payeeId')} className={commonInputClass}>
-                                            <option value="">-- No Source --</option>
-                                            {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                        </select>
-                                    ) : (
-                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">Unassigned</span>}</div>
-                                    )}
-                                </td>
-                                <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">
-                                     {editingCell?.id === tx.tempId && editingCell.field === 'categoryId' ? (
-                                        <select defaultValue={tx.categoryId} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'categoryId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'categoryId')} className={commonInputClass}>
-                                            {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                                        </select>
-                                    ) : (
-                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'categoryId' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{categoryMap.get(tx.categoryId) || 'N/A'}</div>
-                                    )}
-                                </td>
-                                <td className="px-4 py-2 whitespace-nowrap text-sm text-right font-medium text-slate-700 w-32">
-                                     {editingCell?.id === tx.tempId && editingCell.field === 'amount' ? (
-                                        <input type="number" step="0.01" defaultValue={tx.amount} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'amount')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'amount')} className={`${commonInputClass} text-right`} />
-                                    ) : (
-                                        <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'amount' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{formatCurrency(tx.amount)}</div>
-                                    )}
-                                </td>
-                                <td className="px-4 py-2 whitespace-nowrap text-center w-24">
-                                    <div className="flex items-center justify-center gap-1">
-                                        <button onClick={() => onCreateRule?.(tx)} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Automation Rule from this row"><SparklesIcon className="w-4 h-4" /></button>
-                                        <button onClick={() => handleDelete(tx.tempId)} className="text-slate-400 hover:text-red-600 p-1" title="Delete from import"><DeleteIcon className="w-4 h-4"/></button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
+                        {transactions.map(tx => {
+                            // Check if this specific transaction was ignored by a rule specifically
+                            const matchedSkipRule = tx.isIgnored && initialTransactions.find(it => it.tempId === tx.tempId)?.isIgnored;
+
+                            return (
+                                <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 grayscale bg-slate-50' : 'bg-green-50/30'} ${selectedIds.has(tx.tempId) ? 'ring-2 ring-inset ring-indigo-400' : 'hover:bg-slate-50'}`}>
+                                    <td className="px-4 py-2 text-center">
+                                        <input type="checkbox" className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" checked={selectedIds.has(tx.tempId)} onChange={() => toggleSelection(tx.tempId)} />
+                                    </td>
+                                    <td className="px-4 py-2 text-center">
+                                        <div className="flex flex-col items-center gap-1">
+                                            <button onClick={() => handleToggleIgnore(tx.tempId)} className={`p-1.5 rounded-lg transition-colors ${tx.isIgnored ? 'text-slate-400 hover:text-indigo-600' : 'text-green-600 hover:text-red-500'}`} title={tx.isIgnored ? "Mark for Import" : "Ignore / Skip"}>
+                                                {tx.isIgnored ? <SlashIcon className="w-4 h-4" /> : <CheckCircleIcon className="w-5 h-5" />}
+                                            </button>
+                                            {matchedSkipRule && (
+                                                <span className="text-[8px] font-black text-red-500 uppercase tracking-tighter leading-none">Skip Rule</span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-32">
+                                         {editingCell?.id === tx.tempId && editingCell.field === 'date' ? (
+                                            <input type="date" defaultValue={tx.date} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'date')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'date')} className={commonInputClass} />
+                                        ) : (
+                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'date' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{tx.date}</div>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-2 text-sm font-medium text-slate-900 max-w-sm">
+                                        {editingCell?.id === tx.tempId && editingCell.field === 'description' ? (
+                                            <input type="text" defaultValue={tx.description} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'description')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'description')} className={commonInputClass} />
+                                        ) : (
+                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'description' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`} title={tx.description}>{tx.description}</div>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">
+                                         {editingCell?.id === tx.tempId && editingCell.field === 'payeeId' ? (
+                                            <select defaultValue={tx.payeeId || ''} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'payeeId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'payeeId')} className={commonInputClass}>
+                                                <option value="">-- No Source --</option>
+                                                {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        ) : (
+                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'payeeId' })} className={`p-1 rounded-md truncate ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{payeeMap.get(tx.payeeId || '') || <span className="text-slate-300 italic">Unassigned</span>}</div>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500 w-48">
+                                         {editingCell?.id === tx.tempId && editingCell.field === 'categoryId' ? (
+                                            <select defaultValue={tx.categoryId} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'categoryId')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'categoryId')} className={commonInputClass}>
+                                                {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                                            </select>
+                                        ) : (
+                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'categoryId' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{categoryMap.get(tx.categoryId) || 'N/A'}</div>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-sm text-right font-medium text-slate-700 w-32">
+                                         {editingCell?.id === tx.tempId && editingCell.field === 'amount' ? (
+                                            <input type="number" step="0.01" defaultValue={tx.amount} autoFocus onBlur={(e) => handleInputBlur(e, tx.tempId, 'amount')} onKeyDown={(e) => handleInputKeyDown(e, tx.tempId, 'amount')} className={`${commonInputClass} text-right`} />
+                                        ) : (
+                                            <div onClick={() => !tx.isIgnored && setEditingCell({ id: tx.tempId, field: 'amount' })} className={`p-1 rounded-md ${!tx.isIgnored ? 'cursor-pointer hover:bg-white border border-transparent hover:border-slate-200' : ''}`}>{formatCurrency(tx.amount)}</div>
+                                        )}
+                                    </td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-center w-24">
+                                        <div className="flex items-center justify-center gap-1">
+                                            <button onClick={() => onCreateRule?.(tx)} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Automation Rule from this row"><SparklesIcon className="w-4 h-4" /></button>
+                                            <button onClick={() => handleDelete(tx.tempId)} className="text-slate-400 hover:text-red-600 p-1" title="Delete from import"><DeleteIcon className="w-4 h-4"/></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

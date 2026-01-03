@@ -107,6 +107,7 @@ export interface ReconciliationRule {
     descriptionContains?: string;
     amountEquals?: number;
     accountId?: string;
+    skipImport?: boolean;
 }
 
 export type TaskPriority = 'low' | 'medium' | 'high';

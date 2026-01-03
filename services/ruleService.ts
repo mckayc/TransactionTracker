@@ -94,19 +94,21 @@ export const applyRulesToTransactions = (
   rawTransactions: RawTransaction[],
   rules: ReconciliationRule[],
   accounts: Account[] = []
-): (RawTransaction & { categoryId?: string })[] => {
+): (RawTransaction & { categoryId?: string; isIgnored?: boolean })[] => {
   if (!rules || rules.length === 0) {
     return rawTransactions;
   }
 
   return rawTransactions.map(tx => {
-    let modifiedTx: RawTransaction & { categoryId?: string } = { ...tx };
+    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean } = { ...tx };
     
     for (const rule of rules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
+        if (rule.skipImport) {
+            modifiedTx.isIgnored = true;
+        }
         if (rule.setCategoryId) {
           modifiedTx.categoryId = rule.setCategoryId;
-          // Note: App.tsx denormalize will handle setting the actual category name
         }
         if (rule.setPayeeId) {
           modifiedTx.payeeId = rule.setPayeeId;

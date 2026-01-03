@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag } from '../types';
-import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon } from '../components/Icons';
+import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon } from '../components/Icons';
 import RulePreviewModal from '../components/RulePreviewModal';
 import { generateUUID } from '../utils';
 import RuleBuilder from '../components/RuleBuilder';
@@ -58,6 +58,8 @@ const RuleCard: React.FC<{
     };
 
     const getActionSummary = () => {
+        if (rule.skipImport) return "SKIP IMPORT";
+        
         const actions = [];
         if (rule.setCategoryId) {
             const name = categories.find(c => c.id === rule.setCategoryId)?.name;
@@ -90,13 +92,15 @@ const RuleCard: React.FC<{
             <div className="flex justify-between items-start">
                 <h3 className="font-bold text-slate-800 text-sm truncate pr-2 flex-grow" title={rule.name}>{rule.name}</h3>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-white pl-2">
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onRun(rule); }} 
-                        className="text-slate-400 hover:text-green-600 p-0.5" 
-                        title="Run Rule"
-                    >
-                        <PlayIcon className="w-4 h-4" />
-                    </button>
+                    {!rule.skipImport && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onRun(rule); }} 
+                            className="text-slate-400 hover:text-green-600 p-0.5" 
+                            title="Run Rule on Existing Data"
+                        >
+                            <PlayIcon className="w-4 h-4" />
+                        </button>
+                    )}
                     <button 
                         onClick={(e) => { e.stopPropagation(); onDelete(rule.id); }} 
                         className="text-slate-400 hover:text-red-600 p-0.5" 
@@ -112,7 +116,7 @@ const RuleCard: React.FC<{
                     {summaryCond}
                  </div>
                  <span className="text-slate-300 font-bold">→</span>
-                 <div className="flex-1 min-w-0 bg-green-50 border border-green-100 rounded px-2 py-1 truncate text-green-700 font-medium" title={summaryAction}>
+                 <div className={`flex-1 min-w-0 border rounded px-2 py-1 truncate font-bold text-center ${rule.skipImport ? 'bg-red-50 border-red-100 text-red-700' : 'bg-green-50 border-green-100 text-green-700'}`} title={summaryAction}>
                     {summaryAction}
                  </div>
             </div>
@@ -143,6 +147,7 @@ const RuleEditorModal: React.FC<{
     const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
     const [setDescription, setSetDescription] = useState('');
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
+    const [skipImport, setSkipImport] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
@@ -163,6 +168,7 @@ const RuleEditorModal: React.FC<{
                 setSetTransactionTypeId(selectedRule.setTransactionTypeId || '');
                 setSetDescription(selectedRule.setDescription || '');
                 setAssignTagIds(new Set(selectedRule.assignTagIds || []));
+                setSkipImport(!!selectedRule.skipImport);
             } else {
                 setName('');
                 setConditions([{ id: generateUUID(), field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
@@ -171,6 +177,7 @@ const RuleEditorModal: React.FC<{
                 setSetTransactionTypeId('');
                 setSetDescription('');
                 setAssignTagIds(new Set());
+                setSkipImport(false);
             }
         }
     }, [isOpen, selectedRule]);
@@ -254,6 +261,7 @@ const RuleEditorModal: React.FC<{
             setTransactionTypeId: setTransactionTypeId || undefined,
             setDescription: setDescription || undefined,
             assignTagIds: assignTagIds.size > 0 ? Array.from(assignTagIds) : undefined,
+            skipImport
         });
     };
     
@@ -278,69 +286,90 @@ const RuleEditorModal: React.FC<{
                         <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
                     </div>
                     <div className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
-                        <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                            <CheckCircleIcon className="w-4 h-4 text-green-500"/>
-                            Then apply these changes:
-                        </h3>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Set Category</label>
-                                <div className="flex gap-1">
-                                    <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-2 text-sm border rounded-md">
-                                        <option value="">-- Don't Change --</option>
-                                        {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                                    </select>
-                                    <button type="button" onClick={handleCreateCategory} className="px-2 bg-slate-100 text-slate-600 rounded border hover:bg-slate-200 font-bold">+</button>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Set Payee</label>
-                                <div className="flex gap-1">
-                                    <select value={setPayeeId} onChange={(e) => setSetPayeeId(e.target.value)} className="w-full p-2 text-sm border rounded-md">
-                                        <option value="">-- Don't Change --</option>
-                                        {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                    </select>
-                                    <button type="button" onClick={handleCreatePayee} className="px-2 bg-slate-100 text-slate-600 rounded border hover:bg-slate-200 font-bold">+</button>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Set Type</label>
-                                <div className="flex gap-1">
-                                    <select value={setTransactionTypeId} onChange={(e) => setSetTransactionTypeId(e.target.value)} className="w-full p-2 text-sm border rounded-md">
-                                        <option value="">-- Don't Change --</option>
-                                        {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
-                                    </select>
-                                    <button type="button" onClick={handleCreateType} className="px-2 bg-slate-100 text-slate-600 rounded border hover:bg-slate-200 font-bold">+</button>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Rename To</label>
-                                <input type="text" value={setDescription} onChange={(e) => setSetDescription(e.target.value)} placeholder="e.g., Clean Name" className="w-full p-2 text-sm border rounded-md" />
-                            </div>
-                            <div className="col-span-1 sm:col-span-2 lg:col-span-3">
-                                <label className="block text-xs font-medium text-slate-500 uppercase mb-2">Assign Tags</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {tags.map(tag => (
-                                        <button
-                                            key={tag.id}
-                                            type="button"
-                                            onClick={() => toggleTag(tag.id)}
-                                            className={`px-2 py-1 rounded-full text-xs border transition-colors ${assignTagIds.has(tag.id) ? tag.color + ' ring-1 ring-offset-1 ring-slate-400' : 'bg-white text-slate-600 border-slate-300'}`}
-                                        >
-                                            {tag.name}
-                                        </button>
-                                    ))}
-                                    <button
-                                        type="button"
-                                        onClick={handleCreateTag}
-                                        className="px-2 py-1 rounded-full text-xs border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 bg-white transition-colors"
-                                        title="Create new tag"
-                                    >
-                                        + New
-                                    </button>
-                                </div>
-                            </div>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-semibold text-slate-800 flex items-center gap-2">
+                                <CheckCircleIcon className="w-4 h-4 text-green-500"/>
+                                Then apply these changes:
+                            </h3>
+                            <label className="flex items-center gap-2 cursor-pointer bg-white px-3 py-1.5 rounded-lg border border-slate-300 hover:border-red-400 transition-colors shadow-sm group select-none">
+                                <input 
+                                    type="checkbox" 
+                                    checked={skipImport} 
+                                    onChange={() => setSkipImport(!skipImport)} 
+                                    className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer" 
+                                />
+                                <span className="text-xs font-black text-red-700 uppercase flex items-center gap-1">
+                                    <SlashIcon className="w-3 h-3" /> Exclude from Import
+                                </span>
+                            </label>
                         </div>
+
+                        {skipImport ? (
+                            <div className="py-8 text-center bg-red-50 rounded-xl border border-red-100 border-dashed">
+                                <p className="text-sm font-bold text-red-800">Automatic Filtering Active</p>
+                                <p className="text-xs text-red-600 mt-1 max-w-sm mx-auto">Transactions matching the conditions above will be unchecked and hidden during import verification by default.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Set Category</label>
+                                    <div className="flex gap-1">
+                                        <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-2 text-sm border rounded-md">
+                                            <option value="">-- Don't Change --</option>
+                                            {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                                        </select>
+                                        <button type="button" onClick={handleCreateCategory} className="px-2 bg-slate-100 text-slate-600 rounded border hover:bg-slate-200 font-bold">+</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Set Payee</label>
+                                    <div className="flex gap-1">
+                                        <select value={setPayeeId} onChange={(e) => setSetPayeeId(e.target.value)} className="w-full p-2 text-sm border rounded-md">
+                                            <option value="">-- Don't Change --</option>
+                                            {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        </select>
+                                        <button type="button" onClick={handleCreatePayee} className="px-2 bg-slate-100 text-slate-600 rounded border hover:bg-slate-200 font-bold">+</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Set Type</label>
+                                    <div className="flex gap-1">
+                                        <select value={setTransactionTypeId} onChange={(e) => setSetTransactionTypeId(e.target.value)} className="w-full p-2 text-sm border rounded-md">
+                                            <option value="">-- Don't Change --</option>
+                                            {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+                                        </select>
+                                        <button type="button" onClick={handleCreateType} className="px-2 bg-slate-100 text-slate-600 rounded border hover:bg-slate-200 font-bold">+</button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Rename To</label>
+                                    <input type="text" value={setDescription} onChange={(e) => setSetDescription(e.target.value)} placeholder="e.g., Clean Name" className="w-full p-2 text-sm border rounded-md" />
+                                </div>
+                                <div className="col-span-1 sm:col-span-2 lg:col-span-3">
+                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-2">Assign Tags</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {tags.map(tag => (
+                                            <button
+                                                key={tag.id}
+                                                type="button"
+                                                onClick={() => toggleTag(tag.id)}
+                                                className={`px-2 py-1 rounded-full text-xs border transition-colors ${assignTagIds.has(tag.id) ? tag.color + ' ring-1 ring-offset-1 ring-slate-400' : 'bg-white text-slate-600 border-slate-300'}`}
+                                            >
+                                                {tag.name}
+                                            </button>
+                                        ))}
+                                        <button
+                                            type="button"
+                                            onClick={handleCreateTag}
+                                            className="px-2 py-1 rounded-full text-xs border border-dashed border-slate-300 text-slate-500 hover:text-indigo-600 hover:border-indigo-300 bg-white transition-colors"
+                                            title="Create new tag"
+                                        >
+                                            + New
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
 
