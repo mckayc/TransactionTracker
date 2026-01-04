@@ -82,7 +82,6 @@ const patchSchema = () => {
         log('SCHEMA', `Patching missing column: ${col}`);
         try {
           db.exec(`ALTER TABLE transactions ADD COLUMN ${col} ${type}`);
-          // Populate audit columns with current data if we just created them
           if (col === 'originalDate') db.exec(`UPDATE transactions SET originalDate = date WHERE originalDate IS NULL`);
           if (col === 'originalAmount') db.exec(`UPDATE transactions SET originalAmount = amount WHERE originalAmount IS NULL`);
           if (col === 'originalDescription') db.exec(`UPDATE transactions SET originalDescription = description WHERE originalDescription IS NULL`);
@@ -95,47 +94,98 @@ const patchSchema = () => {
 };
 patchSchema();
 
-// 3. Migration Logic
+// 3. Migration and Recovery Logic
 const migrate = () => {
-  const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='app_storage'").get();
-  if (!tableExists) return;
-
-  log('MIGRATE', 'Old storage detected. Shredding JSON blobs...');
-  const rows = db.prepare('SELECT key, value FROM app_storage').all();
+  const oldTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='app_storage'").get();
+  const rescueTable = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='app_storage_old'").get();
   
-  db.transaction(() => {
-    for (const row of rows) {
-      try {
-        const data = JSON.parse(row.value);
-        if (!Array.isArray(data)) {
-          db.prepare('INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)').run(row.key, row.value);
-          continue;
-        }
+  if (!oldTable && !rescueTable) return;
 
-        if (row.key === 'transactions') {
-          const stmt = db.prepare(`INSERT OR REPLACE INTO transactions (id, date, description, amount, categoryId, accountId, typeId, payeeId, userId, tagIds, notes, location, sourceFilename, originalDescription, originalDate, originalAmount, linkGroupId, isParent, metadata) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-          data.forEach(tx => stmt.run(tx.id, tx.date, tx.description, tx.amount, tx.categoryId, tx.accountId, tx.typeId, tx.payeeId, tx.userId, JSON.stringify(tx.tagIds || []), tx.notes, tx.location, tx.sourceFilename, tx.originalDescription || tx.description, tx.originalDate || tx.date, tx.originalAmount || tx.amount, tx.linkGroupId, tx.isParent ? 1 : 0, JSON.stringify(tx.metadata || {})));
-        } else if (['accounts', 'categories', 'payees', 'tags', 'users', 'transaction_types'].includes(row.key)) {
-          const tableName = row.key === 'transaction_types' ? 'transaction_types' : row.key;
-          if (data.length === 0) continue;
-          const columns = Object.keys(data[0]).join(',');
-          const placeholders = Object.keys(data[0]).map(() => '?').join(',');
-          const stmt = db.prepare(`INSERT OR REPLACE INTO ${tableName} (${columns}) VALUES (${placeholders})`);
-          data.forEach(item => stmt.run(...Object.values(item)));
+  const sourceTable = oldTable ? 'app_storage' : 'app_storage_old';
+  const txCount = db.prepare('SELECT COUNT(*) as count FROM transactions').get().count;
+
+  // Check if we need to migrate transactions specifically
+  const oldTxData = db.prepare(`SELECT value FROM ${sourceTable} WHERE key = 'transactions'`).get();
+  
+  if (oldTxData && txCount === 0) {
+    log('RECOVERY', `Found transaction data in ${sourceTable}. Starting recovery...`);
+    try {
+        const data = JSON.parse(oldTxData.value);
+        if (Array.isArray(data)) {
+            const stmt = db.prepare(`INSERT OR REPLACE INTO transactions (id, date, description, amount, categoryId, accountId, typeId, payeeId, userId, tagIds, notes, location, sourceFilename, originalDescription, originalDate, originalAmount, linkGroupId, isParent, metadata) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+            
+            db.transaction(() => {
+                let successCount = 0;
+                data.forEach(tx => {
+                    try {
+                        stmt.run(
+                            tx.id, 
+                            tx.date, 
+                            tx.description, 
+                            tx.amount, 
+                            tx.categoryId, 
+                            tx.accountId, 
+                            tx.typeId, 
+                            tx.payeeId, 
+                            tx.userId, 
+                            JSON.stringify(tx.tagIds || []), 
+                            tx.notes, 
+                            tx.location, 
+                            tx.sourceFilename, 
+                            tx.originalDescription || tx.description, 
+                            tx.originalDate || tx.date, 
+                            tx.originalAmount || tx.amount, 
+                            tx.linkGroupId, 
+                            tx.isParent ? 1 : 0, 
+                            JSON.stringify(tx.metadata || {})
+                        );
+                        successCount++;
+                    } catch (e) {
+                        log('RECOVERY_ERR', `Skipping row ${tx.id}: ${e.message}`);
+                    }
+                });
+                log('RECOVERY', `Successfully recovered ${successCount} transactions.`);
+            })();
         }
-      } catch (e) {
-        log('MIGRATE_ERR', `Failed ${row.key}: ${e.message}`);
-      }
+    } catch (e) {
+        log('RECOVERY_ERR', `Parse failed: ${e.message}`);
     }
-    db.exec('ALTER TABLE app_storage RENAME TO app_storage_old');
-  })();
-  log('MIGRATE', 'Data shredded successfully.');
+  }
+
+  // General migration for other tables (if migrating from app_storage for the first time)
+  if (oldTable) {
+    log('MIGRATE', 'Performing initial data shredding...');
+    const rows = db.prepare('SELECT key, value FROM app_storage').all();
+    db.transaction(() => {
+      for (const row of rows) {
+        if (row.key === 'transactions') continue; // Handled by recovery logic above
+        try {
+          const data = JSON.parse(row.value);
+          if (!Array.isArray(data)) {
+            db.prepare('INSERT OR REPLACE INTO app_config (key, value) VALUES (?, ?)').run(row.key, row.value);
+            continue;
+          }
+          if (['accounts', 'categories', 'payees', 'tags', 'users', 'transaction_types'].includes(row.key)) {
+            const tableName = row.key === 'transaction_types' ? 'transaction_types' : row.key;
+            if (data.length === 0) continue;
+            const columns = Object.keys(data[0]).join(',');
+            const placeholders = Object.keys(data[0]).map(() => '?').join(',');
+            const stmt = db.prepare(`INSERT OR REPLACE INTO ${tableName} (${columns}) VALUES (${placeholders})`);
+            data.forEach(item => stmt.run(...Object.values(item)));
+          }
+        } catch (e) {
+          log('MIGRATE_ERR', `Key ${row.key}: ${e.message}`);
+        }
+      }
+      db.exec('ALTER TABLE app_storage RENAME TO app_storage_old');
+    })();
+    log('MIGRATE', 'Migration complete.');
+  }
 };
 migrate();
 
-// 4. Robust Endpoints
+// 4. API Endpoints
 app.get('/api/boot', (req, res) => {
-  log('API', 'Boot data requested');
   try {
     const data = {
         accounts: db.prepare('SELECT * FROM accounts').all(),
