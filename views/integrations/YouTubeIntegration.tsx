@@ -80,8 +80,18 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
                     <YoutubeIcon className="w-8 h-8 text-red-600" /> YouTube Analytics
                 </h1>
                 <div className="flex bg-white rounded-lg p-1 border shadow-sm">
-                    <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'dashboard' ? 'bg-red-50 text-red-700' : 'text-slate-50' && 'text-slate-500 hover:text-slate-700'}`}>Dashboard</button>
-                    <button onClick={() => setActiveTab('upload')} className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'upload' ? 'bg-red-50 text-red-700' : 'text-slate-500 hover:text-slate-700'}`}>Upload</button>
+                    <button 
+                        onClick={() => setActiveTab('dashboard')} 
+                        className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'dashboard' ? 'bg-red-50 text-red-700' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Dashboard
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('upload')} 
+                        className={`px-4 py-2 text-sm font-bold rounded-md transition-all ${activeTab === 'upload' ? 'bg-red-50 text-red-700' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                        Upload
+                    </button>
                 </div>
             </div>
 
