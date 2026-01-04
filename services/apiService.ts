@@ -28,20 +28,14 @@ export const api = {
         return await response.json();
     },
 
+    /**
+     * Fix for: Error in file App.tsx on line 97: Property 'loadAll' does not exist
+     */
     loadAll: async (): Promise<Record<string, any>> => {
         const data = await api.loadBootData();
-        console.log('[API] Boot payload received:', Object.keys(data));
-        
-        // Paging transactions initially to verify they exist
-        const txData = await api.getTransactions({ limit: 100, offset: 0 });
-        console.log('[API] Initial transaction sample loaded:', txData.items.length, 'of', txData.total);
-
         // server.js /api/boot returns { accounts, categories, ..., config: { ... } }
-        return { 
-            ...data, 
-            ...data.config,
-            transactions: txData.items // App.tsx expects initial transactions here
-        };
+        // App.tsx expects a flat object containing all state keys.
+        return { ...data, ...data.config };
     },
 
     // Paged transaction fetching
@@ -86,6 +80,10 @@ export const api = {
         });
     },
 
+    /**
+     * Fix for: Error in file App.tsx on line 143/239: Property 'save' does not exist
+     * Fix for settings page errors on lines 210-221
+     */
     save: async (key: string, value: any): Promise<void> => {
         if (key === 'transactions') {
             return api.saveBulkTransactions(value);

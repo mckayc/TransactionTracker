@@ -1,7 +1,7 @@
 {
   "name": "finparser",
   "private": true,
-  "version": "0.0.31",
+  "version": "0.0.30",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -12,7 +12,6 @@
   "dependencies": {
     "@google/genai": "latest",
     "better-sqlite3": "^9.4.3",
-    "compression": "^1.8.1",
     "express": "^4.19.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
