@@ -1,4 +1,3 @@
-
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -124,9 +123,9 @@ const buildTxFilters = (params) => {
     let filterQuery = ` WHERE 1=1 AND t.is_parent = 0`;
     const values = [];
     if (search) {
-        filterQuery += ` AND (t.description LIKE ? OR t.notes LIKE ? OR t.original_description LIKE ?)`;
+        filterQuery += ` AND (t.description LIKE ? OR t.notes LIKE ? OR t.original_description LIKE ? OR t.location LIKE ?)`;
         const s = `%${search}%`;
-        values.push(s, s, s);
+        values.push(s, s, s, s);
     }
     if (startDate) { filterQuery += ` AND t.date >= ?`; values.push(startDate); }
     if (endDate) { filterQuery += ` AND t.date <= ?`; values.push(endDate); }

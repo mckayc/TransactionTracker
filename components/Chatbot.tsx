@@ -43,13 +43,15 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
         setIsLoading(true);
 
         try {
+            /* Fix: getAiFinancialAnalysis now returns a GenerateContentResponseStream which is an async iterable */
             const stream = await getAiFinancialAnalysis(input, contextData);
             
             let fullResponse = '';
             setMessages(prev => [...prev, { role: 'ai', content: '' }]);
 
             for await (const chunk of stream) {
-                const chunkText = chunk.text;
+                /* Fix: Access .text property directly as per coding guidelines */
+                const chunkText = chunk.text || '';
                 fullResponse += chunkText;
                 setMessages(prev => {
                     const newMessages = [...prev];

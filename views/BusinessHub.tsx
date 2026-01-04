@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category } from '../types';
 import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon } from '../components/Icons';
@@ -289,7 +290,6 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
         // Trigger AI response acknowledging receipt
         setIsLoading(true);
         try {
-             // We send a hidden system prompt or just let the AI respond to the data dump
              const stream = await streamTaxAdvice(updatedSession.messages, profile);
              let fullContent = '';
              const aiMsgId = generateUUID();
@@ -297,8 +297,9 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
              const sessionWithAi = { ...updatedSession, messages: [...updatedSession.messages, aiMsgPlaceholder] };
              onUpdateSessions([...otherSessions, sessionWithAi]);
 
+             /* Fix: Iterating over the SDK's async iterable stream */
              for await (const chunk of stream) {
-                fullContent += chunk.text;
+                fullContent += chunk.text || '';
                 const msgs = [...sessionWithAi.messages];
                 msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullContent };
                 onUpdateSessions([...otherSessions, { ...sessionWithAi, messages: msgs }]);
@@ -356,12 +357,13 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
             
             let fullContent = '';
             
+            /* Fix: Iterating over the SDK's async iterable stream */
             for await (const chunk of stream) {
-                const chunkText = chunk.text;
+                const chunkText = chunk.text || '';
                 fullContent += chunkText;
                 
                 // Update specific message in state
-                const currentSession = sessionWithAi; // In a real app we'd use functional update, here simplify
+                const currentSession = sessionWithAi; 
                 const msgs = [...currentSession.messages];
                 msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullContent };
                 
