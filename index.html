@@ -9,7 +9,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-      /* Immediate Splash Screen Styles */
       #initial-loader {
         position: fixed;
         inset: 0;
@@ -39,7 +38,6 @@
         letter-spacing: 0.05em;
         text-transform: uppercase;
       }
-      /* Hide splash when React takes over */
       body.loaded #initial-loader {
         opacity: 0;
         pointer-events: none;
@@ -52,19 +50,18 @@
     "react/": "https://aistudiocdn.com/react@^19.2.0/",
     "react": "https://aistudiocdn.com/react@^19.2.0",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "vite": "https://aistudiocdn.com/vite@^7.2.2",
-    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
-    "url": "https://aistudiocdn.com/url@^0.11.4",
-    "path": "https://aistudiocdn.com/path@^0.12.7",
-    "fs": "https://aistudiocdn.com/fs@^0.0.1-security",
-    "express": "https://aistudiocdn.com/express@^5.1.0",
-    "better-sqlite3": "https://aistudiocdn.com/better-sqlite3@^12.4.1",
     "html2canvas": "https://aistudiocdn.com/html2canvas@^1.4.1",
     "jspdf": "https://aistudiocdn.com/jspdf@^2.5.1",
     "lucide-react": "https://esm.sh/lucide-react@0.344.0",
     "xlsx": "https://esm.sh/xlsx@0.18.5",
-    "os": "https://esm.sh/os@^0.1.2",
-    "compression": "https://esm.sh/compression@^1.8.1"
+    "compression": "https://esm.sh/compression@^1.8.1",
+    "vite": "https://esm.sh/vite@^7.3.0",
+    "express": "https://esm.sh/express@^5.2.1",
+    "path": "https://esm.sh/path@^0.12.7",
+    "fs": "https://esm.sh/fs@^0.0.1-security",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
+    "url": "https://esm.sh/url@^0.11.4",
+    "better-sqlite3": "https://esm.sh/better-sqlite3@^12.5.0"
   }
 }
 </script>
@@ -77,7 +74,6 @@
     </div>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
-    <!-- Keep PDF.js via CDN to avoid complex worker configuration in Vite for now -->
     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
