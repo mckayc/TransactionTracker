@@ -1,4 +1,3 @@
-
 export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation' | 'tax' | 'savings' | 'debt';
 
 export interface TransactionType {
@@ -57,6 +56,8 @@ export interface RawTransaction {
     location?: string;
     sourceFilename?: string;
     originalDescription?: string;
+    originalDate?: string;
+    originalAmount?: number;
     payeeId?: string;
     userId?: string;
     tagIds?: string[];

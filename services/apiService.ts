@@ -1,29 +1,20 @@
-
-// Simple API client to replace localStorage functionality
-
-const MAX_RETRIES = 5;
-const INITIAL_DELAY = 500;
+const MAX_RETRIES = 3;
+const INITIAL_DELAY = 1000;
 
 const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = MAX_RETRIES): Promise<Response> => {
     try {
         const response = await fetch(url, options);
         if (!response.ok) {
-            // If it's a server error (500) or database busy (usually 503 or 500 from SQLite), retry
             if (retries > 0 && (response.status >= 500 || response.status === 429)) {
-                const delay = INITIAL_DELAY * (MAX_RETRIES - retries + 1);
-                console.warn(`API Request failed (${response.status}). Retrying in ${delay}ms... (${retries} left)`);
-                await new Promise(res => setTimeout(res, delay));
+                await new Promise(res => setTimeout(res, INITIAL_DELAY * (MAX_RETRIES - retries + 1)));
                 return fetchWithRetry(url, options, retries - 1);
             }
-            const errorBody = await response.json().catch(() => ({}));
-            throw new Error(errorBody.error || `API Error: ${response.status} ${response.statusText}`);
+            throw new Error(`API Error: ${response.status}`);
         }
         return response;
     } catch (error) {
-        if (retries > 0 && error instanceof TypeError) { // TypeError handles network disconnects
-            const delay = INITIAL_DELAY * (MAX_RETRIES - retries + 1);
-            console.warn(`Network error. Retrying in ${delay}ms... (${retries} left)`, error);
-            await new Promise(res => setTimeout(res, delay));
+        if (retries > 0) {
+            await new Promise(res => setTimeout(res, INITIAL_DELAY));
             return fetchWithRetry(url, options, retries - 1);
         }
         throw error;
@@ -31,50 +22,78 @@ const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = 
 };
 
 export const api = {
+    // Loads small entities (accounts, categories, config)
+    loadBootData: async (): Promise<Record<string, any>> => {
+        const response = await fetchWithRetry('/api/boot');
+        return await response.json();
+    },
+
+    /**
+     * Fix for: Error in file App.tsx on line 97: Property 'loadAll' does not exist
+     */
     loadAll: async (): Promise<Record<string, any>> => {
-        try {
-            const response = await fetchWithRetry('/api/data', { cache: 'no-store' });
-            return await response.json();
-        } catch (error) {
-            console.error("API Load Final Failure:", error);
-            throw error;
-        }
+        const data = await api.loadBootData();
+        // server.js /api/boot returns { accounts, categories, ..., config: { ... } }
+        // App.tsx expects a flat object containing all state keys.
+        return { ...data, ...data.config };
     },
 
-    get: async <T>(key: string): Promise<T | null> => {
-        try {
-            const response = await fetchWithRetry(`/api/data/${key}`, { cache: 'no-store' });
-            return await response.json();
-        } catch (error) {
-            console.error(`API Key Fetch Error (${key}):`, error);
-            return null;
-        }
+    // Paged transaction fetching
+    getTransactions: async (params: { limit: number, offset: number, search?: string, startDate?: string, endDate?: string }): Promise<{ items: any[], total: number }> => {
+        const query = new URLSearchParams(params as any).toString();
+        const response = await fetchWithRetry(`/api/transactions?${query}`);
+        return await response.json();
     },
 
+    // Fast stats for dashboard
+    getStats: async (params: { startDate?: string, endDate?: string }): Promise<any[]> => {
+        const query = new URLSearchParams(params as any).toString();
+        const response = await fetchWithRetry(`/api/stats?${query}`);
+        return await response.json();
+    },
+
+    saveTransaction: async (tx: any): Promise<void> => {
+        await fetchWithRetry('/api/transactions/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify([tx]),
+        });
+    },
+
+    saveBulkTransactions: async (txs: any[]): Promise<void> => {
+        await fetchWithRetry('/api/transactions/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(txs),
+        });
+    },
+
+    deleteTransaction: async (id: string): Promise<void> => {
+        await fetchWithRetry(`/api/transactions/${id}`, { method: 'DELETE' });
+    },
+
+    saveEntity: async (table: string, data: any): Promise<void> => {
+        await fetchWithRetry(`/api/data/${table}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+    },
+
+    /**
+     * Fix for: Error in file App.tsx on line 143/239: Property 'save' does not exist
+     * Fix for settings page errors on lines 210-221
+     */
     save: async (key: string, value: any): Promise<void> => {
-        try {
-            await fetchWithRetry(`/api/data/${key}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(value),
-            });
-        } catch (error) {
-            console.error(`API Save Error (${key}):`, error);
-            throw error;
+        if (key === 'transactions') {
+            return api.saveBulkTransactions(value);
         }
+        // Generic entity save
+        return api.saveEntity(key, value);
     },
 
     resetDatabase: async (): Promise<boolean> => {
-        try {
-            const response = await fetchWithRetry('/api/admin/reset', {
-                method: 'POST',
-            });
-            return response.ok;
-        } catch (error) {
-            console.error("API Reset Error:", error);
-            return false;
-        }
+        const response = await fetch('/api/admin/reset', { method: 'POST' });
+        return response.ok;
     }
 };

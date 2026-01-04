@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View } from './types';
 import Sidebar from './components/Sidebar';
@@ -292,19 +291,16 @@ const App: React.FC = () => {
                 );
             case 'transactions':
                 return (
+                    /**
+                     * Fix for: Error in file App.tsx on line 296: Type ... is not assignable to type 'IntrinsicAttributes & AllTransactionsProps'.
+                     * Property 'transactions' does not exist on type 'IntrinsicAttributes & AllTransactionsProps'.
+                     */
                     <AllTransactions 
-                        transactions={transactions} accounts={accounts} categories={categories} tags={tags}
+                        accounts={accounts} categories={categories} tags={tags}
                         transactionTypes={transactionTypes} payees={payees} users={users}
                         onUpdateTransaction={(t) => updateData('transactions', transactions.map(x => x.id === t.id ? t : x), setTransactions)}
                         onAddTransaction={(t) => updateData('transactions', [...transactions, t], setTransactions)}
                         onDeleteTransaction={(id) => updateData('transactions', transactions.filter(x => x.id !== id), setTransactions)}
-                        onDeleteTransactions={(ids) => updateData('transactions', transactions.filter(x => !ids.includes(x.id)), setTransactions)}
-                        onSaveRule={(r) => { const exists = rules.findIndex(x => x.id === r.id); const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r]; updateData('reconciliationRules', updated, setRules); }}
-                        onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
-                        onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
-                        onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
-                        onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
-                        onSaveReport={(r) => updateData('savedReports', [...savedReports, r], setSavedReports)}
                     />
                 );
             case 'calendar':

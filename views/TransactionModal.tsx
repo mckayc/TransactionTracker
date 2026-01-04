@@ -1,11 +1,10 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, Payee, Category, User, Tag } from '../types';
-import { CloseIcon } from '../components/Icons';
+import { CloseIcon, RepeatIcon, ShieldCheckIcon } from '../components/Icons';
 
 interface TransactionModalProps {
     isOpen: boolean;
-    transaction: Transaction | null; // null for adding new
+    transaction: Transaction | null; 
     onClose: () => void;
     onSave: (transaction: Omit<Transaction, 'id'>) => void;
     accounts: Account[];
@@ -16,99 +15,38 @@ interface TransactionModalProps {
     users: User[];
 }
 
-const getTodayDate = () => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = (today.getMonth() + 1).toString().padStart(2, '0');
-    const day = today.getDate().toString().padStart(2, '0');
-    return `${year}-${month}-${day}`;
-};
-
+const getTodayDate = () => new Date().toISOString().split('T')[0];
 
 const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction, onClose, onSave, accounts, categories, tags, transactionTypes, payees, users }) => {
     
-    const getDefaultState = () => {
-        const defaultExpenseType = transactionTypes.find(t => t.name === 'Purchase') || transactionTypes.find(t => t.balanceEffect === 'expense');
-        const defaultCategory = categories.find(c => c.name === 'Other') || categories[0];
-        const defaultUser = users.find(u => u.isDefault) || users[0];
-        return {
-            date: getTodayDate(),
-            description: '',
-            categoryId: defaultCategory?.id || '',
-            category: defaultCategory?.name || '',
-            amount: 0,
-            typeId: defaultExpenseType ? defaultExpenseType.id : '',
-            location: '',
-            accountId: '',
-            notes: '',
-            payeeId: '',
-            userId: defaultUser?.id || '',
-            tagIds: [] as string[],
-        }
-    };
+    const getDefaultState = () => ({
+        date: getTodayDate(), description: '', categoryId: categories[0]?.id || '', category: categories[0]?.name || '',
+        amount: 0, typeId: transactionTypes[0]?.id || '', location: '', accountId: accounts[0]?.id || '',
+        notes: '', payeeId: '', userId: users.find(u => u.isDefault)?.id || users[0]?.id || '',
+        tagIds: [] as string[],
+        originalDescription: '', originalDate: '', originalAmount: 0
+    });
     
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>(getDefaultState());
-    const isEditMode = transaction !== null;
+    const isEditMode = !!transaction;
 
-    // Recursive helper for deep hierarchies (parents, children, grandchildren)
-    const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
-        return items
-            .filter(i => i.parentId === parentId)
-            .sort((a, b) => a.name.localeCompare(b.name))
-            .flatMap(item => [
-                { id: item.id, name: `${'\u00A0'.repeat(depth * 3)}${depth > 0 ? '⌞ ' : ''}${item.name}` },
-                ...getSortedOptions(items, item.id, depth + 1)
-            ]);
-    };
-
-    const sortedPayeeOptions = useMemo(() => getSortedOptions(payees), [payees]);
-    const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
-
-    // Only reset form when modal opens or specific transaction changes
     useEffect(() => {
         if (isOpen) {
-            if (isEditMode && transaction) {
-                setFormData({ ...transaction, tagIds: transaction.tagIds || [] });
-            } else {
-                const defaultState = getDefaultState();
-                const defaultAccountId = accounts.length > 0 ? accounts[0].id : '';
-                setFormData({
-                    ...defaultState,
-                    accountId: defaultAccountId,
-                });
-            }
+            if (transaction) setFormData({ ...transaction });
+            else setFormData(getDefaultState());
         }
     }, [isOpen, transaction]);
 
     if (!isOpen) return null;
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-        const { name, value } = e.target;
-        
-        if (name === 'categoryId') {
-            const catName = categories.find(c => c.id === value)?.name || '';
-            setFormData(prev => ({
-                ...prev,
-                categoryId: value,
-                category: catName
-            }));
-        } else {
-            setFormData(prev => ({
-                ...prev,
-                [name]: name === 'amount' ? parseFloat(value) || 0 : value,
-            }));
-        }
-    };
-
-    const toggleTag = (tagId: string) => {
-        setFormData(prev => {
-            const currentTags = prev.tagIds || [];
-            if (currentTags.includes(tagId)) {
-                return { ...prev, tagIds: currentTags.filter(id => id !== tagId) };
-            } else {
-                return { ...prev, tagIds: [...currentTags, tagId] };
-            }
-        });
+    const handleRevert = () => {
+        if (!confirm("Revert to the original bank record? This will discard your current description, date, and amount edits.")) return;
+        setFormData(prev => ({
+            ...prev,
+            description: prev.originalDescription || prev.description,
+            date: prev.originalDate || prev.date,
+            amount: prev.originalAmount || prev.amount
+        }));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -116,108 +54,65 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
         onSave(formData);
     };
 
+    const hasDrift = formData.description !== formData.originalDescription || formData.amount !== formData.originalAmount || formData.date !== formData.originalDate;
+
     return (
-        <div 
-            className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center"
-            onClick={onClose}
-            aria-modal="true"
-            role="dialog"
-        >
-            <div 
-                className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 m-4 transform transition-all max-h-[90vh] overflow-y-auto"
-                onClick={e => e.stopPropagation()}
-            >
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-slate-800">{isEditMode ? 'Edit Transaction' : 'Add New Transaction'}</h2>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-100" aria-label="Close modal">
-                        <CloseIcon className="w-6 h-6 text-slate-500" />
-                    </button>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex justify-center items-center p-4">
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up">
+                <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                    <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">
+                        {isEditMode ? 'Edit Transaction' : 'Manual Entry'}
+                    </h2>
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-white shadow-sm"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                 </div>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Date</label>
-                            <input type="date" name="date" value={formData.date} onChange={handleChange} required />
+                
+                <form onSubmit={handleSubmit} className="p-8 space-y-6 overflow-y-auto">
+                    {isEditMode && hasDrift && (
+                        <div className="bg-indigo-50 border border-indigo-100 p-4 rounded-2xl flex items-center justify-between gap-4 animate-fade-in">
+                            <div className="flex items-center gap-3">
+                                <ShieldCheckIcon className="w-5 h-5 text-indigo-600" />
+                                <span className="text-xs font-bold text-indigo-800 uppercase tracking-wide">Data has drifted from source</span>
+                            </div>
+                            <button type="button" onClick={handleRevert} className="px-3 py-1.5 bg-white border border-indigo-200 text-indigo-700 text-[10px] font-black uppercase rounded-lg hover:bg-indigo-600 hover:text-white transition-all">
+                                Revert to Bank Truth
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Date</label>
+                            <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="font-bold border-slate-100 rounded-xl" required />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Amount</label>
-                            <input type="number" step="0.01" name="amount" value={formData.amount} onChange={handleChange} required />
-                        </div>
-                     </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Description</label>
-                        <input type="text" name="description" value={formData.description} onChange={handleChange} required />
-                    </div>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Payee</label>
-                            <select name="payeeId" value={formData.payeeId || ''} onChange={handleChange}>
-                                <option value="">-- No Payee --</option>
-                                {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            </select>
-                        </div>
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Category</label>
-                            <select name="categoryId" value={formData.categoryId} onChange={handleChange}>
-                                 {sortedCategoryOptions.map(cat => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Account</label>
-                            <select name="accountId" value={formData.accountId || ''} onChange={handleChange} required>
-                                <option value="" disabled>Select an account...</option>
-                                {accounts.map(acc => (
-                                    <option key={acc.id} value={acc.id}>{acc.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700">User</label>
-                            <select name="userId" value={formData.userId || ''} onChange={handleChange} required>
-                                {users.map(user => (
-                                    <option key={user.id} value={user.id}>{user.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Transaction Type</label>
-                        <select name="typeId" value={formData.typeId} onChange={handleChange}>
-                           {transactionTypes.map(type => (
-                               <option key={type.id} value={type.id}>{type.name}</option>
-                           ))}
-                        </select>
-                    </div>
-                    
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Tags</label>
-                        <div className="flex flex-wrap gap-2">
-                            {tags.map(tag => (
-                                <button
-                                    key={tag.id}
-                                    type="button"
-                                    onClick={() => toggleTag(tag.id)}
-                                    className={`px-2 py-1 rounded-full text-xs border transition-colors ${formData.tagIds?.includes(tag.id) ? tag.color + ' ring-1 ring-offset-1 ring-slate-400' : 'bg-white text-slate-600 border-slate-300'}`}
-                                >
-                                    {tag.name}
-                                </button>
-                            ))}
-                            {tags.length === 0 && <span className="text-sm text-slate-400 italic">No tags available. Create them in the Tags page.</span>}
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Amount</label>
+                            <input type="number" step="0.01" value={formData.amount} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} className="font-black font-mono border-slate-100 rounded-xl text-lg" required />
                         </div>
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Notes</label>
-                        <textarea name="notes" value={formData.notes || ''} onChange={handleChange} rows={3}></textarea>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Working Description</label>
+                        <input type="text" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="font-bold border-slate-100 rounded-xl" placeholder="Describe the transaction..." required />
                     </div>
 
-                    <div className="flex justify-end gap-3 pt-4">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200">Cancel</button>
-                        <button type="submit" className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">Save Changes</button>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Category</label>
+                            <select value={formData.categoryId} onChange={e => setFormData({...formData, categoryId: e.target.value, category: categories.find(c => c.id === e.target.value)?.name || ''})} className="font-bold border-slate-100 rounded-xl bg-white">
+                                {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Account</label>
+                            <select value={formData.accountId} onChange={e => setFormData({...formData, accountId: e.target.value})} className="font-bold border-slate-100 rounded-xl bg-white">
+                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="pt-4 flex gap-3">
+                        <button type="button" onClick={onClose} className="flex-1 py-3 text-sm font-bold text-slate-500 hover:bg-slate-50 rounded-2xl">Cancel</button>
+                        <button type="submit" className="flex-[2] py-3 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95">Save Changes</button>
                     </div>
                 </form>
             </div>
