@@ -310,8 +310,26 @@ const App: React.FC = () => {
                         />
                     )}
                     {currentView === 'integrations' && <IntegrationsPage onNavigate={(v) => setCurrentView(v as View)} />}
-                    {currentView === 'integration-amazon' && <AmazonIntegration metrics={amazonMetrics} onAddMetrics={(m) => updateData('amazonMetrics', [...amazonMetrics, ...m], setAmazonMetrics)} onDeleteMetrics={(ids) => updateData('amazonMetrics', amazonMetrics.filter(m => !ids.includes(m.id)), setAmazonMetrics)} videos={amazonVideos} onAddVideos={(v) => updateData('amazonVideos', [...amazonVideos, ...v], setAmazonVideos)} onDeleteVideos={(ids) => updateData('amazonVideos', amazonVideos.filter(v => !ids.includes(v.id)), setAmazonVideos)} />}
-                    {currentView === 'integration-youtube' && <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={(m) => updateData('youtubeMetrics', [...youtubeMetrics, ...m], setYouTubeMetric)} onDeleteMetrics={(ids) => updateData('youtubeMetrics', youtubeMetrics.filter(m => !ids.includes(m.id)), setYouTubeMetric)} channels={youtubeChannels} onSaveChannel={(c) => updateData('youtubeChannels', youtubeChannels.some(x => x.id === c.id) ? youtubeChannels.map(x => x.id === c.id ? c : x) : [...youtubeChannels, c], setYouTubeChannels)} onDeleteChannel={(id) => updateData('youtubeChannels', youtubeChannels.filter(x => x.id !== id), setYouTubeChannels)} />}
+                    {currentView === 'integration-amazon' && (
+                        <AmazonIntegration 
+                            metrics={amazonMetrics} 
+                            onAddMetrics={(m: AmazonMetric[]) => updateData('amazonMetrics', [...amazonMetrics, ...m], setAmazonMetrics)} 
+                            onDeleteMetrics={(ids: string[]) => updateData('amazonMetrics', amazonMetrics.filter(m => !ids.includes(m.id)), setAmazonMetrics)} 
+                            videos={amazonVideos} 
+                            onAddVideos={(v: AmazonVideo[]) => updateData('amazonVideos', [...amazonVideos, ...v], setAmazonVideos)} 
+                            onDeleteVideos={(ids: string[]) => updateData('amazonVideos', amazonVideos.filter(v => !ids.includes(v.id)), setAmazonVideos)} 
+                        />
+                    )}
+                    {currentView === 'integration-youtube' && (
+                        <YouTubeIntegration 
+                            metrics={youtubeMetrics} 
+                            onAddMetrics={(m: YouTubeMetric[]) => updateData('youtubeMetrics', [...youtubeMetrics, ...m], setYouTubeMetric)} 
+                            onDeleteMetrics={(ids: string[]) => updateData('youtubeMetrics', youtubeMetrics.filter(m => !ids.includes(m.id)), setYouTubeMetric)} 
+                            channels={youtubeChannels} 
+                            onSaveChannel={(c: YouTubeChannel) => updateData('youtubeChannels', youtubeChannels.some(x => x.id === c.id) ? youtubeChannels.map(x => x.id === c.id ? c : x) : [...youtubeChannels, c], setYouTubeChannels)} 
+                            onDeleteChannel={(id: string) => updateData('youtubeChannels', youtubeChannels.filter(x => x.id !== id), setYouTubeChannels)} 
+                        />
+                    )}
                     {currentView === 'integration-content-hub' && <ContentHub amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} contentLinks={contentLinks} onUpdateLinks={(l) => updateData('contentLinks', l, setContentLinks)} />}
                 </div>
             </main>
