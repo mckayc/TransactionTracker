@@ -69,7 +69,19 @@ const insertFileMeta = db.prepare('INSERT OR REPLACE INTO files_meta (id, origin
 const getFileMeta = db.prepare('SELECT * FROM files_meta WHERE id = ?');
 const deleteFileMeta = db.prepare('DELETE FROM files_meta WHERE id = ?');
 
-// 3. MIDDLEWARE
+// 3. MIDDLEWARE & PROFILING
+// Simple request logger to track when requests actually reach the server
+app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        if (req.path !== '/api/health') {
+            log('HTTP', `${req.method} ${req.path} - ${res.statusCode} (${duration}ms)`);
+        }
+    });
+    next();
+});
+
 log('API', `Configuring middleware (JSON limit: 200mb)...`);
 app.use(express.json({ limit: '200mb' })); 
 app.use('/api/files', express.raw({ type: '*/*', limit: '100mb' }));
@@ -93,12 +105,18 @@ app.get('/api/data', (req, res) => {
           parseErrors++;
       }
     }
+    
+    const stringified = JSON.stringify(data);
+    const payloadSizeMB = (Buffer.byteLength(stringified) / (1024 * 1024)).toFixed(2);
     const duration = Date.now() - fetchStart;
-    log('API', `GET /api/data: Retreived ${rows.length} keys in ${duration}ms. ${parseErrors > 0 ? `Warnings: ${parseErrors} parse errors.` : ''}`);
+    
+    log('API', `GET /api/data: Compiled ${rows.length} keys. Size: ${payloadSizeMB} MB. Process Time: ${duration}ms.`);
+    
+    res.setHeader('Content-Length', Buffer.byteLength(stringified));
     res.json(data);
   } catch (e) { 
-    console.error("[DB] Failed to read all data:", e);
-    res.status(500).json({ error: 'Database is busy. Refreshing may help.' }); 
+    log('ERROR', `Failed to read all data: ${e.message}`);
+    res.status(500).json({ error: 'Database is busy or internal error.' }); 
   }
 });
 
@@ -108,18 +126,22 @@ app.get('/api/data/:key', (req, res) => {
         if (!row) return res.status(404).json({ error: 'Not found' });
         res.json(JSON.parse(row.value));
     } catch (e) { 
-        console.error(`[DB] Failed to fetch key ${req.params.key}:`, e);
+        log('ERROR', `Failed to fetch key ${req.params.key}: ${e.message}`);
         res.status(500).json({ error: 'Database error' }); 
     }
 });
 
 app.post('/api/data/:key', (req, res) => {
   try {
-    upsertAppStorage.run(req.params.key, JSON.stringify(req.body));
+    const start = Date.now();
+    const valueStr = JSON.stringify(req.body);
+    upsertAppStorage.run(req.params.key, valueStr);
+    const duration = Date.now() - start;
+    log('API', `POST /api/data/${req.params.key}: Saved (${duration}ms)`);
     res.json({ success: true });
   } catch (e) { 
-      console.error(`[DB] Save error for ${req.params.key}:`, e);
-      res.status(500).json({ error: 'Database locked or full. Please wait a moment.' }); 
+      log('ERROR', `Save error for ${req.params.key}: ${e.message}`);
+      res.status(500).json({ error: 'Database locked or error.' }); 
   }
 });
 
@@ -205,4 +227,5 @@ const serverInstance = app.listen(PORT, '0.0.0.0', () => {
     const startupDuration = Date.now() - startTime;
     log('READY', `FinParser Server listening on port ${PORT}`);
     log('READY', `Total startup time: ${startupDuration}ms`);
+    log('INFO', `Access your app at http://localhost:${PORT} or http://${os.hostname()}.local:${PORT}`);
 });

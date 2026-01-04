@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View } from './types';
 import Sidebar from './components/Sidebar';
@@ -78,8 +79,8 @@ const App: React.FC = () => {
     const loadInitialData = async (showLoader = true) => {
         if (isEditingRef.current && !showLoader) return; 
 
-        console.log(`[APP] Starting data load sequence (showLoader=${showLoader})...`);
-        const loadStart = Date.now();
+        const bootStart = performance.now();
+        console.log(`[APP] Boot sequence started at ${new Date().toISOString()}`);
 
         if (showLoader) {
             setIsLoading(true);
@@ -90,9 +91,14 @@ const App: React.FC = () => {
         }
 
         try {
-            console.log(`[APP] Fetching all data from server API...`);
+            const fetchStart = performance.now();
+            console.log(`[APP] Requesting payload from /api/data...`);
+            
             const data = await api.loadAll();
-            console.log(`[APP] Received raw data object. Processing entities...`);
+            const fetchEnd = performance.now();
+            console.log(`[APP] Payload received. Network & Server time: ${(fetchEnd - fetchStart).toFixed(2)}ms`);
+
+            const processingStart = performance.now();
             
             // 1. Transaction Types & Migration
             const defaultTypes: TransactionType[] = [
@@ -108,7 +114,7 @@ const App: React.FC = () => {
             
             let loadedTypes = data.transactionTypes || defaultTypes;
 
-            // Perform Migration: Fix cases where "Tax Payment" or similar are marked as expense
+            // Perform Migration logic
             let migrationHappened = false;
             loadedTypes = loadedTypes.map((t: TransactionType) => {
                 const nameLower = t.name.toLowerCase();
@@ -133,12 +139,12 @@ const App: React.FC = () => {
             }
 
             if (migrationHappened) {
-                console.log(`[APP] Migrations applied to transaction types. Saving back...`);
+                console.log(`[APP] Rules migration applied to transaction types.`);
                 await api.save('transactionTypes', loadedTypes);
             }
             setTransactionTypes(loadedTypes);
 
-            // 2. Categories
+            // 2. Hydrate State
             setCategories(data.categories || [
                 { id: 'groceries', name: 'Groceries' },
                 { id: 'dining', name: 'Dining' },
@@ -181,14 +187,19 @@ const App: React.FC = () => {
             setContentLinks(data.contentLinks || []);
             setSystemSettings(data.systemSettings || {});
             
+            const processingEnd = performance.now();
+            console.log(`[APP] React State Hydration took ${(processingEnd - processingStart).toFixed(2)}ms`);
+
             if (showLoader) setIsLoading(false);
             setIsSyncing(false);
             document.body.classList.add('loaded');
-            console.log(`[APP] Data load sequence complete in ${Date.now() - loadStart}ms.`);
+            
+            const totalDuration = (performance.now() - bootStart).toFixed(2);
+            console.log(`[APP] Boot complete. Total Load Time: ${totalDuration}ms`);
         } catch (err) {
-            console.error("[APP] Critical data load failure:", err);
+            console.error("[APP] CRITICAL BOOT ERROR:", err);
             if (showLoader) {
-                setLoadError("Engine startup failed. SQLite database may be locked by another process or unreachable.");
+                setLoadError(`Network or database timeout. Check if server is running. Error: ${err.message}`);
             } else {
                 setSyncError(true);
                 setIsSyncing(false);
@@ -203,7 +214,6 @@ const App: React.FC = () => {
         // Listen for sync messages from other tabs
         const handleSync = (event: MessageEvent) => {
             if (event.data === 'REFRESH_REQUIRED') {
-                console.log(`[APP] Sync message received from other tab. Triggering background refresh.`);
                 loadInitialData(false); 
             }
         };
@@ -211,7 +221,6 @@ const App: React.FC = () => {
 
         // Also refresh when tab regains focus
         const handleFocus = () => {
-            console.log(`[APP] Tab focused. Refreshing data...`);
             loadInitialData(false);
         };
         window.addEventListener('focus', handleFocus);
@@ -230,7 +239,7 @@ const App: React.FC = () => {
             syncChannel.postMessage('REFRESH_REQUIRED');
         } catch (e) { 
             console.error(`[APP] Failed to persist key: ${key}`, e);
-            alert(`Save error: The database is busy or unavailable. Please try again.`);
+            alert(`Error saving to database: ${e.message}`);
         } finally {
             isEditingRef.current = false;
         }
