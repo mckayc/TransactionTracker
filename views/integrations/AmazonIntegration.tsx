@@ -5,30 +5,15 @@ import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCi
 import { parseAmazonReport, parseAmazonVideos } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
 
-interface AmazonIntegrationProps {
-    metrics: AmazonMetric[];
-    onAddMetrics: (metrics: AmazonMetric[]) => void;
-    onDeleteMetrics: (ids: string[]) => void;
-    videos: AmazonVideo[];
-    onAddVideos: (videos: AmazonVideo[]) => void;
-    onDeleteVideos: (ids: string[]) => void;
-}
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-  return debouncedValue;
-}
-
-const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
-const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
-
+// Helper functions defined at top to avoid hoisting/TDZ errors
 const normalizeStr = (str: string) => (str || '').toLowerCase().replace(/&#39;/g, "'").replace(/[^a-z0-9]/g, '').trim();
+
+const matchesReportType = (metric: AmazonMetric, selectedFilter: string) => {
+    if (!selectedFilter) return true;
+    if (selectedFilter === 'creator_connections_onsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'onsite';
+    if (selectedFilter === 'creator_connections_offsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'offsite';
+    return metric.reportType === selectedFilter;
+};
 
 const matchAdvancedSearch = (metric: AmazonMetric, search: string) => {
     if (!search) return true;
@@ -56,6 +41,29 @@ const matchAdvancedSearch = (metric: AmazonMetric, search: string) => {
         });
     });
 };
+
+interface AmazonIntegrationProps {
+    metrics: AmazonMetric[];
+    onAddMetrics: (metrics: AmazonMetric[]) => void;
+    onDeleteMetrics: (ids: string[]) => void;
+    videos: AmazonVideo[];
+    onAddVideos: (videos: AmazonVideo[]) => void;
+    onDeleteVideos: (ids: string[]) => void;
+}
+
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
+const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
 
 const InfoBubble: React.FC<{ title: string; content: string }> = ({ title, content }) => (
     <div className="relative group/info inline-block align-middle ml-1">
@@ -602,13 +610,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         setIsMatchModalOpen(true);
     };
 
-    const matchesReportType = (metric: AmazonMetric, selectedFilter: string) => {
-        if (!selectedFilter) return true;
-        if (selectedFilter === 'creator_connections_onsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'onsite';
-        if (selectedFilter === 'creator_connections_offsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'offsite';
-        return metric.reportType === selectedFilter;
-    };
-
     return (
         <div className="space-y-6 h-full flex flex-col relative">
             <div className="flex justify-between items-center flex-shrink-0">
@@ -657,8 +658,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <SparklesIcon className="w-5 h-5 text-orange-500" />
                                         <h3 className="font-bold text-slate-800 text-lg">Top Content Insights</h3>
                                     </div>
-                                    <div className="flex flex-nowrap items-center gap-3 overflow-x-auto no-scrollbar">
-                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                    <div className="flex flex-wrap items-center justify-end gap-3">
+                                        <div className="flex items-center gap-2">
                                             <select 
                                                 value={filterType} 
                                                 onChange={e => setFilterType(e.target.value)} 
@@ -672,17 +673,17 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                                 <option value="creator_connections_offsite">CC Offsite</option>
                                             </select>
                                         </div>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                        <div className="flex items-center gap-2">
                                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">LIMIT</span>
                                             <select value={insightsLimit} onChange={e => setInsightsLimit(Number(e.target.value))} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[65px] focus:ring-orange-500 outline-none">
                                                 {[50, 100, 200, 500].map(l => <option key={l} value={l}>{l}</option>)}
                                             </select>
                                         </div>
-                                        <select value={insightsReportYear} onChange={e => setInsightsReportYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none flex-shrink-0">
+                                        <select value={insightsReportYear} onChange={e => setInsightsReportYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none">
                                             <option value="all">Reported: All Time</option>
                                             {availableReportYears.map(y => <option key={y} value={y}>Reported: {y}</option>)}
                                         </select>
-                                        <select value={insightsCreatedYear} onChange={e => setInsightsCreatedYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none flex-shrink-0">
+                                        <select value={insightsCreatedYear} onChange={e => setInsightsCreatedYear(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold min-w-[140px] focus:ring-orange-500 outline-none">
                                             <option value="all">Created: All Time</option>
                                             {availableCreatedYears.map(y => <option key={y} value={y}>Created: {y}</option>)}
                                         </select>
@@ -763,7 +764,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <select 
                                         value={filterType} 
                                         onChange={e => setFilterType(e.target.value)} 
-                                        className="p-1.5 border rounded-lg text-xs bg-slate-50 text-indigo-700 font-bold focus:ring-orange-500 min-w-[140px]"
+                                        className="p-1.5 border rounded-lg text-xs bg-white text-indigo-700 font-bold focus:ring-orange-500 min-w-[140px]"
                                     >
                                         <option value="">All Types</option>
                                         <option value="onsite">Onsite (Influencer)</option>
@@ -779,7 +780,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <select 
                                         value={dataCreatedYearFilter} 
                                         onChange={(e) => setDataCreatedYearFilter(e.target.value)} 
-                                        className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold focus:ring-orange-500 min-w-[100px]"
+                                        className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-orange-500 min-w-[100px]"
                                     >
                                         <option value="all">All Time</option>
                                         {availableCreatedYears.map(y => <option key={y} value={y}>{y}</option>)}
@@ -791,7 +792,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <select 
                                         value={rowsPerPage} 
                                         onChange={(e) => setRowsPerPage(Number(e.target.value))} 
-                                        className="p-1.5 border rounded-lg text-xs bg-slate-50 text-slate-700 font-bold focus:ring-orange-500 min-w-[80px]"
+                                        className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-orange-500 min-w-[80px]"
                                     >
                                         {[50, 100, 200, 500, 1000].map(v => <option key={v} value={v}>{v} rows</option>)}
                                     </select>
@@ -1049,6 +1050,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 )}
             </div>
 
+            {/* CC MATCH CONFIRMATION MODAL */}
             {isMatchModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>

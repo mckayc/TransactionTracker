@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View } from './types';
 import Sidebar from './components/Sidebar';
@@ -40,6 +39,9 @@ const App: React.FC = () => {
     // Safety lock to prevent background refreshes from clobbering active edits
     const isEditingRef = useRef(false);
 
+    // Added to fix 'Cannot find name onChatToggle' on line 455
+    const onChatToggle = useCallback(() => setIsChatOpen(prev => !prev), []);
+
     // Core Data State
     const [transactions, setTransactions] = useState<Transaction[]>([]);
     const [accounts, setAccounts] = useState<Account[]>([]);
@@ -74,7 +76,10 @@ const App: React.FC = () => {
     const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
 
     const loadInitialData = async (showLoader = true) => {
-        if (isEditingRef.current && !showLoader) return; // Don't background-sync if user is doing something
+        if (isEditingRef.current && !showLoader) return; 
+
+        console.log(`[APP] Starting data load sequence (showLoader=${showLoader})...`);
+        const loadStart = Date.now();
 
         if (showLoader) {
             setIsLoading(true);
@@ -85,7 +90,9 @@ const App: React.FC = () => {
         }
 
         try {
+            console.log(`[APP] Fetching all data from server API...`);
             const data = await api.loadAll();
+            console.log(`[APP] Received raw data object. Processing entities...`);
             
             // 1. Transaction Types & Migration
             const defaultTypes: TransactionType[] = [
@@ -125,7 +132,10 @@ const App: React.FC = () => {
                 migrationHappened = true;
             }
 
-            if (migrationHappened) await api.save('transactionTypes', loadedTypes);
+            if (migrationHappened) {
+                console.log(`[APP] Migrations applied to transaction types. Saving back...`);
+                await api.save('transactionTypes', loadedTypes);
+            }
             setTransactionTypes(loadedTypes);
 
             // 2. Categories
@@ -174,10 +184,11 @@ const App: React.FC = () => {
             if (showLoader) setIsLoading(false);
             setIsSyncing(false);
             document.body.classList.add('loaded');
+            console.log(`[APP] Data load sequence complete in ${Date.now() - loadStart}ms.`);
         } catch (err) {
-            console.error("Failed to load initial data", err);
+            console.error("[APP] Critical data load failure:", err);
             if (showLoader) {
-                setLoadError("Engine startup failed. SQLite database may be locked by another process.");
+                setLoadError("Engine startup failed. SQLite database may be locked by another process or unreachable.");
             } else {
                 setSyncError(true);
                 setIsSyncing(false);
@@ -192,13 +203,17 @@ const App: React.FC = () => {
         // Listen for sync messages from other tabs
         const handleSync = (event: MessageEvent) => {
             if (event.data === 'REFRESH_REQUIRED') {
-                loadInitialData(false); // Background refresh
+                console.log(`[APP] Sync message received from other tab. Triggering background refresh.`);
+                loadInitialData(false); 
             }
         };
         syncChannel.addEventListener('message', handleSync);
 
         // Also refresh when tab regains focus
-        const handleFocus = () => loadInitialData(false);
+        const handleFocus = () => {
+            console.log(`[APP] Tab focused. Refreshing data...`);
+            loadInitialData(false);
+        };
         window.addEventListener('focus', handleFocus);
 
         return () => {
@@ -209,14 +224,13 @@ const App: React.FC = () => {
 
     const updateData = async (key: string, value: any, setter: Function) => {
         isEditingRef.current = true;
-        setter(value); // Optimistic UI update
+        setter(value); 
         try { 
             await api.save(key, value); 
             syncChannel.postMessage('REFRESH_REQUIRED');
         } catch (e) { 
-            console.error(`Failed to persist key: ${key}`, e);
+            console.error(`[APP] Failed to persist key: ${key}`, e);
             alert(`Save error: The database is busy or unavailable. Please try again.`);
-            // Rollback could be implemented here, but for now we warn the user
         } finally {
             isEditingRef.current = false;
         }
@@ -231,7 +245,6 @@ const App: React.FC = () => {
         await updateData('transactions', updatedTxs, setTransactions);
         if (newCats.length > 0) await updateData('categories', updatedCats, setCategories);
         
-        // Force a fresh reload after large imports to ensure signatures and duplicate detection are spot-on
         await loadInitialData(false);
         setIsSyncing(false);
     };
@@ -433,7 +446,7 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onChatToggle={() => setIsChatOpen(!isChatOpen)} />
+            <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onChatToggle={onChatToggle} />
             <main className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
                 <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 z-30">
                     <div className="flex items-center gap-4">
@@ -441,7 +454,7 @@ const App: React.FC = () => {
                         <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest truncate">{currentView.replace(/integration-/, '').replace(/-/g, ' ')}</h2>
                     </div>
                     <div className="flex items-center gap-4">
-                        <button onClick={() => setIsChatOpen(true)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"><SparklesIcon className="w-5 h-5" /></button>
+                        <button onClick={onChatToggle} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"><SparklesIcon className="w-5 h-5" /></button>
                         <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border-2 border-white shadow-sm">{userInitials}</div>
                     </div>
                 </header>

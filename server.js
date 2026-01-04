@@ -13,44 +13,53 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
+// Internal Logger Helper
+const log = (step, message) => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] [${step}] ${message}`);
+};
+
+const startTime = Date.now();
+log('INIT', 'FinParser Server starting up...');
+
 // 1. DATA CONFIGURATION
 const DATA_DIR = path.join(__dirname, 'data', 'config');
 const DOCUMENTS_DIR = path.join(__dirname, 'media', 'files');
 const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-// 2. IMMEDIATE MIDDLEWARE
-app.use(express.json({ limit: '200mb' })); // Increased limit for massive imports
-// Scoped raw parser for files to avoid interfering with JSON data routes
-app.use('/api/files', express.raw({ type: '*/*', limit: '100mb' }));
+log('FS', `Validating environment directories...`);
+if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    log('FS', `Created Data directory at ${DATA_DIR}`);
+}
+if (!fs.existsSync(DOCUMENTS_DIR)) {
+    fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
+    log('FS', `Created Documents directory at ${DOCUMENTS_DIR}`);
+}
+if (!fs.existsSync(PUBLIC_DIR)) {
+    fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+}
 
-// Health endpoint for Docker/Proxy
-app.get('/api/health', (req, res) => res.status(200).json({ status: 'live', timestamp: new Date().toISOString() }));
-
-// 3. START LISTENING
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 FINPARSER SERVER ON PORT: ${PORT}`);
-    console.log(`[DB] Using file: ${DB_PATH}`);
-});
-
-// 4. BACKGROUND INITIALIZATION
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
-if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
-
+// 2. DATABASE INITIALIZATION
 let db;
 try {
+    log('DB', `Connecting to SQLite: ${DB_PATH}`);
     db = new Database(DB_PATH);
+    
+    log('DB', `Setting Pragmas (WAL mode, 10s timeout)...`);
     db.pragma('journal_mode = WAL');
-    // INCREASED TIMEOUT: Essential for multi-tab or concurrent rule/import processes
     db.pragma('busy_timeout = 10000'); 
+    
+    log('DB', `Checking/Creating table schemas...`);
     db.exec(`
       CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
     `);
-    console.log("[DB] Ready with 10s busy_timeout and WAL mode.");
+    log('DB', `Database engine is ready.`);
 } catch (dbErr) {
-    console.error("[DB] Critical error:", dbErr);
+    log('CRITICAL', `Database initialization failed: ${dbErr.message}`);
+    process.exit(1);
 }
 
 const upsertAppStorage = db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
@@ -60,14 +69,32 @@ const insertFileMeta = db.prepare('INSERT OR REPLACE INTO files_meta (id, origin
 const getFileMeta = db.prepare('SELECT * FROM files_meta WHERE id = ?');
 const deleteFileMeta = db.prepare('DELETE FROM files_meta WHERE id = ?');
 
-// 5. JSON API ROUTES
+// 3. MIDDLEWARE
+log('API', `Configuring middleware (JSON limit: 200mb)...`);
+app.use(express.json({ limit: '200mb' })); 
+app.use('/api/files', express.raw({ type: '*/*', limit: '100mb' }));
+
+// Health endpoint for Docker/Proxy
+app.get('/api/health', (req, res) => res.status(200).json({ status: 'live', timestamp: new Date().toISOString() }));
+
+// 4. JSON API ROUTES
 app.get('/api/data', (req, res) => {
+  const fetchStart = Date.now();
   try {
     const rows = getAllAppStorage.all();
     const data = {};
+    let parseErrors = 0;
+    
     for (const row of rows) {
-      try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
+      try { 
+          data[row.key] = JSON.parse(row.value); 
+      } catch (e) { 
+          data[row.key] = null; 
+          parseErrors++;
+      }
     }
+    const duration = Date.now() - fetchStart;
+    log('API', `GET /api/data: Retreived ${rows.length} keys in ${duration}ms. ${parseErrors > 0 ? `Warnings: ${parseErrors} parse errors.` : ''}`);
     res.json(data);
   } catch (e) { 
     console.error("[DB] Failed to read all data:", e);
@@ -98,7 +125,7 @@ app.post('/api/data/:key', (req, res) => {
 
 app.post('/api/admin/reset', (req, res) => {
     try {
-        console.warn("[DB] PURGE COMMAND RECEIVED");
+        log('ADMIN', "DB PURGE COMMAND RECEIVED");
         const purge = db.transaction(() => {
             db.prepare('DELETE FROM app_storage').run();
             db.prepare('DELETE FROM files_meta').run();
@@ -107,11 +134,12 @@ app.post('/api/admin/reset', (req, res) => {
         
         const files = fs.readdirSync(DOCUMENTS_DIR);
         for (const file of files) fs.unlinkSync(path.join(DOCUMENTS_DIR, file));
+        log('ADMIN', "Database and file storage cleared successfully.");
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: 'Database reset failed.' }); }
 });
 
-// 6. AI PROXY ROUTES
+// 5. AI PROXY ROUTES
 app.post('/api/ai/generate', async (req, res) => {
     try {
         const { model, contents, config } = req.body;
@@ -136,7 +164,7 @@ app.post('/api/ai/stream', async (req, res) => {
     } catch (e) { res.status(500).end(); }
 });
 
-// 7. FILE API ROUTES
+// 6. FILE API ROUTES
 app.post('/api/files/:id', (req, res) => {
   const { id } = req.params;
   const rawFilename = req.headers['x-filename'] || 'unknown.bin';
@@ -169,5 +197,12 @@ app.delete('/api/files/:id', (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
+// 7. START LISTENING
 app.use(express.static(PUBLIC_DIR));
 app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+
+const serverInstance = app.listen(PORT, '0.0.0.0', () => {
+    const startupDuration = Date.now() - startTime;
+    log('READY', `FinParser Server listening on port ${PORT}`);
+    log('READY', `Total startup time: ${startupDuration}ms`);
+});
