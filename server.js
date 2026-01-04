@@ -66,24 +66,19 @@ const initDb = () => {
           );
         `);
 
-        // Migration Engine: Detect and add missing columns
-        console.log("[DB] Syncing schema versions...");
-        
+        // Migration Engine
         const migrateTable = (tableName, requiredCols) => {
             const tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
             const existingColumns = new Set(tableInfo.map(c => c.name));
-            
             db.transaction(() => {
                 requiredCols.forEach(col => {
                     if (!existingColumns.has(col.name)) {
-                        console.log(`[DB] Migration: Adding column '${col.name}' to table '${tableName}'...`);
                         db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`).run();
                     }
                 });
             })();
         };
 
-        // Update Transactions Table
         migrateTable('transactions', [
             { name: 'category_id', type: 'TEXT' },
             { name: 'account_id', type: 'TEXT' },
@@ -101,22 +96,11 @@ const initDb = () => {
             { name: 'metadata', type: 'TEXT' }
         ]);
 
-        // Update Transaction Types Table (Fixes the balance_effect error)
-        migrateTable('transaction_types', [
-            { name: 'balance_effect', type: 'TEXT' }
-        ]);
+        migrateTable('transaction_types', [{ name: 'balance_effect', type: 'TEXT' }]);
 
-        // Indexing
-        db.exec(`
-          CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
-          CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
-          CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
-        `);
-
-        // SEEDER: Ensure standard types exist
+        // Seeder
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
         if (typeCount === 0) {
-            console.log("[DB] Seeding default transaction types...");
             const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
             db.transaction(() => {
                 insertType.run('type_income', 'Income', 'income');
@@ -125,16 +109,11 @@ const initDb = () => {
                 insertType.run('type_tax', 'Tax Payment', 'tax');
                 insertType.run('type_investment', 'Investment', 'investment');
             })();
-            console.log("[DB] Seed complete: 5 standard types added.");
         }
 
-        console.log("[DB] Initialization complete. Engine ready.");
-        console.log("---------------------------------------------------------");
-
+        console.log("[DB] Engine ready.");
     } catch (dbErr) {
-        console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-        console.error("[DB] CRITICAL INITIALIZATION ERROR:", dbErr.message);
-        console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        console.error("[DB] CRITICAL ERROR:", dbErr.message);
     }
 };
 
@@ -164,8 +143,6 @@ const buildTxFilters = (params) => {
     }
     return { filterQuery, values };
 };
-
-// --- DATA ROUTES ---
 
 app.get('/api/transactions', (req, res) => {
     try {
@@ -222,16 +199,6 @@ app.get('/api/analytics/summary', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/analytics/usage', (req, res) => {
-    try {
-        const categories = db.prepare(`SELECT category_id as id, COUNT(*) as count FROM transactions GROUP BY category_id`).all();
-        const payees = db.prepare(`SELECT payee_id as id, COUNT(*) as count FROM transactions WHERE payee_id IS NOT NULL GROUP BY payee_id`).all();
-        const tags = db.prepare(`SELECT tag_id as id, COUNT(*) as count FROM transaction_tags GROUP BY tag_id`).all();
-        const accounts = db.prepare(`SELECT account_type_id as id, COUNT(*) as count FROM accounts GROUP BY account_type_id`).all();
-        res.json({ categories, payees, tags, accounts });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
 app.post('/api/transactions/batch', (req, res) => {
     try {
         const txs = req.body;
@@ -255,9 +222,7 @@ app.post('/api/transactions/batch', (req, res) => {
                     JSON.stringify(tx.metadata || {})
                 );
                 tagClear.run(tx.id);
-                if (tx.tagIds) {
-                    tx.tagIds.forEach(tid => tagInsert.run(tx.id, tid));
-                }
+                if (tx.tagIds) tx.tagIds.forEach(tid => tagInsert.run(tx.id, tid));
             }
         })(txs);
         res.json({ success: true, count: txs.length });
@@ -316,35 +281,69 @@ app.post('/api/data/:key', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Admin Reset Route
+// Admin Reset & Purge Route
 app.post('/api/admin/reset', async (req, res) => {
-    console.warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    console.warn("[SYS] FACTORY RESET TRIGGERED");
-    console.warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    const { entities } = req.body || {};
+    
     try {
-        if (db) {
-            db.close();
-            console.log("[DB] Connection closed for reset.");
-        }
-        
-        if (fs.existsSync(DB_PATH)) {
-            fs.unlinkSync(DB_PATH);
-            console.log("[SYS] Database file deleted.");
+        if (!entities || entities.includes('all')) {
+            console.warn("[SYS] FULL FACTORY RESET");
+            if (db) db.close();
+            if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
+            initDb();
+            return res.json({ success: true, message: "System purged." });
         }
 
-        // Re-initialize
-        initDb();
-        res.json({ success: true, message: "System purged and re-initialized." });
+        console.warn(`[SYS] SELECTIVE PURGE: ${entities.join(', ')}`);
+        
+        db.transaction(() => {
+            if (entities.includes('transactions')) {
+                db.prepare("DELETE FROM transactions").run();
+                db.prepare("DELETE FROM transaction_tags").run();
+            }
+            if (entities.includes('accounts')) db.prepare("DELETE FROM accounts").run();
+            if (entities.includes('categories')) db.prepare("DELETE FROM categories").run();
+            if (entities.includes('tags')) {
+                db.prepare("DELETE FROM tags").run();
+                db.prepare("DELETE FROM transaction_tags").run();
+            }
+            if (entities.includes('payees')) db.prepare("DELETE FROM payees").run();
+            if (entities.includes('users')) db.prepare("DELETE FROM users WHERE is_default = 0").run();
+            if (entities.includes('files_meta')) db.prepare("DELETE FROM files_meta").run();
+            
+            // Clean specific app_storage keys
+            const storageKeys = {
+                'amazonMetrics': 'amazonMetrics',
+                'youtubeMetrics': 'youtubeMetrics',
+                'amazonVideos': 'amazonVideos',
+                'financialGoals': 'financialGoals',
+                'financialPlan': 'financialPlan',
+                'reconciliationRules': 'reconciliationRules',
+                'templates': 'templates',
+                'tasks': 'tasks',
+                'taskCompletions': 'taskCompletions',
+                'savedReports': 'savedReports',
+                'contentLinks': 'contentLinks'
+            };
+
+            entities.forEach(entity => {
+                if (storageKeys[entity]) {
+                    db.prepare("DELETE FROM app_storage WHERE key = ?").run(storageKeys[entity]);
+                }
+            });
+        })();
+
+        // Shrink file size
+        db.pragma('vacuum');
+        res.json({ success: true, message: "Selective purge complete." });
     } catch (e) {
-        console.error("[SYS] Reset failed:", e.message);
-        res.status(500).json({ error: "Failed to purge database. Check logs." });
+        res.status(500).json({ error: e.message });
     }
 });
 
 app.post('/api/ai/generate', async (req, res) => {
     try {
         const { model, contents, config } = req.body;
-        if (!process.env.API_KEY) throw new Error("Server API_KEY missing.");
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const response = await ai.models.generateContent({ model, contents, config });
         res.json({ text: response.text, candidates: response.candidates });
@@ -354,7 +353,6 @@ app.post('/api/ai/generate', async (req, res) => {
 app.post('/api/ai/stream', async (req, res) => {
     try {
         const { model, contents, config } = req.body;
-        if (!process.env.API_KEY) throw new Error("Server API_KEY missing.");
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const responseStream = await ai.models.generateContentStream({ model, contents, config });
         res.setHeader('Content-Type', 'text/event-stream');

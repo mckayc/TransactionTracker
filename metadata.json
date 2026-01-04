@@ -1,5 +1,5 @@
 {
-  "name": "Transaction Tracker - Performance Engine - v0.1.1",
+  "name": "Transaction Tracker - Improve Database Settings - v0.1.2",
   "description": "High-performance normalized SQLite architecture for millions of financial records.",
   "requestFramePermissions": []
 }

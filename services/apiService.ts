@@ -67,8 +67,12 @@ export const api = {
         });
     },
 
-    resetDatabase: async (): Promise<boolean> => {
-        const response = await fetchWithRetry('/api/admin/reset', { method: 'POST' });
+    resetDatabase: async (entities: string[] = ['all']): Promise<boolean> => {
+        const response = await fetchWithRetry('/api/admin/reset', { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entities })
+        });
         return response.ok;
     }
 };

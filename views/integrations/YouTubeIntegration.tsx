@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, ChartPieIcon, BoxIcon, HeartIcon, CalendarIcon, UsersIcon } from '../../components/Icons';
@@ -1018,11 +1019,7 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div className="flex items-center gap-4">
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-bold text-slate-500 uppercase">Channel:</span>
-                                    <select 
-                                        value={filterChannelId} 
-                                        onChange={(e) => setFilterChannelId(e.target.value)} 
-                                        className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-red-500 min-w-[120px]"
-                                    >
+                                    <select value={filterChannelId} onChange={(e) => setFilterChannelId(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-red-500 min-w-[120px]">
                                         <option value="">All Channels</option>
                                         {channels.map(ch => <option key={ch.id} value={ch.id}>{ch.name}</option>)}
                                     </select>
@@ -1030,11 +1027,7 @@ Conv Rate: ${conv.toFixed(2)}%
 
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-bold text-slate-500 uppercase">Published:</span>
-                                    <select 
-                                        value={dataCreatedYearFilter} 
-                                        onChange={(e) => setDataCreatedYearFilter(e.target.value)} 
-                                        className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-red-500 min-w-[100px]"
-                                    >
+                                    <select value={dataCreatedYearFilter} onChange={(e) => setDataCreatedYearFilter(e.target.value)} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-red-500 min-w-[100px]">
                                         <option value="all">All Time</option>
                                         {availableCreatedYears.map(y => <option key={y} value={y}>{y}</option>)}
                                     </select>
@@ -1042,11 +1035,7 @@ Conv Rate: ${conv.toFixed(2)}%
 
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-bold text-slate-500 uppercase">Show:</span>
-                                    <select 
-                                        value={rowsPerPage} 
-                                        onChange={(e) => setRowsPerPage(Number(e.target.value))} 
-                                        className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-red-500 min-w-[80px]"
-                                    >
+                                    <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))} className="p-1.5 border rounded-lg text-xs bg-white text-slate-700 font-bold focus:ring-red-500 min-w-[80px]">
                                         {[50, 100, 200, 500, 1000].map(v => <option key={v} value={v}>{v} rows</option>)}
                                     </select>
                                 </div>
@@ -1078,7 +1067,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                             <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('views')}>
                                                 <div className="flex items-center justify-end gap-1">Views {getSortIcon('views', dataSortKey, dataSortDir)}</div>
                                             </th>
-                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('estimatedRevenue')}>
+                                            <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleInsightsSort('estimatedRevenue')}>
                                                 <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue', insightsSortKey, insightsSortDir)}</div>
                                             </th>
                                         </tr>
@@ -1184,11 +1173,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                             <button onClick={() => setPreviewMetrics([])} className="flex-1 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors">
                                                 Cancel
                                             </button>
-                                            <button 
-                                                onClick={confirmImport} 
-                                                disabled={!uploadChannelId}
-                                                className="flex-[2] py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                                            >
+                                            <button onClick={confirmImport} disabled={!uploadChannelId} className="flex-[2] py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
                                                 Confirm Import of {previewMetrics.length} Records
                                             </button>
                                         </div>
@@ -1205,27 +1190,13 @@ Conv Rate: ${conv.toFixed(2)}%
                                     
                                     <form onSubmit={handleSaveChannel} className="mb-4">
                                         <div className="flex gap-2">
-                                            <input 
-                                                type="text" 
-                                                value={newChannelName} 
-                                                onChange={(e) => setNewChannelName(e.target.value)}
-                                                placeholder="Channel Name"
-                                                className="flex-grow p-2 border rounded-md text-sm"
-                                                required
-                                            />
-                                            <button 
-                                                type="submit" 
-                                                className="px-4 py-2 bg-slate-800 text-white font-bold rounded-md hover:bg-slate-900 transition-colors flex items-center gap-1"
-                                            >
+                                            <input type="text" value={newChannelName} onChange={(e) => setNewChannelName(e.target.value)} placeholder="Channel Name" className="flex-grow p-2 border rounded-md text-sm" required />
+                                            <button type="submit" className="px-4 py-2 bg-slate-800 text-white font-bold rounded-md hover:bg-slate-900 transition-colors flex items-center gap-1">
                                                 {editingChannel ? <CheckCircleIcon className="w-4 h-4"/> : <AddIcon className="w-4 h-4" />}
                                                 {editingChannel ? 'Save' : 'Add'}
                                             </button>
                                             {editingChannel && (
-                                                <button 
-                                                    type="button" 
-                                                    onClick={() => { setEditingChannel(null); setNewChannelName(''); }}
-                                                    className="p-2 text-slate-400 hover:text-red-500"
-                                                >
+                                                <button type="button" onClick={() => { setEditingChannel(null); setNewChannelName(''); }} className="p-2 text-slate-400 hover:text-red-500">
                                                     <CloseIcon className="w-5 h-5" />
                                                 </button>
                                             )}
@@ -1240,18 +1211,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                                 <div key={channel.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-200 group/item">
                                                     <span className="text-sm font-bold text-slate-700">{channel.name}</span>
                                                     <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                                                        <button 
-                                                            onClick={() => handleEditChannel(channel)}
-                                                            className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-white transition-colors"
-                                                            title="Edit Name"
-                                                        >
+                                                        <button onClick={() => handleEditChannel(channel)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-white transition-colors" title="Edit Name">
                                                             <EditIcon className="w-4 h-4" />
                                                         </button>
-                                                        <button 
-                                                            onClick={() => handleDeleteChannel(channel.id)}
-                                                            className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-white transition-colors"
-                                                            title="Delete Channel"
-                                                        >
+                                                        <button onClick={() => handleDeleteChannel(channel.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-white transition-colors" title="Delete Channel">
                                                             <DeleteIcon className="w-4 h-4" />
                                                         </button>
                                                     </div>
@@ -1298,33 +1261,33 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fix: Explicitly type 'sum' as number in reduce to avoid 'unknown' return type error on line 912 */}
+                                    {/* Fixed: Added <number> generic to reduce to resolve potential 'unknown' return type errors causing assignment mismatches */}
                                     {formatCurrency(
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum: number, v: any) => sum + (v.creationYearRevenue || 0), 0)
+                                            .reduce<number>((sum, v) => sum + (v.creationYearRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
                                 <p className="text-2xl font-black text-indigo-600 font-mono">
-                                    {/* Fix: Explicitly type 'sum' as number in reduce to avoid 'unknown' return type error */}
+                                    {/* Fixed: Added <number> generic to reduce to resolve potential 'unknown' return type errors causing assignment mismatches */}
                                     {formatCurrency(
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum: number, v: any) => sum + (v.lifetimeRevenue || 0), 0)
+                                            .reduce<number>((sum, v) => sum + (v.lifetimeRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fix: Explicitly type 'sum' as number in reduce to avoid 'unknown' return type error */}
+                                    {/* Fixed: Added <number> generic to reduce to resolve potential 'unknown' return type errors causing assignment mismatches */}
                                     {formatNumber(
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum: number, v: any) => sum + (v.lifetimeViews || 0), 0)
+                                            .reduce<number>((sum, v) => sum + (v.lifetimeViews || 0), 0)
                                     )}
                                 </p>
                             </div>
@@ -1349,7 +1312,6 @@ Conv Rate: ${conv.toFixed(2)}%
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-100">
-                                    {/* Fix: Added explicit 'any' typing to parameters to avoid 'unknown' errors when accessing properties inside sort/map/formatters */}
                                     {(Array.from(videoAggregateMap.values()) as any[])
                                         .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                         .sort((a: any, b: any) => (b.lifetimeRevenue || 0) - (a.lifetimeRevenue || 0))
