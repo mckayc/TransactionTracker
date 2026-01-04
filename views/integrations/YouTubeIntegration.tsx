@@ -1294,33 +1294,33 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
+                                    {/* Fix: Explicitly infer types and avoid unknown by leveraging videoAggregateMap's type safety */}
                                     {formatCurrency(
-                                        // Fix: Explicitly type reduce parameters to avoid 'unknown' errors when results are passed to formatCurrency
-                                        (Array.from(videoAggregateMap.values()) as any[])
-                                            .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce<number>((sum: number, v: any) => sum + (v.creationYearRevenue || 0), 0)
+                                        Array.from(videoAggregateMap.values())
+                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
+                                            .reduce((sum, v) => sum + (v.creationYearRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
                                 <p className="text-2xl font-black text-indigo-600 font-mono">
+                                    {/* Fix: Explicitly infer types and avoid unknown by leveraging videoAggregateMap's type safety */}
                                     {formatCurrency(
-                                        // Fix: Explicitly type reduce parameters to avoid 'unknown' errors
-                                        (Array.from(videoAggregateMap.values()) as any[])
-                                            .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce<number>((sum: number, v: any) => sum + (v.lifetimeRevenue || 0), 0)
+                                        Array.from(videoAggregateMap.values())
+                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
+                                            .reduce((sum, v) => sum + (v.lifetimeRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
+                                    {/* Fix: Explicitly infer types and avoid unknown by leveraging videoAggregateMap's type safety */}
                                     {formatNumber(
-                                        // Fix: Explicitly type reduce parameters to avoid 'unknown' errors when results are passed to formatNumber
-                                        (Array.from(videoAggregateMap.values()) as any[])
-                                            .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce<number>((sum: number, v: any) => sum + (v.lifetimeViews || 0), 0)
+                                        Array.from(videoAggregateMap.values())
+                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
+                                            .reduce((sum, v) => sum + (v.lifetimeViews || 0), 0)
                                     )}
                                 </p>
                             </div>

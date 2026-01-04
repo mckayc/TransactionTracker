@@ -40,7 +40,6 @@ try {
     
     console.log("[DB] Initializing core tables...");
     
-    // 1. Create tables if they don't exist
     db.exec(`
       CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
@@ -65,12 +64,9 @@ try {
       );
     `);
 
-    // 2. MIGRATION ENGINE: Detect and add missing columns
-    console.log("[DB] Checking for schema updates...");
-    
+    // Migration Engine
     const tableInfo = db.prepare("PRAGMA table_info(transactions)").all();
     const existingColumns = new Set(tableInfo.map(c => c.name));
-
     const requiredColumns = [
         { name: 'category_id', type: 'TEXT' },
         { name: 'account_id', type: 'TEXT' },
@@ -91,14 +87,13 @@ try {
     db.transaction(() => {
         requiredColumns.forEach(col => {
             if (!existingColumns.has(col.name)) {
-                console.log(`[DB] Migration: Adding column '${col.name}' to table 'transactions'...`);
+                console.log(`[DB] Migration: Adding column '${col.name}' to 'transactions'...`);
                 db.prepare(`ALTER TABLE transactions ADD COLUMN ${col.name} ${col.type}`).run();
             }
         });
     })();
 
-    // 3. INDEXING: Create indices now that we know columns exist
-    console.log("[DB] Optimizing indices...");
+    // Indexing
     db.exec(`
       CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
       CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
@@ -106,25 +101,33 @@ try {
       CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type_id);
     `);
 
+    // SEEDER: Ensure standard types exist
+    const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
+    if (typeCount === 0) {
+        console.log("[DB] Seeding default transaction types...");
+        const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
+        db.transaction(() => {
+            insertType.run('type_income', 'Income', 'income');
+            insertType.run('type_purchase', 'Purchase', 'expense');
+            insertType.run('type_transfer', 'Transfer', 'transfer');
+            insertType.run('type_tax', 'Tax Payment', 'tax');
+            insertType.run('type_investment', 'Investment', 'investment');
+        })();
+    }
+
     console.log("[DB] Initialization complete. Engine ready.");
     console.log("---------------------------------------------------------");
 
 } catch (dbErr) {
     console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    console.error("[DB] CRITICAL INITIALIZATION ERROR:");
-    console.error(dbErr.message);
-    if (dbErr.code === 'SQLITE_ERROR') {
-        console.error("[DB] Hint: This usually happens if the schema changed significantly. Check ALTER TABLE syntax.");
-    }
+    console.error("[DB] CRITICAL INITIALIZATION ERROR:", dbErr.message);
     console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 }
 
-// Helper to build WHERE clause from params
 const buildTxFilters = (params) => {
     const { search, startDate, endDate, accountIds, categoryIds, userId } = params;
     let filterQuery = ` WHERE 1=1 AND t.is_parent = 0`;
     const values = [];
-
     if (search) {
         filterQuery += ` AND (t.description LIKE ? OR t.notes LIKE ? OR t.original_description LIKE ?)`;
         const s = `%${search}%`;
@@ -146,13 +149,10 @@ const buildTxFilters = (params) => {
     return { filterQuery, values };
 };
 
-// --- DATA ROUTES ---
-
 app.get('/api/transactions', (req, res) => {
     try {
         const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC' } = req.query;
         const { filterQuery, values } = buildTxFilters(req.query);
-        
         const dataQuery = `
             SELECT t.*, GROUP_CONCAT(tg.tag_id) as tagIds 
             FROM transactions t
@@ -162,12 +162,9 @@ app.get('/api/transactions', (req, res) => {
             ORDER BY t.${sortKey} ${sortDir}
             LIMIT ? OFFSET ?
         `;
-        
         const countQuery = `SELECT COUNT(*) as count FROM transactions t ${filterQuery}`;
-
         const rows = db.prepare(dataQuery).all(...values, parseInt(limit), parseInt(offset));
         const totalCount = db.prepare(countQuery).get(...values).count;
-
         const results = rows.map(r => ({
             ...r,
             tagIds: r.tagIds ? r.tagIds.split(',') : [],
@@ -184,20 +181,15 @@ app.get('/api/transactions', (req, res) => {
             linkGroupId: r.link_group_id,
             parentTransactionId: r.parent_transaction_id
         }));
-
         res.json({ data: results, total: totalCount });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/analytics/summary', (req, res) => {
     try {
         const { filterQuery, values } = buildTxFilters(req.query);
         const query = `
-            SELECT 
-                tt.balance_effect as effect,
-                SUM(t.amount) as total
+            SELECT tt.balance_effect as effect, SUM(t.amount) as total
             FROM transactions t
             JOIN transaction_types tt ON t.type_id = tt.id
             ${filterQuery}
@@ -209,9 +201,7 @@ app.get('/api/analytics/summary', (req, res) => {
             return acc;
         }, {});
         res.json(summary);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/analytics/usage', (req, res) => {
@@ -220,11 +210,8 @@ app.get('/api/analytics/usage', (req, res) => {
         const payees = db.prepare(`SELECT payee_id as id, COUNT(*) as count FROM transactions WHERE payee_id IS NOT NULL GROUP BY payee_id`).all();
         const tags = db.prepare(`SELECT tag_id as id, COUNT(*) as count FROM transaction_tags GROUP BY tag_id`).all();
         const accounts = db.prepare(`SELECT account_type_id as id, COUNT(*) as count FROM accounts GROUP BY account_type_id`).all();
-        
         res.json({ categories, payees, tags, accounts });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/transactions/batch', (req, res) => {
@@ -240,8 +227,7 @@ app.post('/api/transactions/batch', (req, res) => {
         `);
         const tagClear = db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?");
         const tagInsert = db.prepare("INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)");
-
-        const run = db.transaction((items) => {
+        db.transaction((items) => {
             for (const tx of items) {
                 insert.run(
                     tx.id, tx.date, tx.description, tx.amount, tx.categoryId, tx.accountId, tx.typeId,
@@ -255,12 +241,9 @@ app.post('/api/transactions/batch', (req, res) => {
                     tx.tagIds.forEach(tid => tagInsert.run(tx.id, tid));
                 }
             }
-        });
-        run(txs);
+        })(txs);
         res.json({ success: true, count: txs.length });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.delete('/api/transactions/:id', (req, res) => {
@@ -283,7 +266,7 @@ app.get('/api/data', (req, res) => {
     data.users = db.prepare("SELECT * FROM users").all();
     data.payees = db.prepare("SELECT * FROM payees").all();
     data.tags = db.prepare("SELECT * FROM tags").all();
-    data.transactionTypes = db.prepare("SELECT * FROM transaction_types").all();
+    data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect FROM transaction_types").all();
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -304,6 +287,10 @@ app.post('/api/data/:key', (req, res) => {
         db.prepare("DELETE FROM users").run();
         const stmt = db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)");
         value.forEach(u => stmt.run(u.id, u.name, u.isDefault ? 1 : 0));
+    } else if (key === 'transactionTypes' && Array.isArray(value)) {
+        db.prepare("DELETE FROM transaction_types").run();
+        const stmt = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
+        value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect));
     } else {
         db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
     }

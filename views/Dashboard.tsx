@@ -22,7 +22,7 @@ type ImportMethod = 'upload' | 'paste';
 
 interface DashboardProps {
   onTransactionsAdded: (newTransactions: Transaction[], newCategories: Category[]) => void;
-  transactions: Transaction[]; // Global transactions list (recent only)
+  transactions: Transaction[]; 
   accounts: Account[];
   onAddAccount: (account: Account) => void;
   onAddAccountType: (type: AccountType) => void;
@@ -101,7 +101,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [pasteAccountId, setPasteAccountId] = useState<string>('');
 
-  // Fetch server-side summary whenever range changes
   useEffect(() => {
     const fetchSummary = async () => {
         setIsLoadingSummary(true);
@@ -171,6 +170,12 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   }, [categories, payees, accounts]);
 
   const handleFileUpload = useCallback(async (files: File[], accountId: string) => {
+    if (!transactionTypes || transactionTypes.length === 0) {
+        setError("Transaction types are not loaded. Please wait a moment or refresh.");
+        setAppState('error');
+        return;
+    }
+    
     setAppState('processing');
     setError(null);
     try {
@@ -188,8 +193,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       stagedNewCategories.forEach(cat => onSaveCategory(cat));
       stagedNewPayees.forEach(p => onSavePayee(p));
 
-      // Note: Full duplicate check across millions of records should ideally move to server
-      // For now, we perform local merge with the recent pool as a starting point
       const { added, duplicates } = mergeTransactions(recentGlobalTransactions, verifiedTransactions);
       if (duplicates.length > 0) {
           setStagedForImport(added);
@@ -212,7 +215,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   };
   
   const nextDeadline = useMemo(() => getNextTaxDeadline(), []);
-
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
   return (
@@ -262,6 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                         </select>
                         <textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="Paste CSV rows here..." className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm" />
                         <button onClick={async () => {
+                             if (!transactionTypes || transactionTypes.length === 0) return;
                              setAppState('processing');
                              try {
                                  const raw = await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress);

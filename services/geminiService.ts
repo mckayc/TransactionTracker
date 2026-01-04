@@ -1,3 +1,4 @@
+
 import { Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, FinancialPlan } from '../types';
 
@@ -47,9 +48,6 @@ async function* callAiStream(params: { model: string; contents: any; config?: an
 
 const fileToGenerativePart = async (file: File) => {
     if (file.type === 'application/pdf') {
-        // Simple placeholder: In a production self-hosted app, 
-        // you'd typically process PDFs on the server or use a more robust client library.
-        // For now, we'll send the base64 to the server proxy.
         const buffer = await file.arrayBuffer();
         const base64 = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
         return [{ inlineData: { data: base64, mimeType: file.type } }];
@@ -74,11 +72,20 @@ export const extractTransactionsFromFiles = async (files: File[], accountId: str
     });
     
     const parsed = JSON.parse(result.text);
-    return (parsed.transactions || []).map((tx: any) => ({
-        ...tx,
-        accountId,
-        typeId: transactionTypes[0].id // Simplified for fix
-    }));
+    
+    // Find default types or fall back to first one
+    const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
+    const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
+
+    return (parsed.transactions || []).map((tx: any) => {
+        const isIncome = tx.amount > 0;
+        const targetType = isIncome ? incomeType : expenseType;
+        return {
+            ...tx,
+            accountId,
+            typeId: targetType?.id || 'unknown'
+        };
+    });
 };
 
 export const extractTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
@@ -88,7 +95,19 @@ export const extractTransactionsFromText = async (text: string, accountId: strin
         contents: { parts: [{ text: `Extract transactions from this text: ${text}` }] },
         config: { responseMimeType: 'application/json' }
     });
-    return JSON.parse(result.text).transactions || [];
+    const parsed = JSON.parse(result.text);
+    const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
+    const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
+
+    return (parsed.transactions || []).map((tx: any) => {
+        const isIncome = tx.amount > 0;
+        const targetType = isIncome ? incomeType : expenseType;
+        return {
+            ...tx,
+            accountId,
+            typeId: targetType?.id || 'unknown'
+        };
+    });
 };
 
 export const getAiFinancialAnalysis = async (question: string, contextData: object) => {
@@ -141,10 +160,6 @@ export const getIndustryDeductions = async (industry: string): Promise<string[]>
     return JSON.parse(result.text);
 };
 
-/**
- * Audit transactions for potential issues or patterns.
- * Fix: Updated signature to accept 5 arguments, adding 'examples' to match the call site in TransactionAuditor.tsx
- */
 export const auditTransactions = async (transactions: Transaction[], transactionTypes: TransactionType[], categories: Category[], auditType: string, examples?: Transaction[][]): Promise<AuditFinding[]> => {
     const result = await callAi({
         model: 'gemini-3-pro-preview',
