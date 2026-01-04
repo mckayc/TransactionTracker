@@ -130,7 +130,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({
                         >
                             <CloudArrowUpIcon className="w-16 h-16 text-slate-200 mx-auto group-hover:scale-110 group-hover:text-red-400 transition-all" />
                             <h3 className="text-xl font-bold text-slate-700 mt-4">Drop YouTube export CSV</h3>
-                            <p className="text-sm text-slate-400 mt-2">Export from YouTube Studio > Analytics > Advanced > Export CSV.</p>
+                            <p className="text-sm text-slate-400 mt-2">Export from YouTube Studio &gt; Analytics &gt; Advanced &gt; Export CSV.</p>
                             <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
                         </div>
                     )}
