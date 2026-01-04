@@ -1298,7 +1298,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                         // Fix: Explicitly type reduce parameters to avoid 'unknown' errors when results are passed to formatCurrency
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum: number, v: any) => sum + (v.creationYearRevenue || 0), 0)
+                                            .reduce<number>((sum: number, v: any) => sum + (v.creationYearRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
@@ -1309,7 +1309,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                         // Fix: Explicitly type reduce parameters to avoid 'unknown' errors
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum: number, v: any) => sum + (v.lifetimeRevenue || 0), 0)
+                                            .reduce<number>((sum: number, v: any) => sum + (v.lifetimeRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
@@ -1320,7 +1320,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                         // Fix: Explicitly type reduce parameters to avoid 'unknown' errors when results are passed to formatNumber
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum: number, v: any) => sum + (v.lifetimeViews || 0), 0)
+                                            .reduce<number>((sum: number, v: any) => sum + (v.lifetimeViews || 0), 0)
                                     )}
                                 </p>
                             </div>

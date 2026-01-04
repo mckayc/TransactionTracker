@@ -27,12 +27,20 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 
+console.log("---------------------------------------------------------");
+console.log(`[SYS] Data Engine Starting...`);
+console.log(`[SYS] Database Path: ${DB_PATH}`);
+console.log("---------------------------------------------------------");
+
 let db;
 try {
     db = new Database(DB_PATH);
     db.pragma('journal_mode = WAL');
     db.pragma('busy_timeout = 5000');
     
+    console.log("[DB] Initializing core tables...");
+    
+    // 1. Create tables if they don't exist
     db.exec(`
       CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
@@ -47,21 +55,7 @@ try {
           id TEXT PRIMARY KEY,
           date TEXT,
           description TEXT,
-          amount REAL,
-          category_id TEXT,
-          account_id TEXT,
-          type_id TEXT,
-          payee_id TEXT,
-          user_id TEXT,
-          location TEXT,
-          notes TEXT,
-          original_description TEXT,
-          source_filename TEXT,
-          link_group_id TEXT,
-          is_parent INTEGER DEFAULT 0,
-          parent_transaction_id TEXT,
-          is_completed INTEGER DEFAULT 0,
-          metadata TEXT
+          amount REAL
       );
 
       CREATE TABLE IF NOT EXISTS transaction_tags (
@@ -69,14 +63,60 @@ try {
           tag_id TEXT,
           PRIMARY KEY (transaction_id, tag_id)
       );
+    `);
 
+    // 2. MIGRATION ENGINE: Detect and add missing columns
+    console.log("[DB] Checking for schema updates...");
+    
+    const tableInfo = db.prepare("PRAGMA table_info(transactions)").all();
+    const existingColumns = new Set(tableInfo.map(c => c.name));
+
+    const requiredColumns = [
+        { name: 'category_id', type: 'TEXT' },
+        { name: 'account_id', type: 'TEXT' },
+        { name: 'type_id', type: 'TEXT' },
+        { name: 'payee_id', type: 'TEXT' },
+        { name: 'user_id', type: 'TEXT' },
+        { name: 'location', type: 'TEXT' },
+        { name: 'notes', type: 'TEXT' },
+        { name: 'original_description', type: 'TEXT' },
+        { name: 'source_filename', type: 'TEXT' },
+        { name: 'link_group_id', type: 'TEXT' },
+        { name: 'is_parent', type: 'INTEGER DEFAULT 0' },
+        { name: 'parent_transaction_id', type: 'TEXT' },
+        { name: 'is_completed', type: 'INTEGER DEFAULT 0' },
+        { name: 'metadata', type: 'TEXT' }
+    ];
+
+    db.transaction(() => {
+        requiredColumns.forEach(col => {
+            if (!existingColumns.has(col.name)) {
+                console.log(`[DB] Migration: Adding column '${col.name}' to table 'transactions'...`);
+                db.prepare(`ALTER TABLE transactions ADD COLUMN ${col.name} ${col.type}`).run();
+            }
+        });
+    })();
+
+    // 3. INDEXING: Create indices now that we know columns exist
+    console.log("[DB] Optimizing indices...");
+    db.exec(`
       CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
       CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
       CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
       CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type_id);
     `);
+
+    console.log("[DB] Initialization complete. Engine ready.");
+    console.log("---------------------------------------------------------");
+
 } catch (dbErr) {
-    console.error("[DB] Critical error:", dbErr);
+    console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    console.error("[DB] CRITICAL INITIALIZATION ERROR:");
+    console.error(dbErr.message);
+    if (dbErr.code === 'SQLITE_ERROR') {
+        console.error("[DB] Hint: This usually happens if the schema changed significantly. Check ALTER TABLE syntax.");
+    }
+    console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 }
 
 // Helper to build WHERE clause from params
@@ -330,4 +370,4 @@ app.delete('/api/files/:id', (req, res) => {
 app.use(express.static(PUBLIC_DIR));
 app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`[SYS] Server running on port ${PORT}`));
