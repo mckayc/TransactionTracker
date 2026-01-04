@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, ChartPieIcon, BoxIcon, HeartIcon, CalendarIcon, UsersIcon } from '../../components/Icons';
@@ -539,13 +538,10 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }));
 
         result.sort((a, b) => {
-            // Fix: Cast a and b to any and ensure return value is a number for reliable sorting.
             const valA = (a as any)[insightsSortKey];
             const valB = (b as any)[insightsSortKey];
-            
             const numA = typeof valA === 'number' ? valA : 0;
             const numB = typeof valB === 'number' ? valB : 0;
-            
             return insightsSortDir === 'asc' ? numA - numB : numB - numA;
         });
 
@@ -1170,12 +1166,8 @@ Conv Rate: ${conv.toFixed(2)}%
                                         </div>
 
                                         <div className="flex gap-3 pt-2">
-                                            <button onClick={() => setPreviewMetrics([])} className="flex-1 py-3 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors">
-                                                Cancel
-                                            </button>
-                                            <button onClick={confirmImport} disabled={!uploadChannelId} className="flex-[2] py-3 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed">
-                                                Confirm Import of {previewMetrics.length} Records
-                                            </button>
+                                            <button onClick={() => setPreviewMetrics([])} className="px-4 py-2 border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-50">Cancel</button>
+                                            <button onClick={confirmImport} disabled={!uploadChannelId} className="px-6 py-2 bg-red-600 text-white font-bold rounded-lg hover:bg-red-700 disabled:opacity-50">Import {previewMetrics.length} Records</button>
                                         </div>
                                     </div>
                                 )}
@@ -1261,9 +1253,8 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fixed: Added <number> generic to reduce to resolve potential 'unknown' return type errors causing assignment mismatches */}
                                     {formatCurrency(
-                                        (Array.from(videoAggregateMap.values()) as any[])
+                                        Array.from(videoAggregateMap.values())
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce<number>((sum, v) => sum + (v.creationYearRevenue || 0), 0)
                                     )}
@@ -1272,9 +1263,8 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
                                 <p className="text-2xl font-black text-indigo-600 font-mono">
-                                    {/* Fixed: Added <number> generic to reduce to resolve potential 'unknown' return type errors causing assignment mismatches */}
                                     {formatCurrency(
-                                        (Array.from(videoAggregateMap.values()) as any[])
+                                        Array.from(videoAggregateMap.values())
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce<number>((sum, v) => sum + (v.lifetimeRevenue || 0), 0)
                                     )}
@@ -1283,9 +1273,9 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fixed: Added <number> generic to reduce to resolve potential 'unknown' return type errors causing assignment mismatches */}
+                                    {/* Fixed: Used formatNumber instead of formatCurrency and ensured proper type inference to resolve line 913 unknown error */}
                                     {formatNumber(
-                                        (Array.from(videoAggregateMap.values()) as any[])
+                                        Array.from(videoAggregateMap.values())
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce<number>((sum, v) => sum + (v.lifetimeViews || 0), 0)
                                     )}
@@ -1312,10 +1302,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-100">
-                                    {(Array.from(videoAggregateMap.values()) as any[])
-                                        .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                        .sort((a: any, b: any) => (b.lifetimeRevenue || 0) - (a.lifetimeRevenue || 0))
-                                        .map((v: any, idx: number) => (
+                                    {Array.from(videoAggregateMap.values())
+                                        .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
+                                        .sort((a, b) => (b.lifetimeRevenue || 0) - (a.lifetimeRevenue || 0))
+                                        .map((v, idx: number) => (
                                             <tr key={v.videoId} className="hover:bg-slate-50 transition-colors group">
                                                 <td className="px-6 py-3 text-xs font-mono text-slate-300">#{idx + 1}</td>
                                                 <td className="px-6 py-3 max-w-md">

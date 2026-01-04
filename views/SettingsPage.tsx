@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo } from '../types';
-/* Fixed: Added missing CheckBadgeIcon import */
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
@@ -41,25 +40,26 @@ interface SettingsPageProps {
     contentLinks: ContentLink[];
 }
 
-const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {
-    transactions: { label: 'Transactions', icon: <TableIcon className="w-4 h-4" /> },
-    accounts: { label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" /> },
-    categories: { label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
-    tags: { label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
-    payees: { label: 'Income Sources', icon: <DocumentIcon className="w-4 h-4" /> },
-    reconciliationRules: { label: 'Automation Rules', icon: <SettingsIcon className="w-4 h-4" /> },
-    templates: { label: 'Checklist Templates', icon: <TasksIcon className="w-4 h-4" /> },
-    tasks: { label: 'Task Instances', icon: <ChecklistIcon className="w-4 h-4" /> },
+const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string, sampleField?: string }> = {
+    transactions: { label: 'Transactions', icon: <TableIcon className="w-4 h-4" />, sampleField: 'description' },
+    accounts: { label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" />, sampleField: 'name' },
+    categories: { label: 'Categories', icon: <TagIcon className="w-4 h-4" />, sampleField: 'name' },
+    tags: { label: 'Tags', icon: <TagIcon className="w-4 h-4" />, sampleField: 'name' },
+    payees: { label: 'Income Sources', icon: <DocumentIcon className="w-4 h-4" />, sampleField: 'name' },
+    reconciliationRules: { label: 'Automation Rules', icon: <SettingsIcon className="w-4 h-4" />, sampleField: 'name' },
+    templates: { label: 'Checklist Templates', icon: <TasksIcon className="w-4 h-4" />, sampleField: 'name' },
+    tasks: { label: 'Task Instances', icon: <ChecklistIcon className="w-4 h-4" />, sampleField: 'title' },
     businessProfile: { label: 'Business Profile', icon: <DocumentIcon className="w-4 h-4" /> },
-    savedReports: { label: 'Saved Reports', icon: <BarChartIcon className="w-4 h-4" /> },
-    amazonMetrics: { label: 'Amazon Affiliate Data', icon: <BoxIcon className="w-4 h-4" /> },
-    youtubeMetrics: { label: 'YouTube Analytics', icon: <YoutubeIcon className="w-4 h-4" /> },
-    financialGoals: { label: 'Financial Plan', icon: <LightBulbIcon className="w-4 h-4" /> },
-    contentLinks: { label: 'Platform Links (CC)', icon: <ShieldCheckIcon className="w-4 h-4" /> },
+    savedReports: { label: 'Saved Reports', icon: <BarChartIcon className="w-4 h-4" />, sampleField: 'name' },
+    amazonMetrics: { label: 'Amazon Affiliate Data', icon: <BoxIcon className="w-4 h-4" />, sampleField: 'productTitle' },
+    youtubeMetrics: { label: 'YouTube Analytics', icon: <YoutubeIcon className="w-4 h-4" />, sampleField: 'videoTitle' },
+    financialGoals: { label: 'Financial Plan', icon: <LightBulbIcon className="w-4 h-4" />, sampleField: 'title' },
+    contentLinks: { label: 'Platform Links (CC)', icon: <ShieldCheckIcon className="w-4 h-4" />, sampleField: 'title' },
     files_meta: { 
         label: 'Document Metadata', 
         icon: <DocumentIcon className="w-4 h-4" />,
-        warning: 'This purges database records, not the actual files. Manually clear /media/files volume if needed.'
+        warning: 'This purges database records, not the actual files. Manually clear /media/files volume if needed.',
+        sampleField: 'original_name'
     },
     systemSettings: { label: 'App Configuration', icon: <WrenchIcon className="w-4 h-4" /> },
 };
@@ -144,7 +144,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         
         setIsPurging(true);
         try {
-            /* Fixed: Cast Array.from result to string[] to resolve 'unknown[]' assignability error on line 149 */
             const targets = Array.from(purgeSelection) as string[];
             const isFullReset = targets.length === Object.keys(ENTITY_LABELS).length;
             
@@ -230,7 +229,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         if (!confirm("This will merge/overwrite existing data. Proceed?")) return;
         try {
             const savePromises: Promise<any>[] = [];
-            /* Fixed: Explicitly typed Array.from results to prevent 'unknown' iteratees */
             for (const key of Array.from(restoreSelection) as string[]) {
                 if (key === 'templates') {
                     savePromises.push(api.save('templates', restoreData.templates));
@@ -426,28 +424,110 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
             {isRestoreModalOpen && (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                         <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-                            <h3 className="font-bold text-slate-800 text-lg">Selective Restore</h3>
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-lg">Selective Restore Engine</h3>
+                                <p className="text-xs text-slate-500 uppercase font-bold tracking-widest">Select items found in backup file</p>
+                            </div>
                             <button onClick={() => setIsRestoreModalOpen(false)}><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
-                        <div className="p-6 space-y-4">
-                            <div className="max-h-60 overflow-y-auto space-y-1">
-                                {Object.entries(ENTITY_LABELS).map(([key, { label }]) => {
-                                    if (!restoreData.hasOwnProperty(key) && !(key === 'files_meta' && restoreData.hasOwnProperty('businessDocuments'))) return null;
-                                    return (
-                                        /* Fixed: Resolved potential unknown index type warning by ensuring restoreData is handled as any within the closure */
-                                        <label key={key} className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${restoreSelection.has(key) ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
-                                            <input type="checkbox" checked={restoreSelection.has(key)} onChange={() => { const s = new Set(restoreSelection); if(s.has(key)) s.delete(key); else s.add(key); setRestoreSelection(s); }} className="w-5 h-5 text-indigo-600 rounded border-slate-300" />
-                                            <span className="ml-3 font-bold text-slate-700 text-sm">{label}</span>
-                                        </label>
-                                    );
-                                })}
+                        
+                        <div className="flex-1 overflow-hidden flex">
+                            {/* LEFT: Selection List */}
+                            <div className="w-1/2 border-r border-slate-200 overflow-y-auto p-6 bg-slate-50/50">
+                                <div className="space-y-1">
+                                    {Object.entries(ENTITY_LABELS).map(([key, { label, icon }]) => {
+                                        const fileHasData = restoreData.hasOwnProperty(key) || (key === 'files_meta' && restoreData.hasOwnProperty('businessDocuments'));
+                                        if (!fileHasData) return null;
+
+                                        const records = key === 'files_meta' ? restoreData.businessDocuments : restoreData[key];
+                                        const count = Array.isArray(records) ? records.length : (records ? 1 : 0);
+
+                                        return (
+                                            <label key={key} className={`flex items-center justify-between p-3 border rounded-xl cursor-pointer transition-all ${restoreSelection.has(key) ? 'bg-indigo-100 border-indigo-500 shadow-sm' : 'bg-white border-slate-200 hover:bg-slate-100'}`}>
+                                                <div className="flex items-center gap-3">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={restoreSelection.has(key)} 
+                                                        onChange={() => { 
+                                                            const s = new Set(restoreSelection); 
+                                                            if(s.has(key)) s.delete(key); else s.add(key); 
+                                                            setRestoreSelection(s); 
+                                                        }} 
+                                                        className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" 
+                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`p-1.5 rounded-lg ${restoreSelection.has(key) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{icon}</div>
+                                                        <span className={`font-bold text-sm ${restoreSelection.has(key) ? 'text-indigo-900' : 'text-slate-700'}`}>{label}</span>
+                                                    </div>
+                                                </div>
+                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${restoreSelection.has(key) ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                                    {count} Recs
+                                                </span>
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* RIGHT: Data Preview */}
+                            <div className="w-1/2 overflow-y-auto p-6 bg-white">
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Live Data Preview (Samples)</h4>
+                                <div className="space-y-6">
+                                    {restoreSelection.size === 0 ? (
+                                        <div className="h-64 flex flex-col items-center justify-center text-center text-slate-400 space-y-2 opacity-50">
+                                            <SearchCircleIcon className="w-12 h-12" />
+                                            <p className="text-sm font-medium italic">Select a category on the left<br/>to preview its contents here.</p>
+                                        </div>
+                                    ) : (
+                                        Array.from(restoreSelection).map(key => {
+                                            const label = ENTITY_LABELS[key as string]?.label;
+                                            const sampleField = ENTITY_LABELS[key as string]?.sampleField;
+                                            const records = key === 'files_meta' ? restoreData.businessDocuments : restoreData[key as string];
+                                            const samples = Array.isArray(records) ? records.slice(0, 3) : (records ? [records] : []);
+
+                                            return (
+                                                <div key={key as string} className="space-y-2 animate-fade-in">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-1.5 h-4 bg-indigo-500 rounded-full"></div>
+                                                        <h5 className="font-black text-slate-800 text-xs uppercase tracking-tight">{label}</h5>
+                                                    </div>
+                                                    <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 space-y-2">
+                                                        {samples.map((s: any, idx: number) => (
+                                                            <div key={idx} className="text-[11px] flex items-center justify-between border-b border-slate-200 last:border-0 pb-1.5 last:pb-0 font-medium text-slate-600">
+                                                                <span className="truncate pr-4">{sampleField ? (s[sampleField] || 'Untitled') : 'Config Object'}</span>
+                                                                <span className="text-[9px] font-bold text-slate-400 font-mono">#{idx+1}</span>
+                                                            </div>
+                                                        ))}
+                                                        {Array.isArray(records) && records.length > 3 && (
+                                                            <p className="text-[9px] text-indigo-400 italic font-bold">...plus {records.length - 3} more records</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })
+                                    )}
+                                </div>
                             </div>
                         </div>
-                        <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
-                            <button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600">Cancel</button>
-                            <button onClick={handleConfirmRestore} disabled={restoreSelection.size === 0} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md transition-all">Merge Data</button>
+
+                        <div className="p-4 border-t bg-slate-50 flex justify-between items-center px-8">
+                            <div className="flex items-center gap-2">
+                                <InfoIcon className="w-4 h-4 text-indigo-500" />
+                                <p className="text-xs text-slate-500 font-medium italic">Data will be merged into your current environment.</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
+                                <button 
+                                    onClick={handleConfirmRestore} 
+                                    disabled={restoreSelection.size === 0} 
+                                    className="px-8 py-2.5 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all flex items-center gap-2 disabled:opacity-30"
+                                >
+                                    <CheckBadgeIcon className="w-5 h-5" />
+                                    Restore {restoreSelection.size} Categories
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
