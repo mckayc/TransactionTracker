@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
-import type { RawTransaction, TransactionType, Transaction, Category, Payee, User, AuditFinding, FinancialGoal } from '../types';
+import type { RawTransaction, TransactionType, Transaction, Category, Payee, User, AuditFinding } from '../types';
 
 /* Initialize AI using the process.env.API_KEY provided in the environment */
 export const hasApiKey = (): boolean => !!process.env.API_KEY;
@@ -24,7 +25,7 @@ const fileToPart = async (file: File): Promise<any> => {
 };
 
 /**
- * AI-powered document parsing.
+ * Fix: Added extractTransactionsFromFiles to support AI-powered document parsing.
  */
 export const extractTransactionsFromFiles = async (
     files: File[],
@@ -88,7 +89,7 @@ export const extractTransactionsFromFiles = async (
 };
 
 /**
- * AI-powered text parsing.
+ * Fix: Added extractTransactionsFromText to support AI-powered text parsing.
  */
 export const extractTransactionsFromText = async (
     text: string,
@@ -205,7 +206,7 @@ export const suggestCategorization = async (
 };
 
 /**
- * Refactored to use generateContentStream directly for async iteration in Chatbot.tsx.
+ * Fix: Refactored to use generateContentStream directly for async iteration in Chatbot.tsx.
  */
 export const getAiFinancialAnalysis = async (question: string, contextData: object) => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -226,35 +227,6 @@ export const askAiAdvisor = async (prompt: string): Promise<string> => {
         contents: prompt
     });
     return result.text || '';
-};
-
-/**
- * Streams a coaching session for financial planning.
- */
-export const streamFinancialCoaching = async (history: any[], context: { transactions: Transaction[], goals: FinancialGoal[] }) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const contents = history.map(m => ({ 
-        role: (m.role === 'ai' || m.role === 'model') ? 'model' as const : 'user' as const, 
-        parts: [{ text: m.content }] 
-    }));
-    
-    return await ai.models.generateContentStream({
-        model: 'gemini-3-pro-preview',
-        contents,
-        config: {
-            systemInstruction: `You are an elite, fee-only financial coach and planner.
-            Your goal is to guide the user through building a resilient financial plan.
-            Current Goals: ${JSON.stringify(context.goals)}
-            Transaction Volume: ${context.transactions.length} records.
-            
-            COACHING STYLE:
-            1. Ask clarifying questions one at a time.
-            2. Don't give general advice; be specific to their goals.
-            3. Focus on: Debt hierarchy, Savings rate, Emergency fund coverage, and Asset allocation.
-            4. Use markdown for structure.
-            5. Encourage the user to define clear targets if they haven't.`
-        }
-    });
 };
 
 /**
@@ -283,41 +255,17 @@ export const getIndustryDeductions = async (industry: string): Promise<string[]>
 /**
  * Generates a structured financial strategy based on goals and spending.
  */
-export const generateFinancialStrategy = async (transactions: Transaction[], goals: FinancialGoal[], categories: Category[]) => {
+export const generateFinancialStrategy = async (transactions: Transaction[], goals: any[], categories: Category[]) => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    // Aggregating categorical spending for context
-    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
-    const spendingSummary = transactions
-        .filter(tx => !tx.isParent && tx.typeId.includes('expense'))
-        .slice(0, 500) // Context limit
-        .reduce((acc, tx) => {
-            const name = categoryMap.get(tx.categoryId) || 'Other';
-            acc[name] = (acc[name] || 0) + tx.amount;
-            return acc;
-        }, {} as Record<string, number>);
-
-    const prompt = `Perform a deep financial health audit and generate a comprehensive strategy.
-    Goals: ${JSON.stringify(goals)}
-    Spending Profile: ${JSON.stringify(spendingSummary)}
-    
-    Return a JSON object with:
-    - strategy: Comprehensive markdown strategy.
-    - healthScore: Number 0-100.
-    - insights: Array of 3-5 short, critical observation strings.
-    - suggestedBudgets: Array of { categoryId: string, monthlyLimit: number }.`;
-
     const result = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
-        contents: prompt,
+        contents: `Generate a financial strategy. Transactions: ${transactions.length}. Goals: ${JSON.stringify(goals)}.`,
         config: { 
             responseMimeType: 'application/json',
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
                     strategy: { type: Type.STRING },
-                    healthScore: { type: Type.NUMBER },
-                    insights: { type: Type.ARRAY, items: { type: Type.STRING } },
                     suggestedBudgets: {
                         type: Type.ARRAY,
                         items: {
@@ -336,7 +284,7 @@ export const generateFinancialStrategy = async (transactions: Transaction[], goa
 };
 
 /**
- * vision analysis of documents.
+ * Fix: Updated analyzeBusinessDocument to accept the optional progress callback used in DocumentsPage.tsx.
  */
 export const analyzeBusinessDocument = async (file: File, onProgress?: (msg: string) => void): Promise<any> => {
     if (onProgress) onProgress("Running OCR and vision analysis...");
@@ -364,7 +312,7 @@ export const analyzeBusinessDocument = async (file: File, onProgress?: (msg: str
 };
 
 /**
- * streams tax advice.
+ * Fix: Refactored to use generateContentStream for async iteration in BusinessHub.tsx.
  */
 export const streamTaxAdvice = async (history: any[], profile: any) => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -383,7 +331,7 @@ export const streamTaxAdvice = async (history: any[], profile: any) => {
 };
 
 /**
- * AI-powered issue detection.
+ * Fix: Added auditTransactions to support AI-powered issue detection in TransactionAuditor.tsx.
  */
 export const auditTransactions = async (
     transactions: Transaction[],

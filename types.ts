@@ -301,8 +301,7 @@ export interface FinancialGoal {
     targetAmount: number;
     currentAmount: number;
     targetDate?: string;
-    type: 'emergency_fund' | 'debt_payoff' | 'savings' | 'retirement' | 'house' | 'vacation' | 'investment';
-    priority: 'low' | 'medium' | 'high';
+    type: 'emergency_fund' | 'debt_payoff' | 'savings' | 'retirement';
 }
 
 export interface FinancialPlan {
@@ -313,8 +312,6 @@ export interface FinancialPlan {
         categoryId: string;
         monthlyLimit: number;
     }[];
-    healthScore?: number;
-    insights?: string[];
 }
 
 export type AmazonReportType = 'onsite' | 'offsite' | 'creator_connections' | 'unknown';
