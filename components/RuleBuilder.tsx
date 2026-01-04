@@ -1,6 +1,6 @@
-
 import React, { useState } from 'react';
-import type { RuleCondition, Account, Category } from '../types';
+import type { RuleCondition, Account } from '../types';
+/* Added TableIcon to fix 'Cannot find name' error on line 129 */
 import { DeleteIcon, AddIcon, DragHandleIcon, InfoIcon, TableIcon } from './Icons';
 import { generateUUID } from '../utils';
 
@@ -8,10 +8,9 @@ interface RuleBuilderProps {
     items: RuleCondition[];
     onChange: (items: RuleCondition[]) => void;
     accounts: Account[];
-    categories?: Category[];
 }
 
-const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, categories = [] }) => {
+const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts }) => {
     
     // Type guard to filter out any legacy nested groups if they exist in state
     const conditions = items.filter(item => 'field' in item) as RuleCondition[];
@@ -55,16 +54,19 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, ca
         setDraggedIndex(index);
         e.dataTransfer.effectAllowed = 'move';
         
+        // Use the parent row as the drag image so the user sees what they are moving
         const rowElement = e.currentTarget.parentElement;
         if (rowElement) {
              try {
                 e.dataTransfer.setDragImage(rowElement, 0, 0);
-             } catch (err) {}
+             } catch (err) {
+                 // Fallback to default behavior if setDragImage fails
+             }
         }
     };
 
     const handleDragOver = (e: React.DragEvent, index: number) => {
-        e.preventDefault(); 
+        e.preventDefault(); // Necessary to allow dropping
         e.dataTransfer.dropEffect = 'move';
     };
 
@@ -89,8 +91,10 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, ca
                     onDragOver={(e) => handleDragOver(e, index)}
                     onDrop={(e) => handleDrop(e, index)}
                 >
+                    {/* Condition Row */}
                     <div className={`grid grid-cols-1 xl:grid-cols-12 gap-3 items-center bg-white p-3 rounded border border-slate-200 shadow-sm z-10 relative transition-all ${draggedIndex === index ? 'opacity-50 bg-indigo-50 border-indigo-300' : ''}`}>
                         
+                        {/* Drag Handle & Index */}
                         <div className="xl:col-span-1 flex items-center gap-2">
                             <div 
                                 className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600 p-1"
@@ -104,23 +108,21 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, ca
                             </div>
                         </div>
                         
+                        {/* Field Selector */}
                         <div className="xl:col-span-2">
-                            <div className="flex items-center gap-1.5 mb-1 xl:hidden">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Field</label>
-                            </div>
                             <select 
                                 value={condition.field} 
                                 onChange={(e) => handleUpdateCondition(index, 'field', e.target.value)}
                                 className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white font-bold text-indigo-800"
                             >
                                 <option value="description">Description</option>
-                                <option value="categoryId">Category</option>
                                 <option value="amount">Amount</option>
                                 <option value="accountId">Account</option>
                                 <option value="metadata">Raw Metadata Field</option>
                             </select>
                         </div>
 
+                        {/* Metadata Column Key (WIDER) */}
                         <div className={`${condition.field === 'metadata' ? 'xl:col-span-3' : 'hidden'}`}>
                             <div className="flex items-center gap-2 relative">
                                 <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -130,22 +132,27 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, ca
                                     type="text" 
                                     value={condition.metadataKey || ''} 
                                     onChange={(e) => handleUpdateCondition(index, 'metadataKey', e.target.value)}
-                                    placeholder="Column Name"
+                                    placeholder="Column Name (e.g. Reference)"
                                     className="w-full p-2 pl-8 text-sm border border-indigo-200 rounded-md bg-indigo-50/50 focus:bg-white placeholder:text-indigo-300 font-bold"
                                 />
+                                <div className="group relative flex-shrink-0">
+                                    <InfoIcon className="w-4 h-4 text-indigo-400 cursor-help" />
+                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-slate-800 text-white text-[11px] rounded-xl shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20 leading-relaxed">
+                                        <p className="font-bold border-b border-white/10 pb-1 mb-1">Column Matching</p>
+                                        Enter the exact column header from your CSV. Use the inspector drawer in the import screen to copy keys.
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
+                        {/* Operator */}
                         <div className={`${condition.field === 'metadata' ? 'xl:col-span-2' : 'xl:col-span-3'}`}>
-                             <div className="flex items-center gap-1.5 mb-1 xl:hidden">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Operator</label>
-                            </div>
                             <select 
                                 value={condition.operator} 
                                 onChange={(e) => handleUpdateCondition(index, 'operator', e.target.value)}
                                 className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white font-medium"
                             >
-                                {(condition.field === 'description' || condition.field === 'metadata' || condition.field === 'categoryId') && (
+                                {(condition.field === 'description' || condition.field === 'metadata') && (
                                     <>
                                         <option value="contains">Contains</option>
                                         <option value="does_not_contain">Does Not Contain</option>
@@ -172,51 +179,30 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, ca
                             </select>
                         </div>
 
+                        {/* Value Input */}
                         <div className={`${condition.operator === 'exists' ? 'hidden' : condition.field === 'metadata' ? 'xl:col-span-3' : 'xl:col-span-5'}`}>
-                            <div className="flex items-center gap-1.5 mb-1 xl:hidden">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Target Value</label>
-                            </div>
-                            <div className="relative group/val">
-                                {condition.field === 'accountId' && condition.operator === 'equals' ? (
-                                    <select 
-                                        value={condition.value} 
-                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                        className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
-                                    >
-                                        <option value="">Select Account...</option>
-                                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                                    </select>
-                                ) : condition.field === 'categoryId' && condition.operator === 'equals' ? (
-                                    <select 
-                                        value={condition.value} 
-                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                        className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
-                                    >
-                                        <option value="">Select Category...</option>
-                                        {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                                    </select>
-                                ) : (
-                                    <input 
-                                        type={condition.field === 'amount' ? 'number' : 'text'} 
-                                        step={condition.field === 'amount' ? '0.01' : undefined}
-                                        value={condition.value} 
-                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                        placeholder="Value"
-                                        className={`w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white`}
-                                    />
-                                )}
-                                
-                                {condition.field === 'description' && (
-                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center group/tip">
-                                        <InfoIcon className="w-3.5 h-3.5 text-slate-300 cursor-help hover:text-indigo-500 transition-colors" />
-                                        <div className="absolute bottom-full right-0 mb-2 w-48 p-2 bg-slate-800 text-white text-[10px] rounded shadow-xl opacity-0 group-hover/tip:opacity-100 pointer-events-none transition-opacity z-20 leading-relaxed">
-                                            Smart Match: This will check both the current name and the **original bank text**.
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                            {condition.field === 'accountId' && condition.operator === 'equals' ? (
+                                <select 
+                                    value={condition.value} 
+                                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                    className="w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white"
+                                >
+                                    <option value="">Select Account...</option>
+                                    {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                </select>
+                            ) : (
+                                <input 
+                                    type={condition.field === 'amount' ? 'number' : 'text'} 
+                                    step={condition.field === 'amount' ? '0.01' : undefined}
+                                    value={condition.value} 
+                                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                    placeholder="Value"
+                                    className={`w-full p-2 text-sm border rounded-md bg-slate-50 focus:bg-white ${condition.field === 'metadata' ? 'border-indigo-100 font-medium' : ''}`}
+                                />
+                            )}
                         </div>
 
+                        {/* Delete Button */}
                         <div className="xl:col-span-1 flex justify-end">
                             <button type="button" onClick={() => handleDeleteCondition(index)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all flex-shrink-0" title="Remove Condition">
                                 <DeleteIcon className="w-5 h-5" />
@@ -224,9 +210,12 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, ca
                         </div>
                     </div>
 
+                    {/* Logic Connector (if not last item) */}
                     {index < conditions.length - 1 && (
                         <div className="flex justify-center py-2 relative">
+                            {/* Vertical Line */}
                             <div className="absolute top-0 bottom-0 w-px bg-slate-300 left-1/2 -translate-x-1/2 -z-0"></div>
+                            
                             <button 
                                 type="button" 
                                 onClick={() => toggleLogic(index)} 

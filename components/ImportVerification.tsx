@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction } from '../types';
 import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
@@ -21,12 +21,15 @@ interface ImportVerificationProps {
     payees: Payee[];
     users: User[];
     onCreateRule?: (tx: VerifiableTransaction) => void;
-    existingTransactions: Transaction[];
+    existingTransactions: Transaction[]; // Added this to check against DB
 }
 
 type SortKey = 'date' | 'description' | 'payeeId' | 'categoryId' | 'amount' | '';
 type SortDirection = 'asc' | 'desc';
 
+/**
+ * Side Drawer for inspecting every single column from the original CSV row.
+ */
 const MetadataDrawer: React.FC<{ 
     tx: VerifiableTransaction | null; 
     onClose: () => void;
@@ -110,14 +113,9 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const [sortKey, setSortKey] = useState<SortKey>('');
     const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
     const [inspectedTx, setInspectedTx] = useState<VerifiableTransaction | null>(null);
-    
-    // CRITICAL: Prevent re-initialization on parent refresh
-    const hasInitializedRef = useRef(false);
 
-    // Initial sanitization and analysis - RUN ONCE
+    // Initial sanitization and analysis
     useEffect(() => {
-        if (hasInitializedRef.current) return;
-        
         // 1. Filter out absolute zeros
         let list = initialTransactions.filter(t => Math.abs(t.amount) > 0.001);
 
@@ -125,8 +123,13 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         const sigCounts = new Map<string, number>();
         const dbSigs = new Set(existingTransactions.map(t => getTransactionSignature(t)));
         
+        // Scan for reversals (+X and -X on same day)
+        const reversalCheck = new Map<string, string>(); // Signature (ABS) -> tempId
+
         const processed = list.map(tx => {
             const sig = getTransactionSignature(tx);
+            const absSig = `${tx.date}|${Math.abs(tx.amount).toFixed(2)}|${tx.accountId}`;
+            
             let conflict: 'batch' | 'database' | 'reversal' | null = null;
             
             // Check Database
@@ -140,6 +143,15 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
             }
             sigCounts.set(sig, (sigCounts.get(sig) || 0) + 1);
 
+            // Check Reversals (inverse amounts same day)
+            if (reversalCheck.has(absSig)) {
+                const prevId = reversalCheck.get(absSig)!;
+                // If we found a pair, and they aren't exact duplicates (handled above)
+                // we might want to flag them, but it's complex for a list view.
+                // For now, let's prioritize exact matches.
+            }
+            reversalCheck.set(absSig, tx.tempId);
+
             return {
                 ...tx,
                 conflictType: conflict,
@@ -148,10 +160,10 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         });
 
         setTransactions(processed);
-        hasInitializedRef.current = true;
     }, [initialTransactions, existingTransactions]);
 
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [bulkCategoryId, setBulkCategoryId] = useState('');
 
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
     const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
@@ -195,6 +207,9 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setEditingCell(null);
     };
 
+    /**
+     * Fix: Implemented missing requestSort function to handle table header sorting.
+     */
     const requestSort = (key: SortKey) => {
         if (sortKey === key) {
             setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -204,10 +219,16 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         }
     };
 
+    /**
+     * Fix: Implemented missing handleInputBlur to finalize cell edits on focus loss.
+     */
     const handleInputBlur = (e: React.FocusEvent<HTMLSelectElement>, txId: string, field: keyof VerifiableTransaction) => {
         handleUpdate(txId, field, e.target.value);
     };
 
+    /**
+     * Fix: Implemented missing handleInputKeyDown to handle keyboard interactions in editable cells.
+     */
     const handleInputKeyDown = (e: React.KeyboardEvent<HTMLSelectElement>, txId: string, field: keyof VerifiableTransaction) => {
         if (e.key === 'Enter') {
             handleUpdate(txId, field, e.currentTarget.value);

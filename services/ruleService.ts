@@ -1,56 +1,20 @@
-import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account, Category } from '../types';
 
-// Added export to fix 'Module declares evaluateCondition locally but it is not exported' error in RulePreviewModal.tsx
-export const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = [], categories: Category[] = []): boolean => {
+import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
+
+const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
     let txValue: any;
     
     if (!condition || !condition.field) return true;
 
     if (condition.field === 'description') {
-        const currentDesc = (tx.description || '').toLowerCase();
-        const originalDesc = (tx.originalDescription || '').toLowerCase();
+        txValue = (tx.description || '').toLowerCase();
         const condValue = String(condition.value || '').toLowerCase();
-
-        const checkValue = (val: string) => {
-            switch (condition.operator) {
-                case 'contains': return val.includes(condValue);
-                case 'does_not_contain': return !val.includes(condValue);
-                case 'equals': return val === condValue;
-                case 'starts_with': return val.startsWith(condValue);
-                case 'ends_with': return val.endsWith(condValue);
-                default: return false;
-            }
-        };
-
-        // For negative operators (does_not_contain), it must be true for BOTH
-        if (condition.operator === 'does_not_contain') {
-            return checkValue(currentDesc) && (originalDesc ? checkValue(originalDesc) : true);
-        }
-
-        // For positive operators, if either matches, it's a match
-        return checkValue(currentDesc) || (originalDesc ? checkValue(originalDesc) : false);
-
-    } else if (condition.field === 'categoryId' || condition.field === 'category') {
-        // Handle both the assigned internal ID and the raw bank category string
-        const internalId = tx.categoryId || '';
-        const rawString = (tx.category || '').toLowerCase();
-        const condValue = String(condition.value || '').toLowerCase();
-
-        // Also check against the name of the category currently assigned to the transaction
-        const assignedCategory = categories.find(c => c.id === internalId);
-        const assignedName = (assignedCategory?.name || '').toLowerCase();
-
         switch (condition.operator) {
-            case 'equals': 
-                return internalId === condition.value || assignedName === condValue || rawString === condValue;
-            case 'contains': 
-                return assignedName.includes(condValue) || rawString.includes(condValue);
-            case 'does_not_contain': 
-                return !assignedName.includes(condValue) && !rawString.includes(condValue);
-            case 'starts_with': 
-                return assignedName.startsWith(condValue) || rawString.startsWith(condValue);
-            case 'ends_with': 
-                return assignedName.endsWith(condValue) || rawString.endsWith(condValue);
+            case 'contains': return txValue.includes(condValue);
+            case 'does_not_contain': return !txValue.includes(condValue);
+            case 'equals': return txValue === condValue;
+            case 'starts_with': return txValue.startsWith(condValue);
+            case 'ends_with': return txValue.endsWith(condValue);
             default: return false;
         }
     } else if (condition.field === 'metadata') {
@@ -99,20 +63,20 @@ export const evaluateCondition = (tx: RawTransaction | Transaction, condition: R
     return false;
 };
 
-const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule, accounts: Account[], categories: Category[]): boolean => {
+const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule, accounts: Account[]): boolean => {
     if (rule.conditions && rule.conditions.length > 0) {
         const validConditions = rule.conditions.filter(c => 'field' in c) as RuleCondition[];
         
         if (validConditions.length === 0) return true;
 
-        let result = evaluateCondition(tx, validConditions[0], accounts, categories);
+        let result = evaluateCondition(tx, validConditions[0], accounts);
 
         for (let i = 0; i < validConditions.length - 1; i++) {
             const currentCond = validConditions[i];
             const nextCond = validConditions[i + 1];
             const logic = currentCond.nextLogic || 'AND';
 
-            const nextResult = evaluateCondition(tx, nextCond, accounts, categories);
+            const nextResult = evaluateCondition(tx, nextCond, accounts);
 
             if (logic === 'AND') {
                 result = result && nextResult;
@@ -124,13 +88,9 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule,
         return result;
     }
 
-    // Fallback to legacy fields
+    // Fallback to legacy
     if (rule.descriptionContains) {
-        const currentDesc = tx.description.toLowerCase();
-        const originalDesc = (tx.originalDescription || '').toLowerCase();
-        const matchValue = rule.descriptionContains.toLowerCase();
-        
-        if (!currentDesc.includes(matchValue) && !originalDesc.includes(matchValue)) {
+        if (!tx.description.toLowerCase().includes(rule.descriptionContains.toLowerCase())) {
             return false;
         }
     }
@@ -151,8 +111,7 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule,
 export const applyRulesToTransactions = (
   rawTransactions: RawTransaction[],
   rules: ReconciliationRule[],
-  accounts: Account[] = [],
-  categories: Category[] = []
+  accounts: Account[] = []
 ): (RawTransaction & { categoryId?: string; isIgnored?: boolean })[] => {
   if (!rules || rules.length === 0) {
     return rawTransactions;
@@ -162,7 +121,7 @@ export const applyRulesToTransactions = (
     let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean } = { ...tx };
     
     for (const rule of rules) {
-      if (matchesRule(modifiedTx, rule, accounts, categories)) {
+      if (matchesRule(modifiedTx, rule, accounts)) {
         if (rule.skipImport) {
             modifiedTx.isIgnored = true;
         }
@@ -197,13 +156,12 @@ export const applyRulesToTransactions = (
 export const findMatchingTransactions = (
   transactions: Transaction[],
   rule: ReconciliationRule,
-  accounts: Account[] = [],
-  categories: Category[] = []
+  accounts: Account[] = []
 ): { original: Transaction; updated: Transaction }[] => {
   const matchedPairs: { original: Transaction; updated: Transaction }[] = [];
 
   transactions.forEach(tx => {
-    if (matchesRule(tx, rule, accounts, categories)) {
+    if (matchesRule(tx, rule, accounts)) {
       const updatedTx = { ...tx };
       let changed = false;
 

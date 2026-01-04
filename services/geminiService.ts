@@ -1,4 +1,3 @@
-
 import { Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, FinancialPlan } from '../types';
 
@@ -116,77 +115,13 @@ export const streamTaxAdvice = async (history: ChatMessage[], profile: BusinessP
     });
 };
 
-export const generateFinancialStrategy = async (transactions: Transaction[], goals: FinancialGoal[], categories: Category[]): Promise<FinancialPlan> => {
-    const last6Months = new Date();
-    last6Months.setMonth(last6Months.getMonth() - 6);
-    
-    const spendingSummary = transactions
-        .filter(t => !t.isParent && t.typeId.includes('expense') && new Date(t.date) >= last6Months)
-        .reduce((acc, t) => {
-            const cat = categories.find(c => c.id === t.categoryId)?.name || 'Other';
-            acc[cat] = (acc[cat] || 0) + t.amount;
-            return acc;
-        }, {} as Record<string, number>);
-
-    const prompt = `Act as an expert world-class Financial Advisor.
-    Analyze the user's spending (6-month avg by category): ${JSON.stringify(spendingSummary)}
-    And their financial goals: ${JSON.stringify(goals)}.
-    
-    Provide a comprehensive, encouraging, and actionable financial plan.
-    Structure the response as JSON with the following fields:
-    - strategy: (string, detailed markdown analysis with headers and lists)
-    - suggestedBudgets: (array of { categoryId: string, monthlyLimit: number })
-    - priorityTasks: (array of { title: string, description: string, priority: 'high'|'medium'|'low' })
-    
-    Use the actual Category IDs provided in the spending data for suggestedBudgets if possible.
-    If you suggest a category not in the current list, use 'Other'.`;
-
+export const generateFinancialStrategy = async (transactions: Transaction[], goals: FinancialGoal[], categories: Category[]) => {
     const result = await callAi({
         model: 'gemini-3-pro-preview',
-        contents: { parts: [{ text: prompt }] },
-        config: { 
-            responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    strategy: { type: Type.STRING },
-                    suggestedBudgets: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                categoryId: { type: Type.STRING },
-                                monthlyLimit: { type: Type.NUMBER }
-                            },
-                            required: ['categoryId', 'monthlyLimit']
-                        }
-                    },
-                    priorityTasks: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                title: { type: Type.STRING },
-                                description: { type: Type.STRING },
-                                priority: { type: Type.STRING }
-                            },
-                            required: ['title', 'description', 'priority']
-                        }
-                    }
-                },
-                required: ['strategy', 'suggestedBudgets', 'priorityTasks']
-            }
-        }
+        contents: { parts: [{ text: `Generate a financial strategy based on these goals: ${JSON.stringify(goals)}` }] },
+        config: { responseMimeType: 'application/json' }
     });
-
-    const parsed = JSON.parse(result.text);
-    return {
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        strategy: parsed.strategy,
-        suggestedBudgets: parsed.suggestedBudgets || [],
-        priorityTasks: parsed.priorityTasks || []
-    };
+    return JSON.parse(result.text);
 };
 
 export const askAiAdvisor = async (prompt: string): Promise<string> => {

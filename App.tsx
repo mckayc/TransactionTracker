@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
@@ -35,12 +36,6 @@ const App: React.FC = () => {
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncError, setSyncError] = useState(false);
-    
-    // Safety lock to prevent background refreshes from clobbering active edits
-    const isEditingRef = useRef(false);
-
-    // Added to fix 'Cannot find name onChatToggle' on line 455
-    const onChatToggle = useCallback(() => setIsChatOpen(prev => !prev), []);
 
     // Core Data State
     const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -76,11 +71,6 @@ const App: React.FC = () => {
     const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
 
     const loadInitialData = async (showLoader = true) => {
-        if (isEditingRef.current && !showLoader) return; 
-
-        const bootStart = performance.now();
-        console.log(`[APP] Boot sequence started at ${new Date().toISOString()}`);
-
         if (showLoader) {
             setIsLoading(true);
             setLoadError(null);
@@ -90,14 +80,7 @@ const App: React.FC = () => {
         }
 
         try {
-            const fetchStart = performance.now();
-            console.log(`[APP] Requesting payload from /api/data...`);
-            
             const data = await api.loadAll();
-            const fetchEnd = performance.now();
-            console.log(`[APP] Payload received. Network & Server time: ${(fetchEnd - fetchStart).toFixed(2)}ms`);
-
-            const processingStart = performance.now();
             
             // 1. Transaction Types & Migration
             const defaultTypes: TransactionType[] = [
@@ -113,7 +96,7 @@ const App: React.FC = () => {
             
             let loadedTypes = data.transactionTypes || defaultTypes;
 
-            // Perform Migration logic
+            // Perform Migration: Fix cases where "Tax Payment" or similar are marked as expense
             let migrationHappened = false;
             loadedTypes = loadedTypes.map((t: TransactionType) => {
                 const nameLower = t.name.toLowerCase();
@@ -137,13 +120,10 @@ const App: React.FC = () => {
                 migrationHappened = true;
             }
 
-            if (migrationHappened) {
-                console.log(`[APP] Rules migration applied to transaction types.`);
-                await api.save('transactionTypes', loadedTypes);
-            }
+            if (migrationHappened) await api.save('transactionTypes', loadedTypes);
             setTransactionTypes(loadedTypes);
 
-            // 2. Hydrate State
+            // 2. Categories
             setCategories(data.categories || [
                 { id: 'groceries', name: 'Groceries' },
                 { id: 'dining', name: 'Dining' },
@@ -186,20 +166,13 @@ const App: React.FC = () => {
             setContentLinks(data.contentLinks || []);
             setSystemSettings(data.systemSettings || {});
             
-            const processingEnd = performance.now();
-            console.log(`[APP] React State Hydration took ${(processingEnd - processingStart).toFixed(2)}ms`);
-
             if (showLoader) setIsLoading(false);
             setIsSyncing(false);
             document.body.classList.add('loaded');
-            
-            const totalDuration = (performance.now() - bootStart).toFixed(2);
-            console.log(`[APP] Boot complete. Total Load Time: ${totalDuration}ms`);
         } catch (err) {
-            console.error("[APP] CRITICAL BOOT ERROR:", err);
-            const errorMessage = err instanceof Error ? err.message : String(err);
+            console.error("Failed to load initial data", err);
             if (showLoader) {
-                setLoadError(`Network or database timeout. Check if server is running. Error: ${errorMessage}`);
+                setLoadError("Engine startup failed after multiple attempts. Please verify your server connection and firewall.");
             } else {
                 setSyncError(true);
                 setIsSyncing(false);
@@ -214,15 +187,13 @@ const App: React.FC = () => {
         // Listen for sync messages from other tabs
         const handleSync = (event: MessageEvent) => {
             if (event.data === 'REFRESH_REQUIRED') {
-                loadInitialData(false); 
+                loadInitialData(false); // Background refresh
             }
         };
         syncChannel.addEventListener('message', handleSync);
 
         // Also refresh when tab regains focus
-        const handleFocus = () => {
-            loadInitialData(false);
-        };
+        const handleFocus = () => loadInitialData(false);
         window.addEventListener('focus', handleFocus);
 
         return () => {
@@ -232,31 +203,22 @@ const App: React.FC = () => {
     }, []);
 
     const updateData = async (key: string, value: any, setter: Function) => {
-        isEditingRef.current = true;
-        setter(value); 
+        setter(value);
         try { 
             await api.save(key, value); 
             syncChannel.postMessage('REFRESH_REQUIRED');
         } catch (e) { 
-            console.error(`[APP] Failed to persist key: ${key}`, e);
-            const errorMessage = e instanceof Error ? e.message : String(e);
-            alert(`Error saving to database: ${errorMessage}`);
-        } finally {
-            isEditingRef.current = false;
+            console.error(`Failed to persist key: ${key}`, e); 
+            // Optional: Show toast error here
         }
     };
 
-    const handleTransactionsAdded = async (newTxs: Transaction[], newCats: Category[]) => {
-        setIsSyncing(true);
+    const handleTransactionsAdded = (newTxs: Transaction[], newCats: Category[]) => {
         const updatedTxs = [...transactions, ...newTxs];
         const updatedCats = [...categories];
         newCats.forEach(cat => { if (!updatedCats.find(c => c.id === cat.id)) updatedCats.push(cat); });
-        
-        await updateData('transactions', updatedTxs, setTransactions);
-        if (newCats.length > 0) await updateData('categories', updatedCats, setCategories);
-        
-        await loadInitialData(false);
-        setIsSyncing(false);
+        updateData('transactions', updatedTxs, setTransactions);
+        updateData('categories', updatedCats, setCategories);
     };
 
     const userInitials = useMemo(() => {
@@ -291,16 +253,19 @@ const App: React.FC = () => {
                 );
             case 'transactions':
                 return (
-                    /**
-                     * Fix for: Error in file App.tsx on line 296: Type ... is not assignable to type 'IntrinsicAttributes & AllTransactionsProps'.
-                     * Property 'transactions' does not exist on type 'IntrinsicAttributes & AllTransactionsProps'.
-                     */
                     <AllTransactions 
-                        accounts={accounts} categories={categories} tags={tags}
+                        transactions={transactions} accounts={accounts} categories={categories} tags={tags}
                         transactionTypes={transactionTypes} payees={payees} users={users}
                         onUpdateTransaction={(t) => updateData('transactions', transactions.map(x => x.id === t.id ? t : x), setTransactions)}
                         onAddTransaction={(t) => updateData('transactions', [...transactions, t], setTransactions)}
                         onDeleteTransaction={(id) => updateData('transactions', transactions.filter(x => x.id !== id), setTransactions)}
+                        onDeleteTransactions={(ids) => updateData('transactions', transactions.filter(x => !ids.includes(x.id)), setTransactions)}
+                        onSaveRule={(r) => { const exists = rules.findIndex(x => x.id === r.id); const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r]; updateData('reconciliationRules', updated, setRules); }}
+                        onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
+                        onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
+                        onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
+                        onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
+                        onSaveReport={(r) => updateData('savedReports', [...savedReports, r], setSavedReports)}
                     />
                 );
             case 'calendar':
@@ -350,15 +315,7 @@ const App: React.FC = () => {
             case 'hub':
                 return <BusinessHub profile={businessProfile} onUpdateProfile={(p) => updateData('businessProfile', p, setBusinessProfile)} chatSessions={chatSessions} onUpdateChatSessions={(s) => updateData('chatSessions', s, setChatSessions)} transactions={transactions} accounts={accounts} categories={categories} />;
             case 'plan':
-                return <FinancialPlanPage 
-                    transactions={transactions} 
-                    goals={financialGoals} 
-                    onSaveGoals={(g) => updateData('financialGoals', g, setFinancialGoals)} 
-                    plan={financialPlan} 
-                    onSavePlan={(p) => updateData('financialPlan', p, setFinancialPlan)} 
-                    categories={categories}
-                    onSaveTask={(t) => updateData('tasks', [...tasks, t], setTasks)}
-                />;
+                return <FinancialPlanPage transactions={transactions} goals={financialGoals} onSaveGoals={(g) => updateData('financialGoals', g, setFinancialGoals)} plan={financialPlan} onSavePlan={(p) => updateData('financialPlan', p, setFinancialPlan)} categories={categories} />;
             case 'integrations':
                 return <IntegrationsPage onNavigate={(v) => setCurrentView(v)} />;
             case 'integration-amazon':
@@ -394,10 +351,7 @@ const App: React.FC = () => {
                         rules={rules} accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} transactions={transactions}
                         onSaveRule={(r) => { const exists = rules.findIndex(x => x.id === r.id); const updated = exists >= 0 ? rules.map(x => x.id === r.id ? r : x) : [...rules, r]; updateData('reconciliationRules', updated, setRules); }}
                         onDeleteRule={(id) => updateData('reconciliationRules', rules.filter(x => x.id !== id), setRules)}
-                        onUpdateTransactions={async (txs) => { 
-                            const txMap = new Map(txs.map(t => [t.id, t])); 
-                            await updateData('transactions', transactions.map(t => txMap.has(t.id) ? txMap.get(t.id)! : t), setTransactions); 
-                        }}
+                        onUpdateTransactions={(txs) => { const txMap = new Map(txs.map(t => [t.id, t])); updateData('transactions', transactions.map(t => txMap.has(t.id) ? txMap.get(t.id)! : t), setTransactions); }}
                         onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
                         onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
                         onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
@@ -461,7 +415,7 @@ const App: React.FC = () => {
                 </div>
             )}
 
-            <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onChatToggle={onChatToggle} />
+            <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onChatToggle={() => setIsChatOpen(!isChatOpen)} />
             <main className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
                 <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 z-30">
                     <div className="flex items-center gap-4">
@@ -469,7 +423,7 @@ const App: React.FC = () => {
                         <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest truncate">{currentView.replace(/integration-/, '').replace(/-/g, ' ')}</h2>
                     </div>
                     <div className="flex items-center gap-4">
-                        <button onClick={onChatToggle} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"><SparklesIcon className="w-5 h-5" /></button>
+                        <button onClick={() => setIsChatOpen(true)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"><SparklesIcon className="w-5 h-5" /></button>
                         <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border-2 border-white shadow-sm">{userInitials}</div>
                     </div>
                 </header>

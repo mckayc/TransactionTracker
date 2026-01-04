@@ -1,3 +1,4 @@
+
 export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation' | 'tax' | 'savings' | 'debt';
 
 export interface TransactionType {
@@ -56,8 +57,6 @@ export interface RawTransaction {
     location?: string;
     sourceFilename?: string;
     originalDescription?: string;
-    originalDate?: string;
-    originalAmount?: number;
     payeeId?: string;
     userId?: string;
     tagIds?: string[];
@@ -87,7 +86,7 @@ export interface DuplicatePair {
 }
 
 export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'exists';
-export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata' | 'categoryId' | 'category';
+export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata';
 export type RuleLogic = 'AND' | 'OR';
 
 export interface RuleCondition {
@@ -313,11 +312,6 @@ export interface FinancialPlan {
     suggestedBudgets: {
         categoryId: string;
         monthlyLimit: number;
-    }[];
-    priorityTasks?: {
-        title: string;
-        description: string;
-        priority: 'high' | 'medium' | 'low';
     }[];
 }
 

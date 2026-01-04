@@ -181,7 +181,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                  <form onSubmit={handleSave} className="p-8 space-y-8 overflow-y-auto bg-slate-50/50">
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Friendly Label</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Monthly Netflix Subscription" className="w-full p-3 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:ring-0 transition-all font-bold text-slate-800 text-lg" required />
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Monthly Netflix Subscription" className="w-full p-3 border-2 border-slate-100 rounded-xl focus:border-indigo-500 focus:ring-0 transition-all font-bold text-slate-800 text-lg" required />
                     </div>
                     
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
@@ -189,7 +189,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                             <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">1</div>
                             If transactions match these conditions
                         </h3>
-                        <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} categories={categories} />
+                        <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
                     </div>
                     
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
