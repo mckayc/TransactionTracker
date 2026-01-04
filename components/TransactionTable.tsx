@@ -76,7 +76,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onToggleSelectAll = () => {},
   onBulkSelection,
   deleteConfirmationMessage = 'Are you sure you want to delete this transaction? This action cannot be undone.',
-  visibleColumns = new Set(['date', 'description', 'payee', 'category', 'tags', 'account', 'type', 'amount', 'actions', 'location']),
+  visibleColumns = new Set(['date', 'description', 'payee', 'category', 'tags', 'account', 'type', 'amount', 'actions']),
   onManageLink,
   onSplit
 }) => {

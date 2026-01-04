@@ -12,14 +12,13 @@ const cleanDescription = (string: string): string => {
   cleaned = cleaned.replace(/[,.]+$/, '');
   
   // Strip common bank prefix noises
-  cleaned = cleaned.replace(/^(Pos Debit|Debit Purchase|Recurring Payment|Preauthorized Debit|Checkcard|Visa Purchase|ACH Withdrawal|ACH Deposit From) -? /i, '');
+  cleaned = cleaned.replace(/^(Pos Debit|Debit Purchase|Recurring Payment|Preauthorized Debit|Checkcard|Visa Purchase) - /i, '');
   
-  // Strip merchant ID garbage and long numeric strings
+  // Strip merchant ID garbage if detected
   cleaned = cleaned.replace(/PAYMENTS ID NBR:.*$/i, '');
   cleaned = cleaned.replace(/ID NBR:.*$/i, '');
   cleaned = cleaned.replace(/EDI PYMNTS.*$/i, '');
   cleaned = cleaned.replace(/ACH ITEMS.*$/i, '');
-  cleaned = cleaned.replace(/\d{10,}.*$/i, ''); // Strip strings of 10+ digits
   
   return cleaned.trim();
 };
@@ -390,6 +389,7 @@ export const parseYouTubeReport = async (file: File, onProgress: (msg: string) =
             subscribersGained: parseNum(colMap.subscribers),
             estimatedRevenue: parseNum(colMap.revenue),
             impressions: parseNum(colMap.impressions),
+            // Fix: Changed colBox to colMap to fix 'Cannot find name' error
             ctr: parseNum(colMap.ctr)
         });
     }
@@ -459,7 +459,7 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
         const parsedDate = parseDate(dateStr);
         if (!parsedDate) continue;
 
-        // Build Metadata for all columns - preserves raw information
+        // Build Metadata for all columns
         const metadata: Record<string, string> = {};
         rawHeaders.forEach((header, idx) => {
             if (parts[idx] !== undefined) {
@@ -475,18 +475,6 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
             description = parts[colMap.reference];
         } else if (colMap.payee > -1 && parts[colMap.payee]) {
             description = parts[colMap.payee];
-        }
-        
-        // --- Location Extraction Logic ---
-        // Patterns: DESCRIPTION ... CITY ST (optional zip)
-        // Example: "MAVERIK #459 PLEASANT GROV UT"
-        let location = undefined;
-        // Regex looks for 2+ uppercase letters (City) followed by exactly 2 uppercase letters (State) at the end
-        const locationMatch = description.match(/\s+([A-Z\s]{2,})\s+([A-Z]{2})(?:\s+\d{5})?$/i);
-        if (locationMatch) {
-            location = `${toTitleCase(locationMatch[1].trim())}, ${locationMatch[2].toUpperCase()}`;
-            // Clean location suffix from description
-            description = description.replace(locationMatch[0], '').trim();
         }
         
         description = cleanDescription(description);
@@ -518,9 +506,8 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
             category: rawType || (colMap.category > -1 ? parts[colMap.category] : 'Uncategorized'),
             accountId: accountId,
             typeId: isIncome ? incomeType.id : expenseType.id,
-            location: location,
             sourceFilename: sourceName,
-            metadata // Inject the raw source data for inspection
+            metadata // Inject the raw source data
         });
     }
 

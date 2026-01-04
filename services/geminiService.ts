@@ -1,384 +1,170 @@
 
-import { GoogleGenAI, Type } from '@google/genai';
-import type { RawTransaction, TransactionType, Transaction, Category, Payee, User, AuditFinding } from '../types';
+import { Type } from '@google/genai';
+import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, FinancialPlan } from '../types';
 
-/* Initialize AI using the process.env.API_KEY provided in the environment */
-export const hasApiKey = (): boolean => !!process.env.API_KEY;
+// In self-hosted mode, we assume the server has the key
+export const hasApiKey = (): boolean => true;
 
-/**
- * Helper to convert a File object to a Gemini inlineData part for vision tasks.
- */
-const fileToPart = async (file: File): Promise<any> => {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const base64 = (reader.result as string).split(',')[1];
-            resolve({
-                inlineData: {
-                    data: base64,
-                    mimeType: file.type
-                }
-            });
+const callAi = async (params: { model: string; contents: any; config?: any }) => {
+    const response = await fetch('/api/ai/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+    });
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "AI Request Failed");
+    }
+    return await response.json();
+};
+
+async function* callAiStream(params: { model: string; contents: any; config?: any }) {
+    const response = await fetch('/api/ai/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+    });
+
+    if (!response.ok) throw new Error("AI Stream Failed");
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    while (reader) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+            if (line.startsWith('data: ')) {
+                try {
+                    const data = JSON.parse(line.slice(6));
+                    yield data;
+                } catch (e) {}
+            }
+        }
+    }
+}
+
+const fileToGenerativePart = async (file: File) => {
+    if (file.type === 'application/pdf') {
+        const buffer = await file.arrayBuffer();
+        const base64 = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+        return [{ inlineData: { data: base64, mimeType: file.type } }];
+    }
+    const text = await file.text();
+    return [{ text: `Content of ${file.name}:\n${text}` }];
+};
+
+export const extractTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+    onProgress("Preparing documents...");
+    let allParts: any[] = [];
+    for (const f of files) {
+        const parts = await fileToGenerativePart(f);
+        allParts = [...allParts, ...parts];
+    }
+    
+    onProgress("AI analyzing statements...");
+    const result = await callAi({
+        model: 'gemini-3-flash-preview',
+        contents: { parts: [{ text: "Extract transactions as JSON. Identify if Bank or Credit Card." }, ...allParts] },
+        config: { responseMimeType: 'application/json' }
+    });
+    
+    const parsed = JSON.parse(result.text);
+    
+    // Find default types or fall back to first one
+    const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
+    const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
+
+    return (parsed.transactions || []).map((tx: any) => {
+        const isIncome = tx.amount > 0;
+        const targetType = isIncome ? incomeType : expenseType;
+        return {
+            ...tx,
+            accountId,
+            typeId: targetType?.id || 'unknown'
         };
-        reader.readAsDataURL(file);
     });
 };
 
-/**
- * Fix: Added extractTransactionsFromFiles to support AI-powered document parsing.
- */
-export const extractTransactionsFromFiles = async (
-    files: File[],
-    accountId: string,
-    transactionTypes: TransactionType[],
-    onProgress: (msg: string) => void
-): Promise<RawTransaction[]> => {
-    onProgress("Optimizing document data for AI analysis...");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    const parts = await Promise.all(files.map(fileToPart));
-    
-    const prompt = `You are a financial parsing engine. Analyze the provided documents and extract all transactions. 
-    Map each transaction to the most appropriate Type ID from this list: ${JSON.stringify(transactionTypes.map(t => ({ id: t.id, name: t.name, effect: t.balanceEffect })))}.
-    
-    For each transaction, return:
-    - date: YYYY-MM-DD
-    - description: Original name
-    - amount: Numeric value (absolute)
-    - typeId: The matched type ID
-    - category: A suggested high-level category name
-    - accountId: Must be "${accountId}"
-    - location: Extracted city/state if available
-    - notes: Any memo/reference found
-    - metadata: A JSON object containing all raw columns/fields found for this row
-    
-    Return ONLY a valid JSON array of objects.`;
-
-    const response = await ai.models.generateContent({
+export const extractTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+    onProgress("AI analyzing text...");
+    const result = await callAi({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [...parts, { text: prompt }] },
-        config: { 
-            responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        date: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        amount: { type: Type.NUMBER },
-                        typeId: { type: Type.STRING },
-                        category: { type: Type.STRING },
-                        accountId: { type: Type.STRING },
-                        location: { type: Type.STRING },
-                        notes: { type: Type.STRING },
-                        metadata: { type: Type.OBJECT }
-                    },
-                    required: ['date', 'description', 'amount', 'typeId', 'category', 'accountId']
-                }
-            }
-        }
+        contents: { parts: [{ text: `Extract transactions from this text: ${text}` }] },
+        config: { responseMimeType: 'application/json' }
     });
+    const parsed = JSON.parse(result.text);
+    const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
+    const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
 
-    try {
-        return JSON.parse(response.text || '[]');
-    } catch (e) {
-        console.error("AI parsing failed", e);
-        return [];
-    }
-};
-
-/**
- * Fix: Added extractTransactionsFromText to support AI-powered text parsing.
- */
-export const extractTransactionsFromText = async (
-    text: string,
-    accountId: string,
-    transactionTypes: TransactionType[],
-    onProgress: (msg: string) => void
-): Promise<RawTransaction[]> => {
-    onProgress("Analyzing text patterns with Gemini...");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    const prompt = `Extract all financial transactions from the following text block. 
-    Text: "${text}"
-    
-    Assign Account ID: ${accountId}.
-    Available Types: ${JSON.stringify(transactionTypes)}.
-    
-    Return a JSON array.`;
-
-    const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: { 
-            responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        date: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        amount: { type: Type.NUMBER },
-                        typeId: { type: Type.STRING },
-                        category: { type: Type.STRING },
-                        accountId: { type: Type.STRING }
-                    },
-                    required: ['date', 'description', 'amount', 'typeId', 'category', 'accountId']
-                }
-            }
-        }
+    return (parsed.transactions || []).map((tx: any) => {
+        const isIncome = tx.amount > 0;
+        const targetType = isIncome ? incomeType : expenseType;
+        return {
+            ...tx,
+            accountId,
+            typeId: targetType?.id || 'unknown'
+        };
     });
-
-    try {
-        return JSON.parse(response.text || '[]');
-    } catch (e) {
-        console.error("AI text parse failed", e);
-        return [];
-    }
 };
 
-/**
- * Suggests categorization for raw transactions based on existing rules and labels.
- */
-export const suggestCategorization = async (
-    rawTransactions: RawTransaction[],
-    categories: Category[],
-    payees: Payee[]
-): Promise<Record<string, { categoryId: string, payeeId?: string, normalizedName: string, confidence: number }>> => {
-    if (rawTransactions.length === 0) return {};
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-    const prompt = `
-        Match these transactions to existing categories and payees.
-        
-        EXISTING CATEGORIES: ${JSON.stringify(categories.map(c => ({ id: c.id, name: c.name })))}
-        EXISTING PAYEES: ${JSON.stringify(payees.map(p => ({ id: p.id, name: p.name })))}
-        
-        DATA: ${JSON.stringify(rawTransactions.map((tx, idx) => ({
-            idx,
-            desc: tx.description,
-            amt: tx.amount
-        })))}
-
-        Return a JSON array of objects, each containing: { "index": number, "categoryId": string, "payeeId": string|null, "normalizedName": string, "confidence": number }
-    `;
-
-    try {
-        const result = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: prompt,
-            config: { 
-                responseMimeType: 'application/json',
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            index: { type: Type.INTEGER },
-                            categoryId: { type: Type.STRING },
-                            payeeId: { type: Type.STRING },
-                            normalizedName: { type: Type.STRING },
-                            confidence: { type: Type.NUMBER }
-                        },
-                        required: ['index', 'categoryId', 'normalizedName', 'confidence']
-                    }
-                }
-            }
-        });
-        
-        const suggestionsArray = JSON.parse(result.text || '[]');
-        const resultMap: Record<string, any> = {};
-        suggestionsArray.forEach((s: any) => {
-            resultMap[s.index.toString()] = { 
-                categoryId: s.categoryId, 
-                payeeId: s.payeeId || undefined, 
-                normalizedName: s.normalizedName, 
-                confidence: s.confidence 
-            };
-        });
-        return resultMap;
-    } catch (e) {
-        console.error("AI Categorization failed", e);
-        return {};
-    }
-};
-
-/**
- * Fix: Refactored to use generateContentStream directly for async iteration in Chatbot.tsx.
- */
 export const getAiFinancialAnalysis = async (question: string, contextData: object) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContentStream({
+    return callAiStream({
         model: 'gemini-3-flash-preview',
-        contents: `Analyze this dataset: ${JSON.stringify(contextData)}. User question: ${question}`
+        contents: { parts: [{ text: `Analyze this data: ${JSON.stringify(contextData)}. User question: ${question}` }] }
     });
-    return response;
 };
 
-/**
- * Provides point-in-time answers to specific business questions.
- */
+export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<BusinessDocument['aiAnalysis']> => {
+    const parts = await fileToGenerativePart(file);
+    const result = await callAi({
+        model: 'gemini-3-pro-preview',
+        contents: { parts: [{ text: "Analyze this document for tax insights." }, ...parts] },
+        config: { responseMimeType: 'application/json' }
+    });
+    return JSON.parse(result.text);
+};
+
+export const streamTaxAdvice = async (history: ChatMessage[], profile: BusinessProfile) => {
+    return callAiStream({
+        model: 'gemini-3-pro-preview',
+        contents: history.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.content }] }))
+    });
+};
+
+export const generateFinancialStrategy = async (transactions: Transaction[], goals: FinancialGoal[], categories: Category[]) => {
+    const result = await callAi({
+        model: 'gemini-3-pro-preview',
+        contents: { parts: [{ text: `Generate a financial strategy based on these goals: ${JSON.stringify(goals)}` }] },
+        config: { responseMimeType: 'application/json' }
+    });
+    return JSON.parse(result.text);
+};
+
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const result = await ai.models.generateContent({
+    const result = await callAi({
         model: 'gemini-3-flash-preview',
-        contents: prompt
+        contents: { parts: [{ text: prompt }] }
     });
-    return result.text || '';
+    return result.text;
 };
 
-/**
- * Fetches tax-specific industry deductions.
- */
 export const getIndustryDeductions = async (industry: string): Promise<string[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const result = await ai.models.generateContent({
+    const result = await callAi({
         model: 'gemini-3-pro-preview',
-        contents: `List tax write-offs for the ${industry} industry. Return as a JSON array of strings.`,
-        config: { 
-            responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-            }
-        }
+        contents: { parts: [{ text: `List tax deductions for ${industry}` }] },
+        config: { responseMimeType: 'application/json' }
     });
-    try {
-        return JSON.parse(result.text || '[]');
-    } catch (e) {
-        return [];
-    }
+    return JSON.parse(result.text);
 };
 
-/**
- * Generates a structured financial strategy based on goals and spending.
- */
-export const generateFinancialStrategy = async (transactions: Transaction[], goals: any[], categories: Category[]) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const result = await ai.models.generateContent({
+export const auditTransactions = async (transactions: Transaction[], transactionTypes: TransactionType[], categories: Category[], auditType: string, examples?: Transaction[][]): Promise<AuditFinding[]> => {
+    const result = await callAi({
         model: 'gemini-3-pro-preview',
-        contents: `Generate a financial strategy. Transactions: ${transactions.length}. Goals: ${JSON.stringify(goals)}.`,
-        config: { 
-            responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    strategy: { type: Type.STRING },
-                    suggestedBudgets: {
-                        type: Type.ARRAY,
-                        items: {
-                            type: Type.OBJECT,
-                            properties: {
-                                categoryId: { type: Type.STRING },
-                                monthlyLimit: { type: Type.NUMBER }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        contents: { parts: [{ text: `Audit these transactions: ${JSON.stringify(transactions.slice(0, 50))}. Audit type: ${auditType}${examples && examples.length > 0 ? `. Examples of existing patterns: ${JSON.stringify(examples)}` : ''}` }] },
+        config: { responseMimeType: 'application/json' }
     });
-    return JSON.parse(result.text || '{}');
-};
-
-/**
- * Fix: Updated analyzeBusinessDocument to accept the optional progress callback used in DocumentsPage.tsx.
- */
-export const analyzeBusinessDocument = async (file: File, onProgress?: (msg: string) => void): Promise<any> => {
-    if (onProgress) onProgress("Running OCR and vision analysis...");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const part = await fileToPart(file);
-    
-    const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: { parts: [part, { text: "Provide a summary, document type, and key dates for this document." }] },
-        config: { 
-            responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    documentType: { type: Type.STRING },
-                    summary: { type: Type.STRING },
-                    keyDates: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    taxTips: { type: Type.ARRAY, items: { type: Type.STRING } }
-                },
-                required: ['documentType', 'summary']
-            }
-        }
-    });
-    return JSON.parse(response.text || '{}');
-};
-
-/**
- * Fix: Refactored to use generateContentStream for async iteration in BusinessHub.tsx.
- */
-export const streamTaxAdvice = async (history: any[], profile: any) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const contents = history.map(m => ({ 
-        role: (m.role === 'ai' || m.role === 'model') ? 'model' as const : 'user' as const, 
-        parts: [{ text: m.content }] 
-    }));
-    
-    return await ai.models.generateContentStream({
-        model: 'gemini-3-pro-preview',
-        contents,
-        config: {
-            systemInstruction: `You are a professional tax advisor for a ${profile.info.businessType || 'small business'}.`
-        }
-    });
-};
-
-/**
- * Fix: Added auditTransactions to support AI-powered issue detection in TransactionAuditor.tsx.
- */
-export const auditTransactions = async (
-    transactions: Transaction[],
-    transactionTypes: TransactionType[],
-    categories: Category[],
-    auditType: string,
-    examples: Transaction[][]
-): Promise<AuditFinding[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const prompt = `Perform a financial audit of type: ${auditType}. 
-    Transactions: ${JSON.stringify(transactions.slice(0, 50))}
-    Reference Groups: ${JSON.stringify(examples)}
-    
-    Return a JSON array of AuditFinding objects.`;
-
-    const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
-        contents: prompt,
-        config: { 
-            responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        id: { type: Type.STRING },
-                        title: { type: Type.STRING },
-                        reason: { type: Type.STRING },
-                        affectedTransactionIds: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        suggestedChanges: { 
-                            type: Type.OBJECT,
-                            properties: {
-                                categoryId: { type: Type.STRING },
-                                typeId: { type: Type.STRING },
-                                payeeName: { type: Type.STRING }
-                            }
-                        }
-                    },
-                    required: ['id', 'title', 'reason', 'affectedTransactionIds', 'suggestedChanges']
-                }
-            }
-        }
-    });
-
-    try {
-        return JSON.parse(response.text || '[]');
-    } catch (e) {
-        return [];
-    }
+    return JSON.parse(result.text).findings || [];
 };

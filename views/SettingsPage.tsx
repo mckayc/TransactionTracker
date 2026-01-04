@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, RepeatIcon } from '../components/Icons';
+/* Fixed: Added missing CheckBadgeIcon import */
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { saveFile } from '../services/storageService';
@@ -40,26 +41,25 @@ interface SettingsPageProps {
     contentLinks: ContentLink[];
 }
 
-const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string, sampleField?: string }> = {
-    transactions: { label: 'Transactions', icon: <TableIcon className="w-4 h-4" />, sampleField: 'description' },
-    accounts: { label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" />, sampleField: 'name' },
-    categories: { label: 'Categories', icon: <TagIcon className="w-4 h-4" />, sampleField: 'name' },
-    tags: { label: 'Tags', icon: <TagIcon className="w-4 h-4" />, sampleField: 'name' },
-    payees: { label: 'Income Sources', icon: <DocumentIcon className="w-4 h-4" />, sampleField: 'name' },
-    reconciliationRules: { label: 'Automation Rules', icon: <SettingsIcon className="w-4 h-4" />, sampleField: 'name' },
-    templates: { label: 'Checklist Templates', icon: <TasksIcon className="w-4 h-4" />, sampleField: 'name' },
-    tasks: { label: 'Task Instances', icon: <ChecklistIcon className="w-4 h-4" />, sampleField: 'title' },
+const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {
+    transactions: { label: 'Transactions', icon: <TableIcon className="w-4 h-4" /> },
+    accounts: { label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" /> },
+    categories: { label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
+    tags: { label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
+    payees: { label: 'Income Sources', icon: <DocumentIcon className="w-4 h-4" /> },
+    reconciliationRules: { label: 'Automation Rules', icon: <SettingsIcon className="w-4 h-4" /> },
+    templates: { label: 'Checklist Templates', icon: <TasksIcon className="w-4 h-4" /> },
+    tasks: { label: 'Task Instances', icon: <ChecklistIcon className="w-4 h-4" /> },
     businessProfile: { label: 'Business Profile', icon: <DocumentIcon className="w-4 h-4" /> },
-    savedReports: { label: 'Saved Reports', icon: <BarChartIcon className="w-4 h-4" />, sampleField: 'name' },
-    amazonMetrics: { label: 'Amazon Affiliate Data', icon: <BoxIcon className="w-4 h-4" />, sampleField: 'productTitle' },
-    youtubeMetrics: { label: 'YouTube Analytics', icon: <YoutubeIcon className="w-4 h-4" />, sampleField: 'videoTitle' },
-    financialGoals: { label: 'Financial Plan', icon: <LightBulbIcon className="w-4 h-4" />, sampleField: 'title' },
-    contentLinks: { label: 'Platform Links (CC)', icon: <ShieldCheckIcon className="w-4 h-4" />, sampleField: 'title' },
+    savedReports: { label: 'Saved Reports', icon: <BarChartIcon className="w-4 h-4" /> },
+    amazonMetrics: { label: 'Amazon Affiliate Data', icon: <BoxIcon className="w-4 h-4" /> },
+    youtubeMetrics: { label: 'YouTube Analytics', icon: <YoutubeIcon className="w-4 h-4" /> },
+    financialGoals: { label: 'Financial Plan', icon: <LightBulbIcon className="w-4 h-4" /> },
+    contentLinks: { label: 'Platform Links (CC)', icon: <ShieldCheckIcon className="w-4 h-4" /> },
     files_meta: { 
         label: 'Document Metadata', 
         icon: <DocumentIcon className="w-4 h-4" />,
-        warning: 'This purges database records, not the actual files. Manually clear /media/files volume if needed.',
-        sampleField: 'original_name'
+        warning: 'This purges database records, not the actual files. Manually clear /media/files volume if needed.'
     },
     systemSettings: { label: 'App Configuration', icon: <WrenchIcon className="w-4 h-4" /> },
 };
@@ -97,8 +97,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
     const [restoreData, setRestoreData] = useState<any>(null);
     const [restoreSelection, setRestoreSelection] = useState<Set<string>>(new Set());
-    const [restoreStatus, setRestoreStatus] = useState<'idle' | 'processing' | 'done' | 'failed'>('idle');
-    const [restoreLogs, setRestoreLogs] = useState<{ msg: string; type: 'info' | 'error' | 'success' }[]>([]);
 
     const [purgeStep, setPurgeStep] = useState<'idle' | 'confirm' | 'final'>('idle');
     const [purgeText, setPurgeText] = useState('');
@@ -146,6 +144,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         
         setIsPurging(true);
         try {
+            /* Fixed: Cast Array.from result to string[] to resolve 'unknown[]' assignability error on line 149 */
             const targets = Array.from(purgeSelection) as string[];
             const isFullReset = targets.length === Object.keys(ENTITY_LABELS).length;
             
@@ -220,75 +219,35 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 if (detectedKeys.length === 0) throw new Error("No valid data detected.");
                 setRestoreData(json);
                 setRestoreSelection(new Set(detectedKeys));
-                setRestoreStatus('idle');
-                setRestoreLogs([]);
                 setIsRestoreModalOpen(true);
             } catch (err) { alert("Invalid backup file."); }
         };
         reader.readAsText(file);
     };
 
-    const addLog = (msg: string, type: 'info' | 'error' | 'success' = 'info') => {
-        setRestoreLogs(prev => [...prev, { msg, type }]);
-    };
-
     const handleConfirmRestore = async () => {
         if (!restoreData || restoreSelection.size === 0) return;
-        setRestoreStatus('processing');
-        setRestoreLogs([]);
-        addLog("Starting selective restoration process...");
-
+        if (!confirm("This will merge/overwrite existing data. Proceed?")) return;
         try {
-            const selectedKeys = Array.from(restoreSelection) as string[];
-            
-            for (const key of selectedKeys) {
-                addLog(`Restoring ${ENTITY_LABELS[key]?.label || key}...`, 'info');
-                
-                try {
-                    // Normalize data for legacy support
-                    let dataToSave = restoreData[key];
-
-                    // Entity Specific Routing
-                    if (key === 'transactions') {
-                        // Ensure required fields for transactions
-                        const normalized = dataToSave.map((tx: any) => ({
-                            ...tx,
-                            metadata: tx.metadata || {},
-                            is_parent: tx.isParent ? 1 : 0,
-                            is_completed: tx.isCompleted ? 1 : 0
-                        }));
-                        await api.saveTransactions(normalized);
-                    } else if (key === 'templates') {
-                        await api.save('templates', restoreData.templates);
-                        await api.save('scheduledEvents', restoreData.scheduledEvents || []);
-                    } else if (key === 'tasks') {
-                        await api.save('tasks', restoreData.tasks);
-                        await api.save('taskCompletions', restoreData.taskCompletions || {});
-                    } else if (key === 'files_meta') {
-                        await api.save('businessDocuments', restoreData.businessDocuments);
-                        await api.save('documentFolders', restoreData.documentFolders || []);
-                    } else {
-                        // General Key/Value Restore
-                        await api.save(key, dataToSave);
-                    }
-                    
-                    addLog(`Successfully restored ${ENTITY_LABELS[key]?.label || key}.`, 'success');
-                } catch (err: any) {
-                    addLog(`FAILED: ${ENTITY_LABELS[key]?.label || key}. Reason: ${err.message}`, 'error');
-                    // Stop or continue? Let's continue other categories but set failed state
-                    setRestoreStatus('failed');
-                }
+            const savePromises: Promise<any>[] = [];
+            /* Fixed: Explicitly typed Array.from results to prevent 'unknown' iteratees */
+            for (const key of Array.from(restoreSelection) as string[]) {
+                if (key === 'templates') {
+                    savePromises.push(api.save('templates', restoreData.templates));
+                    savePromises.push(api.save('scheduledEvents', restoreData.scheduledEvents || []));
+                } else if (key === 'tasks') {
+                    savePromises.push(api.save('tasks', restoreData.tasks));
+                    savePromises.push(api.save('taskCompletions', restoreData.taskCompletions || {}));
+                } else if (key === 'files_meta') {
+                    savePromises.push(api.save('businessDocuments', restoreData.businessDocuments));
+                    savePromises.push(api.save('documentFolders', restoreData.documentFolders || []));
+                } else { savePromises.push(api.save(key, restoreData[key])); }
             }
-
-            if (restoreStatus !== 'failed') {
-                setRestoreStatus('done');
-                addLog("Restoration complete. Refreshing system...", 'success');
-                setTimeout(() => window.location.reload(), 1500);
-            }
-        } catch (err: any) {
-            setRestoreStatus('failed');
-            addLog(`Critical Restore Error: ${err.message}`, 'error');
-        }
+            if (restoreData.transactionTypes) savePromises.push(api.save('transactionTypes', restoreData.transactionTypes));
+            if (restoreData.users) savePromises.push(api.save('users', restoreData.users));
+            await Promise.all(savePromises);
+            window.location.reload();
+        } catch (err) { alert("Restore failed."); }
     };
 
     return (
@@ -466,116 +425,29 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
 
             {isRestoreModalOpen && (
-                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-                            <div>
-                                <h3 className="font-black text-slate-800 text-xl flex items-center gap-2">
-                                    <ShieldCheckIcon className="w-6 h-6 text-indigo-600" />
-                                    Restore Engine
-                                </h3>
-                                <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-1">Rebuild system state from JSON snapshot</p>
-                            </div>
-                            <button onClick={() => !['processing'].includes(restoreStatus) && setIsRestoreModalOpen(false)} disabled={restoreStatus === 'processing'} className="p-2 hover:bg-slate-200 rounded-full transition-colors disabled:opacity-30"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+                            <h3 className="font-bold text-slate-800 text-lg">Selective Restore</h3>
+                            <button onClick={() => setIsRestoreModalOpen(false)}><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
-                        
-                        <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-                            {/* LEFT: Selection List */}
-                            <div className="w-full lg:w-1/2 border-r border-slate-200 overflow-y-auto p-6 bg-slate-50/50">
-                                <div className="space-y-1">
-                                    {Object.entries(ENTITY_LABELS).map(([key, { label, icon }]) => {
-                                        const fileHasData = restoreData.hasOwnProperty(key) || (key === 'files_meta' && restoreData.hasOwnProperty('businessDocuments'));
-                                        if (!fileHasData) return null;
-
-                                        const records = key === 'files_meta' ? restoreData.businessDocuments : restoreData[key];
-                                        const count = Array.isArray(records) ? records.length : (records ? 1 : 0);
-
-                                        return (
-                                            <label key={key} className={`flex items-center justify-between p-3 border-2 rounded-2xl cursor-pointer transition-all ${restoreSelection.has(key) ? 'bg-indigo-100 border-indigo-500 shadow-inner' : 'bg-white border-slate-200 hover:border-indigo-300'}`}>
-                                                <div className="flex items-center gap-3">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={restoreSelection.has(key)} 
-                                                        disabled={restoreStatus === 'processing'}
-                                                        onChange={() => { 
-                                                            const s = new Set(restoreSelection); 
-                                                            if(s.has(key)) s.delete(key); else s.add(key); 
-                                                            setRestoreSelection(s); 
-                                                        }} 
-                                                        className="w-5 h-5 text-indigo-600 rounded-lg border-slate-300 focus:ring-indigo-500 disabled:opacity-50" 
-                                                    />
-                                                    <div className="flex items-center gap-2">
-                                                        <div className={`p-2 rounded-xl ${restoreSelection.has(key) ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500'}`}>{icon}</div>
-                                                        <span className={`font-black text-sm uppercase tracking-tighter ${restoreSelection.has(key) ? 'text-indigo-900' : 'text-slate-600'}`}>{label}</span>
-                                                    </div>
-                                                </div>
-                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${restoreSelection.has(key) ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                                                    {count} RECS
-                                                </span>
-                                            </label>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* RIGHT: Status & Logs */}
-                            <div className="w-full lg:w-1/2 overflow-hidden flex flex-col bg-white">
-                                <div className="p-6 flex-1 flex flex-col min-h-0">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Restore Logs & Troubleshooting</h4>
-                                        {restoreStatus === 'processing' && <RepeatIcon className="w-4 h-4 animate-spin text-indigo-500" />}
-                                    </div>
-                                    
-                                    <div className="flex-1 bg-slate-900 rounded-2xl p-4 font-mono text-[10px] overflow-y-auto custom-scrollbar space-y-1.5 shadow-inner border-2 border-slate-800">
-                                        {restoreLogs.length === 0 ? (
-                                            <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-2 opacity-50">
-                                                <InfoIcon className="w-8 h-8" />
-                                                <p className="text-center italic font-sans text-xs">Waiting to start merge...</p>
-                                            </div>
-                                        ) : (
-                                            restoreLogs.map((log, i) => (
-                                                <div key={i} className={`flex gap-2 ${log.type === 'error' ? 'text-red-400' : log.type === 'success' ? 'text-emerald-400' : 'text-slate-300'}`}>
-                                                    <span className="opacity-30 flex-shrink-0">[{new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}]</span>
-                                                    <span className="break-words">{log.msg}</span>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-
-                                    {restoreStatus === 'failed' && (
-                                        <div className="mt-4 p-4 bg-red-50 border-2 border-red-100 rounded-2xl flex items-start gap-3">
-                                            <ExclamationTriangleIcon className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                                            <div>
-                                                <p className="text-sm font-black text-red-800 uppercase">Process Interrupted</p>
-                                                <p className="text-xs text-red-600 mt-1 leading-relaxed">Some categories failed to restore. Check the logs above for specific SQL errors. You may need to manually clean the target tables before retrying.</p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
+                        <div className="p-6 space-y-4">
+                            <div className="max-h-60 overflow-y-auto space-y-1">
+                                {Object.entries(ENTITY_LABELS).map(([key, { label }]) => {
+                                    if (!restoreData.hasOwnProperty(key) && !(key === 'files_meta' && restoreData.hasOwnProperty('businessDocuments'))) return null;
+                                    return (
+                                        /* Fixed: Resolved potential unknown index type warning by ensuring restoreData is handled as any within the closure */
+                                        <label key={key} className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${restoreSelection.has(key) ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
+                                            <input type="checkbox" checked={restoreSelection.has(key)} onChange={() => { const s = new Set(restoreSelection); if(s.has(key)) s.delete(key); else s.add(key); setRestoreSelection(s); }} className="w-5 h-5 text-indigo-600 rounded border-slate-300" />
+                                            <span className="ml-3 font-bold text-slate-700 text-sm">{label}</span>
+                                        </label>
+                                    );
+                                })}
                             </div>
                         </div>
-
-                        <div className="p-6 border-t bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-6 px-10">
-                            <div className="flex items-center gap-2">
-                                <SparklesIcon className="w-5 h-5 text-indigo-600" />
-                                <p className="text-xs text-slate-500 font-bold italic">Restoring will merge data into your active environment.</p>
-                            </div>
-                            <div className="flex gap-4 w-full sm:w-auto">
-                                <button 
-                                    onClick={() => setIsRestoreModalOpen(false)} 
-                                    disabled={restoreStatus === 'processing'}
-                                    className="flex-1 sm:flex-none px-6 py-3 text-sm font-black text-slate-500 hover:text-slate-800 transition-colors disabled:opacity-30 uppercase tracking-widest"
-                                >
-                                    Cancel
-                                </button>
-                                <button 
-                                    onClick={handleConfirmRestore} 
-                                    disabled={restoreSelection.size === 0 || restoreStatus === 'processing' || restoreStatus === 'done'} 
-                                    className="flex-[2] sm:flex-none px-12 py-3 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-200 transition-all flex items-center justify-center gap-3 disabled:opacity-30 disabled:scale-95 uppercase tracking-widest"
-                                >
-                                    {restoreStatus === 'processing' ? 'MERGING...' : restoreStatus === 'done' ? 'COMPLETE' : `MERGE ${restoreSelection.size} CATEGORIES`}
-                                </button>
-                            </div>
+                        <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
+                            <button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600">Cancel</button>
+                            <button onClick={handleConfirmRestore} disabled={restoreSelection.size === 0} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md transition-all">Merge Data</button>
                         </div>
                     </div>
                 </div>

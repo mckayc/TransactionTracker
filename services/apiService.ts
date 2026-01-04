@@ -6,23 +6,12 @@ const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = 
     try {
         const response = await fetch(url, options);
         if (!response.ok) {
-            // Attempt to get error details from body
-            let errorMsg = `API Error: ${response.status} ${response.statusText}`;
-            try {
-                const body = await response.json();
-                if (body.error) errorMsg = body.error;
-            } catch (e) {
-                // Not JSON
-                const text = await response.text().catch(() => '');
-                if (text) errorMsg = text;
-            }
-
             if (retries > 0 && (response.status >= 500 || response.status === 429)) {
                 const delay = INITIAL_DELAY * (MAX_RETRIES - retries + 1);
                 await new Promise(res => setTimeout(res, delay));
                 return fetchWithRetry(url, options, retries - 1);
             }
-            throw new Error(errorMsg);
+            throw new Error(`API Error: ${response.status} ${response.statusText}`);
         }
         return response;
     } catch (error) {

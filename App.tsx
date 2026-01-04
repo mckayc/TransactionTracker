@@ -95,6 +95,8 @@ const App: React.FC = () => {
             setContentLinks(data.contentLinks || []);
             setSystemSettings(data.systemSettings || {});
             
+            // Only fetch a small "Recent Pool" for dashboard/import previews.
+            // Millions of records are handled via server-side logic in other views.
             const txResponse = await api.getTransactions({ limit: 100 });
             setTransactions(txResponse.data);
 
@@ -192,20 +194,6 @@ const App: React.FC = () => {
                             transactionTypes={transactionTypes}
                          />
                     )}
-                    {currentView === 'accounts' && (
-                        <AccountsPage 
-                            accounts={accounts}
-                            onAddAccount={(a) => updateData('accounts', [...accounts, a], setAccounts)}
-                            onUpdateAccount={async (a) => {
-                                const updated = accounts.map(acc => acc.id === a.id ? a : acc);
-                                updateData('accounts', updated, setAccounts);
-                            }}
-                            onRemoveAccount={(id) => updateData('accounts', accounts.filter(a => a.id !== id), setAccounts)}
-                            accountTypes={accountTypes}
-                            onAddAccountType={(t) => updateData('accountTypes', [...accountTypes, t], setAccountTypes)}
-                            onRemoveAccountType={(id) => updateData('accountTypes', accountTypes.filter(t => t.id !== id), setAccountTypes)}
-                        />
-                    )}
                     {currentView === 'reports' && (
                         <Reports 
                             transactions={transactions} categories={categories} transactionTypes={transactionTypes}
@@ -213,39 +201,6 @@ const App: React.FC = () => {
                             savedReports={savedReports} setSavedReports={(r) => updateData('savedReports', r, setSavedReports)}
                             savedDateRanges={savedDateRanges} setSavedDateRanges={(d) => updateData('savedDateRanges', d, setSavedDateRanges)}
                             amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics}
-                        />
-                    )}
-                    {currentView === 'tasks' && (
-                        <TasksPage 
-                            tasks={tasks}
-                            onSaveTask={(t) => updateData('tasks', tasks.some(x => x.id === t.id) ? tasks.map(x => x.id === t.id ? t : x) : [...tasks, t], setTasks)}
-                            onDeleteTask={(id) => updateData('tasks', tasks.filter(x => x.id !== id), setTasks)}
-                            onToggleTask={(id) => {
-                                const updated = tasks.map(t => t.id === id ? { ...t, isCompleted: !t.isCompleted } : t);
-                                updateData('tasks', updated, setTasks);
-                            }}
-                            templates={templates}
-                            scheduledEvents={scheduledEvents}
-                            onSaveTemplate={(tmp) => updateData('templates', templates.some(x => x.id === tmp.id) ? templates.map(x => x.id === tmp.id ? tmp : x) : [...templates, tmp], setTemplates)}
-                            onRemoveTemplate={(id) => updateData('templates', templates.filter(x => x.id !== id), setTemplates)}
-                        />
-                    )}
-                    {currentView === 'rules' && (
-                        <RulesPage 
-                            rules={rules}
-                            onSaveRule={(r) => updateData('reconciliationRules', rules.some(x => x.id === r.id) ? rules.map(x => x.id === r.id ? r : x) : [...rules, r], setRules)}
-                            onDeleteRule={(id) => updateData('reconciliationRules', rules.filter(x => x.id !== id), setRules)}
-                            accounts={accounts}
-                            transactionTypes={transactionTypes}
-                            categories={categories}
-                            tags={tags}
-                            payees={payees}
-                            transactions={transactions}
-                            onUpdateTransactions={async (txs) => { await api.saveTransactions(txs); loadCoreData(false); }}
-                            onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
-                            onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
-                            onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
-                            onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
                         />
                     )}
                      {currentView === 'settings' && (
