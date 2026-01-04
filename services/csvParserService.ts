@@ -1,3 +1,4 @@
+
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -11,10 +12,11 @@ const cleanDescription = (string: string): string => {
   cleaned = cleaned.replace(/^["']+|["']+$/g, '');
   cleaned = cleaned.replace(/[,.]+$/, '');
   
-  // Strip common bank prefix noises
-  cleaned = cleaned.replace(/^(Pos Debit|Debit Purchase|Recurring Payment|Preauthorized Debit|Checkcard|Visa Purchase) - /i, '');
+  // Strip common bank prefix noises that clutter the UI
+  cleaned = cleaned.replace(/^(Pos Debit|Debit Purchase|Recurring Payment|Preauthorized Debit|Checkcard|Visa Purchase|ACH Withdrawal|ACH Deposit From|ACH Deposit|ACH Transfer|ACH-Withdrawal|ACH-Deposit|Transfer From|Transfer To|Payment Thank You - Web|Payment Thank You)[\s-]*\s*/i, '');
   
-  // Strip merchant ID garbage if detected
+  // Strip merchant ID garbage if detected (common in Amazon/CC exports)
+  cleaned = cleaned.replace(/\*[A-Z0-9]{9,}$/i, ''); // Strip trailing Amazon ID like *8T2PH2CU3
   cleaned = cleaned.replace(/PAYMENTS ID NBR:.*$/i, '');
   cleaned = cleaned.replace(/ID NBR:.*$/i, '');
   cleaned = cleaned.replace(/EDI PYMNTS.*$/i, '');
@@ -24,6 +26,10 @@ const cleanDescription = (string: string): string => {
 };
 
 const toTitleCase = (str: string): string => {
+    if (!str) return '';
+    // Special case for Amazon and common abbreviations
+    if (str.toUpperCase().startsWith('AMAZON')) return str;
+    
     return str.replace(
         /\w\S*/g,
         (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase()
@@ -389,7 +395,6 @@ export const parseYouTubeReport = async (file: File, onProgress: (msg: string) =
             subscribersGained: parseNum(colMap.subscribers),
             estimatedRevenue: parseNum(colMap.revenue),
             impressions: parseNum(colMap.impressions),
-            // Fix: Changed colBox to colMap to fix 'Cannot find name' error
             ctr: parseNum(colMap.ctr)
         });
     }
@@ -414,10 +419,22 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
         const parts = lineLower.split(delimiter).map(p => p.trim().replace(/"/g, ''));
         
         const dateIdx = parts.findIndex(p => p.includes('date') || p === 'dt' || p === 'date of income');
-        const descIdx = parts.findIndex(p => p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction') || p === 'income source' || p === 'reference');
-        const amtIdx = parts.findIndex(p => p === 'amount' || p.includes('amount') || p === 'income amount');
         
-        if (dateIdx > -1 && (descIdx > -1 || amtIdx > -1)) {
+        /**
+         * REFINED DESCRIPTION DETECTION
+         * Problem: Many banks use "Transaction Date". 
+         * Fix: Avoid matching a column that contains "date" as a description column.
+         */
+        const descIdx = parts.findIndex(p => 
+            (p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction') || p === 'income source' || p === 'reference')
+            && !p.includes('date') && !p.includes('type')
+        );
+
+        const amtIdx = parts.findIndex(p => p === 'amount' || p.includes('amount') || p === 'income amount');
+        const debitIdx = parts.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdraw') || p.includes('spend'));
+        const creditIdx = parts.findIndex(p => p.includes('credit') || p.includes('deposit') || p.includes('receive'));
+        
+        if (dateIdx > -1 && (descIdx > -1 || amtIdx > -1 || (debitIdx > -1 && creditIdx > -1))) {
             headerIndex = i;
             rawHeaders = lines[i].split(delimiter).map(h => h.trim().replace(/"/g, ''));
             break;
@@ -429,13 +446,16 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     const lowerHeaders = rawHeaders.map(h => h.toLowerCase());
     const colMap = { 
         date: lowerHeaders.findIndex(p => p.includes('date') || p === 'dt' || p === 'date of income'), 
-        description: lowerHeaders.findIndex(p => p === 'description' || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction') || p === 'income source'), 
+        description: lowerHeaders.findIndex(p => 
+            (p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction') || p === 'income source')
+            && !p.includes('date') && !p.includes('type')
+        ), 
         reference: lowerHeaders.findIndex(p => p.includes('reference') || p.includes('memo') || p.includes('notes')),
         payee: lowerHeaders.findIndex(p => p === 'payee' || p === 'income source'),
         amount: lowerHeaders.findIndex(p => p === 'amount' || p.includes('amount') || p === 'income amount'), 
         credit: lowerHeaders.findIndex(p => p.includes('credit') || p.includes('deposit') || p.includes('receive')), 
         debit: lowerHeaders.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdraw') || p.includes('spend')), 
-        category: lowerHeaders.findIndex(p => p.includes('category') || p === 'type'),
+        category: lowerHeaders.findIndex(p => p.includes('category') || (p.includes('type') && !p.includes('transaction'))),
         transactionType: lowerHeaders.findIndex(p => p === 'transaction type')
     };
 
@@ -507,7 +527,7 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
             accountId: accountId,
             typeId: isIncome ? incomeType.id : expenseType.id,
             sourceFilename: sourceName,
-            metadata // Inject the raw source data
+            metadata // Inject the raw source data for future rules
         });
     }
 
@@ -534,6 +554,20 @@ export const parseTransactionsFromFiles = async (
     const allTransactions: RawTransaction[] = [];
     for (const file of files) {
         onProgress(`Reading ${file.name}...`);
+        
+        // Handle Excel specifically
+        if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+            const buffer = await readFileAsArrayBuffer(file);
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const csvText = XLSX.utils.sheet_to_csv(worksheet);
+            const lines = csvText.split('\n');
+            const transactions = parseCSV_Tx(lines, accountId, transactionTypes, file.name);
+            allTransactions.push(...transactions);
+            continue;
+        }
+
         if (file.type === 'application/pdf') continue; 
         const text = await readFileAsText(file);
         const lines = text.split('\n');
