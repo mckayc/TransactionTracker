@@ -489,9 +489,11 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         let cohortRev = 0;
         let cohortViews = 0;
         
-        const data = filterChannelId ? metrics.filter(m => m.channelId === filterChannelId) : metrics;
+        // Fix: Explicitly type data as YouTubeMetric[] to fix 'unknown' type errors during map/filter operations
+        const data: YouTubeMetric[] = filterChannelId ? metrics.filter(m => m.channelId === filterChannelId) : metrics;
 
-        data.forEach(m => {
+        data.forEach((m: any) => {
+            // Fix: Cast m as any to resolve 'unknown' property access errors in complex useMemo contexts
             const pubYear = m.publishDate.substring(0, 4);
             if (m.reportYear === evergreenReportYear && evergreenPublishedYears.has(pubYear)) {
                 cohortRev += m.estimatedRevenue;
@@ -500,8 +502,8 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         });
 
         const totalYearRevenue = data
-            .filter(m => m.reportYear === evergreenReportYear)
-            .reduce((s, m) => s + m.estimatedRevenue, 0);
+            .filter((m: any) => m.reportYear === evergreenReportYear)
+            .reduce((s: number, m: any) => s + (m.estimatedRevenue || 0), 0);
 
         return {
             revenue: cohortRev,
@@ -1254,7 +1256,8 @@ Conv Rate: ${conv.toFixed(2)}%
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
                                     {formatCurrency(
-                                        Array.from(videoAggregateMap.values())
+                                        // Fix: Cast Array.from result to any[] to fix 'unknown' type errors during Map operations
+                                        (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce<number>((sum, v) => sum + (v.creationYearRevenue || 0), 0)
                                     )}
@@ -1264,7 +1267,8 @@ Conv Rate: ${conv.toFixed(2)}%
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
                                 <p className="text-2xl font-black text-indigo-600 font-mono">
                                     {formatCurrency(
-                                        Array.from(videoAggregateMap.values())
+                                        // Fix: Cast Array.from result to any[] to fix 'unknown' type errors during Map operations
+                                        (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce<number>((sum, v) => sum + (v.lifetimeRevenue || 0), 0)
                                     )}
@@ -1275,7 +1279,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                 <p className="text-2xl font-black text-slate-800 font-mono">
                                     {/* Fixed: Used formatNumber instead of formatCurrency and ensured proper type inference to resolve line 913 unknown error */}
                                     {formatNumber(
-                                        Array.from(videoAggregateMap.values())
+                                        (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce<number>((sum, v) => sum + (v.lifetimeViews || 0), 0)
                                     )}
@@ -1302,7 +1306,8 @@ Conv Rate: ${conv.toFixed(2)}%
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-100">
-                                    {Array.from(videoAggregateMap.values())
+                                    {/* Fix: Cast Array.from result to any[] to fix multiple 'unknown' property access errors in modal table */}
+                                    {(Array.from(videoAggregateMap.values()) as any[])
                                         .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                         .sort((a, b) => (b.lifetimeRevenue || 0) - (a.lifetimeRevenue || 0))
                                         .map((v, idx: number) => (
@@ -1319,7 +1324,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                                 </td>
                                                 <td className="px-6 py-3 text-right text-xs text-slate-600 font-mono border-l border-slate-50">{formatNumber(v.creationYearViews || 0)}</td>
                                                 <td className="px-6 py-3 text-right text-xs font-bold text-slate-700 font-mono">{formatCurrency(v.creationYearRevenue || 0)}</td>
-                                                <td className="px-6 py-3 text-right text-xs text-slate-500 font-mono border-l border-slate-50">{formatNumber(v.lifetimeViews || 0)}</td>
+                                                <td className="px-6 py-3 text-right text-xs font-bold text-slate-500 font-mono border-l border-slate-50">{formatNumber(v.lifetimeViews || 0)}</td>
                                                 <td className="px-6 py-3 text-right text-xs font-black text-indigo-600 font-mono">{formatCurrency(v.lifetimeRevenue || 0)}</td>
                                             </tr>
                                         ))}
