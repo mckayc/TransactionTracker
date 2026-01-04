@@ -1,4 +1,3 @@
-
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -150,7 +149,7 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         clicks: header.findIndex(h => h === 'clicks'),
         ordered: header.findIndex(h => h === 'ordered items' || h === 'items shipped'),
         shipped: header.findIndex(h => h === 'shipped items'),
-        income: header.findIndex(h => h.includes('earnings') || h.includes('ad fees') || h.includes('commission income') || h.includes('bounties')),
+        revenue: header.findIndex(h => h.includes('earnings') || h.includes('ad fees') || h.includes('commission income') || h.includes('bounties')),
         conversion: header.findIndex(h => h.includes('conversion')),
         tracking: header.findIndex(h => h.includes('tracking id')),
         category: header.findIndex(h => h === 'category' || h === 'product group'),
@@ -218,7 +217,8 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
             clicks: parseNum(colMap.clicks),
             orderedItems: parseNum(colMap.ordered),
             shippedItems: parseNum(colMap.shipped),
-            revenue: parseNum(colMap.income),
+            // Fix: Changed colMap.income to colMap.revenue as 'income' property does not exist on colMap object
+            revenue: parseNum(colMap.revenue),
             conversionRate: parseNum(colMap.conversion),
             trackingId: trackingId || 'default',
             category: colMap.category > -1 ? values[colMap.category] : undefined,
@@ -420,11 +420,6 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
         
         const dateIdx = parts.findIndex(p => p.includes('date') || p === 'dt' || p === 'date of income');
         
-        /**
-         * REFINED DESCRIPTION DETECTION
-         * Problem: Many banks use "Transaction Date". 
-         * Fix: Avoid matching a column that contains "date" as a description column.
-         */
         const descIdx = parts.findIndex(p => 
             (p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction') || p === 'income source' || p === 'reference')
             && !p.includes('date') && !p.includes('type')
@@ -444,12 +439,21 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     if (headerIndex === -1) return transactions;
 
     const lowerHeaders = rawHeaders.map(h => h.toLowerCase());
+    
+    // Improved description priority detection
+    const findBestDescriptionIndex = () => {
+        // Preference: description -> name -> merchant -> payee -> memo -> transaction
+        const options = ['description', 'name', 'merchant', 'payee', 'memo', 'reference'];
+        for (const opt of options) {
+            const idx = lowerHeaders.findIndex(h => h.includes(opt) && !h.includes('date'));
+            if (idx > -1) return idx;
+        }
+        return lowerHeaders.findIndex(h => h.includes('transaction') && !h.includes('date'));
+    };
+
     const colMap = { 
         date: lowerHeaders.findIndex(p => p.includes('date') || p === 'dt' || p === 'date of income'), 
-        description: lowerHeaders.findIndex(p => 
-            (p.includes('description') || p.includes('merchant') || p.includes('payee') || p.includes('name') || p.includes('transaction') || p === 'income source')
-            && !p.includes('date') && !p.includes('type')
-        ), 
+        description: findBestDescriptionIndex(), 
         reference: lowerHeaders.findIndex(p => p.includes('reference') || p.includes('memo') || p.includes('notes')),
         payee: lowerHeaders.findIndex(p => p === 'payee' || p === 'income source'),
         amount: lowerHeaders.findIndex(p => p === 'amount' || p.includes('amount') || p === 'income amount'), 
@@ -491,6 +495,18 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
         let description = 'Unspecified';
         if (colMap.description > -1 && parts[colMap.description]) {
             description = parts[colMap.description];
+            
+            // Check if the chosen description is non-descriptive (e.g., just "DEBIT")
+            const upperDesc = description.toUpperCase();
+            if (upperDesc === 'DEBIT' || upperDesc === 'CREDIT' || upperDesc === 'POS DEBIT' || upperDesc === 'PURCHASE') {
+                const betterIdx = lowerHeaders.findIndex((h, idx) => 
+                    idx !== colMap.description && 
+                    (h.includes('name') || h.includes('merchant') || h.includes('memo') || h.includes('desc'))
+                );
+                if (betterIdx > -1 && parts[betterIdx]) {
+                    description = parts[betterIdx];
+                }
+            }
         } else if (colMap.reference > -1 && parts[colMap.reference]) {
             description = parts[colMap.reference];
         } else if (colMap.payee > -1 && parts[colMap.payee]) {
