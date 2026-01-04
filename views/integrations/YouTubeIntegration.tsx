@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, ChartPieIcon, BoxIcon, HeartIcon, CalendarIcon, UsersIcon } from '../../components/Icons';
@@ -539,8 +538,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }));
 
         result.sort((a, b) => {
-            const valA = a[insightsSortKey as keyof typeof a] as number;
-            const valB = b[insightsSortKey as keyof typeof b] as number;
+            // Fix: Cast a and b to any to avoid 'unknown' type errors when indexing by state keys
+            const valA = (a as any)[insightsSortKey] as number;
+            const valB = (b as any)[insightsSortKey] as number;
             return insightsSortDir === 'asc' ? valA - valB : valB - valA;
         });
 
@@ -1295,9 +1295,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
                                     {formatCurrency(
-                                        Array.from(videoAggregateMap.values())
-                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum, v) => sum + v.creationYearRevenue, 0)
+                                        // Fix: Explicitly type reduce parameters to avoid 'unknown' errors when results are passed to formatCurrency
+                                        (Array.from(videoAggregateMap.values()) as any[])
+                                            .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
+                                            .reduce((sum: number, v: any) => sum + (v.creationYearRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
@@ -1305,9 +1306,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
                                 <p className="text-2xl font-black text-indigo-600 font-mono">
                                     {formatCurrency(
-                                        Array.from(videoAggregateMap.values())
-                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum, v) => sum + v.lifetimeRevenue, 0)
+                                        // Fix: Explicitly type reduce parameters to avoid 'unknown' errors
+                                        (Array.from(videoAggregateMap.values()) as any[])
+                                            .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
+                                            .reduce((sum: number, v: any) => sum + (v.lifetimeRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
@@ -1315,9 +1317,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
                                     {formatNumber(
-                                        Array.from(videoAggregateMap.values())
-                                            .filter(v => v.publishDate.startsWith(selectedVelocityYear) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum, v) => sum + v.lifetimeViews, 0)
+                                        // Fix: Explicitly type reduce parameters to avoid 'unknown' errors when results are passed to formatNumber
+                                        (Array.from(videoAggregateMap.values()) as any[])
+                                            .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
+                                            .reduce((sum: number, v: any) => sum + (v.lifetimeViews || 0), 0)
                                     )}
                                 </p>
                             </div>
@@ -1342,10 +1345,11 @@ Conv Rate: ${conv.toFixed(2)}%
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-100">
-                                    {Array.from(videoAggregateMap.values())
-                                        .filter(v => v.publishDate.startsWith(selectedVelocityYear) && (!filterChannelId || v.channelId === filterChannelId))
-                                        .sort((a,b) => b.lifetimeRevenue - a.lifetimeRevenue)
-                                        .map((v, idx) => (
+                                    {/* Fix: Added explicit 'any' typing to parameters to avoid 'unknown' errors when accessing properties inside sort/map/formatters */}
+                                    {(Array.from(videoAggregateMap.values()) as any[])
+                                        .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
+                                        .sort((a: any, b: any) => (b.lifetimeRevenue || 0) - (a.lifetimeRevenue || 0))
+                                        .map((v: any, idx: number) => (
                                             <tr key={v.videoId} className="hover:bg-slate-50 transition-colors group">
                                                 <td className="px-6 py-3 text-xs font-mono text-slate-300">#{idx + 1}</td>
                                                 <td className="px-6 py-3 max-w-md">
@@ -1357,10 +1361,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-3 text-right text-xs text-slate-600 font-mono border-l border-slate-50">{formatNumber(v.creationYearViews)}</td>
-                                                <td className="px-6 py-3 text-right text-xs font-bold text-slate-700 font-mono">{formatCurrency(v.creationYearRevenue)}</td>
-                                                <td className="px-6 py-3 text-right text-xs text-slate-500 font-mono border-l border-slate-50">{formatNumber(v.lifetimeViews)}</td>
-                                                <td className="px-6 py-3 text-right text-xs font-black text-indigo-600 font-mono">{formatCurrency(v.lifetimeRevenue)}</td>
+                                                <td className="px-6 py-3 text-right text-xs text-slate-600 font-mono border-l border-slate-50">{formatNumber(v.creationYearViews || 0)}</td>
+                                                <td className="px-6 py-3 text-right text-xs font-bold text-slate-700 font-mono">{formatCurrency(v.creationYearRevenue || 0)}</td>
+                                                <td className="px-6 py-3 text-right text-xs text-slate-500 font-mono border-l border-slate-50">{formatNumber(v.lifetimeViews || 0)}</td>
+                                                <td className="px-6 py-3 text-right text-xs font-black text-indigo-600 font-mono">{formatCurrency(v.lifetimeRevenue || 0)}</td>
                                             </tr>
                                         ))}
                                 </tbody>

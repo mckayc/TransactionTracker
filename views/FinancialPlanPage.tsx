@@ -127,14 +127,16 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
         setIsGenerating(true);
         try {
             // Aggregate categorical spending for context
-            const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+            // Fix: Add explicit generic types to Map to ensure return type is recognized
+            const categoryMap = new Map<string, string>(categories.map(c => [c.id, c.name]));
             const last6Months = new Date();
             last6Months.setMonth(last6Months.getMonth() - 6);
             
             const spendingSummary = transactions
                 .filter(tx => new Date(tx.date) >= last6Months && !tx.isParent && tx.typeId.includes('expense'))
                 .reduce((acc, tx) => {
-                    const name = categoryMap.get(tx.categoryId) || 'Other';
+                    // Fix: Explicitly cast 'name' to string to allow it as an index type
+                    const name = (categoryMap.get(tx.categoryId) as string) || 'Other';
                     acc[name] = (acc[name] || 0) + tx.amount;
                     return acc;
                 }, {} as Record<string, number>);

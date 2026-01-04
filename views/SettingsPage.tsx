@@ -205,7 +205,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         if (!confirm("This will overwrite existing data. Proceed?")) return;
         try {
             const savePromises: Promise<any>[] = [];
-            for (const key of Array.from(restoreSelection)) {
+            // Fix: Cast Array.from(restoreSelection) to string[] to ensure 'key' is recognized as string by TypeScript
+            for (const key of Array.from(restoreSelection) as string[]) {
                 if (key === 'templates') {
                     savePromises.push(api.save('templates', restoreData.templates));
                     savePromises.push(api.save('scheduledEvents', restoreData.scheduledEvents || []));

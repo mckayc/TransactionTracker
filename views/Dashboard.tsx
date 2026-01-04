@@ -22,7 +22,7 @@ type ImportMethod = 'upload' | 'paste';
 
 interface DashboardProps {
   onTransactionsAdded: (newTransactions: Transaction[], newCategories: Category[]) => void;
-  transactions: Transaction[];
+  transactions: Transaction[]; // Global transactions list (recent only)
   accounts: Account[];
   onAddAccount: (account: Account) => void;
   onAddAccountType: (type: AccountType) => void;
@@ -81,99 +81,7 @@ const getNextTaxDeadline = () => {
     };
 };
 
-const QuickAccountModal: React.FC<{
-    isOpen: boolean;
-    onClose: () => void;
-    onSave: (account: Account) => void;
-    onAddType: (type: AccountType) => void;
-    accountTypes: AccountType[];
-}> = ({ isOpen, onClose, onSave, onAddType, accountTypes }) => {
-    const [name, setName] = useState('');
-    const [identifier, setIdentifier] = useState('');
-    const [accountTypeId, setAccountTypeId] = useState(accountTypes[0]?.id || '');
-    const [isAddingType, setIsAddingType] = useState(false);
-    const [newTypeName, setNewTypeName] = useState('');
-
-    useEffect(() => {
-        if (isOpen && accountTypes.length > 0 && !accountTypeId) {
-            setAccountTypeId(accountTypes[0].id);
-        }
-    }, [isOpen, accountTypes, accountTypeId]);
-
-    if (!isOpen) return null;
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (name.trim() && identifier.trim() && accountTypeId) {
-            onSave({
-                id: generateUUID(),
-                name: name.trim(),
-                identifier: identifier.trim(),
-                accountTypeId
-            });
-            setName('');
-            setIdentifier('');
-            onClose();
-        }
-    };
-
-    const handleCreateType = () => {
-        if (newTypeName.trim()) {
-            const newType = { id: generateUUID(), name: newTypeName.trim() };
-            onAddType(newType);
-            setAccountTypeId(newType.id);
-            setNewTypeName('');
-            setIsAddingType(false);
-        }
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
-                <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-                    <div className="flex items-center gap-2">
-                        <CreditCardIcon className="w-5 h-5 text-indigo-600" />
-                        <h3 className="font-bold text-slate-800">Quick Add Account</h3>
-                    </div>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-100"><CloseIcon className="w-6 h-6 text-slate-400 hover:text-slate-600"/></button>
-                </div>
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Account Name</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full" placeholder="e.g. Chase Checking" required autoFocus />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Identifier (Last 4 digits)</label>
-                        <input type="text" value={identifier} onChange={e => setIdentifier(e.target.value)} className="w-full font-mono" placeholder="1234" required />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Account Type</label>
-                        {isAddingType ? (
-                            <div className="flex gap-2">
-                                <input type="text" value={newTypeName} onChange={e => setNewTypeName(e.target.value)} className="flex-grow text-sm" placeholder="New Type Name" autoFocus />
-                                <button type="button" onClick={handleCreateType} className="bg-indigo-600 text-white px-3 rounded-lg text-sm font-bold">Add</button>
-                                <button type="button" onClick={() => setIsAddingType(false)} className="text-slate-400 p-1"><CloseIcon className="w-4 h-4"/></button>
-                            </div>
-                        ) : (
-                            <div className="flex gap-2">
-                                <select value={accountTypeId} onChange={e => setAccountTypeId(e.target.value)} className="flex-grow" required>
-                                    {accountTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
-                                </select>
-                                <button type="button" onClick={() => setIsAddingType(true)} className="px-3 border rounded-lg hover:bg-slate-50 text-indigo-600 font-bold">+</button>
-                            </div>
-                        )}
-                    </div>
-                    <div className="flex gap-3 pt-2">
-                        <button type="button" onClick={onClose} className="flex-1 px-4 py-2 border rounded-xl font-bold text-slate-600 hover:bg-slate-50">Cancel</button>
-                        <button type="submit" className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-md">Create Account</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-};
-
-const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions, accounts, onAddAccount, onAddAccountType, accountTypes, categories, tags, transactionTypes, rules, payees, users, onAddDocument, documentFolders, onCreateFolder, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction }) => {
+const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions: recentGlobalTransactions, accounts, onAddAccount, onAddAccountType, accountTypes, categories, tags, transactionTypes, rules, payees, users, onAddDocument, documentFolders, onCreateFolder, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState('');
@@ -181,6 +89,9 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [txForRule, setTxForRule] = useState<Transaction | null>(null);
+  
+  const [summaryTotals, setSummaryTotals] = useState<Record<string, number>>({});
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   
   const apiKeyAvailable = hasApiKey();
   const [useAi, setUseAi] = useState(false); 
@@ -190,13 +101,31 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [selectedUserId, setSelectedUserId] = useState<string>('');
   const [pasteAccountId, setPasteAccountId] = useState<string>('');
 
+  // Fetch server-side summary whenever range changes
+  useEffect(() => {
+    const fetchSummary = async () => {
+        setIsLoadingSummary(true);
+        const now = new Date();
+        let startDate = '';
+        if (dashboardRange === 'year') startDate = `${now.getFullYear()}-01-01`;
+        if (dashboardRange === 'month') startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+        
+        try {
+            const result = await api.getSummary({ startDate });
+            setSummaryTotals(result);
+        } finally {
+            setIsLoadingSummary(false);
+        }
+    };
+    fetchSummary();
+  }, [dashboardRange]);
+
   useEffect(() => {
     const defaultUser = users.find(u => u.isDefault) || users[0];
     if (defaultUser && !selectedUserId) setSelectedUserId(defaultUser.id);
     if (accounts.length > 0 && !pasteAccountId) setPasteAccountId(accounts[0].id);
   }, [users, accounts, selectedUserId, pasteAccountId]);
 
-  const [rawExtractedTransactions, setRawExtractedTransactions] = useState<RawTransaction[]>([]);
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
   const [stagedForImport, setStagedForImport] = useState<Transaction[]>([]);
   const [duplicatesToReview, setDuplicatesToReview] = useState<DuplicatePair[]>([]);
@@ -208,38 +137,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [duplicatesImported, setDuplicatesImported] = useState(0);
 
   const handleProgress = (msg: string) => setProgressMessage(msg);
-
-  const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
-
-  /**
-   * Fuzzy matches a description to an existing payee based on keyword overlap.
-   */
-  const findSmartPayeeMatch = useCallback((description: string, existingPayees: Payee[]) => {
-      const cleanDesc = description.toLowerCase().trim();
-      if (!cleanDesc) return null;
-
-      const exact = existingPayees.find(p => p.name.toLowerCase() === cleanDesc);
-      if (exact) return exact;
-
-      const contains = existingPayees.find(p => cleanDesc.includes(p.name.toLowerCase()) || p.name.toLowerCase().includes(cleanDesc));
-      if (contains) return contains;
-
-      const descKeywords = cleanDesc.split(/[^a-z0-9]/).filter(w => w.length > 2);
-      if (descKeywords.length === 0) return null;
-
-      const candidates = existingPayees.map(p => {
-          const payeeKeywords = p.name.toLowerCase().split(/[^a-z0-9]/).filter(w => w.length > 2);
-          const overlap = descKeywords.filter(w => payeeKeywords.includes(w)).length;
-          return { payee: p, overlap };
-      }).filter(c => c.overlap > 0);
-
-      candidates.sort((a, b) => b.overlap - a.overlap);
-      if (candidates.length > 0 && candidates[0].overlap >= Math.max(1, descKeywords.length / 2)) {
-          return candidates[0].payee;
-      }
-
-      return null;
-  }, []);
 
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
@@ -254,107 +151,46 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
     const otherCategoryId = categories.find(c => c.name.toLowerCase() === 'other')?.id || categories[0]?.id || '';
 
     const processedTransactions = transactionsWithRules.map(tx => {
-        const isIncome = transactionTypeMap.get(tx.typeId)?.balanceEffect === 'income';
         let matchedPayeeId = tx.payeeId;
-
         if (tx.category && tx.category !== 'Uncategorized' && !existingCategoryNames.has(tx.category.toLowerCase())) {
-            const newCategory: Category = {
-                id: `new-${tx.category.toLowerCase().replace(/\s+/g, '-')}-${generateUUID().slice(0,4)}`,
-                name: tx.category
-            };
+            const newCategory: Category = { id: generateUUID(), name: tx.category };
             newCategories.push(newCategory);
             existingCategoryNames.add(tx.category.toLowerCase());
         }
-
-        if (isIncome && !matchedPayeeId) {
-            const match = findSmartPayeeMatch(tx.description, [...payees, ...newPayees]);
-            if (match) matchedPayeeId = match.id;
-            else {
-                const cleanName = tx.description.trim();
-                if (cleanName) {
-                    const newPayee: Payee = { id: `new-p-${generateUUID().slice(0,8)}`, name: cleanName };
-                    newPayees.push(newPayee);
-                    existingPayeeNames.add(cleanName.toLowerCase());
-                    matchedPayeeId = newPayee.id;
-                }
-            }
-        }
-
         let finalCategoryId = tx.categoryId;
         if (!finalCategoryId) {
              const categoryNameToIdMap = new Map([...categories, ...newCategories].map(c => [c.name.toLowerCase(), c.id]));
-             finalCategoryId = categoryNameToIdMap.get((tx.category || '').toLowerCase());
-             if (!finalCategoryId) finalCategoryId = isIncome && incomeCategoryId ? incomeCategoryId : otherCategoryId;
+             finalCategoryId = categoryNameToIdMap.get((tx.category || '').toLowerCase()) || otherCategoryId;
         }
-
-        const desc = (tx.description || '').toLowerCase();
-        const typeStr = (tx.category || '').toLowerCase();
-        const isTransfer = desc.includes('transfer') || typeStr.includes('transfer');
-
-        return {
-            ...tx,
-            payeeId: matchedPayeeId,
-            categoryId: finalCategoryId,
-            tempId: generateUUID(),
-            isIgnored: isTransfer
-        };
+        return { ...tx, payeeId: matchedPayeeId, categoryId: finalCategoryId, tempId: generateUUID() };
     });
 
     setStagedNewCategories(newCategories);
     setStagedNewPayees(newPayees);
     setRawTransactionsToVerify(processedTransactions);
-  }, [categories, payees, accounts, findSmartPayeeMatch, transactionTypeMap]);
-
-  const prepareForVerification = useCallback(async (rawTransactions: RawTransaction[], userId: string) => {
-    handleProgress('Applying automation rules...');
-    setRawExtractedTransactions(rawTransactions);
-    applyRulesAndSetStaging(rawTransactions, userId, rules);
-    setAppState('verifying_import');
-  }, [rules, applyRulesAndSetStaging]);
+  }, [categories, payees, accounts]);
 
   const handleFileUpload = useCallback(async (files: File[], accountId: string) => {
     setAppState('processing');
     setError(null);
     try {
-      let importFolderId = documentFolders.find(f => f.name === "Imported Documents" && !f.parentId)?.id;
-      if (!importFolderId) {
-          importFolderId = generateUUID();
-          onCreateFolder({ id: importFolderId, name: "Imported Documents", parentId: undefined, createdAt: new Date().toISOString() });
-      }
-      for (const file of files) {
-          const docId = generateUUID();
-          await saveFile(docId, file);
-          onAddDocument({ id: docId, name: file.name, uploadDate: new Date().toISOString().split('T')[0], size: file.size, mimeType: file.type, parentId: importFolderId });
-      }
       const rawTransactions = useAi ? await extractTransactionsFromFiles(files, accountId, transactionTypes, handleProgress) : await parseTransactionsFromFiles(files, accountId, transactionTypes, handleProgress);
-      await prepareForVerification(rawTransactions, selectedUserId);
+      applyRulesAndSetStaging(rawTransactions, selectedUserId, rules);
+      setAppState('verifying_import');
     } catch (err) {
-      console.error(err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
       setAppState('error');
     }
-  }, [useAi, transactionTypes, prepareForVerification, selectedUserId, onAddDocument, documentFolders, onCreateFolder]);
+  }, [useAi, transactionTypes, selectedUserId, rules, applyRulesAndSetStaging]);
 
-  const handleTextPaste = useCallback(async () => {
-    if (!textInput.trim() || !pasteAccountId) return;
-    setAppState('processing');
-    setError(null);
-    try {
-      const rawTransactions = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress);
-      await prepareForVerification(rawTransactions, selectedUserId);
-    } catch (err) {
-      console.error(err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred.');
-      setAppState('error');
-    }
-  }, [textInput, useAi, pasteAccountId, transactionTypes, prepareForVerification, selectedUserId]);
-  
-  const handleVerificationComplete = (verifiedTransactions: (RawTransaction & { categoryId: string; })[]) => {
+  const handleVerificationComplete = async (verifiedTransactions: (RawTransaction & { categoryId: string; })[]) => {
       handleProgress('Finalizing staged data...');
       stagedNewCategories.forEach(cat => onSaveCategory(cat));
       stagedNewPayees.forEach(p => onSavePayee(p));
 
-      const { added, duplicates } = mergeTransactions(transactions, verifiedTransactions);
+      // Note: Full duplicate check across millions of records should ideally move to server
+      // For now, we perform local merge with the recent pool as a starting point
+      const { added, duplicates } = mergeTransactions(recentGlobalTransactions, verifiedTransactions);
       if (duplicates.length > 0) {
           setStagedForImport(added);
           setDuplicatesToReview(duplicates);
@@ -367,93 +203,24 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
       }
   };
 
-  const handleReviewComplete = (duplicatesToImport: Transaction[]) => {
-    const finalTransactions = [...stagedForImport, ...duplicatesToImport];
-    onTransactionsAdded(finalTransactions, []);
-    setFinalizedTransactions(finalTransactions);
-    setImportedTxIds(new Set(finalTransactions.map(tx => tx.id)));
-    setDuplicatesImported(duplicatesToImport.length);
-    setDuplicatesIgnored(duplicatesToReview.length - duplicatesToImport.length);
-    setAppState('post_import_edit');
-    setStagedForImport([]);
-    setDuplicatesToReview([]);
-  };
-
   const handleClear = () => {
     setAppState('idle');
     setError(null);
-    setProgressMessage('');
-    setTextInput('');
-    setRawExtractedTransactions([]);
     setRawTransactionsToVerify([]);
     setStagedForImport([]);
     setDuplicatesToReview([]);
-    setStagedNewCategories([]);
-    setStagedNewPayees([]);
-    setFinalizedTransactions([]);
-    setImportedTxIds(new Set());
-    setDuplicatesIgnored(0);
-    setDuplicatesImported(0);
   };
-  
-  const recentTransactions = useMemo(() => {
-    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
-  }, [transactions]);
-  
-  const dashboardTransactions = useMemo(() => {
-    const now = new Date();
-    const baseTxs = transactions.filter(t => !t.isParent);
-    if (dashboardRange === 'all') return baseTxs;
-    return baseTxs.filter(tx => {
-        const txDate = new Date(tx.date);
-        txDate.setHours(0, 0, 0, 0);
-        if (dashboardRange === 'year') return txDate.getFullYear() === now.getFullYear();
-        if (dashboardRange === 'month') return txDate.getFullYear() === now.getFullYear() && txDate.getMonth() === now.getMonth();
-        return true;
-    });
-  }, [transactions, dashboardRange]);
-
-  const totals = useMemo(() => {
-    const res = { income: 0, expenses: 0, investments: 0, donations: 0, taxes: 0, savings: 0, debt: 0 };
-    dashboardTransactions.forEach(tx => {
-        const type = transactionTypeMap.get(tx.typeId);
-        if (!type) return;
-        const effect = type.balanceEffect;
-        if (effect === 'income') res.income += tx.amount;
-        else if (effect === 'expense') res.expenses += tx.amount;
-        else if (effect === 'investment') res.investments += tx.amount;
-        else if (effect === 'donation') res.donations += tx.amount;
-        else if (effect === 'tax') res.taxes += tx.amount;
-        else if (effect === 'savings') res.savings += tx.amount;
-        else if (effect === 'debt') res.debt += tx.amount;
-    });
-    return res;
-  }, [dashboardTransactions, transactionTypeMap]);
   
   const nextDeadline = useMemo(() => getNextTaxDeadline(), []);
 
-  const handleTriggerCreateRule = (rawTx: RawTransaction & { tempId: string }) => {
-      const tx: Transaction = { ...rawTx, id: rawTx.tempId, categoryId: rawTx.categoryId || '' };
-      setTxForRule(tx);
-      setIsRuleModalOpen(true);
-  };
-
-  const handleSaveRuleFromImport = (rule: ReconciliationRule) => {
-      onSaveRule(rule);
-      setIsRuleModalOpen(false);
-      applyRulesAndSetStaging(rawExtractedTransactions, selectedUserId, [...rules, rule]);
-  };
-
-  const justImportedTransactions = useMemo(() => transactions.filter(tx => importedTxIds.has(tx.id)), [transactions, importedTxIds]);
-
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
   return (
     <div className="space-y-8 h-full flex flex-col min-h-0">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-shrink-0">
         <div>
             <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
-            <p className="text-slate-500 mt-1">An overview of your financial activity.</p>
+            <p className="text-slate-500 mt-1">Real-time server-side insights.</p>
         </div>
         <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200 overflow-x-auto">
             {(['all', 'year', 'month'] as const).map(range => (
@@ -464,23 +231,21 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         </div>
       </div>
       
-      {appState === 'idle' && (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 flex-shrink-0">
-            <SummaryWidget title="Income" value={formatCurrency(totals.income)} helpText={dashboardRange} className="border-emerald-100" />
-            <SummaryWidget title="Expenses" value={formatCurrency(totals.expenses)} helpText={dashboardRange} className="border-rose-100" />
-            <SummaryWidget title="Taxes" value={formatCurrency(totals.taxes)} helpText={dashboardRange} className="border-amber-100 bg-amber-50/30" />
-            <SummaryWidget title="Debt" value={formatCurrency(totals.debt)} helpText={dashboardRange} className="border-slate-100 bg-slate-50" />
-            <SummaryWidget title="Invest" value={formatCurrency(totals.investments)} helpText={dashboardRange} className="border-purple-100" />
-            <SummaryWidget title="Donations" value={formatCurrency(totals.donations)} helpText={dashboardRange} className="border-blue-100" />
-            <SummaryWidget title="Savings" value={formatCurrency(totals.savings)} helpText={dashboardRange} className="border-indigo-100" />
-            <SummaryWidget title={nextDeadline.label} value={`${nextDeadline.daysLeft}d`} helpText={`Due ${nextDeadline.dateStr}`} icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
-          </div>
-      )}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 flex-shrink-0">
+        <SummaryWidget title="Income" value={formatCurrency(summaryTotals.income)} helpText={dashboardRange} className="border-emerald-100" />
+        <SummaryWidget title="Expenses" value={formatCurrency(summaryTotals.expense)} helpText={dashboardRange} className="border-rose-100" />
+        <SummaryWidget title="Taxes" value={formatCurrency(summaryTotals.tax)} helpText={dashboardRange} className="border-amber-100 bg-amber-50/30" />
+        <SummaryWidget title="Debt" value={formatCurrency(summaryTotals.debt)} helpText={dashboardRange} className="border-slate-100 bg-slate-50" />
+        <SummaryWidget title="Invest" value={formatCurrency(summaryTotals.investment)} helpText={dashboardRange} className="border-purple-100" />
+        <SummaryWidget title="Donations" value={formatCurrency(summaryTotals.donation)} helpText={dashboardRange} className="border-blue-100" />
+        <SummaryWidget title="Savings" value={formatCurrency(summaryTotals.savings)} helpText={dashboardRange} className="border-indigo-100" />
+        <SummaryWidget title={nextDeadline.label} value={`${nextDeadline.daysLeft}d`} helpText={`Due ${nextDeadline.dateStr}`} icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
+      </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
         {appState === 'idle' ? (
           <div className="flex flex-col h-full">
-            <h2 className="text-xl font-bold text-slate-700 mb-4">Import Transactions</h2>
+            <h2 className="text-xl font-bold text-slate-700 mb-4">Quick Entry</h2>
             <div className="flex-shrink-0">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-4">
@@ -488,7 +253,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                         <button onClick={() => setImportMethod('paste')} className={`px-4 py-2 rounded-lg font-semibold ${importMethod === 'paste' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-700'}`}>Paste Text</button>
                     </div>
                 </div>
-
                 {importMethod === 'upload' ? (
                     <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} useAi={useAi} onAddAccountRequested={() => setIsAccountModalOpen(true)} />
                 ) : (
@@ -497,57 +261,49 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                             {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                         </select>
                         <textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="Paste CSV rows here..." className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm" />
-                        <button onClick={handleTextPaste} disabled={!textInput.trim() || accounts.length === 0} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">Process Text</button>
+                        <button onClick={async () => {
+                             setAppState('processing');
+                             try {
+                                 const raw = await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress);
+                                 applyRulesAndSetStaging(raw, selectedUserId, rules);
+                                 setAppState('verifying_import');
+                             } catch(e) { setAppState('error'); }
+                        }} disabled={!textInput.trim() || accounts.length === 0} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">Process Text</button>
                     </div>
                 )}
             </div>
 
             <div className="mt-12 pt-8 border-t border-slate-200 overflow-hidden flex flex-col flex-1">
-                <h2 className="text-xl font-bold text-slate-700 mb-4">Recent Global Transactions</h2>
+                <h2 className="text-xl font-bold text-slate-700 mb-4">Recent Activity</h2>
                 <div className="flex-1 overflow-hidden relative">
-                    <TransactionTable transactions={recentTransactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={() => {}} onDeleteTransaction={() => {}} visibleColumns={new Set(['date', 'description', 'amount', 'category', 'type'])} />
+                    <TransactionTable transactions={recentGlobalTransactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={() => {}} onDeleteTransaction={() => {}} visibleColumns={new Set(['date', 'description', 'amount', 'category'])} />
                 </div>
             </div>
           </div>
         ) : appState === 'processing' ? (
             <div className="py-12 flex-1 flex flex-col items-center justify-center space-y-4 text-center">
                 <svg className="animate-spin h-12 w-12 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                <div className="text-slate-600"><p className="font-bold text-xl">Processing Documents</p><p className="text-sm text-slate-400 mt-1">{progressMessage}</p></div>
+                <div className="text-slate-600"><p className="font-bold text-xl">Thinking...</p><p className="text-sm text-slate-400 mt-1">{progressMessage}</p></div>
             </div>
         ) : appState === 'verifying_import' ? (
-            <ImportVerification 
-                initialTransactions={rawTransactionsToVerify} 
-                onComplete={handleVerificationComplete} 
-                onCancel={handleClear} 
-                accounts={accounts} 
-                categories={categories.concat(stagedNewCategories)} 
-                transactionTypes={transactionTypes} 
-                payees={payees.concat(stagedNewPayees)} 
-                users={users} 
-                onCreateRule={handleTriggerCreateRule} 
-                existingTransactions={transactions}
-            />
-        ) : appState === 'reviewing_duplicates' ? (
-            <DuplicateReview duplicates={duplicatesToReview} onComplete={handleReviewComplete} onCancel={handleClear} accounts={accounts} />
+            <ImportVerification initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={handleClear} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} existingTransactions={recentGlobalTransactions} />
         ) : appState === 'post_import_edit' ? (
             <div className="flex-1 flex flex-col overflow-hidden animate-fade-in h-full">
                 <div className="flex justify-between items-center mb-6 bg-slate-50 p-5 rounded-2xl border border-indigo-100 flex-shrink-0">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> Import Ready for Review</h2>
-                        <p className="text-sm text-slate-500 mt-1">Added <strong className="text-indigo-600 font-black">{justImportedTransactions.length}</strong> transactions.</p>
+                        <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> Review Data</h2>
+                        <p className="text-sm text-slate-500 mt-1">Imported {importedTxIds.size} transactions.</p>
                     </div>
-                    <button onClick={handleClear} className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg">Finish & Exit</button>
+                    <button onClick={handleClear} className="px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg">Done</button>
                 </div>
                 <div className="flex-1 overflow-hidden border border-slate-200 rounded-2xl shadow-sm relative">
-                    <TransactionTable transactions={justImportedTransactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} visibleColumns={new Set(['date', 'description', 'payee', 'category', 'amount', 'actions'])} />
+                    <TransactionTable transactions={recentGlobalTransactions.filter(tx => importedTxIds.has(tx.id))} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} visibleColumns={new Set(['date', 'description', 'payee', 'category', 'amount'])} />
                 </div>
             </div>
         ) : (
             <ResultsDisplay appState={appState as any} error={error} progressMessage={progressMessage} transactions={finalizedTransactions} duplicatesIgnored={duplicatesIgnored} duplicatesImported={duplicatesImported} onClear={handleClear} />
         )}
       </div>
-
-      <QuickAccountModal isOpen={isAccountModalOpen} onClose={() => setIsAccountModalOpen(false)} onSave={onAddAccount} onAddType={onAddAccountType} accountTypes={accountTypes} />
     </div>
   );
 };

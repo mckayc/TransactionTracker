@@ -1,5 +1,6 @@
+
 {
-  "name": "Transaction Tracker 0.0.52",
-  "description": "An AI-powered tool to upload credit card or bank statement PDFs, extract transaction data, and automatically categorize expenses for small business owners and individuals.",
+  "name": "Transaction Tracker - Performance Engine - v0.1.0",
+  "description": "High-performance normalized SQLite architecture for millions of financial records.",
   "requestFramePermissions": []
 }
