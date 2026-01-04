@@ -313,6 +313,11 @@ export interface FinancialPlan {
         categoryId: string;
         monthlyLimit: number;
     }[];
+    priorityTasks?: {
+        title: string;
+        description: string;
+        priority: 'high' | 'medium' | 'low';
+    }[];
 }
 
 export type AmazonReportType = 'onsite' | 'offsite' | 'creator_connections' | 'unknown';

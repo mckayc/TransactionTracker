@@ -198,8 +198,9 @@ const App: React.FC = () => {
             console.log(`[APP] Boot complete. Total Load Time: ${totalDuration}ms`);
         } catch (err) {
             console.error("[APP] CRITICAL BOOT ERROR:", err);
+            const errorMessage = err instanceof Error ? err.message : String(err);
             if (showLoader) {
-                setLoadError(`Network or database timeout. Check if server is running. Error: ${err.message}`);
+                setLoadError(`Network or database timeout. Check if server is running. Error: ${errorMessage}`);
             } else {
                 setSyncError(true);
                 setIsSyncing(false);
@@ -239,7 +240,8 @@ const App: React.FC = () => {
             syncChannel.postMessage('REFRESH_REQUIRED');
         } catch (e) { 
             console.error(`[APP] Failed to persist key: ${key}`, e);
-            alert(`Error saving to database: ${e.message}`);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            alert(`Error saving to database: ${errorMessage}`);
         } finally {
             isEditingRef.current = false;
         }
@@ -352,7 +354,15 @@ const App: React.FC = () => {
             case 'hub':
                 return <BusinessHub profile={businessProfile} onUpdateProfile={(p) => updateData('businessProfile', p, setBusinessProfile)} chatSessions={chatSessions} onUpdateChatSessions={(s) => updateData('chatSessions', s, setChatSessions)} transactions={transactions} accounts={accounts} categories={categories} />;
             case 'plan':
-                return <FinancialPlanPage transactions={transactions} goals={financialGoals} onSaveGoals={(g) => updateData('financialGoals', g, setFinancialGoals)} plan={financialPlan} onSavePlan={(p) => updateData('financialPlan', p, setFinancialPlan)} categories={categories} />;
+                return <FinancialPlanPage 
+                    transactions={transactions} 
+                    goals={financialGoals} 
+                    onSaveGoals={(g) => updateData('financialGoals', g, setFinancialGoals)} 
+                    plan={financialPlan} 
+                    onSavePlan={(p) => updateData('financialPlan', p, setFinancialPlan)} 
+                    categories={categories}
+                    onSaveTask={(t) => updateData('tasks', [...tasks, t], setTasks)}
+                />;
             case 'integrations':
                 return <IntegrationsPage onNavigate={(v) => setCurrentView(v)} />;
             case 'integration-amazon':
