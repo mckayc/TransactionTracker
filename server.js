@@ -33,96 +33,112 @@ console.log(`[SYS] Database Path: ${DB_PATH}`);
 console.log("---------------------------------------------------------");
 
 let db;
-try {
-    db = new Database(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
-    
-    console.log("[DB] Initializing core tables...");
-    
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
-      CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
-      CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT);
-      CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT);
-      CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT);
-      CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
-      CREATE TABLE IF NOT EXISTS payees (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
-      CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
 
-      CREATE TABLE IF NOT EXISTS transactions (
-          id TEXT PRIMARY KEY,
-          date TEXT,
-          description TEXT,
-          amount REAL
-      );
+const initDb = () => {
+    try {
+        db = new Database(DB_PATH);
+        db.pragma('journal_mode = WAL');
+        db.pragma('busy_timeout = 5000');
+        
+        console.log("[DB] Initializing core tables...");
+        
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
+          CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
+          CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT);
+          CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT);
+          CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT);
+          CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
+          CREATE TABLE IF NOT EXISTS payees (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
+          CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
 
-      CREATE TABLE IF NOT EXISTS transaction_tags (
-          transaction_id TEXT,
-          tag_id TEXT,
-          PRIMARY KEY (transaction_id, tag_id)
-      );
-    `);
+          CREATE TABLE IF NOT EXISTS transactions (
+              id TEXT PRIMARY KEY,
+              date TEXT,
+              description TEXT,
+              amount REAL
+          );
 
-    // Migration Engine
-    const tableInfo = db.prepare("PRAGMA table_info(transactions)").all();
-    const existingColumns = new Set(tableInfo.map(c => c.name));
-    const requiredColumns = [
-        { name: 'category_id', type: 'TEXT' },
-        { name: 'account_id', type: 'TEXT' },
-        { name: 'type_id', type: 'TEXT' },
-        { name: 'payee_id', type: 'TEXT' },
-        { name: 'user_id', type: 'TEXT' },
-        { name: 'location', type: 'TEXT' },
-        { name: 'notes', type: 'TEXT' },
-        { name: 'original_description', type: 'TEXT' },
-        { name: 'source_filename', type: 'TEXT' },
-        { name: 'link_group_id', type: 'TEXT' },
-        { name: 'is_parent', type: 'INTEGER DEFAULT 0' },
-        { name: 'parent_transaction_id', type: 'TEXT' },
-        { name: 'is_completed', type: 'INTEGER DEFAULT 0' },
-        { name: 'metadata', type: 'TEXT' }
-    ];
+          CREATE TABLE IF NOT EXISTS transaction_tags (
+              transaction_id TEXT,
+              tag_id TEXT,
+              PRIMARY KEY (transaction_id, tag_id)
+          );
+        `);
 
-    db.transaction(() => {
-        requiredColumns.forEach(col => {
-            if (!existingColumns.has(col.name)) {
-                console.log(`[DB] Migration: Adding column '${col.name}' to 'transactions'...`);
-                db.prepare(`ALTER TABLE transactions ADD COLUMN ${col.name} ${col.type}`).run();
-            }
-        });
-    })();
+        // Migration Engine: Detect and add missing columns
+        console.log("[DB] Syncing schema versions...");
+        
+        const migrateTable = (tableName, requiredCols) => {
+            const tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
+            const existingColumns = new Set(tableInfo.map(c => c.name));
+            
+            db.transaction(() => {
+                requiredCols.forEach(col => {
+                    if (!existingColumns.has(col.name)) {
+                        console.log(`[DB] Migration: Adding column '${col.name}' to table '${tableName}'...`);
+                        db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`).run();
+                    }
+                });
+            })();
+        };
 
-    // Indexing
-    db.exec(`
-      CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
-      CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
-      CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
-      CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type_id);
-    `);
+        // Update Transactions Table
+        migrateTable('transactions', [
+            { name: 'category_id', type: 'TEXT' },
+            { name: 'account_id', type: 'TEXT' },
+            { name: 'type_id', type: 'TEXT' },
+            { name: 'payee_id', type: 'TEXT' },
+            { name: 'user_id', type: 'TEXT' },
+            { name: 'location', type: 'TEXT' },
+            { name: 'notes', type: 'TEXT' },
+            { name: 'original_description', type: 'TEXT' },
+            { name: 'source_filename', type: 'TEXT' },
+            { name: 'link_group_id', type: 'TEXT' },
+            { name: 'is_parent', type: 'INTEGER DEFAULT 0' },
+            { name: 'parent_transaction_id', type: 'TEXT' },
+            { name: 'is_completed', type: 'INTEGER DEFAULT 0' },
+            { name: 'metadata', type: 'TEXT' }
+        ]);
 
-    // SEEDER: Ensure standard types exist
-    const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
-    if (typeCount === 0) {
-        console.log("[DB] Seeding default transaction types...");
-        const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
-        db.transaction(() => {
-            insertType.run('type_income', 'Income', 'income');
-            insertType.run('type_purchase', 'Purchase', 'expense');
-            insertType.run('type_transfer', 'Transfer', 'transfer');
-            insertType.run('type_tax', 'Tax Payment', 'tax');
-            insertType.run('type_investment', 'Investment', 'investment');
-        })();
+        // Update Transaction Types Table (Fixes the balance_effect error)
+        migrateTable('transaction_types', [
+            { name: 'balance_effect', type: 'TEXT' }
+        ]);
+
+        // Indexing
+        db.exec(`
+          CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+          CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
+          CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
+        `);
+
+        // SEEDER: Ensure standard types exist
+        const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
+        if (typeCount === 0) {
+            console.log("[DB] Seeding default transaction types...");
+            const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
+            db.transaction(() => {
+                insertType.run('type_income', 'Income', 'income');
+                insertType.run('type_purchase', 'Purchase', 'expense');
+                insertType.run('type_transfer', 'Transfer', 'transfer');
+                insertType.run('type_tax', 'Tax Payment', 'tax');
+                insertType.run('type_investment', 'Investment', 'investment');
+            })();
+            console.log("[DB] Seed complete: 5 standard types added.");
+        }
+
+        console.log("[DB] Initialization complete. Engine ready.");
+        console.log("---------------------------------------------------------");
+
+    } catch (dbErr) {
+        console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+        console.error("[DB] CRITICAL INITIALIZATION ERROR:", dbErr.message);
+        console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
     }
+};
 
-    console.log("[DB] Initialization complete. Engine ready.");
-    console.log("---------------------------------------------------------");
-
-} catch (dbErr) {
-    console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    console.error("[DB] CRITICAL INITIALIZATION ERROR:", dbErr.message);
-    console.error("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-}
+initDb();
 
 const buildTxFilters = (params) => {
     const { search, startDate, endDate, accountIds, categoryIds, userId } = params;
@@ -148,6 +164,8 @@ const buildTxFilters = (params) => {
     }
     return { filterQuery, values };
 };
+
+// --- DATA ROUTES ---
 
 app.get('/api/transactions', (req, res) => {
     try {
@@ -296,6 +314,31 @@ app.post('/api/data/:key', (req, res) => {
     }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin Reset Route
+app.post('/api/admin/reset', async (req, res) => {
+    console.warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    console.warn("[SYS] FACTORY RESET TRIGGERED");
+    console.warn("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+    try {
+        if (db) {
+            db.close();
+            console.log("[DB] Connection closed for reset.");
+        }
+        
+        if (fs.existsSync(DB_PATH)) {
+            fs.unlinkSync(DB_PATH);
+            console.log("[SYS] Database file deleted.");
+        }
+
+        // Re-initialize
+        initDb();
+        res.json({ success: true, message: "System purged and re-initialized." });
+    } catch (e) {
+        console.error("[SYS] Reset failed:", e.message);
+        res.status(500).json({ error: "Failed to purge database. Check logs." });
+    }
 });
 
 app.post('/api/ai/generate', async (req, res) => {

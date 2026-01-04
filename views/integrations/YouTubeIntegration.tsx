@@ -538,10 +538,14 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }));
 
         result.sort((a, b) => {
-            // Fix: Cast a and b to any to avoid 'unknown' type errors when indexing by state keys
-            const valA = (a as any)[insightsSortKey] as number;
-            const valB = (b as any)[insightsSortKey] as number;
-            return insightsSortDir === 'asc' ? valA - valB : valB - valA;
+            // Fix: Cast a and b to any and ensure return value is a number for reliable sorting.
+            const valA = (a as any)[insightsSortKey];
+            const valB = (b as any)[insightsSortKey];
+            
+            const numA = typeof valA === 'number' ? valA : 0;
+            const numB = typeof valB === 'number' ? valB : 0;
+            
+            return insightsSortDir === 'asc' ? numA - numB : numB - numA;
         });
 
         return result.slice(0, insightsLimit);
@@ -1086,7 +1090,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                                     {!groupByVideo && <input type="checkbox" checked={selectedIds.has(m.id)} onChange={() => { const s = new Set(selectedIds); if(s.has(m.id)) s.delete(m.id); else s.add(m.id); setSelectedIds(s); }} className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" />}
                                                 </td>
                                                 <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.reportYear || '-'}</td>
-                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.publishDate}{m.channelId && <div className="text-[10px] text-indigo-600">{channelMap.get(m.channelId)}</div>}</td>
+                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.publishDate}{m.channelId && <div className="text-[10px] text-indigo-600">{channelMap.get(v.channelId)}</div>}</td>
                                                 <td className="px-4 py-2 text-sm text-slate-800"><div className="line-clamp-1 max-w-md" title={m.videoTitle}>{m.videoTitle}</div></td>
                                                 <td className="px-4 py-2 text-right text-sm text-slate-600">{formatNumber(m.views)}</td>
                                                 <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.estimatedRevenue)}</td>
@@ -1294,9 +1298,9 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fix: Explicitly infer types and avoid unknown by leveraging videoAggregateMap's type safety */}
+                                    {/* Fix: Explicitly cast 'any' to result of Array.from to avoid 'unknown' type errors during filtering and reducing */}
                                     {formatCurrency(
-                                        Array.from(videoAggregateMap.values())
+                                        (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce((sum, v) => sum + (v.creationYearRevenue || 0), 0)
                                     )}
@@ -1305,9 +1309,9 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
                                 <p className="text-2xl font-black text-indigo-600 font-mono">
-                                    {/* Fix: Explicitly infer types and avoid unknown by leveraging videoAggregateMap's type safety */}
+                                    {/* Fix: Explicitly cast 'any' to result of Array.from to avoid 'unknown' type errors during filtering and reducing */}
                                     {formatCurrency(
-                                        Array.from(videoAggregateMap.values())
+                                        (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce((sum, v) => sum + (v.lifetimeRevenue || 0), 0)
                                     )}
@@ -1316,9 +1320,9 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fix: Explicitly infer types and avoid unknown by leveraging videoAggregateMap's type safety */}
+                                    {/* Fix: Explicitly cast 'any' to result of Array.from to avoid 'unknown' type errors during filtering and reducing */}
                                     {formatNumber(
-                                        Array.from(videoAggregateMap.values())
+                                        (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
                                             .reduce((sum, v) => sum + (v.lifetimeViews || 0), 0)
                                     )}
