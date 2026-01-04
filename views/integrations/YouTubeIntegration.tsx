@@ -1090,7 +1090,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                                     {!groupByVideo && <input type="checkbox" checked={selectedIds.has(m.id)} onChange={() => { const s = new Set(selectedIds); if(s.has(m.id)) s.delete(m.id); else s.add(m.id); setSelectedIds(s); }} className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" />}
                                                 </td>
                                                 <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.reportYear || '-'}</td>
-                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.publishDate}{m.channelId && <div className="text-[10px] text-indigo-600">{channelMap.get(v.channelId)}</div>}</td>
+                                                <td className="px-4 py-2 text-sm text-slate-600 whitespace-nowrap">{m.publishDate}{m.channelId && <div className="text-[10px] text-indigo-600">{channelMap.get(m.channelId)}</div>}</td>
                                                 <td className="px-4 py-2 text-sm text-slate-800"><div className="line-clamp-1 max-w-md" title={m.videoTitle}>{m.videoTitle}</div></td>
                                                 <td className="px-4 py-2 text-right text-sm text-slate-600">{formatNumber(m.views)}</td>
                                                 <td className="px-4 py-2 text-right text-sm font-bold text-green-600">{formatCurrency(m.estimatedRevenue)}</td>
@@ -1298,33 +1298,33 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fix: Explicitly cast 'any' to result of Array.from to avoid 'unknown' type errors during filtering and reducing */}
+                                    {/* Fix: Explicitly type 'sum' as number in reduce to avoid 'unknown' return type error on line 912 */}
                                     {formatCurrency(
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum, v) => sum + (v.creationYearRevenue || 0), 0)
+                                            .reduce((sum: number, v: any) => sum + (v.creationYearRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
                                 <p className="text-2xl font-black text-indigo-600 font-mono">
-                                    {/* Fix: Explicitly cast 'any' to result of Array.from to avoid 'unknown' type errors during filtering and reducing */}
+                                    {/* Fix: Explicitly type 'sum' as number in reduce to avoid 'unknown' return type error */}
                                     {formatCurrency(
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum, v) => sum + (v.lifetimeRevenue || 0), 0)
+                                            .reduce((sum: number, v: any) => sum + (v.lifetimeRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fix: Explicitly cast 'any' to result of Array.from to avoid 'unknown' type errors during filtering and reducing */}
+                                    {/* Fix: Explicitly type 'sum' as number in reduce to avoid 'unknown' return type error */}
                                     {formatNumber(
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum, v) => sum + (v.lifetimeViews || 0), 0)
+                                            .reduce((sum: number, v: any) => sum + (v.lifetimeViews || 0), 0)
                                     )}
                                 </p>
                             </div>
