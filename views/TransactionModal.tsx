@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, Payee, Category, User, Tag } from '../types';
 import { CloseIcon } from '../components/Icons';
@@ -23,43 +24,33 @@ const getTodayDate = () => {
     return `${year}-${month}-${day}`;
 };
 
+
 const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction, onClose, onSave, accounts, categories, tags, transactionTypes, payees, users }) => {
     
-    const getDefaultState = (): Omit<Transaction, 'id'> => {
+    const getDefaultState = () => {
         const defaultExpenseType = transactionTypes.find(t => t.name === 'Purchase') || transactionTypes.find(t => t.balanceEffect === 'expense');
         const defaultCategory = categories.find(c => c.name === 'Other') || categories[0];
         const defaultUser = users.find(u => u.isDefault) || users[0];
-        const today = getTodayDate();
-
         return {
-            transaction_date: today,
-            date: today,
-            description_raw: '',
+            date: getTodayDate(),
             description: '',
-            amount: 0,
-            direction: 'debit',
             categoryId: defaultCategory?.id || '',
-            category: defaultCategory?.name || 'Other',
+            category: defaultCategory?.name || '',
+            amount: 0,
             typeId: defaultExpenseType ? defaultExpenseType.id : '',
-            account_id: '',
-            account_type: 'checking',
-            status: 'cleared',
-            currency: 'USD',
-            is_internal_transfer: false,
-            is_payment: false,
-            cash_flow_effect: 'outflow',
-            liability_effect: 'none',
-            raw_import_row: {},
-            userId: defaultUser?.id || '',
-            tagIds: [],
+            location: '',
+            accountId: '',
             notes: '',
-            location: ''
-        };
+            payeeId: '',
+            userId: defaultUser?.id || '',
+            tagIds: [] as string[],
+        }
     };
     
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>(getDefaultState());
     const isEditMode = transaction !== null;
 
+    // Recursive helper for deep hierarchies (parents, children, grandchildren)
     const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
         return items
             .filter(i => i.parentId === parentId)
@@ -73,21 +64,21 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
     const sortedPayeeOptions = useMemo(() => getSortedOptions(payees), [payees]);
     const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
 
+    // Only reset form when modal opens or specific transaction changes
     useEffect(() => {
         if (isOpen) {
             if (isEditMode && transaction) {
-                const { id, ...rest } = transaction;
-                setFormData({ ...rest, tagIds: rest.tagIds || [] });
+                setFormData({ ...transaction, tagIds: transaction.tagIds || [] });
             } else {
                 const defaultState = getDefaultState();
                 const defaultAccountId = accounts.length > 0 ? accounts[0].id : '';
                 setFormData({
                     ...defaultState,
-                    account_id: defaultAccountId,
+                    accountId: defaultAccountId,
                 });
             }
         }
-    }, [isOpen, transaction, accounts]);
+    }, [isOpen, transaction]);
 
     if (!isOpen) return null;
 
@@ -100,18 +91,6 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                 ...prev,
                 categoryId: value,
                 category: catName
-            }));
-        } else if (name === 'date') {
-            setFormData(prev => ({
-                ...prev,
-                date: value,
-                transaction_date: value
-            }));
-        } else if (name === 'description') {
-            setFormData(prev => ({
-                ...prev,
-                description: value,
-                description_raw: value
             }));
         } else {
             setFormData(prev => ({
@@ -189,7 +168,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                          <div>
                             <label className="block text-sm font-medium text-slate-700">Account</label>
-                            <select name="account_id" value={formData.account_id || ''} onChange={handleChange} required>
+                            <select name="accountId" value={formData.accountId || ''} onChange={handleChange} required>
                                 <option value="" disabled>Select an account...</option>
                                 {accounts.map(acc => (
                                     <option key={acc.id} value={acc.id}>{acc.name}</option>
@@ -227,7 +206,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                                     {tag.name}
                                 </button>
                             ))}
-                            {tags.length === 0 && <span className="text-sm text-slate-400 italic">No tags available.</span>}
+                            {tags.length === 0 && <span className="text-sm text-slate-400 italic">No tags available. Create them in the Tags page.</span>}
                         </div>
                     </div>
 

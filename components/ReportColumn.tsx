@@ -1,3 +1,5 @@
+
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric, YouTubeMetric } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
@@ -169,7 +171,6 @@ const ReportRow: React.FC<{
                     )}
                 </div>
                 
-                {/* Fixed: id was not defined in ReportRow scope, using item.id instead */}
                 <button 
                     onClick={(e) => onToggleHidden(e, item.id)}
                     className={`p-1.5 rounded transition-colors ${
@@ -258,8 +259,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 const type = transactionTypes.find(t => t.id === tx.typeId);
                 if (!type || !config.filters.balanceEffects?.includes(type.balanceEffect)) return false;
 
-                // Fixed: accountId does not exist on type Transaction, using account_id
-                if (config.filters.accountIds && !config.filters.accountIds.includes(tx.account_id || '')) return false;
+                if (config.filters.accountIds && !config.filters.accountIds.includes(tx.accountId || '')) return false;
                 if (config.filters.userIds && !config.filters.userIds.includes(tx.userId || '')) return false;
                 if (config.filters.categoryIds && !config.filters.categoryIds.includes(tx.categoryId)) return false;
                 if (config.filters.typeIds && !config.filters.typeIds.includes(tx.typeId)) return false;
@@ -412,8 +412,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     const tx = item as Transaction;
                     val = tx.amount;
                     if (config.groupBy === 'account') {
-                        // Fixed: accountId does not exist on type Transaction, using account_id
-                        key = tx.account_id || 'no-account';
+                        key = tx.accountId || 'no-account';
                         label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
                     } else if (config.groupBy === 'type') {
                         key = tx.typeId;
