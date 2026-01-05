@@ -76,7 +76,7 @@ const App: React.FC = () => {
             setTransactionTypes(data.transactionTypes || []);
             setRules(data.reconciliationRules || []);
             setPayees(data.payees || []);
-            setUsers(data.users || [{ id: 'user1', name: 'Primary User', isDefault: true }]);
+            setUsers(data.users && data.users.length > 0 ? data.users : [{ id: 'user_primary', name: 'Primary User', isDefault: true }]);
             setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
             setBusinessNotes(data.businessNotes || []);
             setDocumentFolders(data.documentFolders || []);

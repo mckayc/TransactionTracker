@@ -70,7 +70,8 @@ const initDb = () => {
           CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
           CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT);
           CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT);
-          CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT);
+          CREATE TABLE IF NOT EXISTS account_types (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
+          CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT);
           CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
           CREATE TABLE IF NOT EXISTS payees (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
           CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
@@ -79,7 +80,21 @@ const initDb = () => {
               id TEXT PRIMARY KEY,
               date TEXT,
               description TEXT,
-              amount REAL
+              amount REAL,
+              category_id TEXT,
+              account_id TEXT,
+              type_id TEXT,
+              payee_id TEXT,
+              user_id TEXT,
+              location TEXT,
+              notes TEXT,
+              original_description TEXT,
+              source_filename TEXT,
+              link_group_id TEXT,
+              is_parent INTEGER DEFAULT 0,
+              parent_transaction_id TEXT,
+              is_completed INTEGER DEFAULT 0,
+              metadata TEXT
           );
 
           CREATE TABLE IF NOT EXISTS transaction_tags (
@@ -88,38 +103,6 @@ const initDb = () => {
               PRIMARY KEY (transaction_id, tag_id)
           );
         `);
-
-        // Migration Engine
-        const migrateTable = (tableName, requiredCols) => {
-            const tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
-            const existingColumns = new Set(tableInfo.map(c => c.name));
-            db.transaction(() => {
-                requiredCols.forEach(col => {
-                    if (!existingColumns.has(col.name)) {
-                        db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`).run();
-                    }
-                });
-            })();
-        };
-
-        migrateTable('transactions', [
-            { name: 'category_id', type: 'TEXT' },
-            { name: 'account_id', type: 'TEXT' },
-            { name: 'type_id', type: 'TEXT' },
-            { name: 'payee_id', type: 'TEXT' },
-            { name: 'user_id', type: 'TEXT' },
-            { name: 'location', type: 'TEXT' },
-            { name: 'notes', type: 'TEXT' },
-            { name: 'original_description', type: 'TEXT' },
-            { name: 'source_filename', type: 'TEXT' },
-            { name: 'link_group_id', type: 'TEXT' },
-            { name: 'is_parent', type: 'INTEGER DEFAULT 0' },
-            { name: 'parent_transaction_id', type: 'TEXT' },
-            { name: 'is_completed', type: 'INTEGER DEFAULT 0' },
-            { name: 'metadata', type: 'TEXT' }
-        ]);
-
-        migrateTable('transaction_types', [{ name: 'balance_effect', type: 'TEXT' }]);
 
         ensureSeedData();
 
@@ -256,10 +239,11 @@ app.get('/api/data', (req, res) => {
     for (const row of rows) {
       try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
     }
-    data.categories = db.prepare("SELECT * FROM categories").all();
-    data.accounts = db.prepare("SELECT * FROM accounts").all();
-    data.users = db.prepare("SELECT * FROM users").all();
-    data.payees = db.prepare("SELECT * FROM payees").all();
+    data.categories = db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all();
+    data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId FROM accounts").all();
+    data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all();
+    data.users = db.prepare("SELECT id, name, is_default AS isDefault FROM users").all().map(u => ({...u, isDefault: !!u.isDefault}));
+    data.payees = db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM payees").all();
     data.tags = db.prepare("SELECT * FROM tags").all();
     data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect FROM transaction_types").all();
     res.json(data);
@@ -281,6 +265,12 @@ app.post('/api/data/:key', (req, res) => {
         const stmt = db.prepare("INSERT INTO accounts (id, name, identifier, account_type_id) VALUES (?, ?, ?, ?)");
         db.transaction(() => {
             value.forEach(a => stmt.run(a.id, a.name, a.identifier, a.accountTypeId));
+        })();
+    } else if (key === 'accountTypes' && Array.isArray(value)) {
+        db.prepare("DELETE FROM account_types").run();
+        const stmt = db.prepare("INSERT INTO account_types (id, name, is_default) VALUES (?, ?, ?)");
+        db.transaction(() => {
+            value.forEach(at => stmt.run(at.id, at.name, at.isDefault ? 1 : 0));
         })();
     } else if (key === 'users' && Array.isArray(value)) {
         db.prepare("DELETE FROM users").run();
@@ -336,6 +326,7 @@ app.post('/api/admin/reset', async (req, res) => {
                 db.prepare("DELETE FROM transaction_tags").run();
             }
             if (entities.includes('accounts')) db.prepare("DELETE FROM accounts").run();
+            if (entities.includes('accountTypes')) db.prepare("DELETE FROM account_types").run();
             if (entities.includes('categories')) db.prepare("DELETE FROM categories").run();
             if (entities.includes('tags')) {
                 db.prepare("DELETE FROM tags").run();
