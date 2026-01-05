@@ -140,6 +140,13 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     };
 
     const handleDelete = (id: string) => {
+        if (activeTab === 'users') {
+            const user = users.find(u => u.id === id);
+            if (user?.isDefault) {
+                alert("The primary system user cannot be deleted.");
+                return;
+            }
+        }
         const count = (usageCounts as any)[activeTab].get(id) || 0;
         if (count > 0) {
             alert(`Cannot delete this ${activeTab.slice(0, -1)}. It is currently being used by ${count} records.`);
@@ -217,6 +224,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                             <div className="space-y-1">
                                 {currentList.map(item => {
                                     const count = (usageCounts as any)[activeTab].get(item.id) || 0;
+                                    const isDefaultUser = activeTab === 'users' && (item as User).isDefault;
                                     return (
                                         <div 
                                             key={item.id}
@@ -226,6 +234,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                             <div className="flex items-center gap-3 overflow-hidden">
                                                 {activeTab === 'tags' && <div className={`w-3 h-3 rounded-full ${(item as Tag).color}`} />}
                                                 <span className={`text-sm font-bold truncate ${selectedId === item.id ? 'text-indigo-900' : 'text-slate-700'}`}>{item.name}</span>
+                                                {isDefaultUser && <span className="text-[8px] bg-indigo-600 text-white px-1 rounded uppercase font-black">System</span>}
                                             </div>
                                             <div className="flex items-center gap-3">
                                                 <span className="text-[10px] font-black bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full" title="Usage count">
@@ -233,7 +242,8 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                                 </span>
                                                 <button 
                                                     onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
-                                                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                    disabled={isDefaultUser}
+                                                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:opacity-10"
                                                 >
                                                     <DeleteIcon className="w-4 h-4" />
                                                 </button>

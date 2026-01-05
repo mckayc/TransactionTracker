@@ -34,6 +34,29 @@ console.log("---------------------------------------------------------");
 
 let db;
 
+const ensureSeedData = () => {
+    // Seeder: Transaction Types
+    const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
+    if (typeCount === 0) {
+        console.log("[DB] Seeding Transaction Types...");
+        const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
+        db.transaction(() => {
+            insertType.run('type_income', 'Income', 'income');
+            insertType.run('type_purchase', 'Purchase', 'expense');
+            insertType.run('type_transfer', 'Transfer', 'transfer');
+            insertType.run('type_tax', 'Tax Payment', 'tax');
+            insertType.run('type_investment', 'Investment', 'investment');
+        })();
+    }
+
+    // Seeder: Default User
+    const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
+    if (userCount === 0) {
+        console.log("[DB] Seeding Default User...");
+        db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
+    }
+};
+
 const initDb = () => {
     try {
         db = new Database(DB_PATH);
@@ -98,24 +121,7 @@ const initDb = () => {
 
         migrateTable('transaction_types', [{ name: 'balance_effect', type: 'TEXT' }]);
 
-        // Seeder: Transaction Types
-        const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
-        if (typeCount === 0) {
-            const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
-            db.transaction(() => {
-                insertType.run('type_income', 'Income', 'income');
-                insertType.run('type_purchase', 'Purchase', 'expense');
-                insertType.run('type_transfer', 'Transfer', 'transfer');
-                insertType.run('type_tax', 'Tax Payment', 'tax');
-                insertType.run('type_investment', 'Investment', 'investment');
-            })();
-        }
-
-        // Seeder: Default User
-        const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
-        if (userCount === 0) {
-            db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
-        }
+        ensureSeedData();
 
         console.log("[DB] Engine ready.");
     } catch (dbErr) {
@@ -282,12 +288,14 @@ app.post('/api/data/:key', (req, res) => {
         db.transaction(() => {
             value.forEach(u => stmt.run(u.id, u.name, u.isDefault ? 1 : 0));
         })();
+        ensureSeedData(); // Safety: Never allow empty users table
     } else if (key === 'transactionTypes' && Array.isArray(value)) {
         db.prepare("DELETE FROM transaction_types").run();
         const stmt = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
         db.transaction(() => {
             value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect));
         })();
+        ensureSeedData(); // Safety: Never allow empty types table
     } else if (key === 'payees' && Array.isArray(value)) {
         db.prepare("DELETE FROM payees").run();
         const stmt = db.prepare("INSERT INTO payees (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
@@ -359,6 +367,8 @@ app.post('/api/admin/reset', async (req, res) => {
                 }
             });
         })();
+
+        ensureSeedData(); // Ensure default user/types exist after purge
 
         // Shrink file size
         db.pragma('vacuum');
