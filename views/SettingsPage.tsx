@@ -45,7 +45,7 @@ const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warn
     accounts: { label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" /> },
     categories: { label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
     tags: { label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
-    payees: { label: 'Income Sources', icon: <DocumentIcon className="w-4 h-4" /> },
+    payees: { label: 'Payees', icon: <DocumentIcon className="w-4 h-4" /> },
     reconciliationRules: { label: 'Automation Rules', icon: <SettingsIcon className="w-4 h-4" /> },
     templates: { label: 'Checklist Templates', icon: <TasksIcon className="w-4 h-4" /> },
     tasks: { label: 'Task Instances', icon: <ChecklistIcon className="w-4 h-4" /> },
@@ -324,6 +324,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 <button onClick={handleExportData} className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg shadow-sm hover:bg-indigo-700 transition-colors"><DownloadIcon className="w-4 h-4" /> Export All Selected</button>
                             </div>
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <div className="flex justify-between items-center mb-3 px-1">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Included Data Sets</h4>
+                                    <div className="flex gap-4">
+                                        <button onClick={() => setExportSelection(new Set(Object.keys(ENTITY_LABELS)))} className="text-[10px] font-black text-indigo-600 hover:underline uppercase tracking-tighter">Select All</button>
+                                        <button onClick={() => setExportSelection(new Set())} className="text-[10px] font-black text-slate-400 hover:text-red-500 hover:underline uppercase tracking-tighter">Clear All</button>
+                                    </div>
+                                </div>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                     {Object.entries(ENTITY_LABELS).map(([key, { label }]) => (
                                         <button key={key} onClick={() => toggleExportSelection(key)} className={`flex items-center gap-2 p-2 rounded-lg border text-[11px] font-bold transition-all ${exportSelection.has(key) ? 'bg-white border-indigo-400 text-indigo-700 shadow-sm ring-1 ring-indigo-400' : 'bg-slate-100 border-slate-200 text-slate-500 grayscale opacity-60'}`}>{label}</button>
@@ -350,7 +357,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                     <h3 className="text-lg font-bold text-red-800 flex items-center gap-2"><ExclamationTriangleIcon className="w-6 h-6" />Selective Data Wipe</h3>
                                     <p className="text-sm text-red-700 mt-2">Purge datasets preserving configuration.</p>
                                 </div>
-                                <button onClick={() => setPurgeStep('confirm')} disabled={purgeSelection.size === 0} className="px-8 py-3 bg-red-600 text-white font-bold rounded-xl disabled:opacity-30">Purge Selection</button>
+                                <div className="flex flex-col gap-2">
+                                    <button onClick={() => setPurgeStep('confirm')} disabled={purgeSelection.size === 0} className="px-8 py-3 bg-red-600 text-white font-bold rounded-xl disabled:opacity-30">Purge Selection</button>
+                                    <div className="flex justify-center gap-3">
+                                        <button onClick={() => setPurgeSelection(new Set(Object.keys(ENTITY_LABELS)))} className="text-[9px] font-black text-red-600 hover:underline uppercase">Select All</button>
+                                        <button onClick={() => setPurgeSelection(new Set())} className="text-[9px] font-black text-slate-400 hover:underline uppercase">Clear</button>
+                                    </div>
+                                </div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
                                 {Object.entries(ENTITY_LABELS).map(([key, { label, icon, warning }]) => (
