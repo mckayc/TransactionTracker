@@ -1,4 +1,3 @@
-
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -47,16 +46,48 @@ const initDb = () => {
           CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
           CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT);
           CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT);
-          CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT);
+          CREATE TABLE IF NOT EXISTS account_types (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER, category TEXT);
+          CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT);
           CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
           CREATE TABLE IF NOT EXISTS payees (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
           CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
 
           CREATE TABLE IF NOT EXISTS transactions (
               id TEXT PRIMARY KEY,
+              transaction_date TEXT,
+              post_date TEXT,
+              amount REAL,
+              direction TEXT,
+              description_raw TEXT,
+              merchant_clean TEXT,
+              category TEXT,
+              category_id TEXT,
+              account_id TEXT,
+              account_type TEXT,
+              balance REAL,
+              status TEXT,
+              memo_raw TEXT,
+              currency TEXT DEFAULT 'USD',
+              is_internal_transfer INTEGER,
+              is_payment INTEGER,
+              cash_flow_effect TEXT,
+              liability_effect TEXT,
+              raw_import_row TEXT,
+              
+              -- Legacy fields for UI compatibility
               date TEXT,
               description TEXT,
-              amount REAL
+              type_id TEXT,
+              payee_id TEXT,
+              user_id TEXT,
+              location TEXT,
+              notes TEXT,
+              original_description TEXT,
+              source_filename TEXT,
+              link_group_id TEXT,
+              is_parent INTEGER DEFAULT 0,
+              parent_transaction_id TEXT,
+              is_completed INTEGER DEFAULT 0
           );
 
           CREATE TABLE IF NOT EXISTS transaction_tags (
@@ -79,26 +110,7 @@ const initDb = () => {
             })();
         };
 
-        migrateTable('transactions', [
-            { name: 'category_id', type: 'TEXT' },
-            { name: 'account_id', type: 'TEXT' },
-            { name: 'type_id', type: 'TEXT' },
-            { name: 'payee_id', type: 'TEXT' },
-            { name: 'user_id', type: 'TEXT' },
-            { name: 'location', type: 'TEXT' },
-            { name: 'notes', type: 'TEXT' },
-            { name: 'original_description', type: 'TEXT' },
-            { name: 'source_filename', type: 'TEXT' },
-            { name: 'link_group_id', type: 'TEXT' },
-            { name: 'is_parent', type: 'INTEGER DEFAULT 0' },
-            { name: 'parent_transaction_id', type: 'TEXT' },
-            { name: 'is_completed', type: 'INTEGER DEFAULT 0' },
-            { name: 'metadata', type: 'TEXT' }
-        ]);
-
-        migrateTable('transaction_types', [{ name: 'balance_effect', type: 'TEXT' }]);
-
-        // Seeder
+        // Seeders
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
         if (typeCount === 0) {
             const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
@@ -108,6 +120,16 @@ const initDb = () => {
                 insertType.run('type_transfer', 'Transfer', 'transfer');
                 insertType.run('type_tax', 'Tax Payment', 'tax');
                 insertType.run('type_investment', 'Investment', 'investment');
+            })();
+        }
+
+        const accTypeCount = db.prepare("SELECT COUNT(*) as count FROM account_types").get().count;
+        if (accTypeCount === 0) {
+            const insertAccType = db.prepare("INSERT INTO account_types (id, name, is_default, category) VALUES (?, ?, ?, ?)");
+            db.transaction(() => {
+                insertAccType.run('acc_checking', 'Checking', 1, 'checking');
+                insertAccType.run('acc_savings', 'Savings', 0, 'savings');
+                insertAccType.run('acc_credit', 'Credit Card', 0, 'credit_card');
             })();
         }
 
@@ -124,12 +146,12 @@ const buildTxFilters = (params) => {
     let filterQuery = ` WHERE 1=1 AND t.is_parent = 0`;
     const values = [];
     if (search) {
-        filterQuery += ` AND (t.description LIKE ? OR t.notes LIKE ? OR t.original_description LIKE ?)`;
+        filterQuery += ` AND (t.description_raw LIKE ? OR t.notes LIKE ? OR t.original_description LIKE ? OR t.memo_raw LIKE ?)`;
         const s = `%${search}%`;
-        values.push(s, s, s);
+        values.push(s, s, s, s);
     }
-    if (startDate) { filterQuery += ` AND t.date >= ?`; values.push(startDate); }
-    if (endDate) { filterQuery += ` AND t.date <= ?`; values.push(endDate); }
+    if (startDate) { filterQuery += ` AND t.transaction_date >= ?`; values.push(startDate); }
+    if (endDate) { filterQuery += ` AND t.transaction_date <= ?`; values.push(endDate); }
     if (userId) { filterQuery += ` AND t.user_id = ?`; values.push(userId); }
     if (accountIds) {
         const ids = accountIds.split(',');
@@ -146,7 +168,7 @@ const buildTxFilters = (params) => {
 
 app.get('/api/transactions', (req, res) => {
     try {
-        const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC' } = req.query;
+        const { limit = 50, offset = 0, sortKey = 'transaction_date', sortDir = 'DESC' } = req.query;
         const { filterQuery, values } = buildTxFilters(req.query);
         const dataQuery = `
             SELECT t.*, GROUP_CONCAT(tg.tag_id) as tagIds 
@@ -163,9 +185,11 @@ app.get('/api/transactions', (req, res) => {
         const results = rows.map(r => ({
             ...r,
             tagIds: r.tagIds ? r.tagIds.split(',') : [],
-            metadata: JSON.parse(r.metadata || '{}'),
+            raw_import_row: JSON.parse(r.raw_import_row || '{}'),
             isParent: !!r.is_parent,
             isCompleted: !!r.is_completed,
+            is_internal_transfer: !!r.is_internal_transfer,
+            is_payment: !!r.is_payment,
             categoryId: r.category_id,
             accountId: r.account_id,
             typeId: r.type_id,
@@ -204,22 +228,29 @@ app.post('/api/transactions/batch', (req, res) => {
         const txs = req.body;
         const insert = db.prepare(`
             INSERT OR REPLACE INTO transactions (
-                id, date, description, amount, category_id, account_id, type_id, 
-                payee_id, user_id, location, notes, original_description, 
-                source_filename, link_group_id, is_parent, parent_transaction_id, 
-                is_completed, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, transaction_date, post_date, amount, direction, description_raw,
+                merchant_clean, category, category_id, account_id, account_type,
+                balance, status, memo_raw, currency, is_internal_transfer,
+                is_payment, cash_flow_effect, liability_effect, raw_import_row,
+                date, description, type_id, payee_id, user_id, location, notes,
+                original_description, source_filename, link_group_id, is_parent,
+                parent_transaction_id, is_completed
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const tagClear = db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?");
         const tagInsert = db.prepare("INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)");
         db.transaction((items) => {
             for (const tx of items) {
                 insert.run(
-                    tx.id, tx.date, tx.description, tx.amount, tx.categoryId, tx.accountId, tx.typeId,
-                    tx.payeeId || null, tx.userId || null, tx.location || null, tx.notes || null,
-                    tx.originalDescription || null, tx.sourceFilename || null, tx.linkGroupId || null,
-                    tx.isParent ? 1 : 0, tx.parentTransactionId || null, tx.isCompleted ? 1 : 0,
-                    JSON.stringify(tx.metadata || {})
+                    tx.id, tx.transaction_date, tx.post_date || null, tx.amount, tx.direction, tx.description_raw,
+                    tx.merchant_clean || null, tx.category || null, tx.categoryId, tx.accountId, tx.account_type,
+                    tx.balance || null, tx.status || null, tx.memo_raw || null, tx.currency || 'USD',
+                    tx.is_internal_transfer ? 1 : 0, tx.is_payment ? 1 : 0, tx.cash_flow_effect,
+                    tx.liability_effect, JSON.stringify(tx.raw_import_row || {}),
+                    tx.date, tx.description, tx.typeId, tx.payeeId || null, tx.userId || null,
+                    tx.location || null, tx.notes || null, tx.originalDescription || null,
+                    tx.sourceFilename || null, tx.linkGroupId || null, tx.isParent ? 1 : 0,
+                    tx.parentTransactionId || null, tx.isCompleted ? 1 : 0
                 );
                 tagClear.run(tx.id);
                 if (tx.tagIds) tx.tagIds.forEach(tid => tagInsert.run(tx.id, tid));
@@ -246,6 +277,7 @@ app.get('/api/data', (req, res) => {
     }
     data.categories = db.prepare("SELECT * FROM categories").all();
     data.accounts = db.prepare("SELECT * FROM accounts").all();
+    data.accountTypes = db.prepare("SELECT * FROM account_types").all();
     data.users = db.prepare("SELECT * FROM users").all();
     data.payees = db.prepare("SELECT * FROM payees").all();
     data.tags = db.prepare("SELECT * FROM tags").all();
@@ -266,6 +298,10 @@ app.post('/api/data/:key', (req, res) => {
         db.prepare("DELETE FROM accounts").run();
         const stmt = db.prepare("INSERT INTO accounts (id, name, identifier, account_type_id) VALUES (?, ?, ?, ?)");
         value.forEach(a => stmt.run(a.id, a.name, a.identifier, a.accountTypeId));
+    } else if (key === 'accountTypes' && Array.isArray(value)) {
+        db.prepare("DELETE FROM account_types").run();
+        const stmt = db.prepare("INSERT INTO account_types (id, name, is_default, category) VALUES (?, ?, ?, ?)");
+        value.forEach(t => stmt.run(t.id, t.name, t.isDefault ? 1 : 0, t.category || null));
     } else if (key === 'users' && Array.isArray(value)) {
         db.prepare("DELETE FROM users").run();
         const stmt = db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)");
@@ -281,21 +317,15 @@ app.post('/api/data/:key', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Admin Reset & Purge Route
 app.post('/api/admin/reset', async (req, res) => {
     const { entities } = req.body || {};
-    
     try {
         if (!entities || entities.includes('all')) {
-            console.warn("[SYS] FULL FACTORY RESET");
             if (db) db.close();
             if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
             initDb();
             return res.json({ success: true, message: "System purged." });
         }
-
-        console.warn(`[SYS] SELECTIVE PURGE: ${entities.join(', ')}`);
-        
         db.transaction(() => {
             if (entities.includes('transactions')) {
                 db.prepare("DELETE FROM transactions").run();
@@ -311,7 +341,6 @@ app.post('/api/admin/reset', async (req, res) => {
             if (entities.includes('users')) db.prepare("DELETE FROM users WHERE is_default = 0").run();
             if (entities.includes('files_meta')) db.prepare("DELETE FROM files_meta").run();
             
-            // Clean specific app_storage keys
             const storageKeys = {
                 'amazonMetrics': 'amazonMetrics',
                 'youtubeMetrics': 'youtubeMetrics',
@@ -325,20 +354,13 @@ app.post('/api/admin/reset', async (req, res) => {
                 'savedReports': 'savedReports',
                 'contentLinks': 'contentLinks'
             };
-
             entities.forEach(entity => {
-                if (storageKeys[entity]) {
-                    db.prepare("DELETE FROM app_storage WHERE key = ?").run(storageKeys[entity]);
-                }
+                if (storageKeys[entity]) db.prepare("DELETE FROM app_storage WHERE key = ?").run(storageKeys[entity]);
             });
         })();
-
-        // Shrink file size
         db.pragma('vacuum');
         res.json({ success: true, message: "Selective purge complete." });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/ai/generate', async (req, res) => {

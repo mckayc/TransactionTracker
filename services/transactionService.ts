@@ -1,4 +1,3 @@
-
 import type { Transaction, RawTransaction, DuplicatePair } from '../types';
 
 /**
@@ -10,7 +9,8 @@ export const generateTransactionId = (tx: RawTransaction): string => {
   const date = tx.date || '';
   const desc = (tx.description || '').trim().toLowerCase();
   const amt = typeof tx.amount === 'number' ? tx.amount.toFixed(2) : '0.00';
-  const acct = tx.accountId || '';
+  // Fixed: accountId does not exist on type RawTransaction, using account_id
+  const acct = tx.account_id || '';
   
   const key = `${date}|${desc}|${amt}|${acct}`;
   // Browser-safe method to base64 encode
@@ -29,7 +29,8 @@ export const getTransactionSignature = (tx: Transaction | RawTransaction): strin
     // Strip common bank noise to increase match probability
     desc = desc.replace(/id nbr:.*$/i, '').replace(/[\s\-_]+/g, ' ').trim();
     
-    const account = tx.accountId || '';
+    // Fixed: accountId does not exist on type RawTransaction, using account_id
+    const account = tx.account_id || '';
     return `${date}|${amount}|${desc}|${account}`;
 };
 

@@ -1,5 +1,5 @@
-
 export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation' | 'tax' | 'savings' | 'debt';
+export type AccountCategory = 'checking' | 'savings' | 'credit_card';
 
 export interface TransactionType {
     id: string;
@@ -28,10 +28,17 @@ export interface Payee {
     userId?: string;
 }
 
+export interface User {
+    id: string;
+    name: string;
+    isDefault?: boolean;
+}
+
 export interface AccountType {
     id: string;
     name: string;
     isDefault?: boolean;
+    category?: AccountCategory; // Unified category for logic
 }
 
 export interface Account {
@@ -41,38 +48,45 @@ export interface Account {
     accountTypeId: string;
 }
 
-export interface User {
-    id: string;
-    name: string;
-    isDefault?: boolean;
-}
-
 export interface RawTransaction {
-    date: string;
-    description: string;
-    amount: number;
-    category: string;
-    accountId: string;
+    // Canonical Model
+    transaction_date: string;
+    post_date?: string | null;
+    amount: number; // Absolute value
+    direction: 'debit' | 'credit';
+    description_raw: string;
+    merchant_clean?: string | null;
+    category?: string | null;
+    account_id: string;
+    account_type: AccountCategory;
+    balance?: number | null;
+    status: 'pending' | 'cleared' | 'settled' | null;
+    memo_raw?: string | null;
+    currency: string;
+    is_internal_transfer: boolean;
+    is_payment: boolean;
+    cash_flow_effect: 'inflow' | 'outflow' | 'none';
+    liability_effect: 'increase' | 'decrease' | 'none';
+    raw_import_row: Record<string, any>;
+    
+    // Legacy/UI Compatibility
+    date: string; // mapped from transaction_date
+    description: string; // mapped from description_raw/merchant_clean
+    categoryId: string; 
     typeId: string;
-    location?: string;
-    sourceFilename?: string;
-    originalDescription?: string;
     payeeId?: string;
     userId?: string;
     tagIds?: string[];
     notes?: string;
-    categoryId?: string; 
-    account?: string;
-    payee?: string;
-    user?: string;
-    type?: string;
-    tags?: string[];
     metadata?: Record<string, string>;
+    sourceFilename?: string;
+    accountId?: string;
+    account?: string;
+    originalDescription?: string;
 }
 
 export interface Transaction extends RawTransaction {
     id: string;
-    categoryId: string;
     linkGroupId?: string;
     linkedTransactionId?: string;
     isParent?: boolean;
@@ -216,7 +230,7 @@ export interface TaxInfo {
 export interface BusinessProfile {
     info: BusinessInfo;
     tax: TaxInfo;
-    completedSteps: []
+    completedSteps: string[];
 }
 
 export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime' | 'custom' | 'last3Months' | 'last6Months' | 'last12Months' | 'specificMonth' | 'relativeMonth';
@@ -305,14 +319,23 @@ export interface FinancialGoal {
     type: 'emergency_fund' | 'debt_payoff' | 'savings' | 'retirement';
 }
 
+export interface BudgetLimit {
+    categoryId: string;
+    monthlyLimit: number;
+}
+
+export interface WealthProjection {
+    year: number;
+    projectedNetWorth: number;
+    milestones: string[];
+}
+
 export interface FinancialPlan {
     id: string;
     createdAt: string;
     strategy: string;
-    suggestedBudgets: {
-        categoryId: string;
-        monthlyLimit: number;
-    }[];
+    suggestedBudgets: BudgetLimit[];
+    projections?: WealthProjection[];
 }
 
 export type AmazonReportType = 'onsite' | 'offsite' | 'creator_connections' | 'unknown';

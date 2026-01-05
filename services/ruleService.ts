@@ -1,4 +1,3 @@
-
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
@@ -46,13 +45,15 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
             default: return false;
         }
     } else if (condition.field === 'accountId') {
-        const txAccountId = tx.accountId || '';
+        // Fixed: accountId does not exist on type Transaction | RawTransaction, using account_id
+        const txAccountId = tx.account_id || '';
         
         if (condition.operator === 'equals') {
             return txAccountId === String(condition.value);
         } else {
             const account = accounts.find(a => a.id === txAccountId);
-            const accountName = (account?.name || tx.account || '').toLowerCase();
+            // Fixed: account does not exist on type Transaction | RawTransaction, fallback to account_id or name from lookup
+            const accountName = (account?.name || tx.account_id || '').toLowerCase();
             const condValue = String(condition.value || '').toLowerCase();
             
             if (condition.operator === 'contains') return accountName.includes(condValue);
@@ -95,7 +96,8 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule,
         }
     }
     if (rule.accountId) {
-        if (tx.accountId !== rule.accountId) {
+        // Fixed: accountId does not exist on type Transaction | RawTransaction, using account_id
+        if (tx.account_id !== rule.accountId) {
             return false;
         }
     }
@@ -118,7 +120,7 @@ export const applyRulesToTransactions = (
   }
 
   return rawTransactions.map(tx => {
-    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean } = { ...tx };
+    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; originalDescription?: string } = { ...tx };
     
     for (const rule of rules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
@@ -135,6 +137,7 @@ export const applyRulesToTransactions = (
           modifiedTx.typeId = rule.setTransactionTypeId;
         }
         if (rule.setDescription) {
+            // Fixed: handle missing originalDescription by setting it from current description if not present
             if (!modifiedTx.originalDescription) {
                 modifiedTx.originalDescription = modifiedTx.description;
             }
@@ -178,6 +181,7 @@ export const findMatchingTransactions = (
         changed = true;
       }
       if (rule.setDescription && updatedTx.description !== rule.setDescription) {
+          // Fixed: handle missing originalDescription by setting it from current description if not present
           if (!updatedTx.originalDescription) {
               updatedTx.originalDescription = updatedTx.description;
           }

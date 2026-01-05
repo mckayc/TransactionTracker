@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument, DocumentFolder, Tag, AccountType } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText, hasApiKey } from '../services/geminiService';
@@ -10,12 +9,11 @@ import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import ImportVerification from '../components/ImportVerification';
 import DuplicateReview from '../components/DuplicateReview';
-import RuleModal from '../components/RuleModal';
+import AiFinancialCheckup from '../components/AiFinancialCheckup';
 import { ExclamationTriangleIcon, CalendarIcon, AddIcon, CloseIcon, CreditCardIcon, SparklesIcon, CheckCircleIcon, TableIcon, InfoIcon } from '../components/Icons';
 import { formatDate } from '../dateUtils';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
-import { saveFile } from '../services/storageService';
 
 type AppState = 'idle' | 'processing' | 'verifying_import' | 'reviewing_duplicates' | 'post_import_edit' | 'success' | 'error';
 type ImportMethod = 'upload' | 'paste';
@@ -87,8 +85,6 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const [progressMessage, setProgressMessage] = useState('');
   const [dashboardRange, setDashboardRange] = useState<'all' | 'year' | 'month' | 'week'>('year');
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
-  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
-  const [txForRule, setTxForRule] = useState<Transaction | null>(null);
   
   const [summaryTotals, setSummaryTotals] = useState<Record<string, number>>({});
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
@@ -176,17 +172,27 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         return;
     }
     
+    const account = accounts.find(a => a.id === accountId);
+    const accType = accountTypes.find(t => t.id === account?.accountTypeId);
+    if (!account || !accType) {
+        setError("Account context not found.");
+        setAppState('error');
+        return;
+    }
+
     setAppState('processing');
     setError(null);
     try {
-      const rawTransactions = useAi ? await extractTransactionsFromFiles(files, accountId, transactionTypes, handleProgress) : await parseTransactionsFromFiles(files, accountId, transactionTypes, handleProgress);
+      const rawTransactions = useAi 
+        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, handleProgress) 
+        : await parseTransactionsFromFiles(files, account, accType, transactionTypes, handleProgress);
       applyRulesAndSetStaging(rawTransactions, selectedUserId, rules);
       setAppState('verifying_import');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred.');
       setAppState('error');
     }
-  }, [useAi, transactionTypes, selectedUserId, rules, applyRulesAndSetStaging]);
+  }, [useAi, transactionTypes, selectedUserId, rules, applyRulesAndSetStaging, accounts, accountTypes]);
 
   const handleVerificationComplete = async (verifiedTransactions: (RawTransaction & { categoryId: string; })[]) => {
       handleProgress('Finalizing staged data...');
@@ -218,11 +224,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
   return (
-    <div className="space-y-8 h-full flex flex-col min-h-0">
+    <div className="space-y-6 h-full flex flex-col min-h-0">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 flex-shrink-0">
         <div>
             <h1 className="text-3xl font-bold text-slate-800">Dashboard</h1>
-            <p className="text-slate-500 mt-1">Real-time server-side insights.</p>
+            <p className="text-slate-500 mt-1">Proactive intelligence for your wealth roadmap.</p>
         </div>
         <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200 overflow-x-auto">
             {(['all', 'year', 'month'] as const).map(range => (
@@ -244,10 +250,14 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         <SummaryWidget title={nextDeadline.label} value={`${nextDeadline.daysLeft}d`} helpText={`Due ${nextDeadline.dateStr}`} icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
       </div>
 
+      <div className="flex-shrink-0">
+          <AiFinancialCheckup transactions={recentGlobalTransactions} categories={categories} accounts={accounts} />
+      </div>
+
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
         {appState === 'idle' ? (
           <div className="flex flex-col h-full">
-            <h2 className="text-xl font-bold text-slate-700 mb-4">Quick Entry</h2>
+            <h2 className="text-xl font-bold text-slate-700 mb-4">Ingestion Portal</h2>
             <div className="flex-shrink-0">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-4">
@@ -262,22 +272,25 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                         <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full">
                             {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                         </select>
-                        <textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="Paste CSV rows here..." className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm" />
+                        <textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="Paste CSV rows here (headers recommended)..." className="w-full h-48 p-4 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono text-sm" />
                         <button onClick={async () => {
                              if (!transactionTypes || transactionTypes.length === 0) return;
+                             const account = accounts.find(a => a.id === pasteAccountId);
+                             const accType = accountTypes.find(t => t.id === account?.accountTypeId);
+                             if (!account || !accType) return;
                              setAppState('processing');
                              try {
-                                 const raw = await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, handleProgress);
+                                 const raw = await parseTransactionsFromText(textInput, account, accType, transactionTypes, handleProgress);
                                  applyRulesAndSetStaging(raw, selectedUserId, rules);
                                  setAppState('verifying_import');
                              } catch(e) { setAppState('error'); }
-                        }} disabled={!textInput.trim() || accounts.length === 0} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">Process Text</button>
+                        }} disabled={!textInput.trim() || accounts.length === 0} className="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">Normalize & Process</button>
                     </div>
                 )}
             </div>
 
             <div className="mt-12 pt-8 border-t border-slate-200 overflow-hidden flex flex-col flex-1">
-                <h2 className="text-xl font-bold text-slate-700 mb-4">Recent Activity</h2>
+                <h2 className="text-xl font-bold text-slate-700 mb-4">Recent Normalizations</h2>
                 <div className="flex-1 overflow-hidden relative">
                     <TransactionTable transactions={recentGlobalTransactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={() => {}} onDeleteTransaction={() => {}} visibleColumns={new Set(['date', 'description', 'amount', 'category'])} />
                 </div>
@@ -286,7 +299,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
         ) : appState === 'processing' ? (
             <div className="py-12 flex-1 flex flex-col items-center justify-center space-y-4 text-center">
                 <svg className="animate-spin h-12 w-12 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                <div className="text-slate-600"><p className="font-bold text-xl">Thinking...</p><p className="text-sm text-slate-400 mt-1">{progressMessage}</p></div>
+                <div className="text-slate-600"><p className="font-bold text-xl">Normalizing Financial Stream...</p><p className="text-sm text-slate-400 mt-1">{progressMessage}</p></div>
             </div>
         ) : appState === 'verifying_import' ? (
             <ImportVerification initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={handleClear} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} existingTransactions={recentGlobalTransactions} />
@@ -295,7 +308,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onTransactionsAdded, transactions
                 <div className="flex justify-between items-center mb-6 bg-slate-50 p-5 rounded-2xl border border-indigo-100 flex-shrink-0">
                     <div>
                         <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> Review Data</h2>
-                        <p className="text-sm text-slate-500 mt-1">Imported {importedTxIds.size} transactions.</p>
+                        <p className="text-sm text-slate-500 mt-1">Ingested {importedTxIds.size} canonical transactions.</p>
                     </div>
                     <button onClick={handleClear} className="px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg">Done</button>
                 </div>

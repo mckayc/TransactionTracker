@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { parseTransactionsFromText } from '../services/csvParserService';
 import type { Transaction, TransactionType, RawTransaction } from '../types';
@@ -30,8 +29,10 @@ const VerifyModal: React.FC<VerifyModalProps> = ({ isOpen, onClose, currentTrans
         setIsProcessing(true);
         try {
             // 1. Parse pasted text
-            // We pass a dummy account ID because we are just comparing values, not importing yet
-            const parsedTransactions = await parseTransactionsFromText(pastedText, 'dummy-account', transactionTypes, (msg: string) => {});
+            // Fixed: Provide dummy account and accountType objects to satisfy the 5-argument function signature
+            const dummyAccount: any = { id: 'verification-dummy', name: 'Verification Context', identifier: '0000', accountTypeId: 'dummy-type' };
+            const dummyAccountType: any = { id: 'dummy-type', name: 'Checking', category: 'checking' };
+            const parsedTransactions = await parseTransactionsFromText(pastedText, dummyAccount, dummyAccountType, transactionTypes, (msg: string) => {});
             
             // 2. Perform comparison
             const matchedPairs: { appTx: Transaction; stmtTx: RawTransaction }[] = [];

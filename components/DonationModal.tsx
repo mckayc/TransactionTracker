@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Payee, TransactionType, Account, Category } from '../types';
 import { CloseIcon, HeartIcon, AddIcon, DeleteIcon } from './Icons';
@@ -116,19 +115,29 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
         const donationCategory = categories.find(c => c.name.toLowerCase().includes('donation') || c.name.toLowerCase().includes('charity')) || categories[0];
         items.forEach(item => {
             if (item.amount > 0) {
-                const newTx: Transaction = {
+                // Fixed: accountId corrected to account_id to match Transaction type
+                const newTx: any = {
                     id: generateUUID(),
                     date,
                     amount: item.amount,
                     description: item.description || 'Donation',
-                    accountId,
+                    account_id: accountId,
                     payeeId: item.payeeId || undefined,
                     typeId: donationType.id,
                     categoryId: donationCategory.id,
                     category: donationCategory.name,
                     notes: `Calculated from ${monthName} income of $${totalIncome.toLocaleString()}.`,
+                    transaction_date: date,
+                    direction: 'debit',
+                    description_raw: item.description || 'Donation',
+                    currency: 'USD',
+                    is_internal_transfer: false,
+                    is_payment: false,
+                    cash_flow_effect: 'outflow',
+                    liability_effect: 'none',
+                    raw_import_row: {}
                 };
-                onSave(newTx);
+                onSave(newTx as Transaction);
             }
         });
         onClose();
