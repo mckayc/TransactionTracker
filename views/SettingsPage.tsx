@@ -220,7 +220,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handlePasteRestore = () => {
         try {
-            const json = JSON.parse(pasteText);
+            let json = JSON.parse(pasteText);
+            
+            // Intelligence: Handle raw arrays or missing wrapper keys
+            if (Array.isArray(json)) {
+                const first = json[0];
+                if (first.asin) json = { amazonMetrics: json };
+                else if (first.videoId) json = { youtubeMetrics: json };
+                else if (first.date && first.description && first.amount) json = { transactions: json };
+                else if (first.name && (first.parentId !== undefined || first.notes !== undefined)) json = { payees: json };
+                else if (first.name && first.isDefault !== undefined) json = { users: json };
+            } else if (!json.exportDate && !Object.keys(ENTITY_LABELS).some(k => json[k])) {
+                // If they pasted a partial block but didn't array it (like a single payee)
+                const keys = Object.keys(json);
+                if (keys.length === 1 && Array.isArray(json[keys[0]])) {
+                    // It's likely already a wrapper like {"payees": [...]}
+                }
+            }
+
             handleLoadedRestoreData(json);
             setIsPasteModalOpen(false);
             setPasteText('');
@@ -231,7 +248,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleLoadedRestoreData = (json: any) => {
         const detectedKeys = Object.keys(ENTITY_LABELS).filter(key => json.hasOwnProperty(key) || (key === 'files_meta' && json.hasOwnProperty('businessDocuments')));
-        if (detectedKeys.length === 0) throw new Error("No valid data detected.");
+        if (detectedKeys.length === 0) {
+            alert("No valid data patterns detected in the JSON provided.");
+            return;
+        }
         setRestoreData(json);
         setRestoreSelection(new Set(detectedKeys));
         setIsRestoreModalOpen(true);

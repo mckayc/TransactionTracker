@@ -57,7 +57,7 @@ const ensureSeedData = () => {
             db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
         }
     } catch (err) {
-        console.error("[DB] Seeder warning (non-fatal):", err.message);
+        console.error("[DB] Seeder warning:", err.message);
     }
 };
 
@@ -94,13 +94,13 @@ const initDb = () => {
           );
         `);
 
-        // Robust Migration Engine: Individual Column Resilience
+        // Individual migration handling to prevent chain-failure
         const migrateTable = (tableName, requiredCols) => {
             let tableInfo;
             try {
                 tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
             } catch (err) {
-                console.error(`[DB] Could not inspect table ${tableName}. Skipping migrations.`);
+                console.error(`[DB] Metadata check failed for ${tableName}:`, err.message);
                 return;
             }
             
@@ -108,11 +108,14 @@ const initDb = () => {
             
             requiredCols.forEach(col => {
                 if (!existingColumns.has(col.name)) {
-                    console.log(`[DB] Migrating ${tableName}: adding column ${col.name}`);
+                    console.log(`[DB] Schema patch ${tableName} -> ${col.name}`);
                     try {
                         db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`).run();
                     } catch (altErr) {
-                        console.warn(`[DB] Column ${col.name} on ${tableName} failed to add:`, altErr.message);
+                        // Suppress "duplicate column" errors if PRAGMA was stale
+                        if (!altErr.message.includes('duplicate column name')) {
+                            console.warn(`[DB] Column migration failed:`, altErr.message);
+                        }
                     }
                 }
             });
@@ -143,11 +146,11 @@ const initDb = () => {
 
         console.log("[DB] Engine ready.");
     } catch (dbErr) {
-        console.error("[DB] CRITICAL ERROR during init:", dbErr.message);
-        // We don't exit(1) here to allow the server to at least start and provide health info
+        console.error("[DB] ENGINE STARTUP FAILURE:", dbErr.message);
     }
 };
 
+// Defensive Init
 initDb();
 
 const buildTxFilters = (params) => {
@@ -275,7 +278,7 @@ app.get('/api/data', (req, res) => {
     for (const row of rows) {
       try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
     }
-    // Hardened Aliasing: Wrap in try/catch to handle partially migrated schemas
+    
     try { data.categories = db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all(); } catch(e) { data.categories = []; }
     try { data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId FROM accounts").all(); } catch(e) { data.accounts = []; }
     try { data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all().map(a => ({...a, isDefault: !!a.isDefault})); } catch(e) { data.accountTypes = []; }
