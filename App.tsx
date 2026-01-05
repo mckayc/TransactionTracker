@@ -101,22 +101,32 @@ const App: React.FC = () => {
             setContentLinks(data.contentLinks || []);
             setSystemSettings(data.systemSettings || {});
             
-            const txResponse = await api.getTransactions({ limit: 200 });
-            setTransactions(txResponse.data);
+            // Fetch recent transactions separately to speed up initial hydration
+            try {
+                const txResponse = await api.getTransactions({ limit: 200 });
+                if (txResponse && txResponse.data) {
+                    setTransactions(txResponse.data);
+                }
+            } catch (txErr) {
+                console.warn("Transactions query failed during boot", txErr);
+            }
 
-            if (showLoader) setIsLoading(false);
         } catch (err) {
             console.error("Core Data Load Error:", err);
-            setLoadError("Engine startup failed. Please check server logs.");
+            setLoadError("Critical Engine Connection Failure. Please verify the backend API is active and the database is reachable.");
         } finally {
+            if (showLoader) setIsLoading(false);
             setIsSyncing(false);
+            // Ensure the splash screen is removed immediately after JS attempts to load
             document.body.classList.add('loaded');
         }
     };
 
     useEffect(() => {
         loadCoreData();
-        const handleSync = (event: MessageEvent) => { if (event.data === 'REFRESH_REQUIRED') loadCoreData(false); };
+        const handleSync = (event: MessageEvent) => { 
+            if (event.data === 'REFRESH_REQUIRED') loadCoreData(false); 
+        };
         syncChannel.addEventListener('message', handleSync);
         return () => syncChannel.removeEventListener('message', handleSync);
     }, []);
@@ -127,7 +137,12 @@ const App: React.FC = () => {
         syncChannel.postMessage('REFRESH_REQUIRED');
     };
 
-    const handleTransactionsAdded = async (newTxs: Transaction[]) => {
+    const handleTransactionsAdded = async (newTxs: Transaction[], newCategories: Category[] = []) => {
+        if (newCategories.length > 0) {
+            const combinedCategories = [...categories, ...newCategories];
+            setCategories(combinedCategories);
+            await api.save('categories', combinedCategories);
+        }
         await api.saveTransactions(newTxs);
         loadCoreData(false);
     };
