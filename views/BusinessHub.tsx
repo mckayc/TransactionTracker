@@ -81,6 +81,29 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
         if (confirm("Permanently delete this item?")) {
             onUpdateNotes(notes.filter(n => n.id !== id));
             if (selectedNoteId === id) setSelectedNoteId(null);
+            setBatchSelection(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
+        }
+    };
+
+    const toggleBatchSelection = (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        setBatchSelection(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const handleSelectAllVisible = () => {
+        if (batchSelection.size === filteredNotes.length && filteredNotes.length > 0) {
+            setBatchSelection(new Set());
+        } else {
+            setBatchSelection(new Set(filteredNotes.map(n => n.id)));
         }
     };
 
@@ -95,6 +118,20 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
         }
     };
 
+    const handleBulkCopy = (forAi: boolean) => {
+        const selected = notes.filter(n => batchSelection.has(n.id));
+        if (selected.length === 0) return;
+
+        let text = forAi ? "Below are the logs and notes from my financial/dev journal for analysis:\n\n" : "";
+        selected.forEach((n, idx) => {
+            text += `${idx + 1}. [${n.type.toUpperCase()}] ${n.title}\n`;
+            if (forAi) text += `Priority: ${n.priority} | Status: ${n.isCompleted ? 'Resolved' : 'Active'}\n`;
+            text += `Content: ${n.content}\n\n`;
+        });
+
+        copyToClipboard(text.trim());
+    };
+
     const classificationStats = useMemo(() => ({
         bug: notes.filter(n => n.type === 'bug' && !n.isCompleted).length,
         note: notes.filter(n => n.type === 'note' && !n.isCompleted).length,
@@ -104,116 +141,195 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
     }), [notes]);
 
     return (
-        <div className="flex gap-6 h-[750px] bg-white border border-slate-200 rounded-[2.5rem] shadow-xl overflow-hidden relative">
-            <div className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col p-6 flex-shrink-0">
-                <button onClick={() => setIsCreating(true)} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg mb-8 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95">
-                    <AddIcon className="w-5 h-5" /> New Capture
+        <div className="flex gap-4 h-[700px] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden relative">
+            {/* SIDEBAR: NAV & CLASSIFICATIONS */}
+            <div className="w-56 bg-slate-50 border-r border-slate-200 flex flex-col p-4 flex-shrink-0">
+                <button onClick={() => setIsCreating(true)} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold shadow-md mb-6 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 text-sm">
+                    <AddIcon className="w-4 h-4" /> New Capture
                 </button>
-                <div className="space-y-1">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2">Classification</p>
+                <div className="space-y-0.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Classification</p>
                     {[
                         { id: 'bug', label: 'Bugs', icon: <BugIcon className="w-4 h-4" /> },
                         { id: 'note', label: 'Notes', icon: <NotesIcon className="w-4 h-4" /> },
                         { id: 'idea', label: 'Ideas', icon: <LightBulbIcon className="w-4 h-4" /> },
                         { id: 'task', label: 'Tasks', icon: <ChecklistIcon className="w-4 h-4" /> }
                     ].map(item => (
-                        <button key={item.id} onClick={() => setActiveClassification(item.id)} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${activeClassification === item.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-800'}`}>
-                            <div className="flex items-center gap-3">
+                        <button 
+                            key={item.id} 
+                            // Fix: Remove setActiveTab as it's not defined in JournalTab component
+                            onClick={() => { setActiveClassification(item.id); setSelectedNoteId(null); setBatchSelection(new Set()); }} 
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${activeClassification === item.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-800'}`}
+                        >
+                            <div className="flex items-center gap-2">
                                 {item.icon}
                                 <span>{item.label}</span>
                             </div>
                             <span className={`text-[10px] px-1.5 rounded-full ${activeClassification === item.id ? 'bg-indigo-100' : 'bg-slate-200'}`}>{(classificationStats as any)[item.id]}</span>
                         </button>
                     ))}
-                    <div className="pt-6 mt-6 border-t border-slate-200">
-                        <button onClick={() => setActiveClassification('resolved')} className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${activeClassification === 'resolved' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-200/50'}`}>
-                            <div className="flex items-center gap-3"><CheckCircleIcon className="w-4 h-4" /><span>Archive</span></div>
+                    <div className="pt-4 mt-4 border-t border-slate-200">
+                        <button onClick={() => { setActiveClassification('resolved'); setSelectedNoteId(null); setBatchSelection(new Set()); }} className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${activeClassification === 'resolved' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-200/50'}`}>
+                            <div className="flex items-center gap-2"><CheckCircleIcon className="w-4 h-4" /><span>Archive</span></div>
                             <span className="text-[10px] bg-slate-200 px-1.5 rounded-full">{classificationStats.resolved}</span>
                         </button>
                     </div>
                 </div>
             </div>
-            <div className="w-1/3 min-w-[320px] border-r border-slate-200 flex flex-col min-h-0 bg-white">
-                <div className="p-4 border-b border-slate-100 space-y-3">
+
+            {/* LIST: MASTER VIEW */}
+            <div className="w-80 border-r border-slate-200 flex flex-col min-h-0 bg-white">
+                <div className="p-3 border-b border-slate-100 space-y-2">
                     <div className="relative group">
-                        <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                        <input type="text" placeholder="Filter records..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" />
+                        <SearchCircleIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                        <input type="text" placeholder="Filter records..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium focus:ring-1 focus:ring-indigo-500 outline-none" />
                     </div>
+                    {filteredNotes.length > 0 && (
+                        <div className="flex items-center justify-between px-1">
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input type="checkbox" checked={batchSelection.size === filteredNotes.length && filteredNotes.length > 0} onChange={handleSelectAllVisible} className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select All</span>
+                            </label>
+                            {batchSelection.size > 0 && (
+                                <div className="flex gap-2">
+                                    <button onClick={() => handleBulkCopy(false)} className="text-[10px] font-bold text-indigo-600 hover:underline">Copy</button>
+                                    <button onClick={() => handleBulkCopy(true)} className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-1"><SparklesIcon className="w-3 h-3"/> AI</button>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {filteredNotes.length === 0 ? (
                         <div className="p-12 text-center text-slate-300 flex flex-col items-center">
-                            <BoxIcon className="w-12 h-12 mb-3 opacity-20" /><p className="text-sm font-bold">No records found.</p>
+                            <BoxIcon className="w-10 h-10 mb-2 opacity-20" /><p className="text-xs font-bold">No records found.</p>
                         </div>
                     ) : (
                         filteredNotes.map(n => (
-                            <div key={n.id} onClick={() => setSelectedNoteId(n.id)} className={`group p-4 border-b border-slate-50 cursor-pointer transition-all flex items-start gap-4 ${selectedNoteId === n.id ? 'bg-indigo-50 border-l-4 border-l-indigo-600' : 'hover:bg-slate-50'}`}>
+                            <div 
+                                key={n.id} 
+                                onClick={() => { setSelectedNoteId(n.id); setIsCreating(false); }} 
+                                className={`group px-3 py-2.5 border-b border-slate-50 cursor-pointer transition-all flex items-start gap-3 ${selectedNoteId === n.id ? 'bg-indigo-50 border-l-2 border-l-indigo-600' : 'hover:bg-slate-50'}`}
+                            >
+                                <div className="mt-1 flex-shrink-0">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={batchSelection.has(n.id)} 
+                                        onClick={(e) => toggleBatchSelection(e, n.id)} 
+                                        onChange={() => {}} // Controlled by onClick to prevent row selection conflict
+                                        className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" 
+                                    />
+                                </div>
                                 <div className="min-w-0 flex-1">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <h4 className={`text-sm font-black truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
-                                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${n.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{n.priority}</span>
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <h4 className={`text-xs font-bold truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
+                                        <span className={`text-[8px] font-black uppercase px-1 py-0.5 rounded flex-shrink-0 ${n.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{n.priority}</span>
                                     </div>
-                                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{n.content}</p>
+                                    <p className="text-[11px] text-slate-500 line-clamp-1 leading-relaxed">{n.content}</p>
                                 </div>
                             </div>
                         ))
                     )}
                 </div>
             </div>
+
+            {/* DETAIL: INSPECTOR VIEW */}
             <div className="flex-1 bg-white flex flex-col min-h-0 relative">
                 {isCreating ? (
-                    <div className="p-10 flex-1 overflow-y-auto animate-fade-in">
-                        <form onSubmit={handleSave} className="space-y-8 max-w-2xl mx-auto">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-2xl font-black text-slate-800 uppercase">Drafting Record</h3>
-                                <button type="button" onClick={resetForm} className="p-2 text-slate-400 hover:text-red-500"><CloseIcon className="w-6 h-6" /></button>
+                    <div className="p-6 flex-1 overflow-y-auto animate-fade-in">
+                        <form onSubmit={handleSave} className="space-y-4 max-w-2xl">
+                            <div className="flex justify-between items-center mb-2">
+                                <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Drafting Record</h3>
+                                <button type="button" onClick={resetForm} className="p-1 text-slate-400 hover:text-red-500"><CloseIcon className="w-5 h-5" /></button>
                             </div>
-                            <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Title" className="w-full p-4 border-2 rounded-2xl font-black text-xl" required />
-                            <div className="grid grid-cols-2 gap-6">
-                                <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-4 border-2 rounded-2xl font-bold">
-                                    <option value="bug">Bug Report</option><option value="note">General Note</option><option value="idea">Product Idea</option><option value="task">Operational Task</option>
-                                </select>
-                                <select value={priority} onChange={e => setPriority(e.target.value as any)} className="w-full p-4 border-2 rounded-2xl font-bold">
-                                    <option value="low">Low</option><option value="medium">Medium</option><option value="high">High (Critical)</option>
-                                </select>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Title</label>
+                                <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Enter title..." className="w-full p-2 border border-slate-200 rounded-lg font-bold text-sm" required />
                             </div>
-                            <textarea value={content} onChange={e => setContent(e.target.value)} rows={12} placeholder="Context..." className="w-full p-6 border-2 rounded-[2rem] font-medium leading-relaxed" />
-                            <div className="flex justify-end gap-4">
-                                <button type="button" onClick={resetForm} className="px-8 py-3 text-slate-400 font-bold uppercase">Discard</button>
-                                <button type="submit" className="px-12 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-xl">Commit Record</button>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Category</label>
+                                    <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-2 border border-slate-200 rounded-lg font-bold text-xs">
+                                        <option value="bug">Bug Report</option><option value="note">General Note</option><option value="idea">Product Idea</option><option value="task">Operational Task</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Priority</label>
+                                    <select value={priority} onChange={e => setPriority(e.target.value as any)} className="w-full p-2 border border-slate-200 rounded-lg font-bold text-xs">
+                                        <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Context / Description</label>
+                                <textarea value={content} onChange={e => setContent(e.target.value)} rows={10} placeholder="Provide details..." className="w-full p-3 border border-slate-200 rounded-lg font-medium text-xs leading-relaxed" />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button type="button" onClick={resetForm} className="px-4 py-1.5 text-xs text-slate-500 font-bold uppercase hover:bg-slate-50 rounded-lg">Discard</button>
+                                <button type="submit" className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-black text-xs shadow-lg hover:bg-indigo-700 transition-all active:scale-95 uppercase tracking-wider">Commit Record</button>
                             </div>
                         </form>
                     </div>
                 ) : activeNote ? (
-                    <div className="p-10 flex-1 overflow-y-auto animate-fade-in custom-scrollbar">
-                        <div className="flex justify-between items-start mb-10">
+                    <div className="p-8 flex-1 overflow-y-auto animate-fade-in custom-scrollbar">
+                        <div className="flex justify-between items-start mb-6">
                             <div>
-                                <h3 className="text-4xl font-black text-slate-800 leading-tight">{activeNote.title}</h3>
-                                <p className="text-sm text-slate-400 mt-2">Last Synchronized: {new Date(activeNote.updatedAt).toLocaleDateString()}</p>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${activeNote.type === 'bug' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{activeNote.type}</span>
+                                    <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${activeNote.priority === 'high' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-500'}`}>{activeNote.priority} priority</span>
+                                </div>
+                                <h3 className="text-2xl font-black text-slate-800 leading-tight">{activeNote.title}</h3>
+                                <div className="flex items-center gap-4 mt-3">
+                                    <div className="flex flex-col">
+                                        <span className="text-[9px] font-black text-slate-300 uppercase tracking-tight">Updated</span>
+                                        <span className="text-[10px] font-bold text-slate-400">{new Date(activeNote.updatedAt).toLocaleDateString()}</span>
+                                    </div>
+                                    <div className="w-px h-6 bg-slate-100"></div>
+                                    <div className="flex flex-col">
+                                        <span className="text-[9px] font-black text-slate-300 uppercase tracking-tight">Created</span>
+                                        <span className="text-[10px] font-bold text-slate-400">{new Date(activeNote.createdAt).toLocaleDateString()}</span>
+                                    </div>
+                                </div>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => startEdit(activeNote)} className="p-3 bg-slate-50 text-slate-400 hover:text-indigo-600 border rounded-2xl"><EditIcon className="w-6 h-6"/></button>
-                                <button onClick={() => deleteNote(activeNote.id)} className="p-3 bg-slate-50 text-slate-400 hover:text-red-500 border rounded-2xl"><DeleteIcon className="w-6 h-6"/></button>
+                                <button onClick={() => startEdit(activeNote)} className="p-2 bg-slate-50 text-slate-400 hover:text-indigo-600 border border-slate-200 rounded-lg transition-all" title="Edit"><EditIcon className="w-4 h-4"/></button>
+                                <button onClick={() => deleteNote(activeNote.id)} className="p-2 bg-slate-50 text-slate-400 hover:text-red-500 border border-slate-200 rounded-lg transition-all" title="Delete"><DeleteIcon className="w-4 h-4"/></button>
                             </div>
                         </div>
-                        <div className="bg-slate-50 p-8 rounded-[3rem] border border-slate-100 shadow-inner mb-10">
-                            <p className="text-lg text-slate-700 whitespace-pre-wrap leading-relaxed">{activeNote.content}</p>
+                        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 shadow-inner mb-6">
+                            <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">{activeNote.content}</p>
                         </div>
-                        <div className="flex justify-between items-center pt-8 border-t-2 border-slate-50">
-                            <button onClick={() => toggleComplete(activeNote.id)} className={`px-10 py-4 rounded-2xl font-black uppercase transition-all flex items-center gap-3 ${activeNote.isCompleted ? 'bg-slate-800 text-white' : 'bg-emerald-50 text-emerald-700'}`}>
-                                {activeNote.isCompleted ? <RepeatIcon className="w-5 h-5"/> : <CheckCircleIcon className="w-5 h-5"/>}
-                                {activeNote.isCompleted ? 'Reopen' : 'Resolve'}
+                        <div className="flex justify-between items-center pt-4 border-t border-slate-50">
+                            <div className="flex items-center gap-4">
+                                <button onClick={() => toggleComplete(activeNote.id)} className={`px-4 py-2 rounded-lg font-black uppercase text-[10px] transition-all flex items-center gap-2 tracking-widest ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
+                                    {activeNote.isCompleted ? <RepeatIcon className="w-4 h-4"/> : <CheckCircleIcon className="w-4 h-4"/>}
+                                    {activeNote.isCompleted ? 'Move to Backlog' : 'Resolve & Archive'}
+                                </button>
+                                {activeNote.isCompleted && (
+                                    <p className="text-[10px] font-bold text-slate-400 italic">Resolved on {new Date(activeNote.resolvedAt!).toLocaleDateString()}</p>
+                                )}
+                            </div>
+                            <button onClick={() => copyToClipboard(`Subject: ${activeNote.title}\n\nContext: ${activeNote.content}`)} className="flex items-center gap-2 text-indigo-600 font-bold text-[10px] uppercase hover:underline">
+                                <CopyIcon className="w-4 h-4"/> Copy Details
                             </button>
-                            <button onClick={() => copyToClipboard(activeNote.content)} className="flex items-center gap-2 text-indigo-600 font-bold"><CopyIcon className="w-4 h-4"/> Copy Details</button>
                         </div>
                     </div>
-                ) : null}
+                ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-slate-50/30">
+                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-lg mb-4">
+                             <BoxIcon className="w-8 h-8 text-indigo-100" />
+                        </div>
+                        <h4 className="text-lg font-black text-slate-800 uppercase tracking-tighter">Select a record</h4>
+                        <p className="text-slate-400 text-xs mt-2 font-bold max-w-[200px]">Choose an item from the list to view logs or edit details.</p>
+                        <button onClick={() => setIsCreating(true)} className="mt-6 text-indigo-600 font-black uppercase tracking-widest text-[10px] border-b-2 border-indigo-100 pb-0.5 hover:border-indigo-500 transition-all">Or create new entry</button>
+                    </div>
+                )}
             </div>
             {copyStatus !== 'idle' && (
                 <div className="fixed bottom-10 right-10 z-[200] animate-slide-in-right">
-                    <div className={`px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border-2 ${copyStatus === 'success' ? 'bg-slate-900 border-emerald-500 text-white' : 'bg-red-900 border-red-500 text-white'}`}>
-                        {copyStatus === 'success' ? <CheckCircleIcon className="w-5 h-5 text-emerald-500" /> : <ExclamationTriangleIcon className="w-5 h-5 text-red-500" />}
-                        <span className="font-bold text-sm">{copyStatus === 'success' ? 'Copied' : 'Error'}</span>
+                    <div className={`px-4 py-2 rounded-xl shadow-2xl flex items-center gap-2 border-2 ${copyStatus === 'success' ? 'bg-slate-900 border-emerald-500 text-white' : 'bg-red-900 border-red-500 text-white'}`}>
+                        {copyStatus === 'success' ? <CheckCircleIcon className="w-4 h-4 text-emerald-500" /> : <ExclamationTriangleIcon className="w-4 h-4 text-red-500" />}
+                        <span className="font-bold text-xs">{copyStatus === 'success' ? 'Copied' : 'Error'}</span>
                     </div>
                 </div>
             )}
@@ -284,13 +400,17 @@ const TaxAdvisorTab: React.FC<{
     const handleSendMessage = async () => {
         if (!input.trim() || !activeSession || isLoading) return;
         const userMsg: ChatMessage = { id: generateUUID(), role: 'user', content: input, timestamp: new Date().toISOString() };
-        const updatedSession = { ...activeSession, messages: [...activeSession.messages, userMsg], updatedAt: new Date().toISOString() };
+        
+        // Fix: Removed broken line with 'activeNote' and fixed typo as suggested in the developer comment.
+        const nextMsgs = [...activeSession.messages, userMsg];
+        const updatedSess = { ...activeSession, messages: nextMsgs, updatedAt: new Date().toISOString() };
+        
         const otherSessions = sessions.filter(s => s.id !== activeSession.id);
-        onUpdateSessions([...otherSessions, updatedSession]);
+        onUpdateSessions([...otherSessions, updatedSess]);
         setInput(''); setIsLoading(true);
         try {
             const aiMsgPlaceholder: ChatMessage = { id: generateUUID(), role: 'ai', content: '', timestamp: new Date().toISOString() };
-            const sessionWithAi = { ...updatedSession, messages: [...updatedSession.messages, aiMsgPlaceholder] };
+            const sessionWithAi = { ...updatedSess, messages: [...updatedSess.messages, aiMsgPlaceholder] };
             onUpdateSessions([...otherSessions, sessionWithAi]);
             const stream = await streamTaxAdvice(sessionWithAi.messages, profile);
             let fullContent = '';
