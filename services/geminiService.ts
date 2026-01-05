@@ -78,18 +78,32 @@ const EXTRACTION_SCHEMA = {
 };
 
 export const healDataSnippet = async (rawText: string): Promise<any> => {
-    const prompt = `You are a data recovery assistant. The user has provided a snippet of JSON data that might be malformed, partial, or missing outer braces. 
-    REPAIR this data into a valid JSON object containing standard FinParser keys.
+    const prompt = `You are a high-fidelity data recovery assistant for "FinParser", a financial tracking app.
+    The user has provided a snippet of data that is likely malformed or partial JSON. 
     
-    EXPECTED KEYS: transactions, accounts, categories, payees, users, tags, reconciliationRules, businessProfile, amazonMetrics, youtubeMetrics.
+    YOUR TASK:
+    Convert the input into a valid, strictly formatted JSON object. 
     
-    RULES:
-    1. If the input is just an array of payees, return {"payees": [...]}.
-    2. If the input is missing quotes or has trailing commas, FIX THEM.
-    3. Ensure IDs remain identical.
-    4. Maintain camelCase for property names (e.g., parentId, userId, isDefault).
+    SUPPORTED TOP-LEVEL KEYS: 
+    - transactions
+    - accounts
+    - categories
+    - payees
+    - users
+    - tags
+    - reconciliationRules
+    - businessProfile
+    - amazonMetrics
+    - youtubeMetrics
     
-    INPUT TEXT:
+    DATA MAPPING RULES:
+    1. If the input looks like '"key": [...]', wrap it in curly braces: '{"key": [...]}'.
+    2. If the input is just an array, detect its type (e.g., if items have "asin", it's "amazonMetrics").
+    3. Ensure all property names use camelCase (e.g. accountTypeId, parentId, isDefault).
+    4. Ensure all IDs are preserved exactly as provided.
+    5. Fix missing quotes, trailing commas, or curly brace mismatches.
+    
+    INPUT SNIPPET:
     ${rawText}`;
 
     const result = await callAi({

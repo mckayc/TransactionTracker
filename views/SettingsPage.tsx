@@ -279,24 +279,32 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 await api.resetDatabase(Array.from(restoreSelection));
             }
 
-            const savePromises: Promise<any>[] = [];
+            // CRITICAL: We process sequentially instead of Promise.all to prevent 
+            // SQLite "Database is locked" errors during heavy restore transactions.
             for (const key of Array.from(restoreSelection) as string[]) {
                 if (key === 'templates') {
-                    savePromises.push(api.save('templates', restoreData.templates));
-                    savePromises.push(api.save('scheduledEvents', restoreData.scheduledEvents || []));
+                    await api.save('templates', restoreData.templates);
+                    await api.save('scheduledEvents', restoreData.scheduledEvents || []);
                 } else if (key === 'tasks') {
-                    savePromises.push(api.save('tasks', restoreData.tasks));
-                    savePromises.push(api.save('taskCompletions', restoreData.taskCompletions || {}));
+                    await api.save('tasks', restoreData.tasks);
+                    await api.save('taskCompletions', restoreData.taskCompletions || {});
                 } else if (key === 'files_meta') {
-                    savePromises.push(api.save('businessDocuments', restoreData.businessDocuments));
-                    savePromises.push(api.save('documentFolders', restoreData.documentFolders || []));
-                } else { savePromises.push(api.save(key, restoreData[key])); }
+                    await api.save('businessDocuments', restoreData.businessDocuments);
+                    await api.save('documentFolders', restoreData.documentFolders || []);
+                } else { 
+                    await api.save(key, restoreData[key]); 
+                }
             }
-            if (restoreData.transactionTypes) savePromises.push(api.save('transactionTypes', restoreData.transactionTypes));
-            if (restoreData.users) savePromises.push(api.save('users', restoreData.users));
-            await Promise.all(savePromises);
+            
+            // Handle core entities if present
+            if (restoreData.transactionTypes) await api.save('transactionTypes', restoreData.transactionTypes);
+            if (restoreData.users) await api.save('users', restoreData.users);
+
             window.location.reload();
-        } catch (err) { alert("Restore failed."); }
+        } catch (err) { 
+            console.error("Restore Failure:", err);
+            alert(`Restore failed: ${err instanceof Error ? err.message : 'Unknown internal error'}. Please check server logs.`); 
+        }
     };
 
     return (
