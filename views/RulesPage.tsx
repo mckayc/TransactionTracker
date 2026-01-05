@@ -59,15 +59,17 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [aiProposedRules, setAiProposedRules] = useState<ReconciliationRule[]>([]);
 
     // Form State
-    const [name, setName] = useState('');
-    const [scope, setScope] = useState('description');
+    const [ruleName, setRuleName] = useState('');
+    const [ruleScope, setRuleScope] = useState('description');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
-    const [setCategoryId, setSetCategoryId] = useState('');
-    const [setPayeeId, setSetPayeeId] = useState('');
-    const [setMerchantId, setSetMerchantId] = useState('');
-    const [setLocationId, setSetLocationId] = useState('');
-    const [setUserId, setSetUserId] = useState('');
-    const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
+    
+    // Action Transformation State (Renamed to avoid "not callable" shadowing/inference issues)
+    const [actionCategoryId, setActionCategoryId] = useState('');
+    const [actionPayeeId, setActionPayeeId] = useState('');
+    const [actionMerchantId, setActionMerchantId] = useState('');
+    const [actionLocationId, setActionLocationId] = useState('');
+    const [actionUserId, setActionUserId] = useState('');
+    const [actionTypeId, setActionTypeId] = useState('');
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
     const [skipImport, setSkipImport] = useState(false);
 
@@ -84,15 +86,15 @@ const RulesPage: React.FC<RulesPageProps> = ({
         if (!r) return;
         setSelectedRuleId(id);
         setIsCreating(false);
-        setName(r.name);
-        setScope(r.scope || 'description');
+        setRuleName(r.name);
+        setRuleScope(r.scope || 'description');
         setConditions(r.conditions);
-        setSetCategoryId(r.setCategoryId || '');
-        setSetPayeeId(r.setPayeeId || '');
-        setSetMerchantId(r.setMerchantId || '');
-        setSetLocationId(r.setLocationId || '');
-        setSetUserId(r.setUserId || '');
-        setSetTransactionTypeId(r.setTransactionTypeId || '');
+        setActionCategoryId(r.setCategoryId || '');
+        setActionPayeeId(r.setPayeeId || '');
+        setActionMerchantId(r.setMerchantId || '');
+        setActionLocationId(r.setLocationId || '');
+        setActionUserId(r.setUserId || '');
+        setActionTypeId(r.setTransactionTypeId || '');
         setAssignTagIds(new Set(r.assignTagIds || []));
         setSkipImport(!!r.skipImport);
     };
@@ -100,15 +102,15 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const handleNew = () => {
         setSelectedRuleId(null);
         setIsCreating(true);
-        setName('');
-        setScope(selectedDomain !== 'all' ? selectedDomain : 'description');
+        setRuleName('');
+        setRuleScope(selectedDomain !== 'all' ? selectedDomain : 'description');
         setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
-        setSetCategoryId('');
-        setSetPayeeId('');
-        setSetMerchantId('');
-        setSetLocationId('');
-        setSetUserId('');
-        setSetTransactionTypeId('');
+        setActionCategoryId('');
+        setActionPayeeId('');
+        setActionMerchantId('');
+        setActionLocationId('');
+        setActionUserId('');
+        setActionTypeId('');
         setAssignTagIds(new Set());
         setSkipImport(false);
     };
@@ -117,15 +119,15 @@ const RulesPage: React.FC<RulesPageProps> = ({
         e.preventDefault();
         const rule: ReconciliationRule = {
             id: selectedRuleId || generateUUID(),
-            name: name.trim(),
-            scope,
+            name: ruleName.trim(),
+            scope: ruleScope,
             conditions,
-            setCategoryId: setCategoryId || undefined,
-            setPayeeId: setPayeeId || undefined,
-            setMerchantId: setMerchantId || undefined,
-            setLocationId: setLocationId || undefined,
-            setUserId: setUserId || undefined,
-            setTransactionTypeId: setTransactionTypeId || undefined,
+            setCategoryId: actionCategoryId || undefined,
+            setPayeeId: actionPayeeId || undefined,
+            setMerchantId: actionMerchantId || undefined,
+            setLocationId: actionLocationId || undefined,
+            setUserId: actionUserId || undefined,
+            setTransactionTypeId: actionTypeId || undefined,
             assignTagIds: assignTagIds.size > 0 ? Array.from(assignTagIds) : undefined,
             skipImport
         };
@@ -364,7 +366,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95 uppercase text-[10px] tracking-widest">Commit Rule</button>
-                                    <button type="button" onClick={() => { setSelectedRuleId(null); setIsCreating(false); }} className="p-2 rounded-full hover:bg-slate-200 text-slate-400"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                                    <button type="button" onClick={() => { setSelectedRuleId(null); setIsCreating(false); }} className="p-2 rounded-full hover:bg-slate-200"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                                 </div>
                             </div>
 
@@ -376,8 +378,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         </div>
                                         <input 
                                             type="text" 
-                                            value={name} 
-                                            onChange={e => setName(e.target.value)} 
+                                            value={ruleName} 
+                                            onChange={e => setRuleName(e.target.value)} 
                                             className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white transition-all font-bold text-lg" 
                                             placeholder="Friendly label..."
                                             required 
@@ -388,8 +390,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                             <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" /> Rule Scope
                                         </div>
                                         <select 
-                                            value={scope} 
-                                            onChange={e => setScope(e.target.value)}
+                                            value={ruleScope} 
+                                            onChange={e => setRuleScope(e.target.value)}
                                             className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white transition-all font-bold text-sm"
                                         >
                                             {RULE_DOMAINS.filter(d => d.id !== 'all').map(d => (
@@ -417,44 +419,42 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label>
-                                            {/* Fix: use explicit sorting comparison to avoid potential 'String' call signature issues in some environments */}
-                                            <select value={setCategoryId} onChange={e => setSetCategoryId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold bg-white focus:border-indigo-500 outline-none text-xs">
+                                            <select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {[...categories].sort((a,b) => a.name > b.name ? 1 : -1).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Payee</label>
-                                            {/* Fix: use explicit sorting comparison to avoid potential 'String' call signature issues in some environments */}
-                                            <select value={setPayeeId} onChange={e => setSetPayeeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                            <select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {[...payees].sort((a,b) => a.name > b.name ? 1 : -1).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Associate Merchant</label>
-                                            <select value={setMerchantId} onChange={e => setSetMerchantId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                            <select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {[...merchants].sort((a,b) => a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label>
-                                            <select value={setLocationId} onChange={e => setLocationId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                            <select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {[...locations].sort((a,b) => a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label>
-                                            <select value={setUserId} onChange={e => setUserId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                            <select value={actionUserId} onChange={e => setActionUserId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {[...users].sort((a,b) => a.name.localeCompare(b.name)).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Type</label>
-                                            <select value={setTransactionTypeId} onChange={e => setSetTransactionTypeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                            <select value={actionTypeId} onChange={e => setActionTypeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                             </select>
