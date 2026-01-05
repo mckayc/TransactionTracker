@@ -8,7 +8,7 @@ import {
     Search, Wrench, Info, Eye, EyeOff, Folder, GripVertical, 
     ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Heart, Printer, 
     ShieldCheck, Scissors, UsersRound, Puzzle, Box, BarChart3, ArrowRight,
-    Youtube, Video, TrendingUp, Slash, Bug, Database, FileCode
+    Youtube, Video, TrendingUp, Slash, Bug, Database, FileCode, MapPin
 } from 'lucide-react';
 
 export const UploadIcon = Upload;
@@ -76,3 +76,5 @@ export const SlashIcon = Slash;
 export const BugIcon = Bug;
 export const DatabaseIcon = Database;
 export const FileCodeIcon = FileCode;
+/* Added MapPinIcon export to resolve missing member error */
+export const MapPinIcon = MapPin;

@@ -1,5 +1,5 @@
 {
-  "name": "Transaction Tracker - Text importer - v0.3.03",
+  "name": "Transaction Tracker - Rule Engine - v0.3.06",
   "description": "High-performance normalized SQLite architecture for millions of financial records.",
   "requestFramePermissions": []
 }

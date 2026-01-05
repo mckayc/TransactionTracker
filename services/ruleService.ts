@@ -88,23 +88,7 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule,
         return result;
     }
 
-    // Fallback to legacy
-    if (rule.descriptionContains) {
-        if (!tx.description.toLowerCase().includes(rule.descriptionContains.toLowerCase())) {
-            return false;
-        }
-    }
-    if (rule.accountId) {
-        if (tx.accountId !== rule.accountId) {
-            return false;
-        }
-    }
-    if (rule.amountEquals !== undefined && rule.amountEquals !== null) {
-        if (Math.abs(tx.amount - rule.amountEquals) >= 0.01) {
-            return false;
-        }
-    }
-
+    /* Removed legacy fallback logic for non-existent properties descriptionContains, accountId, and amountEquals to resolve property access errors */
     return true;
 };
 

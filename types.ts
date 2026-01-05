@@ -34,6 +34,21 @@ export interface Payee {
     userId?: string;
 }
 
+export interface Merchant {
+    id: string;
+    name: string;
+    payeeId?: string;
+    notes?: string;
+}
+
+export interface Location {
+    id: string;
+    name: string;
+    city?: string;
+    state?: string;
+    country?: string;
+}
+
 export interface AccountType {
     id: string;
     name: string;
@@ -58,6 +73,8 @@ export interface RawTransaction {
     sourceFilename?: string;
     originalDescription?: string;
     payeeId?: string;
+    merchantId?: string;
+    locationId?: string;
     userId?: string;
     tagIds?: string[];
     notes?: string;
@@ -86,32 +103,35 @@ export interface DuplicatePair {
     existingTx: Transaction;
 }
 
-export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'exists';
-export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata';
+export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'exists' | 'regex_match';
+export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata' | 'payeeId' | 'merchantId' | 'locationId';
 export type RuleLogic = 'AND' | 'OR';
 
 export interface RuleCondition {
     id: string;
-    field: RuleField;
-    operator: RuleOperator;
-    value: any;
+    type: 'basic' | 'group';
+    field?: RuleField;
+    operator?: RuleOperator;
+    value?: any;
     metadataKey?: string;
     nextLogic?: RuleLogic;
+    conditions?: RuleCondition[]; // For group type
 }
 
 export interface ReconciliationRule {
     id: string;
     name: string;
-    conditions?: RuleCondition[];
+    conditions: RuleCondition[];
     setCategoryId?: string;
     setPayeeId?: string;
+    setMerchantId?: string;
+    setLocationId?: string;
     setTransactionTypeId?: string;
     setDescription?: string;
     assignTagIds?: string[];
-    descriptionContains?: string;
-    amountEquals?: number;
-    accountId?: string;
     skipImport?: boolean;
+    isAiDraft?: boolean;
+    priority?: number;
 }
 
 export type TaskPriority = 'low' | 'medium' | 'high';

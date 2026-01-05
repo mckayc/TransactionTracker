@@ -38,11 +38,13 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
         if (isOpen) {
             if (transaction) {
                 setName(`${transaction.description} Rule`);
+                /* Added mandatory type: 'basic' to fix property missing error */
                 const newConditions: RuleCondition[] = [
-                    { id: generateUUID(), field: 'description', operator: 'contains', value: transaction.description, nextLogic: 'AND' }
+                    { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: transaction.description, nextLogic: 'AND' }
                 ];
                 if (transaction.accountId) {
-                    newConditions.push({ id: generateUUID(), field: 'accountId', operator: 'equals', value: transaction.accountId, nextLogic: 'AND' });
+                    /* Added mandatory type: 'basic' to fix property missing error */
+                    newConditions.push({ id: generateUUID(), type: 'basic', field: 'accountId', operator: 'equals', value: transaction.accountId, nextLogic: 'AND' });
                 }
                 setConditions(newConditions);
                 
@@ -53,7 +55,8 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                 setSkipImport(false);
             } else {
                 setName('');
-                setConditions([{ id: generateUUID(), field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
+                /* Added mandatory type: 'basic' to fix property missing error */
+                setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
                 setSetCategoryId('');
                 setSetPayeeId('');
                 setSetTransactionTypeId('');
@@ -281,7 +284,7 @@ const RuleModal: React.FC<RuleModalProps> = ({ isOpen, onClose, onSaveRule, acco
                             </div>
                         )}
                     </div>
-                </form>
+                 </form>
             </div>
         </div>
     );

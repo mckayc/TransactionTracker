@@ -30,7 +30,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
   const managementNavItems = [
     { id: 'accounts', label: 'Accounts', icon: CreditCardIcon },
     { id: 'management', label: 'Organize Data', icon: ChecklistIcon },
-    { id: 'rules', label: 'Automation Rules', icon: LinkIcon },
+    { id: 'rules', label: 'Rule Engine', icon: LinkIcon },
   ];
 
   const sidebarWidthClass = isCollapsed ? 'w-20' : 'w-64';
@@ -126,7 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             <>
               <CalendarView transactions={transactions} />
               <div className="text-center pb-2">
-                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.0.53</span>
+                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.4.0</span>
               </div>
             </>
           )}

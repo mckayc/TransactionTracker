@@ -1,8 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Category, Tag, Payee, User, TransactionType, Transaction, AccountType, Account, BalanceEffect } from '../types';
-/* Added TableIcon and LightBulbIcon to fix 'Cannot find name' errors on line 358 and 379 */
-import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, DeleteIcon, EditIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon, CloseIcon, SparklesIcon, TableIcon, LightBulbIcon } from '../components/Icons';
+import type { Category, Tag, Payee, User, TransactionType, Transaction, AccountType, Account, BalanceEffect, Merchant, Location } from '../types';
+import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, DeleteIcon, EditIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon, CloseIcon, SparklesIcon, TableIcon, LightBulbIcon, BoxIcon, MapPinIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface ManagementHubProps {
@@ -16,6 +15,12 @@ interface ManagementHubProps {
     payees: Payee[];
     onSavePayee: (p: Payee) => void;
     onDeletePayee: (id: string) => void;
+    merchants: Merchant[];
+    onSaveMerchant: (m: Merchant) => void;
+    onDeleteMerchant: (id: string) => void;
+    locations: Location[];
+    onSaveLocation: (l: Location) => void;
+    onDeleteLocation: (id: string) => void;
     users: User[];
     onSaveUser: (u: User) => void;
     onDeleteUser: (id: string) => void;
@@ -28,11 +33,12 @@ interface ManagementHubProps {
     accounts: Account[];
 }
 
-type Tab = 'categories' | 'tags' | 'payees' | 'users' | 'transactionTypes' | 'accountTypes';
+type Tab = 'categories' | 'tags' | 'payees' | 'merchants' | 'locations' | 'users' | 'transactionTypes' | 'accountTypes';
 
 const ManagementHub: React.FC<ManagementHubProps> = ({ 
     transactions, categories, onSaveCategory, onDeleteCategory, tags, onSaveTag, onDeleteTag,
-    payees, onSavePayee, onDeletePayee, users, onSaveUser, onDeleteUser,
+    payees, onSavePayee, onDeletePayee, merchants, onSaveMerchant, onDeleteMerchant,
+    locations, onSaveLocation, onDeleteLocation, users, onSaveUser, onDeleteUser,
     transactionTypes, onSaveTransactionType, onDeleteTransactionType,
     accountTypes, onSaveAccountType, onDeleteAccountType, accounts
 }) => {
@@ -46,6 +52,10 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const [color, setColor] = useState('bg-slate-100 text-slate-800');
     const [notes, setNotes] = useState('');
     const [userId, setUserId] = useState('');
+    const [payeeId, setPayeeId] = useState('');
+    const [city, setCity] = useState('');
+    const [state, setState] = useState('');
+    const [country, setCountry] = useState('');
     const [balanceEffect, setBalanceEffect] = useState<BalanceEffect>('expense');
 
     // Usage analysis
@@ -54,6 +64,8 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
             categories: new Map<string, number>(),
             tags: new Map<string, number>(),
             payees: new Map<string, number>(),
+            merchants: new Map<string, number>(),
+            locations: new Map<string, number>(),
             users: new Map<string, number>(),
             transactionTypes: new Map<string, number>(),
             accountTypes: new Map<string, number>()
@@ -63,6 +75,8 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
             counts.categories.set(tx.categoryId, (counts.categories.get(tx.categoryId) || 0) + 1);
             tx.tagIds?.forEach(tid => counts.tags.set(tid, (counts.tags.get(tid) || 0) + 1));
             if (tx.payeeId) counts.payees.set(tx.payeeId, (counts.payees.get(tx.payeeId) || 0) + 1);
+            if (tx.merchantId) counts.merchants.set(tx.merchantId, (counts.merchants.get(tx.merchantId) || 0) + 1);
+            if (tx.locationId) counts.locations.set(tx.locationId, (counts.locations.get(tx.locationId) || 0) + 1);
             if (tx.userId) counts.users.set(tx.userId, (counts.users.get(tx.userId) || 0) + 1);
             counts.transactionTypes.set(tx.typeId, (counts.transactionTypes.get(tx.typeId) || 0) + 1);
         });
@@ -87,6 +101,12 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
         } else if (activeTab === 'payees') {
             const p = payees.find(x => x.id === id);
             if (p) { setName(p.name); setParentId(p.parentId || ''); setNotes(p.notes || ''); setUserId(p.userId || ''); }
+        } else if (activeTab === 'merchants') {
+            const m = merchants.find(x => x.id === id);
+            if (m) { setName(m.name); setPayeeId(m.payeeId || ''); setNotes(m.notes || ''); }
+        } else if (activeTab === 'locations') {
+            const l = locations.find(x => x.id === id);
+            if (l) { setName(l.name); setCity(l.city || ''); setState(l.state || ''); setCountry(l.country || ''); }
         } else if (activeTab === 'users') {
             const u = users.find(x => x.id === id);
             if (u) { setName(u.name); }
@@ -104,6 +124,10 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
         setIsCreating(true);
         setName('');
         setParentId('');
+        setPayeeId('');
+        setCity('');
+        setState('');
+        setCountry('');
         setNotes('');
         setUserId(users.find(u => u.isDefault)?.id || users[0]?.id || '');
         setBalanceEffect('expense');
@@ -124,6 +148,12 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                 break;
             case 'payees':
                 onSavePayee({ ...payload, parentId: parentId || undefined, notes: notes || undefined, userId: userId || undefined });
+                break;
+            case 'merchants':
+                onSaveMerchant({ ...payload, payeeId: payeeId || undefined, notes: notes || undefined });
+                break;
+            case 'locations':
+                onSaveLocation({ ...payload, city, state, country });
                 break;
             case 'users':
                 onSaveUser(payload);
@@ -158,6 +188,8 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
             case 'categories': onDeleteCategory(id); break;
             case 'tags': onDeleteTag(id); break;
             case 'payees': onDeletePayee(id); break;
+            case 'merchants': onDeleteMerchant(id); break;
+            case 'locations': onDeleteLocation(id); break;
             case 'users': onDeleteUser(id); break;
             case 'transactionTypes': onDeleteTransactionType(id); break;
             case 'accountTypes': onDeleteAccountType(id); break;
@@ -169,6 +201,8 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
         { id: 'categories', label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
         { id: 'tags', label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
         { id: 'payees', label: 'Payees', icon: <UsersIcon className="w-4 h-4" /> },
+        { id: 'merchants', label: 'Merchants', icon: <BoxIcon className="w-4 h-4" /> },
+        { id: 'locations', label: 'Locations', icon: <MapPinIcon className="w-4 h-4" /> },
         { id: 'users', label: 'Users', icon: <UserGroupIcon className="w-4 h-4" /> },
         { id: 'transactionTypes', label: 'Tx Types', icon: <ChecklistIcon className="w-4 h-4" /> },
         { id: 'accountTypes', label: 'Acct Types', icon: <ShieldCheckIcon className="w-4 h-4" /> },
@@ -179,12 +213,14 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
             case 'categories': return categories.sort((a,b) => a.name.localeCompare(b.name));
             case 'tags': return tags.sort((a,b) => a.name.localeCompare(b.name));
             case 'payees': return payees.sort((a,b) => a.name.localeCompare(b.name));
+            case 'merchants': return merchants.sort((a,b) => a.name.localeCompare(b.name));
+            case 'locations': return locations.sort((a,b) => a.name.localeCompare(b.name));
             case 'users': return users.sort((a,b) => a.name.localeCompare(b.name));
             case 'transactionTypes': return transactionTypes.sort((a,b) => a.name.localeCompare(b.name));
             case 'accountTypes': return accountTypes.sort((a,b) => a.name.localeCompare(b.name));
             default: return [];
         }
-    }, [activeTab, categories, tags, payees, users, transactionTypes, accountTypes]);
+    }, [activeTab, categories, tags, payees, merchants, locations, users, transactionTypes, accountTypes]);
 
     return (
         <div className="h-full flex flex-col gap-6">
@@ -336,6 +372,39 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                             <div className="col-span-2">
                                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Internal Reference / Notes</label>
                                                 <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-medium min-h-[100px]" placeholder="Add account details, URLs, or pattern info..." />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'merchants' && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Parent Payee</label>
+                                                <select value={payeeId} onChange={e => setPayeeId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white">
+                                                    <option value="">-- No Payee --</option>
+                                                    {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="col-span-2">
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Merchant Notes</label>
+                                                <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-medium min-h-[100px]" placeholder="Specific branch info, etc..." />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeTab === 'locations' && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">City</label>
+                                                <input type="text" value={city} onChange={e => setCity(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">State</label>
+                                                <input type="text" value={state} onChange={e => setState(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Country</label>
+                                                <input type="text" value={country} onChange={e => setCountry(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" />
                                             </div>
                                         </div>
                                     )}

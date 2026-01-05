@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Merchant, Location } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -42,6 +42,8 @@ const App: React.FC = () => {
     const [transactionTypes, setTransactionTypes] = useState<TransactionType[]>([]);
     const [rules, setRules] = useState<ReconciliationRule[]>([]);
     const [payees, setPayees] = useState<Payee[]>([]);
+    const [merchants, setMerchants] = useState<Merchant[]>([]);
+    const [locations, setLocations] = useState<Location[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [businessProfile, setBusinessProfile] = useState<BusinessProfile>({ info: {}, tax: {}, completedSteps: [] });
     const [businessNotes, setBusinessNotes] = useState<BusinessNote[]>([]);
@@ -76,6 +78,8 @@ const App: React.FC = () => {
             setTransactionTypes(data.transactionTypes || []);
             setRules(data.reconciliationRules || []);
             setPayees(data.payees || []);
+            setMerchants(data.merchants || []);
+            setLocations(data.locations || []);
             setUsers(data.users && data.users.length > 0 ? data.users : [{ id: 'user_primary', name: 'Primary User', isDefault: true }]);
             setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
             setBusinessNotes(data.businessNotes || []);
@@ -106,8 +110,6 @@ const App: React.FC = () => {
             setLoadError("Engine startup failed. Please check server logs.");
         } finally {
             setIsSyncing(false);
-            // Crucial: Always add 'loaded' class to hide the HTML splash screen
-            // Even if an error occurred, we want the error UI to be visible.
             document.body.classList.add('loaded');
         }
     };
@@ -219,12 +221,16 @@ const App: React.FC = () => {
                             categories={categories}
                             tags={tags}
                             payees={payees}
+                            merchants={merchants}
+                            locations={locations}
                             transactionTypes={transactionTypes}
                             onSaveRule={(r) => updateData('reconciliationRules', rules.some(x => x.id === r.id) ? rules.map(x => x.id === r.id ? r : x) : [...rules, r], setRules)}
                             onDeleteRule={(id) => updateData('reconciliationRules', rules.filter(x => x.id !== id), setRules)}
                             onUpdateTransactions={async (txs) => { await api.saveTransactions(txs); loadCoreData(false); }}
                             onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
                             onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
+                            onSaveMerchant={(m) => updateData('merchants', [...merchants, m], setMerchants)}
+                            onSaveLocation={(l) => updateData('locations', [...locations, l], setLocations)}
                             onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
                             onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
                         />
@@ -292,6 +298,10 @@ const App: React.FC = () => {
                             onDeleteTag={(id) => updateData('tags', tags.filter(x => x.id !== id), setTags)}
                             payees={payees} onSavePayee={(p) => updateData('payees', payees.some(x => x.id === p.id) ? payees.map(x => x.id === p.id ? p : x) : [...payees, p], setPayees)}
                             onDeletePayee={(id) => updateData('payees', payees.filter(x => x.id !== id), setPayees)}
+                            merchants={merchants} onSaveMerchant={(m) => updateData('merchants', merchants.some(x => x.id === m.id) ? merchants.map(x => x.id === m.id ? m : x) : [...merchants, m], setMerchants)}
+                            onDeleteMerchant={(id) => updateData('merchants', merchants.filter(x => x.id !== id), setMerchants)}
+                            locations={locations} onSaveLocation={(l) => updateData('locations', locations.some(x => x.id === l.id) ? locations.map(x => x.id === l.id ? l : x) : [...locations, l], setLocations)}
+                            onDeleteLocation={(id) => updateData('locations', locations.filter(x => x.id !== id), setLocations)}
                             users={users} onSaveUser={(u) => updateData('users', users.some(x => x.id === u.id) ? users.map(x => x.id === u.id ? u : x) : [...users, u], setUsers)}
                             onDeleteUser={(id) => updateData('users', users.filter(x => x.id !== id), setUsers)}
                             transactionTypes={transactionTypes} onSaveTransactionType={(t) => updateData('transactionTypes', transactionTypes.some(x => x.id === t.id) ? transactionTypes.map(x => x.id === t.id ? t : x) : [...transactionTypes, t], setTransactionTypes)}

@@ -78,6 +78,8 @@ const initDb = () => {
           CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT);
           CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
           CREATE TABLE IF NOT EXISTS payees (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
+          CREATE TABLE IF NOT EXISTS merchants (id TEXT PRIMARY KEY, name TEXT, payee_id TEXT, notes TEXT);
+          CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, name TEXT, city TEXT, state TEXT, country TEXT);
           CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
 
           CREATE TABLE IF NOT EXISTS transactions (
@@ -126,6 +128,8 @@ const initDb = () => {
             { name: 'account_id', type: 'TEXT' },
             { name: 'type_id', type: 'TEXT' },
             { name: 'payee_id', type: 'TEXT' },
+            { name: 'merchant_id', type: 'TEXT' },
+            { name: 'location_id', type: 'TEXT' },
             { name: 'user_id', type: 'TEXT' },
             { name: 'location', type: 'TEXT' },
             { name: 'notes', type: 'TEXT' },
@@ -205,6 +209,8 @@ app.get('/api/transactions', (req, res) => {
             accountId: r.account_id,
             typeId: r.type_id,
             payeeId: r.payee_id,
+            merchantId: r.merchant_id,
+            locationId: r.location_id,
             userId: r.user_id,
             originalDescription: r.original_description,
             sourceFilename: r.source_filename,
@@ -240,10 +246,10 @@ app.post('/api/transactions/batch', (req, res) => {
         const insert = db.prepare(`
             INSERT OR REPLACE INTO transactions (
                 id, date, description, amount, category_id, account_id, type_id, 
-                payee_id, user_id, location, notes, original_description, 
+                payee_id, merchant_id, location_id, user_id, location, notes, original_description, 
                 source_filename, link_group_id, is_parent, parent_transaction_id, 
                 is_completed, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const tagClear = db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?");
         const tagInsert = db.prepare("INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)");
@@ -251,7 +257,7 @@ app.post('/api/transactions/batch', (req, res) => {
             for (const tx of items) {
                 insert.run(
                     tx.id, tx.date, tx.description, tx.amount, tx.categoryId, tx.accountId, tx.typeId,
-                    tx.payeeId || null, tx.userId || null, tx.location || null, tx.notes || null,
+                    tx.payeeId || null, tx.merchantId || null, tx.locationId || null, tx.userId || null, tx.location || null, tx.notes || null,
                     tx.originalDescription || null, tx.sourceFilename || null, tx.linkGroupId || null,
                     tx.isParent ? 1 : 0, tx.parentTransactionId || null, tx.isCompleted ? 1 : 0,
                     JSON.stringify(tx.metadata || {})
@@ -285,6 +291,8 @@ app.get('/api/data', (req, res) => {
     try { data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all().map(a => ({...a, isDefault: !!a.isDefault})); } catch(e) { data.accountTypes = []; }
     try { data.users = db.prepare("SELECT id, name, is_default AS isDefault FROM users").all().map(u => ({...u, isDefault: !!u.isDefault})); } catch(e) { data.users = []; }
     try { data.payees = db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM payees").all(); } catch(e) { data.payees = []; }
+    try { data.merchants = db.prepare("SELECT id, name, payee_id AS payeeId, notes FROM merchants").all(); } catch(e) { data.merchants = []; }
+    try { data.locations = db.prepare("SELECT id, name, city, state, country FROM locations").all(); } catch(e) { data.locations = []; }
     try { data.tags = db.prepare("SELECT * FROM tags").all(); } catch(e) { data.tags = []; }
     try { data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect FROM transaction_types").all(); } catch(e) { data.transactionTypes = []; }
     
@@ -337,6 +345,18 @@ app.post('/api/data/:key', (req, res) => {
         db.transaction(() => {
             value.forEach(p => stmt.run(p.id, p.name, p.parentId || null, p.notes || null, p.userId || null));
         })();
+    } else if (key === 'merchants' && Array.isArray(value)) {
+        db.prepare("DELETE FROM merchants").run();
+        const stmt = db.prepare("INSERT OR REPLACE INTO merchants (id, name, payee_id, notes) VALUES (?, ?, ?, ?)");
+        db.transaction(() => {
+            value.forEach(m => stmt.run(m.id, m.name, m.payeeId || null, m.notes || null));
+        })();
+    } else if (key === 'locations' && Array.isArray(value)) {
+        db.prepare("DELETE FROM locations").run();
+        const stmt = db.prepare("INSERT OR REPLACE INTO locations (id, name, city, state, country) VALUES (?, ?, ?, ?, ?)");
+        db.transaction(() => {
+            value.forEach(l => stmt.run(l.id, l.name, l.city || null, l.state || null, l.country || null));
+        })();
     } else if (key === 'tags' && Array.isArray(value)) {
         db.prepare("DELETE FROM tags").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO tags (id, name, color) VALUES (?, ?, ?)");
@@ -381,6 +401,8 @@ app.post('/api/admin/reset', async (req, res) => {
                 db.prepare("DELETE FROM transaction_tags").run();
             }
             if (entities.includes('payees')) db.prepare("DELETE FROM payees").run();
+            if (entities.includes('merchants')) db.prepare("DELETE FROM merchants").run();
+            if (entities.includes('locations')) db.prepare("DELETE FROM locations").run();
             if (entities.includes('users')) db.prepare("DELETE FROM users WHERE is_default = 0").run();
             if (entities.includes('files_meta')) db.prepare("DELETE FROM files_meta").run();
             
