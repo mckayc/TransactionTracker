@@ -141,7 +141,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                 type="button" 
                                 onClick={() => toggleLogic(index)} 
                                 className={`relative z-10 px-4 py-1 text-[9px] font-black uppercase rounded-full border shadow-sm transition-all hover:scale-105 ${
-                                    (items[index].nextLogic || 'AND') === 'AND' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-orange-50 text-white border-orange-600'
+                                    (items[index].nextLogic || 'AND') === 'AND' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-amber-400 text-slate-900 border-amber-500'
                                 }`}
                             >
                                 {items[index].nextLogic || 'AND'}

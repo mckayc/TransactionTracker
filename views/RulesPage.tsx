@@ -29,14 +29,14 @@ interface RulesPageProps {
 }
 
 const RULE_DOMAINS = [
-    { id: 'all', label: 'All Rules', icon: <ShieldCheckIcon className="w-4 h-4" /> },
+    { id: 'all', label: 'All Logic Scopes', icon: <ShieldCheckIcon className="w-4 h-4" /> },
     { id: 'description', label: 'Descriptions', icon: <TableIcon className="w-4 h-4" /> },
     { id: 'payeeId', label: 'Payees', icon: <BoxIcon className="w-4 h-4" /> },
     { id: 'merchantId', label: 'Merchants', icon: <BoxIcon className="w-4 h-4" /> },
     { id: 'locationId', label: 'Locations', icon: <MapPinIcon className="w-4 h-4" /> },
-    { id: 'tagIds', label: 'Tag Assignment', icon: <TagIcon className="w-4 h-4" /> },
-    { id: 'metadata', label: 'Parsing Hints', icon: <RobotIcon className="w-4 h-4" /> },
-    { id: 'ai-drafts', label: 'AI Suggested', icon: <SparklesIcon className="w-4 h-4 text-indigo-500" /> },
+    { id: 'tagIds', label: 'Taxonomy (Tags)', icon: <TagIcon className="w-4 h-4" /> },
+    { id: 'metadata', label: 'Extraction Hints', icon: <RobotIcon className="w-4 h-4" /> },
+    { id: 'ai-drafts', label: 'AI Proposed', icon: <SparklesIcon className="w-4 h-4 text-indigo-500" /> },
 ];
 
 const RulesPage: React.FC<RulesPageProps> = ({ 
@@ -50,12 +50,14 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
     // AI Creator State
     const [aiFile, setAiFile] = useState<File | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
     const [aiPrompt, setAiPrompt] = useState('');
     const [isAiGenerating, setIsAiGenerating] = useState(false);
     const [aiProposedRules, setAiProposedRules] = useState<ReconciliationRule[]>([]);
 
     // Form State
     const [name, setName] = useState('');
+    const [scope, setScope] = useState('description');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
     const [setCategoryId, setSetCategoryId] = useState('');
     const [setPayeeId, setSetPayeeId] = useState('');
@@ -71,7 +73,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
         if (selectedDomain === 'ai-drafts') {
             list = list.filter(r => r.isAiDraft);
         } else if (selectedDomain !== 'all') {
-            list = list.filter(r => r.conditions.some(c => c.field === selectedDomain));
+            // Check explicit scope first, fallback to condition-based domain detection for legacy
+            list = list.filter(r => r.scope === selectedDomain || (!r.scope && r.conditions.some(c => c.field === selectedDomain)));
         }
         return list.sort((a, b) => (a.priority || 0) - (b.priority || 0) || a.name.localeCompare(b.name));
     }, [rules, searchTerm, selectedDomain]);
@@ -82,6 +85,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleId(id);
         setIsCreating(false);
         setName(r.name);
+        setScope(r.scope || 'description');
         setConditions(r.conditions);
         setSetCategoryId(r.setCategoryId || '');
         setSetPayeeId(r.setPayeeId || '');
@@ -97,6 +101,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleId(null);
         setIsCreating(true);
         setName('');
+        setScope(selectedDomain !== 'all' && selectedDomain !== 'ai-drafts' ? selectedDomain : 'description');
         setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
         setSetCategoryId('');
         setSetPayeeId('');
@@ -113,6 +118,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         const rule: ReconciliationRule = {
             id: selectedRuleId || generateUUID(),
             name: name.trim(),
+            scope,
             conditions,
             setCategoryId: setCategoryId || undefined,
             setPayeeId: setPayeeId || undefined,
@@ -139,6 +145,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     id: generateUUID(),
                     name: "AI Proposed: Starbucks Normalization",
                     isAiDraft: true,
+                    scope: 'description',
                     conditions: [{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: 'STARBUCKS', nextLogic: 'AND' }],
                     setDescription: "Starbucks Coffee",
                     setCategoryId: categories.find(c => c.name.toLowerCase().includes('dining'))?.id
@@ -155,6 +162,20 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const acceptAiRule = (proposed: ReconciliationRule) => {
         onSaveRule({ ...proposed, isAiDraft: false });
         setAiProposedRules(prev => prev.filter(p => p.id !== proposed.id));
+    };
+
+    // Drag and Drop Logic
+    const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+    const onDragLeave = () => setIsDragging(false);
+    const onDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file && (file.type === 'application/pdf' || file.name.endsWith('.csv'))) {
+            setAiFile(file);
+        } else {
+            alert("Please upload a PDF or CSV file.");
+        }
     };
 
     return (
@@ -186,10 +207,17 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-4">
                             <p className="text-sm text-slate-600 font-medium">Upload a statement or document for the AI to analyze. It will suggest normalization and categorization rules based on your data patterns.</p>
-                            <div className="border-2 border-dashed border-slate-200 rounded-2xl p-8 flex flex-col items-center justify-center bg-slate-50 group hover:border-indigo-400 transition-colors">
-                                <CloudArrowUpIcon className="w-12 h-12 text-slate-300 group-hover:text-indigo-400 mb-2" />
+                            <div 
+                                onDragOver={onDragOver}
+                                onDragLeave={onDragLeave}
+                                onDrop={onDrop}
+                                className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center transition-all group ${isDragging ? 'border-indigo-600 bg-indigo-50 shadow-inner scale-[1.02]' : 'border-slate-200 bg-slate-50 hover:border-indigo-400'}`}
+                            >
+                                <CloudArrowUpIcon className={`w-12 h-12 mb-2 transition-colors ${isDragging ? 'text-indigo-600' : 'text-slate-300 group-hover:text-indigo-400'}`} />
                                 <input type="file" onChange={e => setAiFile(e.target.files?.[0] || null)} className="hidden" id="ai-file" />
-                                <label htmlFor="ai-file" className="text-sm font-bold text-indigo-600 cursor-pointer hover:underline">{aiFile ? aiFile.name : 'Select PDF or CSV'}</label>
+                                <label htmlFor="ai-file" className="text-sm font-bold text-indigo-600 cursor-pointer hover:underline">
+                                    {aiFile ? aiFile.name : (isDragging ? 'Release to Upload' : 'Drop file here or Select PDF/CSV')}
+                                </label>
                             </div>
                             <textarea 
                                 value={aiPrompt} 
@@ -236,9 +264,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
             )}
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* LEFT: DOMAINS */}
+                {/* LEFT: SCOPES */}
                 <div className="w-56 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col p-3 flex-shrink-0">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Registry Domains</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Rule Scopes</p>
                     <div className="space-y-0.5">
                         {RULE_DOMAINS.map(domain => (
                             <button 
@@ -258,7 +286,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     </div>
                 </div>
 
-                {/* MIDDLE: LIST */}
+                {/* MIDDLE: LIST (CONDENSED) */}
                 <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 flex-shrink-0">
                     <div className="p-3 border-b border-slate-100">
                         <div className="relative group">
@@ -283,16 +311,16 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <div 
                                     key={r.id} 
                                     onClick={() => handleSelectRule(r.id)}
-                                    className={`p-3 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-1 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'}`}
+                                    className={`p-2 px-3 rounded-lg cursor-pointer border transition-all flex flex-col gap-0.5 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-400 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}
                                 >
                                     <div className="flex justify-between items-center">
-                                        <span className={`text-xs font-bold truncate ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-800'}`}>{r.name}</span>
+                                        <span className={`text-xs font-bold truncate ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-700'}`}>{r.name}</span>
                                         {r.isAiDraft && <SparklesIcon className="w-3 h-3 text-indigo-500" />}
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <p className="text-[10px] text-slate-400 font-medium truncate pr-2">Priority: {r.priority || 0}</p>
+                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight truncate pr-2">{r.scope || 'Unset'}</p>
                                         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={(e) => { e.stopPropagation(); onDeleteRule(r.id); if(selectedRuleId === r.id) setSelectedRuleId(null); }} className="text-slate-300 hover:text-red-500"><DeleteIcon className="w-3.5 h-3.5" /></button>
+                                            <button onClick={(e) => { e.stopPropagation(); onDeleteRule(r.id); if(selectedRuleId === r.id) setSelectedRuleId(null); }} className="text-slate-300 hover:text-red-500"><DeleteIcon className="w-3 h-3" /></button>
                                         </div>
                                     </div>
                                 </div>
@@ -317,7 +345,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                     </div>
                                     <div>
                                         <h3 className="text-xl font-black text-slate-800">{isCreating ? 'Architect Rule' : 'Refine Rule'}</h3>
-                                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">v0.4 Precision Engine</p>
+                                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Precision Logical Scoping</p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
@@ -327,24 +355,40 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
-                                <section className="space-y-4">
-                                    <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Identity
+                                <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="md:col-span-2 space-y-4">
+                                        <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Logical Name
+                                        </div>
+                                        <input 
+                                            type="text" 
+                                            value={name} 
+                                            onChange={e => setName(e.target.value)} 
+                                            className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white transition-all font-bold text-lg" 
+                                            placeholder="Friendly label..."
+                                            required 
+                                        />
                                     </div>
-                                    <input 
-                                        type="text" 
-                                        value={name} 
-                                        onChange={e => setName(e.target.value)} 
-                                        className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white transition-all font-bold text-lg" 
-                                        placeholder="Internal logical name..."
-                                        required 
-                                    />
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" /> Rule Scope
+                                        </div>
+                                        <select 
+                                            value={scope} 
+                                            onChange={e => setScope(e.target.value)}
+                                            className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white transition-all font-bold text-sm"
+                                        >
+                                            {RULE_DOMAINS.filter(d => d.id !== 'all' && d.id !== 'ai-drafts').map(d => (
+                                                <option key={d.id} value={d.id}>{d.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </section>
 
                                 <section className="space-y-4">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Conditional Logic Tree
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Condition Tree
                                         </div>
                                     </div>
                                     <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
@@ -354,7 +398,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
                                 <section className="space-y-6">
                                     <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Atomic Transformations
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Transformations
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         <div className="space-y-1.5">
@@ -369,13 +413,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                             <select value={setPayeeId} onChange={e => setSetPayeeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {payees.sort((a,b) => a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Associate Merchant</label>
-                                            <select value={setMerchantId} onChange={e => setSetMerchantId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
-                                                <option value="">-- No Change --</option>
-                                                {merchants.sort((a,b) => a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">

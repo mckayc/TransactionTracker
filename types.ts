@@ -121,6 +121,7 @@ export interface RuleCondition {
 export interface ReconciliationRule {
     id: string;
     name: string;
+    scope?: string; // New field for logical grouping
     conditions: RuleCondition[];
     setCategoryId?: string;
     setPayeeId?: string;
