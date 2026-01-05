@@ -214,19 +214,15 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       return { color: 'text-rose-600', prefix: '-' };
   };
 
-  const commonInputClass = "w-full p-1 text-xs rounded-md border-indigo-500 ring-1 ring-indigo-500 focus:outline-none shadow-sm";
   const cellClass = (isEditable = false) => `px-3 py-2 whitespace-nowrap text-sm text-slate-600 ${isEditable ? 'cursor-pointer hover:text-indigo-600 hover:bg-slate-50' : ''}`;
 
   const renderRow = (transaction: Transaction, isChild: boolean = false, groupData?: GroupItem) => {
-        const type = transactionTypeMap.get(transaction.typeId);
-        const typeName = type?.name || 'N/A';
         const categoryName = categoryMap.get(transaction.categoryId)?.name || 'Uncategorized';
         const payeeName = payeeMap.get(transaction.payeeId || '')?.name || '';
         const accountName = accountMap.get(transaction.account_id || '')?.name || 'N/A';
         
         const { color, prefix } = getAmountStyles(transaction);
         const isSelected = selectedTxIds.has(transaction.id);
-        const linkGroupId = transaction.linkGroupId;
 
         let stickyBgClass = 'bg-white group-hover:bg-slate-50';
         if (isSelected) {
@@ -264,7 +260,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                 {transaction.merchant_clean || transaction.description}
                             </span>
                             {transaction.description_raw && transaction.description_raw !== transaction.merchant_clean && (
-                                <InfoIcon className="w-3 h-3 text-slate-400 cursor-help" title={transaction.description_raw} />
+                                <span title={transaction.description_raw}>
+                                  <InfoIcon className="w-3 h-3 text-slate-400 cursor-help" />
+                                </span>
                             )}
                         </div>
                     </div>

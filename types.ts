@@ -83,6 +83,7 @@ export interface RawTransaction {
     accountId?: string;
     account?: string;
     originalDescription?: string;
+    location?: string | null;
 }
 
 export interface Transaction extends RawTransaction {

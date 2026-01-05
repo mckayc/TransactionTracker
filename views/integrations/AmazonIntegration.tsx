@@ -67,7 +67,6 @@ const InfoBubble: React.FC<{ title: string; content: string }> = ({ title, conte
     </div>
 );
 
-// Helper for multi-title hierarchy and hover
 const MultiTitleDisplay: React.FC<{ metric: AmazonMetric }> = ({ metric }) => {
     const titles = useMemo(() => {
         const list: { type: string, value: string }[] = [];
@@ -82,7 +81,6 @@ const MultiTitleDisplay: React.FC<{ metric: AmazonMetric }> = ({ metric }) => {
             if (metric.ccTitle) list.push({ type: 'CC Campaign', value: metric.ccTitle });
         }
         
-        // Ensure unique values
         const seen = new Set<string>();
         return list.filter(item => {
             const val = item.value.trim();
@@ -141,19 +139,16 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [uploadType, setUploadType] = useState<AmazonReportType>('unknown');
     const [uploadCCType, setUploadCCType] = useState<AmazonCCType | 'unknown'>('unknown');
 
-    // Filtering & Sorting State
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [filterType, setFilterType] = useState<string>('');
     
-    // Insights & Dashboard Stats State
     const [insightsReportYear, setInsightsReportYear] = useState<string>('all');
     const [insightsCreatedYear, setInsightsCreatedYear] = useState<string>('all');
     const [insightsLimit, setInsightsLimit] = useState<number>(50);
     const [insightsSortKey, setInsightsSortKey] = useState<keyof AmazonMetric>('revenue');
     const [insightsSortDir, setInsightsSortDir] = useState<'asc' | 'desc'>('desc');
 
-    // Data Tab State
     const [dataSortKey, setDataSortKey] = useState<keyof AmazonMetric>('saleDate');
     const [dataSortDir, setDataSortDir] = useState<'asc' | 'desc'>('desc');
     const [dataCreatedYearFilter, setDataCreatedYearFilter] = useState<string>('all');
@@ -161,14 +156,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(100);
 
-    // Tools Tab State
     const [isUploadingVideos, setIsUploadingVideos] = useState(false);
     const videoInputRef = useRef<HTMLInputElement>(null);
     const [matchingMatches, setMatchingMatches] = useState<MatchResult[]>([]);
     const [isScanningMatches, setIsScanningMatches] = useState(false);
     const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
     
-    // Video Linker Specific State
     const [videoMatches, setVideoMatches] = useState<VideoMatchResult[]>([]);
     const [isScanningVideos, setIsScanningVideos] = useState(false);
     const [videoScanProgress, setVideoScanProgress] = useState<{ current: number; total: number } | null>(null);
@@ -176,7 +169,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     const [mergeProgress, setMergeProgress] = useState<{ current: number; total: number } | null>(null);
 
-    // Helper for complex type filtering
     const matchesReportType = (metric: AmazonMetric, selectedFilter: string) => {
         if (!selectedFilter) return true;
         if (selectedFilter === 'creator_connections_onsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'onsite';
@@ -200,14 +192,13 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         };
     }, [metrics]);
 
-    // Aggregate metrics for Dashboard and Insights
     const productAggregateMap = useMemo(() => {
         const map = new Map<string, AmazonMetric>();
         
         let base = metrics;
         if (filterType) base = base.filter(m => matchesReportType(m, filterType));
         if (insightsReportYear !== 'all') base = base.filter(m => m.reportYear === insightsReportYear);
-        if (insightsCreatedYear !== 'all') base = base.filter(m => m.saleDate.substring(0, 4) === insightsCreatedYear);
+        if (insightsCreatedYear !== 'all') base = base.filter(m => m.saleDate && m.saleDate.substring(0, 4) === insightsCreatedYear);
 
         base.forEach(m => {
             if (!matchAdvancedSearch(m, debouncedSearchTerm)) return;
@@ -253,9 +244,11 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             if (m.reportYear) {
                 yearBuckets[m.reportYear] = (yearBuckets[m.reportYear] || 0) + m.revenue;
             }
-            const date = new Date(m.saleDate);
-            if (!isNaN(date.getTime())) {
-                monthBuckets[date.getMonth()] += m.revenue;
+            if (m.saleDate) {
+                const date = new Date(m.saleDate);
+                if (!isNaN(date.getTime())) {
+                    monthBuckets[date.getMonth()] += m.revenue;
+                }
             }
         });
 
@@ -270,7 +263,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const tableMetrics = useMemo(() => {
         let result = [...metrics];
         if (filterType) result = result.filter(m => matchesReportType(m, filterType));
-        if (dataCreatedYearFilter !== 'all') result = result.filter(m => m.saleDate.startsWith(dataCreatedYearFilter));
+        if (dataCreatedYearFilter !== 'all') result = result.filter(m => m.saleDate && m.saleDate.startsWith(dataCreatedYearFilter));
 
         if (isMergedAsins) {
             const merged = new Map<string, AmazonMetric>();
@@ -293,10 +286,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             const valA = a[dataSortKey] as any;
             const valB = b[dataSortKey] as any;
             if (typeof valA === 'string') {
-                const cmp = valA.localeCompare(valB);
+                const cmp = valA.localeCompare(valB || '');
                 return dataSortDir === 'asc' ? cmp : -cmp;
             }
-            return dataSortDir === 'asc' ? valA - valB : valB - valA;
+            const numA = typeof valA === 'number' ? valA : 0;
+            const numB = typeof valB === 'number' ? valB : 0;
+            return dataSortDir === 'asc' ? numA - numB : numB - numA;
         });
         return result;
     }, [metrics, filterType, dataCreatedYearFilter, isMergedAsins, dataSortKey, dataSortDir]);
@@ -311,7 +306,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     useEffect(() => { setCurrentPage(1); }, [filterType, dataCreatedYearFilter, rowsPerPage, isMergedAsins]);
 
-    // Upload Handlers
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -321,28 +315,21 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             if (newMetrics.length > 0) {
                 setPreviewMetrics(newMetrics);
                 const fileName = file.name.toLowerCase();
-                
-                // --- IMPROVED YEAR DETECTION FROM FILENAME ---
-                // 1. Look for a year range first (e.g., 2023-2024 or 2023_2024)
                 const rangeMatch = fileName.match(/(20\d{2})[-_](20\d{2})/);
                 let detectedYear = '';
                 
                 if (rangeMatch) {
-                    // Pick the first year in the range
                     detectedYear = rangeMatch[1];
                 } else {
-                    // 2. Fallback to a single 4-digit year in the filename
                     const singleMatch = fileName.match(/\b(20\d{2})\b/);
                     if (singleMatch) {
                         detectedYear = singleMatch[1];
                     } else {
-                        // 3. Data Fallback: Find the most frequent or most recent year in the data records
                         const yearsInFile = newMetrics
                             .map(m => m.saleDate ? m.saleDate.substring(0, 4) : '')
                             .filter(y => y.length === 4 && !isNaN(parseInt(y)));
                         
                         if (yearsInFile.length > 0) {
-                            // Find earliest year in file if multiple exist (to represent the start of the report)
                             yearsInFile.sort((a, b) => a.localeCompare(b));
                             detectedYear = yearsInFile[0];
                         }
@@ -384,13 +371,11 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 creatorConnectionsType: uploadType === 'creator_connections' ? (uploadCCType !== 'unknown' ? (uploadCCType as AmazonCCType) : undefined) : undefined
             }));
             
-            // Smarter Merge: Use deterministic ID to prevent duplicates if user imports same file
             const existingIds = new Set(metrics.map(m => m.id));
             const toAdd = metricsWithMeta.filter(m => !existingIds.has(m.id));
             const toUpdate = metricsWithMeta.filter(m => existingIds.has(m.id));
 
             if (toUpdate.length > 0) {
-                // If records exist, we update them (overwriting)
                 const updatedAll = metrics.map(m => {
                     const match = toUpdate.find(u => u.id === m.id);
                     return match ? match : m;
@@ -442,7 +427,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     let matchedSales: AmazonMetric[] = [];
                     
                     if (v.asins && v.asins.length > 0) {
-                        v.asins.forEach(asin => {
+                        v.asins.forEach((asin: string) => {
                             const found = salesByAsin.get(asin);
                             if (found) matchedSales = [...matchedSales, ...found];
                         });
@@ -451,7 +436,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                     if (matchedSales.length === 0) {
                         const normalizedVideoTitle = normalizeStr(v.videoTitle);
                         onsiteSales.forEach(s => {
-                            if (normalizeStr(s.productTitle) === normalizedVideoTitle) {
+                            if (normalizeStr(s.productTitle || '') === normalizedVideoTitle) {
                                 matchedSales.push(s);
                             }
                         });
@@ -480,7 +465,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
         } catch (error) {
             console.error(error);
-            alert("Failed to parse videos. " + (error instanceof Error ? error.message : ""));
+            alert("Failed to parse videos.");
             setIsScanningVideos(false);
             setVideoScanProgress(null);
         } finally {
@@ -567,7 +552,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         return dir === 'asc' ? <SortIcon className="w-3 h-3 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-indigo-600" />;
     };
 
-    // Creator Connections Matcher Logic
     const handleScanForMatches = async () => {
         setIsScanningMatches(true);
         await new Promise(r => setTimeout(r, 100));
@@ -863,7 +847,7 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
                 {activeTab === 'insights' && (
                     <div className="space-y-6 pb-20">
-                         <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden">
+                         <div className="bg-slate-900 text-white p-8 rounded-[2rem] shadow-xl flex flex-col md:flex-row justify-between items-center gap-8 relative overflow-hidden">
                             <div className="relative z-10">
                                 <h3 className="text-2xl font-black mb-2 flex items-center gap-2"><HeartIcon className="w-6 h-6 text-red-500" /> Passive Consistency</h3>
                                 <p className="text-slate-400 max-w-md">Your revenue spread suggests {((insightsAggregates.monthData.filter(v => v > 0).length / 12) * 100).toFixed(0)}% month-over-month coverage.</p>

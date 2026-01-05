@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Transaction, Category, TransactionType } from '../types';
 import { CloseIcon, SplitIcon, AddIcon, DeleteIcon } from './Icons';
@@ -88,26 +87,24 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
         const parent: Transaction = {
             ...transaction,
             isParent: true,
-            linkGroupId: transaction.linkGroupId || generateUUID() // Generate group ID if not exists
+            linkGroupId: transaction.linkGroupId || generateUUID() 
         };
 
         const children: Transaction[] = splits.map(s => {
             const catName = categories.find(c => c.id === s.categoryId)?.name || 'Split';
             return {
+                ...transaction, // Spread parent properties to ensure all fields are present
                 id: generateUUID(),
-                date: transaction.date,
                 description: s.description,
+                description_raw: s.description,
                 amount: s.amount,
                 categoryId: s.categoryId,
                 category: catName,
                 typeId: s.typeId,
-                accountId: transaction.accountId,
-                payeeId: transaction.payeeId,
-                userId: transaction.userId,
-                location: transaction.location,
-                sourceFilename: transaction.sourceFilename,
-                linkGroupId: parent.linkGroupId, // Link to parent's group
-                parentTransactionId: transaction.id // Explicit link to parent
+                linkGroupId: parent.linkGroupId, 
+                parentTransactionId: transaction.id,
+                isParent: false,
+                isCompleted: true
             };
         });
 
