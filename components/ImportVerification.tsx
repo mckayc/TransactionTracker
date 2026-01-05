@@ -53,18 +53,110 @@ const MetadataDrawer: React.FC<{ tx: VerifiableTransaction | null; onClose: () =
     );
 };
 
+const RuleInspectorDrawer: React.FC<{ 
+    rule: ReconciliationRule | null; 
+    onClose: () => void; 
+    categories: Category[]; 
+    payees: Payee[]; 
+    types: TransactionType[];
+}> = ({ rule, onClose, categories, payees, types }) => {
+    if (!rule) return null;
+
+    const getCatName = (id?: string) => categories.find(c => c.id === id)?.name || 'Unknown';
+    const getPayeeName = (id?: string) => payees.find(p => p.id === id)?.name || 'Unknown';
+    const getTypeName = (id?: string) => types.find(t => t.id === id)?.name || 'Unknown';
+
+    return (
+        <div className="fixed inset-0 z-[100] flex justify-end">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-md bg-slate-900 shadow-2xl flex flex-col h-full animate-slide-in-right">
+                <div className="p-6 border-b border-white/10 bg-indigo-900 flex justify-between items-center">
+                    <div>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                            <SparklesIcon className="w-5 h-5 text-indigo-400" />
+                            Rule Inspector
+                        </h3>
+                        <p className="text-xs text-indigo-300 mt-1 uppercase font-bold tracking-widest">{rule.name}</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 text-white/50 hover:text-white rounded-full"><CloseIcon className="w-6 h-6" /></button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+                    {/* Conditions */}
+                    <div>
+                        <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Matching Logic</h4>
+                        <div className="space-y-2">
+                            {(rule.conditions || []).map((c, i) => (
+                                <div key={c.id} className="bg-white/5 border border-white/5 rounded-xl p-4">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <p className="text-[10px] font-bold text-slate-500 uppercase">Field: {c.field}</p>
+                                        {i < (rule.conditions?.length || 0) - 1 && (
+                                            <span className="px-1.5 py-0.5 bg-indigo-600/30 text-indigo-300 text-[8px] font-black rounded uppercase">{c.nextLogic || 'AND'}</span>
+                                        )}
+                                    </div>
+                                    <p className="text-sm text-slate-200">
+                                        <span className="text-indigo-400 font-bold">{c.operator.replace('_', ' ')}</span> "{c.value}"
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div>
+                        <h4 className="text-[10px] font-black text-green-400 uppercase tracking-widest mb-4">Applied Transformations</h4>
+                        <div className="bg-green-900/10 border border-green-900/20 rounded-2xl p-4 space-y-4">
+                            {rule.skipImport && (
+                                <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
+                                    <SlashIcon className="w-4 h-4" /> Automatically Ignored
+                                </div>
+                            )}
+                            {rule.setCategoryId && (
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-slate-400">Set Category</span>
+                                    <span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getCatName(rule.setCategoryId)}</span>
+                                </div>
+                            )}
+                            {rule.setPayeeId && (
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-slate-400">Set Counterparty</span>
+                                    <span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getPayeeName(rule.setPayeeId)}</span>
+                                </div>
+                            )}
+                            {rule.setTransactionTypeId && (
+                                <div className="flex justify-between items-center text-sm">
+                                    <span className="text-slate-400">Set Type</span>
+                                    <span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getTypeName(rule.setTransactionTypeId)}</span>
+                                </div>
+                            )}
+                            {rule.setDescription && (
+                                <div className="space-y-1">
+                                    <span className="text-xs text-slate-400 block">Rename Description To</span>
+                                    <span className="font-bold text-slate-100 block bg-white/5 px-2 py-1 rounded-lg">{rule.setDescription}</span>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                <div className="p-6 border-t border-white/10 bg-slate-800/50">
+                    <p className="text-[10px] text-slate-500 leading-relaxed uppercase font-bold">Automation rules are processed in sequence. This rule matched first and was applied during ingestion.</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
     initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, users, existingTransactions, rules, onCreateRule
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
-    const [editingCell, setEditingCell] = useState<{ id: string; field: keyof VerifiableTransaction } | null>(null);
     const [sortKey, setSortKey] = useState<SortKey>('date');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
     const [inspectedTx, setInspectedTx] = useState<VerifiableTransaction | null>(null);
+    const [inspectedRule, setInspectedRule] = useState<ReconciliationRule | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
-    const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
     const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
 
     useEffect(() => {
@@ -79,7 +171,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
     const handleUpdate = (txId: string, field: keyof VerifiableTransaction, value: any) => {
         setTransactions(prev => prev.map(tx => tx.tempId === txId ? { ...tx, [field]: value } : tx));
-        setEditingCell(null);
     };
 
     const requestSort = (key: SortKey) => {
@@ -151,7 +242,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 const effect = type?.balanceEffect || 'expense';
                                 const matchedRule = tx.appliedRuleId ? ruleMap.get(tx.appliedRuleId) : null;
                                 
-                                // Color logic
                                 const amountColor = effect === 'income' 
                                     ? 'text-green-600' 
                                     : effect === 'transfer' 
@@ -192,30 +282,25 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         </td>
                                         <td className="px-4 py-2 text-center">
                                             {matchedRule ? (
-                                                <div className="group/rule relative inline-block">
-                                                    <button 
-                                                        className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all border border-green-200 shadow-sm"
-                                                        title={`Rule Applied: ${matchedRule.name}`}
-                                                    >
-                                                        <SparklesIcon className="w-4 h-4" />
-                                                    </button>
-                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] p-2 bg-slate-800 text-white text-[10px] rounded shadow-xl opacity-0 group-hover/rule:opacity-100 transition-opacity pointer-events-none z-50">
-                                                        <p className="font-black border-b border-white/10 pb-1 mb-1 uppercase tracking-tighter text-indigo-400">Automation Triggered</p>
-                                                        <p className="font-bold">{matchedRule.name}</p>
-                                                    </div>
-                                                </div>
+                                                <button 
+                                                    onClick={() => setInspectedRule(matchedRule)}
+                                                    className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all border border-green-200 shadow-sm group/rule"
+                                                    title={`Applied: ${matchedRule.name}`}
+                                                >
+                                                    <SparklesIcon className="w-4 h-4" />
+                                                </button>
                                             ) : (
                                                 <button 
                                                     onClick={() => onCreateRule && onCreateRule(tx)}
                                                     className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                                                    title="Create Rule from this Transaction"
+                                                    title="Create Rule"
                                                 >
                                                     <WrenchIcon className="w-4 h-4" />
                                                 </button>
                                             )}
                                         </td>
                                         <td className="px-4 py-2 text-center">
-                                            <button onClick={() => setInspectedTx(tx)} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="View Source Metadata">
+                                            <button onClick={() => setInspectedTx(tx)} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Raw Data">
                                                 <TableIcon className="w-4 h-4"/>
                                             </button>
                                         </td>
@@ -227,6 +312,13 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 </div>
             </div>
             <MetadataDrawer tx={inspectedTx} onClose={() => setInspectedTx(null)} />
+            <RuleInspectorDrawer 
+                rule={inspectedRule} 
+                onClose={() => setInspectedRule(null)} 
+                categories={categories} 
+                payees={payees} 
+                types={transactionTypes} 
+            />
         </div>
     );
 };

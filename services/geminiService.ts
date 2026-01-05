@@ -64,10 +64,10 @@ const EXTRACTION_SCHEMA = {
                 type: Type.OBJECT,
                 properties: {
                     date: { type: Type.STRING, description: 'YYYY-MM-DD' },
-                    description: { type: Type.STRING },
-                    amount: { type: Type.NUMBER, description: 'Absolute value of the transaction' },
+                    description: { type: Type.STRING, description: 'Cleaned merchant or counterparty name' },
+                    amount: { type: Type.NUMBER, description: 'The absolute numerical value of the transaction' },
                     category: { type: Type.STRING, description: 'The closest matching category from the provided list.' },
-                    isIncome: { type: Type.BOOLEAN, description: 'True if money in, false if money out' }
+                    isIncome: { type: Type.BOOLEAN, description: 'True if money enters the account (Credit/Deposit), False if money leaves (Debit/Payment).' }
                 },
                 required: ['date', 'description', 'amount', 'isIncome']
             }
@@ -76,25 +76,35 @@ const EXTRACTION_SCHEMA = {
     required: ['transactions']
 };
 
+const SYSTEM_PROMPT = (categories: string[]) => `You are a World-Class Forensic Financial Accountant. 
+Your task is to parse bank or credit card statements with 100% precision.
+
+RULES:
+1. Extract EVERY single line item. Do not summarize.
+2. Carefully detect the transaction direction. 
+   - Look for columns labeled "Credit", "Deposit", "Debit", "Withdrawal".
+   - If a single "Amount" column exists, look for signs (-/+) or symbols.
+3. Map the "category" field ONLY to one of these valid values: [${categories.join(', ')}]. 
+   - If none fit perfectly, use your best professional judgment to find the logical ancestor.
+4. Clean the description: Remove transaction IDs, city/state codes, and generic bank prefixes (e.g., "PURCHASE AT...").
+5. Return ONLY a JSON object matching the requested schema.`;
+
 export const extractTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], categories: Category[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-    onProgress("Preparing documents...");
+    onProgress("Initializing AI Financial Engine...");
     let allParts: any[] = [];
     for (const f of files) {
         const parts = await fileToGenerativePart(f);
         allParts = [...allParts, ...parts];
     }
     
-    const categoryNames = categories.map(c => c.name).join(', ');
+    const categoryNames = categories.map(c => c.name);
     
-    onProgress("AI analyzing statements...");
+    onProgress("AI is reading statements and detecting patterns...");
     const result = await callAi({
         model: 'gemini-3-flash-preview',
         contents: { 
             parts: [
-                { text: `Extract every single transaction from the attached financial statements.
-                         Strictly follow this category list for the 'category' field: ${categoryNames}.
-                         If a merchant isn't obvious, use your best financial reasoning to pick the best fit from the list.
-                         Be precise with dates (YYYY-MM-DD) and amounts. Return ONLY a JSON object.` }, 
+                { text: SYSTEM_PROMPT(categoryNames) }, 
                 ...allParts
             ] 
         },
@@ -120,14 +130,17 @@ export const extractTransactionsFromFiles = async (files: File[], accountId: str
 };
 
 export const extractTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], categories: Category[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-    onProgress("AI analyzing text...");
-    const categoryNames = categories.map(c => c.name).join(', ');
+    onProgress("AI analyzing raw ledger text...");
+    const categoryNames = categories.map(c => c.name);
     
     const result = await callAi({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: `Extract transactions from this text and return as JSON. 
-                                     Use these categories if possible: ${categoryNames}.
-                                     Text content: ${text}` }] },
+        contents: { 
+            parts: [
+                { text: SYSTEM_PROMPT(categoryNames) },
+                { text: `Parse this text: \n${text}` }
+            ] 
+        },
         config: { 
             responseMimeType: 'application/json',
             responseSchema: EXTRACTION_SCHEMA
