@@ -107,16 +107,33 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
         }
     };
 
+    /**
+     * Optimized clipboard function with fallback for insecure (HTTP) contexts.
+     * Essential for self-hosted apps running on IPs/Internal domains.
+     */
     const copyToClipboard = async (text: string) => {
         try {
-            if (!navigator.clipboard) {
-                throw new Error("Clipboard API not available");
+            if (navigator.clipboard && window.isSecureContext) {
+                // High-perf modern way
+                await navigator.clipboard.writeText(text);
+            } else {
+                // Robust Fallback for HTTP environments
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                textArea.style.left = "-9999px";
+                textArea.style.top = "-9999px";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                const success = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                if (!success) throw new Error("Fallback copy failed");
             }
-            await navigator.clipboard.writeText(text);
             setCopyStatus('success');
             setTimeout(() => setCopyStatus('idle'), 3000);
         } catch (err) {
-            console.error("Clipboard error:", err);
+            console.error("Clipboard Error:", err);
             setCopyStatus('error');
             setTimeout(() => setCopyStatus('idle'), 3000);
         }
@@ -147,17 +164,17 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
     return (
         <div className="flex gap-4 h-[700px] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden relative">
             {/* SIDEBAR: CLASSIFICATIONS */}
-            <div className="w-56 bg-slate-50 border-r border-slate-200 flex flex-col p-4 flex-shrink-0">
-                <button onClick={() => setIsCreating(true)} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold shadow-md mb-6 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 text-sm">
-                    <AddIcon className="w-4 h-4" /> New Capture
+            <div className="w-52 bg-slate-50 border-r border-slate-200 flex flex-col p-3 flex-shrink-0">
+                <button onClick={() => setIsCreating(true)} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold shadow-md mb-6 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 text-xs">
+                    <AddIcon className="w-3.5 h-3.5" /> New Capture
                 </button>
                 <div className="space-y-0.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Classification</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Classification</p>
                     {[
-                        { id: 'bug', label: 'Bugs', icon: <BugIcon className="w-4 h-4" /> },
-                        { id: 'note', label: 'Notes', icon: <NotesIcon className="w-4 h-4" /> },
-                        { id: 'idea', label: 'Ideas', icon: <LightBulbIcon className="w-4 h-4" /> },
-                        { id: 'task', label: 'Tasks', icon: <ChecklistIcon className="w-4 h-4" /> }
+                        { id: 'bug', label: 'Bugs', icon: <BugIcon className="w-3.5 h-3.5" /> },
+                        { id: 'note', label: 'Notes', icon: <NotesIcon className="w-3.5 h-3.5" /> },
+                        { id: 'idea', label: 'Ideas', icon: <LightBulbIcon className="w-3.5 h-3.5" /> },
+                        { id: 'task', label: 'Tasks', icon: <ChecklistIcon className="w-3.5 h-3.5" /> }
                     ].map(item => (
                         <button key={item.id} onClick={() => { setActiveClassification(item.id); setSelectedNoteId(null); setBatchSelection(new Set()); }} className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${activeClassification === item.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-800'}`}>
                             <div className="flex items-center gap-2">
@@ -167,9 +184,9 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                             <span className={`text-[10px] px-1.5 rounded-full ${activeClassification === item.id ? 'bg-indigo-100' : 'bg-slate-200'}`}>{(classificationStats as any)[item.id]}</span>
                         </button>
                     ))}
-                    <div className="pt-4 mt-4 border-t border-slate-200">
+                    <div className="pt-3 mt-3 border-t border-slate-200">
                         <button onClick={() => { setActiveClassification('resolved'); setSelectedNoteId(null); setBatchSelection(new Set()); }} className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${activeClassification === 'resolved' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-200/50'}`}>
-                            <div className="flex items-center gap-2"><CheckCircleIcon className="w-4 h-4" /><span>Archive</span></div>
+                            <div className="flex items-center gap-2"><CheckCircleIcon className="w-3.5 h-3.5" /><span>Archive</span></div>
                             <span className="text-[10px] bg-slate-200 px-1.5 rounded-full">{classificationStats.resolved}</span>
                         </button>
                     </div>
@@ -177,22 +194,22 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
             </div>
 
             {/* LIST: MASTER VIEW */}
-            <div className="w-80 border-r border-slate-200 flex flex-col min-h-0 bg-white">
+            <div className="w-72 border-r border-slate-200 flex flex-col min-h-0 bg-white">
                 <div className="p-3 border-b border-slate-100 space-y-2">
                     <div className="relative group">
                         <SearchCircleIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                        <input type="text" placeholder="Filter records..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium focus:ring-1 focus:ring-indigo-500 outline-none" />
+                        <input type="text" placeholder="Filter records..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-medium focus:ring-1 focus:ring-indigo-500 outline-none" />
                     </div>
                     {filteredNotes.length > 0 && (
                         <div className="flex items-center justify-between px-1">
                             <label className="flex items-center gap-2 cursor-pointer select-none">
-                                <input type="checkbox" checked={batchSelection.size === filteredNotes.length && filteredNotes.length > 0} onChange={handleSelectAllVisible} className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Select All</span>
+                                <input type="checkbox" checked={batchSelection.size === filteredNotes.length && filteredNotes.length > 0} onChange={handleSelectAllVisible} className="w-3 h-3 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Select All</span>
                             </label>
                             {batchSelection.size > 0 && (
                                 <div className="flex gap-2">
-                                    <button onClick={() => handleBulkCopy(false)} className="text-[10px] font-bold text-indigo-600 hover:underline">Copy</button>
-                                    <button onClick={() => handleBulkCopy(true)} className="text-[10px] font-bold text-indigo-600 hover:underline flex items-center gap-1"><SparklesIcon className="w-3 h-3"/> AI</button>
+                                    <button onClick={() => handleBulkCopy(false)} className="text-[9px] font-bold text-indigo-600 hover:underline">Copy</button>
+                                    <button onClick={() => handleBulkCopy(true)} className="text-[9px] font-bold text-indigo-600 hover:underline flex items-center gap-1"><SparklesIcon className="w-2.5 h-2.5"/> AI</button>
                                 </div>
                             )}
                         </div>
@@ -200,8 +217,8 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {filteredNotes.length === 0 ? (
-                        <div className="p-12 text-center text-slate-300 flex flex-col items-center">
-                            <BoxIcon className="w-10 h-10 mb-2 opacity-20" /><p className="text-xs font-bold">No records found.</p>
+                        <div className="p-10 text-center text-slate-300 flex flex-col items-center">
+                            <BoxIcon className="w-8 h-8 mb-2 opacity-20" /><p className="text-[11px] font-bold">No records found.</p>
                         </div>
                     ) : (
                         filteredNotes.map(n => (
@@ -216,15 +233,15 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                                         checked={batchSelection.has(n.id)} 
                                         onClick={(e) => toggleBatchSelection(e, n.id)} 
                                         onChange={() => {}} 
-                                        className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" 
+                                        className="w-3 h-3 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" 
                                     />
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center justify-between mb-0.5">
-                                        <h4 className={`text-xs font-bold truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
-                                        <span className={`text-[8px] font-black uppercase px-1 py-0.5 rounded flex-shrink-0 ${n.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{n.priority}</span>
+                                        <h4 className={`text-[11px] font-bold truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
+                                        <span className={`text-[7px] font-black uppercase px-1 py-0.5 rounded flex-shrink-0 ${n.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{n.priority}</span>
                                     </div>
-                                    <p className="text-[11px] text-slate-500 line-clamp-1 leading-relaxed">{n.content}</p>
+                                    <p className="text-[10px] text-slate-500 line-clamp-1 leading-relaxed">{n.content}</p>
                                 </div>
                             </div>
                         ))
@@ -238,34 +255,34 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                     <div className="p-6 flex-1 overflow-y-auto animate-fade-in">
                         <form onSubmit={handleSave} className="space-y-4 max-w-2xl">
                             <div className="flex justify-between items-center mb-2">
-                                <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Drafting Record</h3>
+                                <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Drafting Record</h3>
                                 <button type="button" onClick={resetForm} className="p-1 text-slate-400 hover:text-red-500"><CloseIcon className="w-5 h-5" /></button>
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Title</label>
-                                <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Enter title..." className="w-full p-2 border border-slate-200 rounded-lg font-bold text-sm" required />
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Title</label>
+                                <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Enter title..." className="w-full p-1.5 border border-slate-200 rounded-lg font-bold text-xs" required />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Category</label>
-                                    <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-2 border border-slate-200 rounded-lg font-bold text-xs">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Category</label>
+                                    <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-1.5 border border-slate-200 rounded-lg font-bold text-[10px]">
                                         <option value="bug">Bug Report</option><option value="note">General Note</option><option value="idea">Product Idea</option><option value="task">Operational Task</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Priority</label>
-                                    <select value={priority} onChange={e => setPriority(e.target.value as any)} className="w-full p-2 border border-slate-200 rounded-lg font-bold text-xs">
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Priority</label>
+                                    <select value={priority} onChange={e => setPriority(e.target.value as any)} className="w-full p-1.5 border border-slate-200 rounded-lg font-bold text-[10px]">
                                         <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
                                     </select>
                                 </div>
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Context / Description</label>
-                                <textarea value={content} onChange={e => setContent(e.target.value)} rows={10} placeholder="Provide details..." className="w-full p-3 border border-slate-200 rounded-lg font-medium text-xs leading-relaxed" />
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Context / Description</label>
+                                <textarea value={content} onChange={e => setContent(e.target.value)} rows={12} placeholder="Provide details..." className="w-full p-3 border border-slate-200 rounded-lg font-medium text-[11px] leading-relaxed" />
                             </div>
                             <div className="flex justify-end gap-3 pt-2">
-                                <button type="button" onClick={resetForm} className="px-4 py-1.5 text-xs text-slate-500 font-bold uppercase hover:bg-slate-50 rounded-lg">Discard</button>
-                                <button type="submit" className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-black text-xs shadow-lg hover:bg-indigo-700 transition-all active:scale-95 uppercase tracking-wider">Commit Record</button>
+                                <button type="button" onClick={resetForm} className="px-4 py-1.5 text-[10px] text-slate-500 font-bold uppercase hover:bg-slate-50 rounded-lg">Discard</button>
+                                <button type="submit" className="px-5 py-2 bg-indigo-600 text-white rounded-lg font-black text-[10px] shadow-lg hover:bg-indigo-700 transition-all active:scale-95 uppercase tracking-wider">Commit Record</button>
                             </div>
                         </form>
                     </div>
@@ -274,53 +291,53 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
-                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest border ${activeNote.type === 'bug' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{activeNote.type}</span>
-                                    <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${activeNote.priority === 'high' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-500'}`}>{activeNote.priority} priority</span>
+                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${activeNote.type === 'bug' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{activeNote.type}</span>
+                                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded ${activeNote.priority === 'high' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-500'}`}>{activeNote.priority} priority</span>
                                 </div>
-                                <h3 className="text-2xl font-black text-slate-800 leading-tight">{activeNote.title}</h3>
+                                <h3 className="text-xl font-black text-slate-800 leading-tight">{activeNote.title}</h3>
                                 <div className="flex items-center gap-4 mt-3">
                                     <div className="flex flex-col">
-                                        <span className="text-[9px] font-black text-slate-300 uppercase tracking-tight">Updated</span>
-                                        <span className="text-[10px] font-bold text-slate-400">{new Date(activeNote.updatedAt).toLocaleDateString()}</span>
+                                        <span className="text-[8px] font-black text-slate-300 uppercase tracking-tight">Updated</span>
+                                        <span className="text-[9px] font-bold text-slate-400">{new Date(activeNote.updatedAt).toLocaleDateString()}</span>
                                     </div>
-                                    <div className="w-px h-6 bg-slate-100"></div>
+                                    <div className="w-px h-5 bg-slate-100"></div>
                                     <div className="flex flex-col">
-                                        <span className="text-[9px] font-black text-slate-300 uppercase tracking-tight">Created</span>
-                                        <span className="text-[10px] font-bold text-slate-400">{new Date(activeNote.createdAt).toLocaleDateString()}</span>
+                                        <span className="text-[8px] font-black text-slate-300 uppercase tracking-tight">Created</span>
+                                        <span className="text-[9px] font-bold text-slate-400">{new Date(activeNote.createdAt).toLocaleDateString()}</span>
                                     </div>
                                 </div>
                             </div>
                             <div className="flex gap-2">
-                                <button onClick={() => startEdit(activeNote)} className="p-2 bg-slate-50 text-slate-400 hover:text-indigo-600 border border-slate-200 rounded-lg transition-all" title="Edit"><EditIcon className="w-4 h-4"/></button>
-                                <button onClick={() => deleteNote(activeNote.id)} className="p-2 bg-slate-50 text-slate-400 hover:text-red-500 border border-slate-200 rounded-lg transition-all" title="Delete"><DeleteIcon className="w-4 h-4"/></button>
+                                <button onClick={() => startEdit(activeNote)} className="p-1.5 bg-slate-50 text-slate-400 hover:text-indigo-600 border border-slate-200 rounded-lg transition-all" title="Edit"><EditIcon className="w-3.5 h-3.5"/></button>
+                                <button onClick={() => deleteNote(activeNote.id)} className="p-1.5 bg-slate-50 text-slate-400 hover:text-red-500 border border-slate-200 rounded-lg transition-all" title="Delete"><DeleteIcon className="w-3.5 h-3.5"/></button>
                             </div>
                         </div>
                         <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 shadow-inner mb-6">
-                            <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">{activeNote.content}</p>
+                            <p className="text-[12px] text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">{activeNote.content}</p>
                         </div>
                         <div className="flex justify-between items-center pt-4 border-t border-slate-50">
                             <div className="flex items-center gap-4">
-                                <button onClick={() => toggleComplete(activeNote.id)} className={`px-4 py-2 rounded-lg font-black uppercase text-[10px] transition-all flex items-center gap-2 tracking-widest ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
-                                    {activeNote.isCompleted ? <RepeatIcon className="w-4 h-4"/> : <CheckCircleIcon className="w-4 h-4"/>}
+                                <button onClick={() => toggleComplete(activeNote.id)} className={`px-4 py-2 rounded-lg font-black uppercase text-[9px] transition-all flex items-center gap-2 tracking-widest ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
+                                    {activeNote.isCompleted ? <RepeatIcon className="w-3.5 h-3.5"/> : <CheckCircleIcon className="w-3.5 h-3.5"/>}
                                     {activeNote.isCompleted ? 'Move to Backlog' : 'Resolve & Archive'}
                                 </button>
                                 {activeNote.isCompleted && (
-                                    <p className="text-[10px] font-bold text-slate-400 italic">Resolved on {new Date(activeNote.resolvedAt!).toLocaleDateString()}</p>
+                                    <p className="text-[9px] font-bold text-slate-400 italic">Resolved on {new Date(activeNote.resolvedAt!).toLocaleDateString()}</p>
                                 )}
                             </div>
-                            <button onClick={() => copyToClipboard(`Subject: ${activeNote.title}\n\nContent: ${activeNote.content}`)} className="flex items-center gap-2 text-indigo-600 font-bold text-[10px] uppercase hover:underline">
-                                <CopyIcon className="w-4 h-4"/> Copy Details
+                            <button onClick={() => copyToClipboard(`Subject: ${activeNote.title}\n\nContext: ${activeNote.content}`)} className="flex items-center gap-1.5 text-indigo-600 font-bold text-[9px] uppercase hover:underline">
+                                <CopyIcon className="w-3.5 h-3.5"/> Copy Details
                             </button>
                         </div>
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-slate-50/30">
-                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-lg mb-4">
-                             <BoxIcon className="w-8 h-8 text-indigo-100" />
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-10 bg-slate-50/30">
+                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg mb-4">
+                             <BoxIcon className="w-6 h-6 text-indigo-100" />
                         </div>
-                        <h4 className="text-lg font-black text-slate-800 uppercase tracking-tighter">Select a record</h4>
-                        <p className="text-slate-400 text-xs mt-2 font-bold max-w-[200px]">Choose an item from the list to view logs or edit details.</p>
-                        <button onClick={() => setIsCreating(true)} className="mt-6 text-indigo-600 font-black uppercase tracking-widest text-[10px] border-b-2 border-indigo-100 pb-0.5 hover:border-indigo-500 transition-all">Or create new entry</button>
+                        <h4 className="text-base font-black text-slate-800 uppercase tracking-tighter">Select a record</h4>
+                        <p className="text-slate-400 text-[11px] mt-2 font-bold max-w-[180px]">Choose an item from the list to view logs or edit details.</p>
+                        <button onClick={() => setIsCreating(true)} className="mt-4 text-indigo-600 font-black uppercase tracking-widest text-[9px] border-b-2 border-indigo-100 pb-0.5 hover:border-indigo-500 transition-all">Or create new entry</button>
                     </div>
                 )}
             </div>
