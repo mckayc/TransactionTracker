@@ -1,294 +1,385 @@
 
-import { Type } from '@google/genai';
-import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, FinancialPlan } from '../types';
+import { GoogleGenAI, Type } from '@google/genai';
+import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, FinancialPlan, Merchant, Location, User, Payee, ReconciliationRule } from '../types';
 
-// In self-hosted mode, we assume the server has the key
-export const hasApiKey = (): boolean => true;
+// Initialization of Gemini AI client
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const callAi = async (params: { model: string; contents: any; config?: any }) => {
-    const response = await fetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params)
-    });
-    if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "AI Request Failed");
-    }
-    return await response.json();
-};
-
-async function* callAiStream(params: { model: string; contents: any; config?: any }) {
-    const response = await fetch('/api/ai/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params)
-    });
-
-    if (!response.ok) throw new Error("AI Stream Failed");
-
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-
-    while (reader) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        for (const line of lines) {
-            if (line.startsWith('data: ')) {
-                try {
-                    const data = JSON.parse(line.slice(6));
-                    yield data;
-                } catch (e) {}
-            }
-        }
-    }
-}
+export const hasApiKey = (): boolean => !!process.env.API_KEY;
 
 const fileToGenerativePart = async (file: File) => {
-    if (file.type === 'application/pdf') {
-        const buffer = await file.arrayBuffer();
-        const base64 = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
-        return [{ inlineData: { data: base64, mimeType: file.type } }];
-    }
-    const text = await file.text();
-    return [{ text: `Content of ${file.name}:\n${text}` }];
+    const buffer = await file.arrayBuffer();
+    const base64 = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+    return { inlineData: { data: base64, mimeType: file.type } };
 };
 
-const EXTRACTION_SCHEMA = {
-    type: Type.OBJECT,
-    properties: {
-        transactions: {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    date: { type: Type.STRING, description: 'YYYY-MM-DD' },
-                    description: { type: Type.STRING, description: 'Cleaned merchant or counterparty name' },
-                    amount: { type: Type.NUMBER, description: 'The absolute numerical value of the transaction' },
-                    category: { type: Type.STRING, description: 'The closest matching category from the provided list.' },
-                    isIncome: { type: Type.BOOLEAN, description: 'True if money enters the account (Credit/Deposit), False if money leaves (Debit/Payment).' }
-                },
-                required: ['date', 'description', 'amount', 'isIncome']
+/**
+ * AI Logic Engine for Rule Generation
+ */
+export const generateRulesFromData = async (
+    data: string | File, 
+    categories: Category[], 
+    payees: Payee[], 
+    merchants: Merchant[], 
+    locations: Location[], 
+    users: User[],
+    promptContext?: string
+): Promise<ReconciliationRule[]> => {
+    
+    let sampleParts: any[] = [];
+    if (typeof data === 'string') {
+        sampleParts = [{ text: `DATA SAMPLE:\n${data}` }];
+    } else {
+        sampleParts = [await fileToGenerativePart(data)];
+    }
+
+    const systemPrompt = `You are a Senior Financial Systems Architect.
+    TASK: Analyze the provided financial data sample and generate atomic normalization rules for FinParser.
+    
+    GOAL: For EVERY distinct merchant or pattern found in the sample (e.g. Red 8, Costco, SP Crunchlabs), create a specific rule.
+    
+    RULE FORMAT REQUIREMENTS:
+    1. 'name': Friendly descriptive name.
+    2. 'scope': The primary field affected (e.g. 'description', 'merchantId', 'categoryId').
+    3. 'conditions': At least one condition. Typically 'description' contains 'MERCHANT_NAME_IN_CAPS'.
+    4. 'setCategoryId': Match to one of the provided category IDs.
+    5. 'setMerchantId': Match to one of the provided merchant IDs if a strong match exists.
+    6. 'setLocationId': Match to one of the provided location IDs.
+    7. 'setUserId': Assign based on the member name/user in the data.
+    
+    AVAILABLE SCHEMA CONTEXT (IDs only):
+    Categories: ${JSON.stringify(categories.map(c => ({id: c.id, name: c.name})))}
+    Merchants: ${JSON.stringify(merchants.map(m => ({id: m.id, name: m.name})))}
+    Locations: ${JSON.stringify(locations.map(l => ({id: l.id, name: l.name})))}
+    Users: ${JSON.stringify(users.map(u => ({id: u.id, name: u.name})))}
+    
+    User Instructions: ${promptContext || 'Identify and normalize all recurring patterns.'}`;
+
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            rules: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        name: { type: Type.STRING },
+                        scope: { type: Type.STRING },
+                        conditions: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    field: { type: Type.STRING },
+                                    operator: { type: Type.STRING },
+                                    value: { type: Type.STRING }
+                                }
+                            }
+                        },
+                        setCategoryId: { type: Type.STRING },
+                        setMerchantId: { type: Type.STRING },
+                        setLocationId: { type: Type.STRING },
+                        setUserId: { type: Type.STRING },
+                        assignTagIds: { type: Type.ARRAY, items: { type: Type.STRING } }
+                    }
+                }
             }
-        }
-    },
-    required: ['transactions']
-};
-
-export const healDataSnippet = async (rawText: string): Promise<any> => {
-    const prompt = `You are a high-fidelity data recovery assistant for "FinParser", a financial tracking app.
-    The user has provided a snippet of data that is likely malformed or partial JSON. 
-    
-    YOUR TASK:
-    Convert the input into a valid, strictly formatted JSON object. 
-    
-    SUPPORTED TOP-LEVEL KEYS: 
-    - transactions
-    - accounts
-    - categories
-    - payees
-    - users
-    - tags
-    - reconciliationRules
-    - businessProfile
-    - amazonMetrics
-    - youtubeMetrics
-    
-    DATA MAPPING RULES:
-    1. If the input looks like '"key": [...]', wrap it in curly braces: '{"key": [...]}'.
-    2. If the input is just an array, detect its type (e.g., if items have "asin", it's "amazonMetrics").
-    3. Ensure all property names use camelCase (e.g. accountTypeId, parentId, isDefault).
-    4. Ensure all IDs are preserved exactly as provided.
-    5. Fix missing quotes, trailing commas, or curly brace mismatches.
-    
-    INPUT SNIPPET:
-    ${rawText}`;
-
-    const result = await callAi({
-        model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: prompt }] },
-        config: { responseMimeType: 'application/json' }
-    });
-    
-    return JSON.parse(result.text);
-};
-
-const SYSTEM_PROMPT = (categories: string[]) => `You are a World-Class Forensic Financial Accountant. 
-Your task is to parse bank or credit card statements with 100% precision.
-
-RULES:
-1. Extract EVERY single line item. Do not summarize.
-2. Carefully detect the transaction direction. 
-   - Look for columns labeled "Credit", "Deposit", "Debit", "Withdrawal".
-   - If a single "Amount" column exists, look for signs (-/+) or symbols.
-3. Map the "category" field ONLY to one of these valid values: [${categories.join(', ')}]. 
-   - If none fit perfectly, use your best professional judgment to find the logical ancestor.
-4. Clean the description: Remove transaction IDs, city/state codes, and generic bank prefixes (e.g., "PURCHASE AT...").
-5. Return ONLY a JSON object matching the requested schema.`;
-
-export const extractTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], categories: Category[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-    onProgress("Initializing AI Financial Engine...");
-    let allParts: any[] = [];
-    for (const f of files) {
-        const parts = await fileToGenerativePart(f);
-        allParts = [...allParts, ...parts];
-    }
-    
-    const categoryNames = categories.map(c => c.name);
-    
-    onProgress("AI is reading statements and detecting patterns...");
-    const result = await callAi({
-        model: 'gemini-3-flash-preview',
-        contents: { 
-            parts: [
-                { text: SYSTEM_PROMPT(categoryNames) }, 
-                ...allParts
-            ] 
         },
+        required: ['rules']
+    };
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [{ text: systemPrompt }, ...sampleParts] }],
         config: { 
             responseMimeType: 'application/json',
-            responseSchema: EXTRACTION_SCHEMA
+            responseSchema: schema
         }
     });
-    
-    const parsed = JSON.parse(result.text);
-    
-    const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
-    const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
 
-    return (parsed.transactions || []).map((tx: any) => {
-        const targetType = tx.isIncome ? incomeType : expenseType;
-        return {
-            ...tx,
-            accountId,
-            typeId: targetType?.id || 'unknown'
-        };
-    });
+    const parsed = JSON.parse(response.text || '{"rules": []}');
+    return (parsed.rules || []).map((r: any) => ({
+        ...r,
+        id: Math.random().toString(36).substring(7),
+        isAiDraft: true,
+        conditions: r.conditions.map((c: any) => ({ ...c, id: Math.random().toString(36).substring(7), type: 'basic', nextLogic: 'AND' }))
+    }));
 };
 
-export const extractTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], categories: Category[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-    onProgress("AI analyzing raw ledger text...");
-    const categoryNames = categories.map(c => c.name);
+/**
+ * Extracts transactions from files using Gemini OCR and structured output
+ */
+export const extractTransactionsFromFiles = async (
+    files: File[], 
+    accountId: string, 
+    transactionTypes: TransactionType[], 
+    categories: Category[], 
+    onProgress: (msg: string) => void
+): Promise<RawTransaction[]> => {
+    onProgress("AI is analyzing files...");
+    const fileParts = await Promise.all(files.map(fileToGenerativePart));
     
-    const result = await callAi({
-        model: 'gemini-3-flash-preview',
-        contents: { 
-            parts: [
-                { text: SYSTEM_PROMPT(categoryNames) },
-                { text: `Parse this text: \n${text}` }
-            ] 
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            transactions: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        date: { type: Type.STRING, description: "YYYY-MM-DD" },
+                        description: { type: Type.STRING },
+                        amount: { type: Type.NUMBER },
+                        category: { type: Type.STRING },
+                        type: { type: Type.STRING, description: "income or expense" }
+                    },
+                    required: ["date", "description", "amount"]
+                }
+            }
         },
-        config: { 
+        required: ["transactions"]
+    };
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [...fileParts, { text: "Extract all financial transactions from these files." }] }],
+        config: {
             responseMimeType: 'application/json',
-            responseSchema: EXTRACTION_SCHEMA
+            responseSchema: schema
         }
     });
-    const parsed = JSON.parse(result.text);
-    const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
-    const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
 
-    return (parsed.transactions || []).map((tx: any) => {
-        const targetType = tx.isIncome ? incomeType : expenseType;
-        return {
-            ...tx,
-            accountId,
-            typeId: targetType?.id || 'unknown'
-        };
-    });
+    const result = JSON.parse(response.text || '{"transactions": []}');
+    return result.transactions.map((tx: any) => ({
+        ...tx,
+        accountId,
+        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'income')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'expense')?.id || 'expense')
+    }));
 };
 
-export const getAiFinancialAnalysis = async (question: string, contextData: object) => {
-    return callAiStream({
+/**
+ * Extracts transactions from pasted text
+ */
+export const extractTransactionsFromText = async (
+    text: string, 
+    accountId: string, 
+    transactionTypes: TransactionType[], 
+    categories: Category[], 
+    onProgress: (msg: string) => void
+): Promise<RawTransaction[]> => {
+    onProgress("AI is parsing text...");
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            transactions: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        date: { type: Type.STRING },
+                        description: { type: Type.STRING },
+                        amount: { type: Type.NUMBER },
+                        type: { type: Type.STRING }
+                    },
+                    required: ["date", "description", "amount"]
+                }
+            }
+        },
+        required: ["transactions"]
+    };
+
+    const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: `Analyze this data: ${JSON.stringify(contextData)}. User question: ${question}` }] }
+        contents: [{ parts: [{ text: `Extract transactions from this text: ${text}` }] }],
+        config: {
+            responseMimeType: 'application/json',
+            responseSchema: schema
+        }
     });
+
+    const result = JSON.parse(response.text || '{"transactions": []}');
+    return result.transactions.map((tx: any) => ({
+        ...tx,
+        accountId,
+        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'income')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'expense')?.id || 'expense')
+    }));
 };
 
-export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<BusinessDocument['aiAnalysis']> => {
-    const parts = await fileToGenerativePart(file);
-    const result = await callAi({
-        model: 'gemini-3-pro-preview',
-        contents: { parts: [{ text: "Analyze this document for tax insights." }, ...parts] },
+/**
+ * Streams financial analysis to the chatbot
+ */
+export const getAiFinancialAnalysis = async (query: string, contextData: object) => {
+    const stream = await ai.models.generateContentStream({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [{ text: `Context: ${JSON.stringify(contextData)}\n\nQuery: ${query}` }] }],
+    });
+    return stream;
+};
+
+/**
+ * Repairs malformed JSON data snippets
+ */
+export const healDataSnippet = async (text: string): Promise<any> => {
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [{ text: `Repair this malformed JSON snippet: ${text}. Return ONLY the repaired JSON object.` }] }],
         config: { responseMimeType: 'application/json' }
     });
-    return JSON.parse(result.text);
+    return JSON.parse(response.text || 'null');
 };
 
-export const streamTaxAdvice = async (history: ChatMessage[], profile: BusinessProfile) => {
-    return callAiStream({
-        model: 'gemini-3-pro-preview',
-        contents: history.map(m => ({ role: m.role === 'ai' ? 'model' : 'user', parts: [{ text: m.content }] }))
-    });
-};
-
-export const generateFinancialStrategy = async (transactions: Transaction[], goals: FinancialGoal[], categories: Category[], businessProfile: BusinessProfile) => {
-    // Collect 6 months of spending for better accuracy
-    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
-    const last6Months = new Date();
-    last6Months.setMonth(last6Months.getMonth() - 6);
-    
-    const spendingSummary = transactions
-        .filter(tx => new Date(tx.date) >= last6Months && !tx.isParent && tx.typeId.includes('expense'))
-        .reduce((acc, tx) => {
-            const name = categoryMap.get(tx.categoryId) || 'Other';
-            acc[name] = (acc[name] || 0) + tx.amount;
-            return acc;
-        }, {} as Record<string, number>);
-
-    const prompt = `Act as a world-class financial planner and tax strategist.
-    
-    BUSINESS CONTEXT:
-    ${JSON.stringify(businessProfile)}
-    
-    GOALS:
-    ${JSON.stringify(goals)}
-    
-    SPENDING TRENDS:
-    ${JSON.stringify(spendingSummary)}
-    
-    TASK:
-    Generate a comprehensive financial roadmap. Focus on:
-    1. TAX OPTIMIZATION: Suggest deductions or structures (like S-Corp or retirement plans) specifically for their business type.
-    2. RETIREMENT PLANNING: Calculate projections based on current savings and goals.
-    3. DEBT VS INVESTING: Provide a prioritized sequence for capital allocation.
-    
-    Return a JSON object with:
-    - strategy: Markdown string.
-    - suggestedBudgets: Array of { categoryId, monthlyLimit }.
-    `;
-
-    const result = await callAi({
-        model: 'gemini-3-pro-preview',
-        contents: { parts: [{ text: prompt }] },
-        config: { responseMimeType: 'application/json' }
-    });
-    return JSON.parse(result.text);
-};
-
+/**
+ * Ask AI Advisor for business advice
+ */
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
-    const result = await callAi({
+    const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: prompt }] }
+        contents: [{ parts: [{ text: prompt }] }],
     });
-    return result.text;
+    return response.text || "No response generated.";
 };
 
+/**
+ * Get tax deductions for a specific industry
+ */
 export const getIndustryDeductions = async (industry: string): Promise<string[]> => {
-    const result = await callAi({
-        model: 'gemini-3-pro-preview',
-        contents: { parts: [{ text: `List tax deductions for ${industry}` }] },
-        config: { responseMimeType: 'application/json' }
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            deductions: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["deductions"]
+    };
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [{ text: `List common tax deductions for the ${industry} industry.` }] }],
+        config: { responseMimeType: 'application/json', responseSchema: schema }
     });
-    return JSON.parse(result.text);
+    const parsed = JSON.parse(response.text || '{"deductions": []}');
+    return parsed.deductions;
 };
 
-export const auditTransactions = async (transactions: Transaction[], transactionTypes: TransactionType[], categories: Category[], auditType: string, examples?: Transaction[][]): Promise<AuditFinding[]> => {
-    const result = await callAi({
-        model: 'gemini-3-pro-preview',
-        contents: { parts: [{ text: `Audit these transactions: ${JSON.stringify(transactions.slice(0, 50))}. Audit type: ${auditType}${examples && examples.length > 0 ? `. Examples of existing patterns: ${JSON.stringify(examples)}` : ''}` }] },
-        config: { responseMimeType: 'application/json' }
+/**
+ * Streams tax advice for a conversation
+ */
+export const streamTaxAdvice = async (messages: ChatMessage[], profile: BusinessProfile) => {
+    const contents = messages.map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+    }));
+    const stream = await ai.models.generateContentStream({
+        model: 'gemini-3-flash-preview',
+        contents,
+        config: {
+            systemInstruction: `You are an expert Tax Advisor for a ${profile.info.businessType || 'business'}.`
+        }
     });
-    return JSON.parse(result.text).findings || [];
+    return stream;
+};
+
+/**
+ * Audits transactions for issues
+ */
+export const auditTransactions = async (
+    transactions: Transaction[], 
+    types: TransactionType[], 
+    categories: Category[], 
+    auditType: string,
+    examples?: Transaction[][]
+): Promise<AuditFinding[]> => {
+    const systemPrompt = `You are a Financial Auditor. Audit type: ${auditType}. Categories: ${JSON.stringify(categories.map(c => c.name))}.
+    Examples of good grouping: ${JSON.stringify(examples)}`;
+    
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            findings: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        id: { type: Type.STRING },
+                        title: { type: Type.STRING },
+                        reason: { type: Type.STRING },
+                        affectedTransactionIds: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        suggestedChanges: {
+                            type: Type.OBJECT,
+                            properties: {
+                                categoryId: { type: Type.STRING },
+                                typeId: { type: Type.STRING }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        required: ["findings"]
+    };
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [{ text: `Audit these transactions: ${JSON.stringify(transactions)}` }, { text: systemPrompt }] }],
+        config: { responseMimeType: 'application/json', responseSchema: schema }
+    });
+
+    const result = JSON.parse(response.text || '{"findings": []}');
+    return result.findings;
+};
+
+/**
+ * Analyzes a business document
+ */
+export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<any> => {
+    onProgress("AI is reading document...");
+    const part = await fileToGenerativePart(file);
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            documentType: { type: Type.STRING },
+            summary: { type: Type.STRING },
+            keyDates: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["documentType", "summary"]
+    };
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [part, { text: "Analyze this document and provide a summary." }] }],
+        config: { responseMimeType: 'application/json', responseSchema: schema }
+    });
+    return JSON.parse(response.text || '{}');
+};
+
+/**
+ * Generates a financial strategy roadmap
+ */
+export const generateFinancialStrategy = async (
+    transactions: Transaction[], 
+    goals: FinancialGoal[], 
+    categories: Category[],
+    profile: BusinessProfile
+): Promise<any> => {
+    const prompt = `Profile: ${JSON.stringify(profile)}\nGoals: ${JSON.stringify(goals)}\nHistory: ${JSON.stringify(transactions.slice(0, 100))}`;
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            strategy: { type: Type.STRING },
+            suggestedBudgets: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        categoryId: { type: Type.STRING },
+                        limit: { type: Type.NUMBER }
+                    }
+                }
+            }
+        },
+        required: ["strategy"]
+    };
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: [{ parts: [{ text: prompt }, { text: "Generate a multi-year financial strategy." }] }],
+        config: { responseMimeType: 'application/json', responseSchema: schema }
+    });
+    return JSON.parse(response.text || '{"strategy": "No strategy found."}');
 };

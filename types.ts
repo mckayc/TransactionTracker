@@ -115,20 +115,20 @@ export interface RuleCondition {
     value?: any;
     metadataKey?: string;
     nextLogic?: RuleLogic;
-    conditions?: RuleCondition[]; // For group type
+    conditions?: RuleCondition[]; 
 }
 
 export interface ReconciliationRule {
     id: string;
     name: string;
-    scope?: string; // New field for logical grouping
+    scope?: string; 
     conditions: RuleCondition[];
     setCategoryId?: string;
     setPayeeId?: string;
     setMerchantId?: string;
     setLocationId?: string;
+    setUserId?: string;
     setTransactionTypeId?: string;
-    setDescription?: string;
     assignTagIds?: string[];
     skipImport?: boolean;
     isAiDraft?: boolean;
@@ -141,9 +141,9 @@ export interface SubTask {
     id: string;
     text: string;
     isCompleted: boolean;
+    notes?: string;
     linkUrl?: string;
     linkText?: string;
-    notes?: string;
 }
 
 export interface RecurrenceRule {
@@ -163,7 +163,7 @@ export interface TaskItem {
     dueDate?: string;
     isCompleted: boolean;
     createdAt: string;
-    subtasks: SubTask[];
+    subtasks?: SubTask[];
     recurrence?: RecurrenceRule;
 }
 
@@ -175,7 +175,7 @@ export interface Task {
 export interface Template {
     id: string;
     name: string;
-    instructions: string;
+    instructions?: string;
     tasks: Task[];
 }
 
@@ -186,57 +186,13 @@ export interface ScheduledEvent {
     recurrence: 'none' | 'monthly';
 }
 
-export type TaskCompletions = Record<string, Record<string, string[]>>;
-
-export interface DocumentFolder {
-    id: string;
-    name: string;
-    parentId?: string;
-    createdAt: string;
-}
-
-export interface BusinessDocument {
-    id: string;
-    name: string;
-    uploadDate: string;
-    size: number;
-    mimeType: string;
-    parentId?: string;
-    aiAnalysis?: {
-        documentType?: string;
-        summary?: string;
-        keyDates?: string[];
-        taxTips?: string[];
-    };
-}
-
-export interface BusinessNote {
-    id: string;
-    title: string;
-    content: string;
-    type: 'note' | 'bug' | 'idea' | 'task';
-    priority: 'low' | 'medium' | 'high';
-    isCompleted: boolean;
-    createdAt: string;
-    updatedAt: string;
-    resolvedAt?: string;
-}
-
-export interface BackupConfig {
-    frequency: 'daily' | 'weekly' | 'monthly' | 'never';
-    retentionCount: number;
-    lastBackupDate?: string;
-}
-
-export interface SystemSettings {
-    backupConfig?: BackupConfig;
-}
+export type TaskCompletions = Record<string, boolean>;
 
 export interface BusinessInfo {
     llcName?: string;
     businessType?: string;
-    stateOfFormation?: string;
     industry?: string;
+    stateOfFormation?: string;
     formationDate?: string;
     ein?: string;
 }
@@ -250,18 +206,56 @@ export interface TaxInfo {
 export interface BusinessProfile {
     info: BusinessInfo;
     tax: TaxInfo;
-    completedSteps: []
+    completedSteps: string[];
 }
 
-export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime' | 'custom' | 'last3Months' | 'last6Months' | 'last12Months' | 'specificMonth' | 'relativeMonth';
-export type ReportGroupBy = 'category' | 'payee' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'video' | 'trackingId';
-export type DateRangeUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
+export interface BusinessNote {
+    id: string;
+    title: string;
+    content: string;
+    type: 'bug' | 'note' | 'idea' | 'task';
+    priority: 'low' | 'medium' | 'high';
+    isCompleted: boolean;
+    createdAt: string;
+    updatedAt: string;
+    resolvedAt?: string;
+}
+
+export interface BusinessDocument {
+    id: string;
+    name: string;
+    uploadDate: string;
+    size: number;
+    mimeType: string;
+    parentId?: string;
+    aiAnalysis?: {
+        documentType: string;
+        summary: string;
+        keyDates?: string[];
+    };
+}
+
+export interface DocumentFolder {
+    id: string;
+    name: string;
+    parentId?: string;
+    createdAt: string;
+}
+
+export interface BackupConfig {
+    frequency: 'daily' | 'weekly' | 'monthly' | 'never';
+    retentionCount: number;
+    lastBackupDate?: string;
+}
+
+export interface SystemSettings {
+    backupConfig?: BackupConfig;
+}
+
+export type ReportGroupBy = 'category' | 'payee' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';
+export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime' | 'custom' | 'specificMonth' | 'relativeMonth' | 'last3Months' | 'last6Months' | 'last12Months';
 export type DateRangeType = 'rolling_window' | 'fixed_period';
-
-export interface DateOffset {
-    value: number;
-    unit: DateRangeUnit;
-}
+export type DateRangeUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
 
 export interface CustomDateRange {
     id: string;
@@ -269,17 +263,17 @@ export interface CustomDateRange {
     type: DateRangeType;
     unit: DateRangeUnit;
     value: number;
-    offsets?: DateOffset[];
+    offsets?: { value: number; unit: DateRangeUnit }[];
 }
 
 export interface ReportConfig {
     id: string;
     name: string;
-    dataSource: 'financial' | 'amazon' | 'youtube';
-    datePreset: DateRangePreset;
+    dataSource?: 'financial' | 'amazon' | 'youtube';
+    datePreset: DateRangePreset | string;
     customStartDate?: string;
     customEndDate?: string;
-    groupBy?: ReportGroupBy;
+    groupBy: ReportGroupBy;
     subGroupBy?: ReportGroupBy;
     filters: {
         accountIds?: string[];
@@ -304,10 +298,9 @@ export interface SavedReport {
 
 export interface ChatMessage {
     id: string;
-    role: 'user' | 'ai' | 'model';
+    role: 'user' | 'ai';
     content: string;
     timestamp: string;
-    isError?: boolean;
 }
 
 export interface ChatSession {
@@ -318,57 +311,26 @@ export interface ChatSession {
     updatedAt: string;
 }
 
-export interface AuditFinding {
-    id: string;
-    title: string;
-    reason: string;
-    affectedTransactionIds: string[];
-    suggestedChanges: {
-        categoryId?: string;
-        typeId?: string;
-        payeeName?: string;
-    };
-}
-
-export interface FinancialGoal {
-    id: string;
-    title: string;
-    targetAmount: number;
-    currentAmount: number;
-    targetDate?: string;
-    type: 'emergency_fund' | 'debt_payoff' | 'savings' | 'retirement';
-}
-
-export interface FinancialPlan {
-    id: string;
-    createdAt: string;
-    strategy: string;
-    suggestedBudgets: {
-        categoryId: string;
-        monthlyLimit: number;
-    }[];
-}
-
 export type AmazonReportType = 'onsite' | 'offsite' | 'creator_connections' | 'unknown';
 export type AmazonCCType = 'onsite' | 'offsite';
 
 export interface AmazonMetric {
     id: string;
     saleDate: string;
-    reportYear?: string;
     asin: string;
     productTitle: string;
-    ccTitle?: string;
-    videoTitle?: string;
     clicks: number;
     orderedItems: number;
     shippedItems: number;
     revenue: number;
     conversionRate: number;
     trackingId: string;
-    category?: string;
     reportType: AmazonReportType;
+    category?: string;
+    reportYear?: string;
     creatorConnectionsType?: AmazonCCType;
+    ccTitle?: string;
+    videoTitle?: string;
     videoDuration?: string;
     videoUrl?: string;
     uploadDate?: string;
@@ -376,10 +338,9 @@ export interface AmazonMetric {
 
 export interface AmazonVideo {
     id: string;
-    asin?: string;
-    asins?: string[];
     videoId: string;
     videoTitle: string;
+    asins?: string[];
     duration?: string;
     videoUrl?: string;
     uploadDate?: string;
@@ -388,22 +349,37 @@ export interface AmazonVideo {
 export interface YouTubeChannel {
     id: string;
     name: string;
-    url?: string;
 }
 
 export interface YouTubeMetric {
     id: string;
-    channelId?: string;
     videoId: string;
     videoTitle: string;
     publishDate: string;
-    reportYear?: string;
     views: number;
     watchTimeHours: number;
     subscribersGained: number;
     estimatedRevenue: number;
     impressions: number;
     ctr: number;
+    channelId?: string;
+    reportYear?: string;
+}
+
+export interface FinancialGoal {
+    id: string;
+    title: string;
+    targetAmount: number;
+    currentAmount: number;
+    type: 'retirement' | 'emergency_fund' | 'debt_free' | 'investment' | 'other';
+    targetDate?: string;
+}
+
+export interface FinancialPlan {
+    id: string;
+    createdAt: string;
+    strategy: string;
+    suggestedBudgets: { categoryId: string; limit: number }[];
 }
 
 export interface ContentLink {
@@ -414,11 +390,15 @@ export interface ContentLink {
     manuallyLinked: boolean;
 }
 
-export interface IntegrationConfig {
-    id: string;
-    name: string;
-    description: string;
-    isEnabled: boolean;
-}
-
 export type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';
+
+export interface AuditFinding {
+    id: string;
+    title: string;
+    reason: string;
+    affectedTransactionIds: string[];
+    suggestedChanges: {
+        categoryId?: string;
+        typeId?: string;
+    };
+}

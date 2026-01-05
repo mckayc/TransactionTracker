@@ -151,11 +151,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
     }, [availableReportYears, evergreenReportYear]);
 
-    // Simple Map of Channel IDs to Names
     const channelMap = useMemo(() => new Map(channels.map(c => [c.id, c.name])), [channels]);
     const currentContextChannelName = filterChannelId ? (channelMap.get(filterChannelId) || 'Unknown Channel') : 'All Channels';
 
-    // Aggregate Map for Video Stats (Creation Year vs Lifetime)
     const videoAggregateMap = useMemo(() => {
         const map = new Map<string, { 
             videoId: string, 
@@ -253,28 +251,24 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             if (newMetrics.length > 0) {
                 setPreviewMetrics(newMetrics);
                 
-                // --- IMPROVED DETECTION FROM FILENAME ---
                 const fileName = file.name;
                 let detectedYear = '';
                 let detectedChannelId = '';
 
-                // 1. Look for date range pattern YYYY-MM-DD_YYYY-MM-DD (matches the "2018-01-01_2019-01-01 Super English Kid" format)
                 const dateRangeMatch = fileName.match(/(\d{4})-\d{2}-\d{2}_(\d{4})-\d{2}-\d{2}/);
                 if (dateRangeMatch) {
-                    detectedYear = dateRangeMatch[1]; // Use the start year
+                    detectedYear = dateRangeMatch[1];
                 } else {
-                    // Fallback to any 4-digit year if no range
                     const yearMatch = fileName.match(/\b(20\d{2})\b/);
                     if (yearMatch) {
                         detectedYear = yearMatch[1];
                     }
                 }
 
-                // 2. Channel Detection - check common naming patterns
                 const channelCleanPatterns = [
-                    /Table data - ([^-]+) -/i,             // Standard YT export
-                    /_\d{4}-\d{2}-\d{2}\s+(.+)\.csv/i,      // Format: _YYYY-MM-DD Channel Name.csv
-                    /(\d{4}-\d{2}-\d{2}_){2}\s*(.+)\.csv/i  // Format: YYYY-MM-DD_YYYY-MM-DD ChannelName.csv
+                    /Table data - ([^-]+) -/i,
+                    /_\d{4}-\d{2}-\d{2}\s+(.+)\.csv/i,
+                    /(\d{4}-\d{2}-\d{2}_){2}\s*(.+)\.csv/i
                 ];
 
                 let extractedName = '';
@@ -286,7 +280,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                     }
                 }
 
-                // Fuzzy matching: strip spaces and lowercase to compare extracted vs existing
                 const findChannelFuzzy = (name: string) => {
                     const stripped = name.toLowerCase().replace(/\s+/g, '');
                     return channels.find(c => c.name.toLowerCase().replace(/\s+/g, '') === stripped);
@@ -297,7 +290,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                     if (matched) detectedChannelId = matched.id;
                 }
 
-                // 3. Fallback: Search all existing channel names in the raw filename
                 if (!detectedChannelId) {
                     const matched = channels.find(c => {
                         const strippedName = c.name.toLowerCase().replace(/\s+/g, '');
@@ -307,8 +299,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                     if (matched) detectedChannelId = matched.id;
                 }
 
-                // --- FALLBACK LOGIC FOR YEAR ---
-                // If year not found in filename, find the record with the most recent publish date
                 if (!detectedYear) {
                     const latestRecord = [...newMetrics].sort((a, b) => {
                         const dateA = new Date(a.publishDate).getTime();
@@ -349,7 +339,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }
     };
 
-    // Channel CRUD handlers
     const handleSaveChannel = (e: React.FormEvent) => {
         e.preventDefault();
         if (!newChannelName.trim()) return;
@@ -396,7 +385,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
     }, [metrics, filterChannelId]);
 
     const generatedInsights = useMemo(() => {
-        // Apply Filtered Context
         const data = filterChannelId ? metrics.filter(m => m.channelId === filterChannelId) : metrics;
         if (data.length === 0) return null;
 
@@ -424,7 +412,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             const year = m.publishDate.substring(0, 4);
             const rpm = m.views > 0 ? (m.estimatedRevenue / m.views) * 1000 : 0;
             
-            // Yearly Champions logic
             const currentYearStats = yearlyStats.get(year) || { 
                 revChamp: m, 
                 viewChamp: m, 
@@ -442,7 +429,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
                 evergreenRevenue += m.estimatedRevenue;
             }
 
-            // Weekday ROI logic
             const date = new Date(m.publishDate);
             const dayIdx = date.getDay();
             const stats = weekdayMap.get(dayIdx) || { revenue: 0, views: 0, count: 0, creationYearRevenue: 0, creationYearViews: 0 };
@@ -451,7 +437,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
             stats.views += m.views;
             stats.count += 1;
             
-            // Split Creation Year vs All Time
             if (m.reportYear === year) {
                 stats.creationYearRevenue += m.estimatedRevenue;
                 stats.creationYearViews += m.views;
@@ -483,7 +468,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         };
     }, [metrics, summary.totalRevenue, filterChannelId]);
 
-    // Evergreen Cohort Calc
     const evergreenCohortStats = useMemo(() => {
         if (!evergreenReportYear) return null;
         
@@ -539,7 +523,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         }));
 
         result.sort((a, b) => {
-            // Fix: Cast a and b to any and ensure return value is a number for reliable sorting.
             const valA = (a as any)[insightsSortKey];
             const valB = (b as any)[insightsSortKey];
             
@@ -578,8 +561,9 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         else { setInsightsSortKey(key as any); setInsightsSortDir('desc'); }
     };
 
+    // Fixed: Added string cast to key to resolve assignment mismatch
     const getSortIcon = (key: keyof YouTubeMetric | 'rpm', currentKey: string, currentDir: string) => {
-        if (currentKey !== key) return <SortIcon className="w-3 h-3 text-slate-300 opacity-50" />;
+        if (String(currentKey) !== String(key)) return <SortIcon className="w-3 h-3 text-slate-300 opacity-50" />;
         return currentDir === 'asc' ? <SortIcon className="w-3 h-3 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-indigo-600" />;
     };
 
@@ -589,7 +573,6 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         setEvergreenPublishedYears(newSet);
     };
 
-    // Logic for Champions Hover Tooltip content
     const getChampionStats = (videoId: string) => {
         const agg = videoAggregateMap.get(videoId);
         if (!agg) return "Stats unknown";
@@ -710,19 +693,24 @@ Conv Rate: ${conv.toFixed(2)}%
                                         <tr>
                                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Video Content</th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('views')}>
-                                                <div className="flex items-center justify-end gap-1">Views {getSortIcon('views', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Views {getSortIcon('views', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('watchTimeHours')}>
-                                                <div className="flex items-center justify-end gap-1">Watch Time {getSortIcon('watchTimeHours', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Watch Time {getSortIcon('watchTimeHours', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('subscribersGained')}>
-                                                <div className="flex items-center justify-end gap-1">Subs {getSortIcon('subscribersGained', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Subs {getSortIcon('subscribersGained', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('rpm')}>
-                                                <div className="flex items-center justify-end gap-1" title="Revenue per 1000 views">RPM {getSortIcon('rpm', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1" title="Revenue per 1000 views">RPM {getSortIcon('rpm', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('estimatedRevenue')}>
-                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                         </tr>
                                     </thead>
@@ -768,7 +756,6 @@ Conv Rate: ${conv.toFixed(2)}%
 
                 {activeTab === 'insights' && (
                     <div className="space-y-6 pb-8">
-                        {/* Channel Filter for Insights */}
                         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <span className="text-sm font-bold text-slate-500 uppercase">Context Channel:</span>
@@ -785,7 +772,6 @@ Conv Rate: ${conv.toFixed(2)}%
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* CONTENT DURABILITY */}
                             <div className="bg-slate-900 text-white p-6 rounded-xl shadow-xl space-y-6 overflow-hidden relative col-span-1 md:col-span-2">
                                 <div className="flex justify-between items-start">
                                     <div>
@@ -851,7 +837,6 @@ Conv Rate: ${conv.toFixed(2)}%
                                 </div>
                             </div>
 
-                            {/* YEARLY PERFORMANCE */}
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 flex flex-col max-h-[500px]">
                                 <div className="flex justify-between items-start mb-4 flex-shrink-0">
                                     <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
@@ -900,7 +885,6 @@ Conv Rate: ${conv.toFixed(2)}%
                                 </div>
                             </div>
 
-                            {/* CONTENT VELOCITY */}
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                                 <div className="flex justify-between items-start mb-4">
                                     <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
@@ -936,7 +920,6 @@ Conv Rate: ${conv.toFixed(2)}%
                                 </div>
                             </div>
 
-                            {/* PUBLISHING STRATEGY */}
                             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                                 <div className="flex justify-between items-start mb-4">
                                     <h3 className="font-bold text-slate-800 flex items-center gap-2 text-lg">
@@ -980,7 +963,6 @@ Conv Rate: ${conv.toFixed(2)}%
                                                 </div>
                                             </div>
                                             
-                                            {/* Lifetime Growth Bar */}
                                             <div className="space-y-1 mt-1">
                                                 <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-wider">
                                                     <span className="text-slate-400">Creation Year Views: {formatNumber(s.creationYearViews)}</span>
@@ -1056,19 +1038,24 @@ Conv Rate: ${conv.toFixed(2)}%
                                                 {!groupByVideo && <input type="checkbox" checked={selectedIds.size === tableMetrics.length && tableMetrics.length > 0} onChange={() => { if (selectedIds.size === tableMetrics.length) setSelectedIds(new Set()); else setSelectedIds(new Set(tableMetrics.map(m => m.id))); }} className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" />}
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('reportYear')}>
-                                                <div className="flex items-center gap-1">Report Year {getSortIcon('reportYear', dataSortKey, dataSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center gap-1">Report Year {getSortIcon('reportYear', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('publishDate')}>
-                                                <div className="flex items-center gap-1">Published {getSortIcon('publishDate', dataSortKey, dataSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center gap-1">Published {getSortIcon('publishDate', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('videoTitle')}>
-                                                <div className="flex items-center gap-1">Video {getSortIcon('videoTitle', dataSortKey, dataSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center gap-1">Video {getSortIcon('videoTitle', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('views')}>
-                                                <div className="flex items-center justify-end gap-1">Views {getSortIcon('views', dataSortKey, dataSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Views {getSortIcon('views', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleInsightsSort('estimatedRevenue')}>
-                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                         </tr>
                                     </thead>
@@ -1088,6 +1075,16 @@ Conv Rate: ${conv.toFixed(2)}%
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            {totalPages > 1 && (
+                                <div className="p-3 bg-slate-50 border-t flex items-center justify-between">
+                                    <span className="text-xs text-slate-500">Page {currentPage} of {totalPages}</span>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronLeftIcon className="w-4 h-4"/></button>
+                                        <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 rounded hover:bg-slate-200 disabled:opacity-30"><ChevronRightIcon className="w-4 h-4"/></button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -1182,7 +1179,6 @@ Conv Rate: ${conv.toFixed(2)}%
                             </div>
                             
                             <div className="space-y-6">
-                                {/* MANAGE CHANNELS CARD */}
                                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col h-full">
                                     <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
                                         <UsersIcon className="w-5 h-5 text-red-500" /> Manage Channels
@@ -1214,7 +1210,7 @@ Conv Rate: ${conv.toFixed(2)}%
                                                         <button onClick={() => handleEditChannel(channel)} className="p-1.5 text-slate-400 hover:text-indigo-600 rounded hover:bg-white transition-colors" title="Edit Name">
                                                             <EditIcon className="w-4 h-4" />
                                                         </button>
-                                                        <button onClick={() => handleDeleteChannel(channel.id)} className="p-1.5 text-slate-400 hover:text-red-600 rounded hover:bg-white transition-colors" title="Delete Channel">
+                                                        <button onClick={() => handleDeleteChannel(channel.id)} className="p-1.5 text-slate-400 hover:text-red-500 rounded hover:bg-white transition-colors" title="Delete Channel">
                                                             <DeleteIcon className="w-4 h-4" />
                                                         </button>
                                                     </div>
@@ -1241,7 +1237,6 @@ Conv Rate: ${conv.toFixed(2)}%
                 )}
             </div>
 
-            {/* Velocity Detail Modal */}
             {selectedVelocityYear && (
                 <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={() => setSelectedVelocityYear(null)}>
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -1256,12 +1251,10 @@ Conv Rate: ${conv.toFixed(2)}%
                             <button onClick={() => setSelectedVelocityYear(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                         </div>
                         
-                        {/* Summary Totals for the selected year */}
                         <div className="bg-white px-6 py-4 grid grid-cols-2 md:grid-cols-4 gap-6 border-b border-slate-100">
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fixed: Added <number> generic to reduce to resolve potential 'unknown' return type errors causing assignment mismatches */}
                                     {formatCurrency(
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
@@ -1272,7 +1265,6 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
                                 <p className="text-2xl font-black text-indigo-600 font-mono">
-                                    {/* Fixed: Added <number> generic to reduce to resolve potential 'unknown' return type errors causing assignment mismatches */}
                                     {formatCurrency(
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
@@ -1283,7 +1275,6 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fixed: Added <number> generic to reduce to resolve potential 'unknown' return type errors causing assignment mismatches */}
                                     {formatNumber(
                                         (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))

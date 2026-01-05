@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
@@ -103,7 +104,7 @@ const MultiTitleDisplay: React.FC<{ metric: AmazonMetric }> = ({ metric }) => {
                 {primary.value}
             </div>
             {alternates.length > 0 && (
-                <div className="absolute bottom-full left-0 mb-2 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none group-hover/titles:opacity-100 group-hover/titles:translate-y-0 transition-all z-[70]">
+                <div className="absolute bottom-full left-0 mb-2 w-72 p-4 bg-slate-900 text-white rounded-xl shadow-2xl opacity-0 translate-y-2 pointer-events-none group-hover/titles:opacity-100 group-hover/titles:translate-y-0 transition-all z-70">
                     <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 border-b border-white/10 pb-1">Alternative Titles</p>
                     <div className="space-y-3">
                         {alternates.map((alt, i) => (
@@ -323,26 +324,21 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 const fileName = file.name.toLowerCase();
                 
                 // --- IMPROVED YEAR DETECTION FROM FILENAME ---
-                // 1. Look for a year range first (e.g., 2023-2024 or 2023_2024)
                 const rangeMatch = fileName.match(/(20\d{2})[-_](20\d{2})/);
                 let detectedYear = '';
                 
                 if (rangeMatch) {
-                    // Pick the first year in the range
                     detectedYear = rangeMatch[1];
                 } else {
-                    // 2. Fallback to a single 4-digit year in the filename
                     const singleMatch = fileName.match(/\b(20\d{2})\b/);
                     if (singleMatch) {
                         detectedYear = singleMatch[1];
                     } else {
-                        // 3. Data Fallback: Find the most frequent or most recent year in the data records
                         const yearsInFile = newMetrics
                             .map(m => m.saleDate ? m.saleDate.substring(0, 4) : '')
                             .filter(y => y.length === 4 && !isNaN(parseInt(y)));
                         
                         if (yearsInFile.length > 0) {
-                            // Find earliest year in file if multiple exist (to represent the start of the report)
                             yearsInFile.sort((a, b) => a.localeCompare(b));
                             detectedYear = yearsInFile[0];
                         }
@@ -384,13 +380,11 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 creatorConnectionsType: uploadType === 'creator_connections' ? (uploadCCType !== 'unknown' ? (uploadCCType as AmazonCCType) : undefined) : undefined
             }));
             
-            // Smarter Merge: Use deterministic ID to prevent duplicates if user imports same file
             const existingIds = new Set(metrics.map(m => m.id));
             const toAdd = metricsWithMeta.filter(m => !existingIds.has(m.id));
             const toUpdate = metricsWithMeta.filter(m => existingIds.has(m.id));
 
             if (toUpdate.length > 0) {
-                // If records exist, we update them (overwriting)
                 const updatedAll = metrics.map(m => {
                     const match = toUpdate.find(u => u.id === m.id);
                     return match ? match : m;
@@ -562,12 +556,12 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         else { setDataSortKey(key); setDataSortDir('desc'); }
     };
 
+    // Fixed: Added string cast to key to resolve assignment mismatch
     const getSortIcon = (key: keyof AmazonMetric, current: string, dir: string) => {
-        if (current !== key) return <SortIcon className="w-3 h-3 text-slate-300 opacity-50" />;
+        if (String(current) !== String(key)) return <SortIcon className="w-3 h-3 text-slate-300 opacity-50" />;
         return dir === 'asc' ? <SortIcon className="w-3 h-3 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-indigo-600" />;
     };
 
-    // Creator Connections Matcher Logic
     const handleScanForMatches = async () => {
         setIsScanningMatches(true);
         await new Promise(r => setTimeout(r, 100));
@@ -694,16 +688,20 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <tr>
                                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product / Video Information</th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('clicks')}>
-                                                <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('orderedItems')}>
-                                                <div className="flex items-center justify-end gap-1">Ordered {getSortIcon('orderedItems', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Ordered {getSortIcon('orderedItems', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('conversionRate')}>
-                                                <div className="flex items-center justify-end gap-1">Conv. % {getSortIcon('conversionRate', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Conv. % {getSortIcon('conversionRate', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('revenue')}>
-                                                <div className="flex items-center justify-end gap-1">Earnings {getSortIcon('revenue', insightsSortKey, insightsSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Earnings {getSortIcon('revenue', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                         </tr>
                                     </thead>
@@ -813,17 +811,21 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('saleDate')}>
-                                                <div className="flex items-center gap-1">Date {getSortIcon('saleDate', dataSortKey, dataSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center gap-1">Date {getSortIcon('saleDate', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Type</th>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('productTitle')}>
-                                                <div className="flex items-center gap-1">Product / Video {getSortIcon('productTitle', dataSortKey, dataSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center gap-1">Product / Video {getSortIcon('productTitle', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('clicks')}>
-                                                <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', dataSortKey, dataSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('revenue')}>
-                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('revenue', dataSortKey, dataSortDir)}</div>
+                                                {/* Fixed: Added string cast to key */}
+                                                <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('revenue', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                         </tr>
                                     </thead>

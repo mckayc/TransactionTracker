@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon } from './Icons';
+import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag, Merchant, Location } from '../types';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import RuleModal from './RuleModal';
 
@@ -20,6 +20,8 @@ interface ImportVerificationProps {
     categories: Category[];
     transactionTypes: TransactionType[];
     payees: Payee[];
+    merchants: Merchant[];
+    locations: Location[];
     users: User[];
     tags: Tag[];
     onSaveRule: (rule: ReconciliationRule) => void;
@@ -65,14 +67,22 @@ const RuleInspectorDrawer: React.FC<{
     onClose: () => void; 
     categories: Category[]; 
     payees: Payee[]; 
+    merchants: Merchant[];
+    locations: Location[];
+    users: User[];
+    tags: Tag[];
     types: TransactionType[];
     onEdit: (rule: ReconciliationRule) => void;
-}> = ({ rule, onClose, categories, payees, types, onEdit }) => {
+}> = ({ rule, onClose, categories, payees, merchants, locations, users, tags, types, onEdit }) => {
     if (!rule) return null;
 
     const getCatName = (id?: string) => categories.find(c => c.id === id)?.name || 'Unknown';
     const getPayeeName = (id?: string) => payees.find(p => p.id === id)?.name || 'Unknown';
+    const getMerchantName = (id?: string) => merchants.find(m => m.id === id)?.name || 'Unknown';
+    const getLocationName = (id?: string) => locations.find(l => l.id === id)?.name || 'Unknown';
+    const getUserName = (id?: string) => users.find(u => u.id === id)?.name || 'Unknown';
     const getTypeName = (id?: string) => types.find(t => t.id === id)?.name || 'Unknown';
+    const getTagName = (id: string) => tags.find(t => t.id === id)?.name || id;
 
     return (
         <div className="fixed inset-0 z-[100] flex justify-end">
@@ -113,45 +123,21 @@ const RuleInspectorDrawer: React.FC<{
                     </div>
 
                     <div>
-                        <h4 className="text-[10px] font-black text-green-400 uppercase tracking-widest mb-4">Applied Transformations</h4>
+                        <h4 className="text-[10px] font-black text-green-400 uppercase tracking-widest mb-4">Atomic Transforms</h4>
                         <div className="bg-green-900/10 border border-green-900/20 rounded-2xl p-4 space-y-4">
-                            {rule.skipImport && (
-                                <div className="flex items-center gap-2 text-red-400 font-bold text-sm">
-                                    <SlashIcon className="w-4 h-4" /> Automatically Ignored
-                                </div>
-                            )}
-                            {rule.setCategoryId && (
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-400">Set Category</span>
-                                    <span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getCatName(rule.setCategoryId)}</span>
-                                </div>
-                            )}
-                            {rule.setPayeeId && (
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-400">Set Counterparty</span>
-                                    <span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getPayeeName(rule.setPayeeId)}</span>
-                                </div>
-                            )}
-                            {rule.setTransactionTypeId && (
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-slate-400">Set Type</span>
-                                    <span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getTypeName(rule.setTransactionTypeId)}</span>
-                                </div>
-                            )}
-                            {rule.setDescription && (
-                                <div className="space-y-1">
-                                    <span className="text-xs text-slate-400 block">Rename Description To</span>
-                                    <span className="font-bold text-slate-100 block bg-white/5 px-2 py-1 rounded-lg">{rule.setDescription}</span>
-                                </div>
-                            )}
+                            {rule.skipImport && <div className="flex items-center gap-2 text-red-400 font-bold text-sm"><SlashIcon className="w-4 h-4" /> Automatically Ignored</div>}
+                            {rule.setCategoryId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Category</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getCatName(rule.setCategoryId)}</span></div>}
+                            {rule.setMerchantId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Merchant</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getMerchantName(rule.setMerchantId)}</span></div>}
+                            {rule.setLocationId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Location</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getLocationName(rule.setLocationId)}</span></div>}
+                            {rule.setUserId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">User</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getUserName(rule.setUserId)}</span></div>}
+                            {rule.setPayeeId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Payee</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getPayeeName(rule.setPayeeId)}</span></div>}
+                            {rule.setTransactionTypeId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Type</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getTypeName(rule.setTransactionTypeId)}</span></div>}
                             {rule.assignTagIds && rule.assignTagIds.length > 0 && (
                                 <div className="space-y-2">
                                     <span className="text-xs text-slate-400 block">Append Taxonomy Tags</span>
                                     <div className="flex flex-wrap gap-1">
                                         {rule.assignTagIds.map(tid => (
-                                            <span key={tid} className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[8px] font-black uppercase tracking-widest">
-                                                Match found
-                                            </span>
+                                            <span key={tid} className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[8px] font-black uppercase tracking-widest">{getTagName(tid)}</span>
                                         ))}
                                     </div>
                                 </div>
@@ -159,16 +145,13 @@ const RuleInspectorDrawer: React.FC<{
                         </div>
                     </div>
                 </div>
-                <div className="p-6 border-t border-white/10 bg-slate-800/50">
-                    <p className="text-[10px] text-slate-500 leading-relaxed uppercase font-bold">Automation rules are processed in sequence. This rule matched first and was applied during ingestion.</p>
-                </div>
             </div>
         </div>
     );
 };
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
-    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, users, tags, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, existingTransactions, rules
+    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, merchants, locations, users, tags, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, existingTransactions, rules
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [sortKey, setSortKey] = useState<SortKey>('date');
@@ -184,7 +167,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
     const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
-    const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p])), [payees]);
     const tagMap = useMemo(() => new Map(tags.map(t => [t.id, t])), [tags]);
 
     useEffect(() => {
@@ -193,7 +175,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
             const sig = getTransactionSignature(tx);
             const conflict = dbSigs.has(sig) ? 'database' : null;
             
-            // Auto-link guessed payees from Parser
             let finalPayeeId = tx.payeeId;
             if (tx.payeeId?.startsWith('guess_')) {
                 const guessedName = tx.payeeId.replace('guess_', '');
@@ -220,9 +201,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         return [...transactions].sort((a, b) => {
             let valA = a[sortKey as keyof VerifiableTransaction] as any;
             let valB = b[sortKey as keyof VerifiableTransaction] as any;
-            if (sortKey === 'amount') {
-                return sortDirection === 'asc' ? valA - valB : valB - valA;
-            }
+            if (sortKey === 'amount') return sortDirection === 'asc' ? valA - valB : valB - valA;
             return sortDirection === 'asc' ? (valA < valB ? -1 : 1) : (valA > valB ? -1 : 1);
         });
     }, [transactions, sortKey, sortDirection]);
@@ -245,13 +224,13 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                         <TableIcon className="w-6 h-6 text-indigo-600" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-black text-slate-800 tracking-tight">Verify Import Data</h2>
-                        <p className="text-sm text-slate-500">Review {transactions.length} detected records. {transactions.filter(t => t.conflictType === 'database').length} duplicates identified.</p>
+                        <h2 className="text-xl font-black text-slate-800 tracking-tight">Verify Ingestion</h2>
+                        <p className="text-sm text-slate-500">Review {transactions.length} detected records. {transactions.filter(t => t.conflictType === 'database').length} potential duplicates flagged.</p>
                     </div>
                 </div>
                 <div className="flex gap-3 w-full sm:w-auto">
                     <button onClick={onCancel} className="flex-1 sm:flex-none px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Discard</button>
-                    <button onClick={() => onComplete(transactions.filter(t => !t.isIgnored))} className="flex-1 sm:flex-none px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all">Finalize Import</button>
+                    <button onClick={() => onComplete(transactions.filter(t => !t.isIgnored))} className="flex-1 sm:flex-none px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all">Finalize Import</button>
                 </div>
             </div>
 
@@ -289,105 +268,21 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 const effect = type?.balanceEffect || 'expense';
                                 const matchedRule = tx.appliedRuleId ? ruleMap.get(tx.appliedRuleId) : null;
                                 
-                                const amountColor = effect === 'income' 
-                                    ? 'text-green-600' 
-                                    : effect === 'transfer' 
-                                        ? 'text-slate-400' 
-                                        : 'text-red-600';
+                                const amountColor = effect === 'income' ? 'text-green-600' : effect === 'transfer' ? 'text-slate-400' : 'text-red-600';
 
                                 return (
                                     <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 bg-slate-50' : 'hover:bg-slate-50'}`}>
-                                        <td className="p-4 text-center">
-                                            <input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-4 w-4" />
-                                        </td>
-                                        <td className="px-4 py-2">
-                                            {tx.conflictType === 'database' ? (
-                                                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black rounded uppercase flex items-center gap-1 w-max">
-                                                    <ExclamationTriangleIcon className="w-2.5 h-2.5" /> Exists
-                                                </span>
-                                            ) : (
-                                                <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[8px] font-black rounded uppercase w-max">New Entry</span>
-                                            )}
-                                        </td>
+                                        <td className="p-4 text-center"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-4 w-4" /></td>
+                                        <td className="px-4 py-2">{tx.conflictType === 'database' ? (<span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black rounded uppercase flex items-center gap-1 w-max"><ExclamationTriangleIcon className="w-2.5 h-2.5" /> Exists</span>) : (<span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[8px] font-black rounded uppercase w-max">New Entry</span>)}</td>
                                         <td className="px-4 py-2 text-xs text-slate-500 font-mono">{tx.date}</td>
                                         <td className="px-4 py-2 text-sm font-bold text-slate-700 truncate max-w-xs">{tx.description}</td>
-                                        <td className="px-4 py-2 min-w-[180px]">
-                                            <select 
-                                                value={tx.payeeId || ''} 
-                                                onChange={e => handleUpdate(tx.tempId, 'payeeId', e.target.value)} 
-                                                className="p-1.5 text-xs border border-slate-200 rounded-lg w-full font-bold text-slate-700 focus:border-indigo-500 focus:ring-0 bg-white"
-                                            >
-                                                <option value="">Select Merchant...</option>
-                                                {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                            </select>
-                                        </td>
-                                        <td className="px-4 py-2">
-                                            <div className="flex flex-wrap gap-1 min-w-[80px]">
-                                                {tx.tagIds && tx.tagIds.length > 0 ? (
-                                                    tx.tagIds.map(tid => {
-                                                        const tag = tagMap.get(tid);
-                                                        return tag ? (
-                                                            <span key={tid} className={`px-1.5 py-0.5 text-[8px] font-black uppercase rounded ${tag.color}`}>{tag.name}</span>
-                                                        ) : null;
-                                                    })
-                                                ) : (
-                                                    <span className="text-[8px] text-slate-300 font-bold uppercase italic">None</span>
-                                                )}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-2">
-                                            <div className="relative group/select">
-                                                <select 
-                                                    value={effect} 
-                                                    onChange={e => {
-                                                        const targetEffect = e.target.value as BalanceEffect;
-                                                        const matchingType = transactionTypes.find(t => t.balanceEffect === targetEffect);
-                                                        if (matchingType) handleUpdate(tx.tempId, 'typeId', matchingType.id);
-                                                    }}
-                                                    className="p-1.5 pr-6 text-[10px] border border-slate-200 rounded-lg w-full font-black uppercase tracking-tighter text-slate-700 focus:border-indigo-500 focus:ring-0 bg-slate-50 appearance-none cursor-pointer"
-                                                >
-                                                    <option value="expense">Expense</option>
-                                                    <option value="income">Income</option>
-                                                    <option value="transfer">Transfer</option>
-                                                </select>
-                                                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                                                    <ChevronDownIcon className="w-3.5 h-3.5" />
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-2">
-                                            <select value={tx.categoryId} onChange={e => handleUpdate(tx.tempId, 'categoryId', e.target.value)} className="p-1.5 text-xs border border-slate-200 rounded-lg w-full font-bold text-slate-700 focus:border-indigo-500 focus:ring-0 bg-white">
-                                                <option value="">Uncategorized</option>
-                                                {sortedCategoryOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                            </select>
-                                        </td>
-                                        <td className={`px-4 py-2 text-right text-sm font-black font-mono ${amountColor}`}>
-                                            {effect === 'income' ? '+' : effect === 'transfer' ? '' : '-'}{formatCurrency(tx.amount)}
-                                        </td>
-                                        <td className="px-4 py-2 text-center">
-                                            {matchedRule ? (
-                                                <button 
-                                                    onClick={() => { setInspectedRule(matchedRule); setRuleContextTx(tx); }}
-                                                    className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all border border-green-200 shadow-sm group/rule"
-                                                    title={`Applied: ${matchedRule.name}. Click to view/edit.`}
-                                                >
-                                                    <SparklesIcon className="w-4 h-4" />
-                                                </button>
-                                            ) : (
-                                                <button 
-                                                    onClick={() => handleOpenRuleCreator(tx)}
-                                                    className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
-                                                    title="Create Rule"
-                                                >
-                                                    <WrenchIcon className="w-4 h-4" />
-                                                </button>
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-2 text-center">
-                                            <button onClick={() => setInspectedTx(tx)} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Raw Data">
-                                                <TableIcon className="w-4 h-4"/>
-                                            </button>
-                                        </td>
+                                        <td className="px-4 py-2 min-w-[180px]"><select value={tx.payeeId || ''} onChange={e => handleUpdate(tx.tempId, 'payeeId', e.target.value)} className="p-1.5 text-xs border border-slate-200 rounded-lg w-full font-bold text-slate-700 focus:border-indigo-500 focus:ring-0 bg-white"><option value="">Select Merchant...</option>{sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
+                                        <td className="px-4 py-2"><div className="flex flex-wrap gap-1 min-w-[80px]">{tx.tagIds && tx.tagIds.length > 0 ? (tx.tagIds.map(tid => { const tag = tagMap.get(tid); return tag ? (<span key={tid} className={`px-1.5 py-0.5 text-[8px] font-black uppercase rounded ${tag.color}`}>{tag.name}</span>) : null; })) : (<span className="text-[8px] text-slate-300 font-bold uppercase italic">None</span>)}</div></td>
+                                        <td className="px-4 py-2"><div className="relative group/select"><select value={effect} onChange={e => { const targetEffect = e.target.value as BalanceEffect; const matchingType = transactionTypes.find(t => t.balanceEffect === targetEffect); if (matchingType) handleUpdate(tx.tempId, 'typeId', matchingType.id); }} className="p-1.5 pr-6 text-[10px] border border-slate-200 rounded-lg w-full font-black uppercase tracking-tighter text-slate-700 focus:border-indigo-500 focus:ring-0 bg-slate-50 appearance-none cursor-pointer"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option></select><div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400"><ChevronDownIcon className="w-3.5 h-3.5" /></div></div></td>
+                                        <td className="px-4 py-2"><select value={tx.categoryId} onChange={e => handleUpdate(tx.tempId, 'categoryId', e.target.value)} className="p-1.5 text-xs border border-slate-200 rounded-lg w-full font-bold text-slate-700 focus:border-indigo-500 focus:ring-0 bg-white"><option value="">Uncategorized</option>{sortedCategoryOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
+                                        <td className={`px-4 py-2 text-right text-sm font-black font-mono ${amountColor}`}>{effect === 'income' ? '+' : effect === 'transfer' ? '' : '-'}{formatCurrency(tx.amount)}</td>
+                                        <td className="px-4 py-2 text-center">{matchedRule ? (<button onClick={() => { setInspectedRule(matchedRule); setRuleContextTx(tx); }} className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all border border-green-200 shadow-sm group/rule" title={`Applied: ${matchedRule.name}. Click to view/edit.`}><SparklesIcon className="w-4 h-4" /></button>) : (<button onClick={() => handleOpenRuleCreator(tx)} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Create Rule"><WrenchIcon className="w-4 h-4" /></button>)}</td>
+                                        <td className="px-4 py-2 text-center"><button onClick={() => setInspectedTx(tx)} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Raw Data"><TableIcon className="w-4 h-4"/></button></td>
                                     </tr>
                                 );
                             })}
@@ -401,6 +296,10 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 onClose={() => setInspectedRule(null)} 
                 categories={categories} 
                 payees={payees} 
+                merchants={merchants}
+                locations={locations}
+                users={users}
+                tags={tags}
                 types={transactionTypes} 
                 onEdit={(r) => { setInspectedRule(null); setRuleTransactionContext({ ...ruleContextTx, id: 'temp-context' } as any); setIsRuleModalOpen(true); }}
             />
@@ -414,6 +313,9 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 categories={categories}
                 tags={tags}
                 payees={payees}
+                merchants={merchants}
+                locations={locations}
+                users={users}
                 transaction={ruleTransactionContext}
                 onSaveCategory={onSaveCategory}
                 onSavePayee={onSavePayee}

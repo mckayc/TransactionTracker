@@ -1,7 +1,8 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, DuplicatePair, User, BusinessDocument, DocumentFolder, Tag, AccountType } from '../types';
-import { extractTransactionsFromFiles, extractTransactionsFromText, hasApiKey } from '../services/geminiService';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location } from '../types';
+// Fixed: Imports for AI extraction functions are now expected to be available in geminiService.ts
+import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
@@ -28,6 +29,8 @@ interface DashboardProps {
   transactionTypes: TransactionType[];
   rules: ReconciliationRule[];
   payees: Payee[];
+  merchants: Merchant[];
+  locations: Location[];
   users: User[];
   onAddDocument: (doc: BusinessDocument) => void;
   documentFolders: DocumentFolder[];
@@ -55,7 +58,7 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, i
 );
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
+    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -248,7 +251,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             {appState === 'verifying_import' ? (
                 <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                    <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
+                    {/* Fixed: Pass missing merchants and locations props */}
+                    <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} merchants={merchants} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
                 </div>
             ) : appState === 'post_import_edit' ? (
                 <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-0 h-full">

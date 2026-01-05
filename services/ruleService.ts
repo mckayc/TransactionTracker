@@ -87,8 +87,6 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule,
         
         return result;
     }
-
-    /* Removed legacy fallback logic for non-existent properties descriptionContains, accountId, and amountEquals to resolve property access errors */
     return true;
 };
 
@@ -116,14 +114,17 @@ export const applyRulesToTransactions = (
         if (rule.setPayeeId) {
           modifiedTx.payeeId = rule.setPayeeId;
         }
+        if (rule.setMerchantId) {
+          modifiedTx.merchantId = rule.setMerchantId;
+        }
+        if (rule.setLocationId) {
+          modifiedTx.locationId = rule.setLocationId;
+        }
+        if (rule.setUserId) {
+          modifiedTx.userId = rule.setUserId;
+        }
         if (rule.setTransactionTypeId) {
           modifiedTx.typeId = rule.setTransactionTypeId;
-        }
-        if (rule.setDescription) {
-            if (!modifiedTx.originalDescription) {
-                modifiedTx.originalDescription = modifiedTx.description;
-            }
-            modifiedTx.description = rule.setDescription;
         }
         if (rule.assignTagIds && rule.assignTagIds.length > 0) {
             const currentTags = new Set(modifiedTx.tagIds || []);
@@ -158,16 +159,21 @@ export const findMatchingTransactions = (
         updatedTx.payeeId = rule.setPayeeId;
         changed = true;
       }
+      if (rule.setMerchantId && updatedTx.merchantId !== rule.setMerchantId) {
+        updatedTx.merchantId = rule.setMerchantId;
+        changed = true;
+      }
+      if (rule.setLocationId && updatedTx.locationId !== rule.setLocationId) {
+        updatedTx.locationId = rule.setLocationId;
+        changed = true;
+      }
+      if (rule.setUserId && updatedTx.userId !== rule.setUserId) {
+        updatedTx.userId = rule.setUserId;
+        changed = true;
+      }
       if (rule.setTransactionTypeId && updatedTx.typeId !== rule.setTransactionTypeId) {
         updatedTx.typeId = rule.setTransactionTypeId;
         changed = true;
-      }
-      if (rule.setDescription && updatedTx.description !== rule.setDescription) {
-          if (!updatedTx.originalDescription) {
-              updatedTx.originalDescription = updatedTx.description;
-          }
-          updatedTx.description = rule.setDescription;
-          changed = true;
       }
       if (rule.assignTagIds && rule.assignTagIds.length > 0) {
           const originalTagSet = new Set(updatedTx.tagIds || []);

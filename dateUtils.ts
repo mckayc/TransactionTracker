@@ -103,7 +103,8 @@ export const applyOffset = (date: Date, value: number, unit: DateRangeUnit) => {
     return d;
 };
 
-export const calculateDateRange = (preset: DateRangePreset, customStart: string | undefined, customEnd: string | undefined, savedRanges: CustomDateRange[]): { start: Date, end: Date, label: string } => {
+// Fix: Loosen preset type to accept string IDs for custom range lookups
+export const calculateDateRange = (preset: DateRangePreset | string, customStart: string | undefined, customEnd: string | undefined, savedRanges: CustomDateRange[]): { start: Date, end: Date, label: string } => {
     const now = new Date();
     let start = new Date();
     let end = new Date();

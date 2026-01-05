@@ -101,7 +101,7 @@ const App: React.FC = () => {
             setContentLinks(data.contentLinks || []);
             setSystemSettings(data.systemSettings || {});
             
-            const txResponse = await api.getTransactions({ limit: 100 });
+            const txResponse = await api.getTransactions({ limit: 200 });
             setTransactions(txResponse.data);
 
             if (showLoader) setIsLoading(false);
@@ -132,6 +132,17 @@ const App: React.FC = () => {
         loadCoreData(false);
     };
 
+    const handleUpdateTransaction = async (tx: Transaction) => {
+        const updated = transactions.map(t => t.id === tx.id ? tx : t);
+        setTransactions(updated);
+        await api.saveTransactions([tx]);
+    };
+
+    const handleDeleteTransaction = async (id: string) => {
+        setTransactions(transactions.filter(t => t.id !== id));
+        await api.deleteTransaction(id);
+    };
+
     if (loadError) return (
         <div className="h-screen flex items-center justify-center bg-slate-50 p-6">
             <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border-2 border-red-100 text-center space-y-6">
@@ -149,7 +160,9 @@ const App: React.FC = () => {
         </div>
     );
 
-    if (isLoading) return <div className="h-screen flex items-center justify-center"><Loader message="Optimizing Data Streams..." /></div>;
+    if (isLoading) return <div className="h-screen flex items-center justify-center"><Loader message="Synchronizing High-Performance Ledger..." /></div>;
+
+    const currentContext = { transactions, accounts, categories, tags, payees, merchants, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile };
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
@@ -171,41 +184,87 @@ const App: React.FC = () => {
                         <Dashboard 
                             transactions={transactions} accounts={accounts} accountTypes={accountTypes}
                             categories={categories} tags={tags} transactionTypes={transactionTypes}
-                            rules={rules} payees={payees} users={users}
+                            rules={rules} payees={payees} merchants={merchants} locations={locations} users={users}
                             documentFolders={documentFolders} onTransactionsAdded={handleTransactionsAdded}
                             onAddAccount={(a) => updateData('accounts', [...accounts, a], setAccounts)}
                             onAddAccountType={(t) => updateData('accountTypes', [...accountTypes, t], setAccountTypes)}
+                            onSaveRule={(r) => updateData('reconciliationRules', rules.some(x => x.id === r.id) ? rules.map(x => x.id === r.id ? r : x) : [r, ...rules], setRules)}
+                            onSaveCategory={(c) => updateData('categories', categories.some(x => x.id === c.id) ? categories.map(x => x.id === c.id ? c : x) : [...categories, c], setCategories)}
+                            onSavePayee={(p) => updateData('payees', payees.some(x => x.id === p.id) ? payees.map(x => x.id === p.id ? p : x) : [...payees, p], setPayees)}
+                            onSaveTag={(t) => updateData('tags', tags.some(x => x.id === t.id) ? tags.map(x => x.id === t.id ? t : x) : [...tags, t], setTags)}
+                            onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
+                            onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction}
                             onAddDocument={(d) => updateData('businessDocuments', [...businessDocuments, d], setBusinessDocuments)}
                             onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
-                            onSaveRule={(r) => updateData('reconciliationRules', [...rules, r], setRules)}
-                            onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
-                            onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
-                            onUpdateTransaction={async (t) => { await api.saveTransactions([t]); loadCoreData(false); }}
-                            onDeleteTransaction={async (id) => { await api.deleteTransaction(id); loadCoreData(false); }}
-                            onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
-                            onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
                         />
                     )}
                     {currentView === 'transactions' && (
                         <AllTransactions 
-                            accounts={accounts} categories={categories} tags={tags}
+                            accounts={accounts} categories={categories} tags={tags} 
                             transactionTypes={transactionTypes} payees={payees} users={users}
-                            onUpdateTransaction={async (t) => { await api.saveTransactions([t]); loadCoreData(false); }}
-                            onAddTransaction={async (t) => { await api.saveTransactions([t]); loadCoreData(false); }}
-                            onDeleteTransaction={async (id) => { await api.deleteTransaction(id); loadCoreData(false); }}
-                            onDeleteTransactions={async (ids) => { for(const id of ids) await api.deleteTransaction(id); loadCoreData(false); }}
-                            onSaveRule={(r) => updateData('reconciliationRules', [...rules, r], setRules)}
-                            onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
-                            onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
-                            onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
+                            onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction}
+                            onDeleteTransactions={async (ids) => { setTransactions(transactions.filter(t => !ids.includes(t.id))); for(const id of ids) await api.deleteTransaction(id); }}
+                            onAddTransaction={(tx) => handleTransactionsAdded([tx])}
+                            onSaveRule={(r) => updateData('reconciliationRules', rules.some(x => x.id === r.id) ? rules.map(x => x.id === r.id ? r : x) : [r, ...rules], setRules)}
+                            onSaveCategory={(c) => updateData('categories', categories.some(x => x.id === c.id) ? categories.map(x => x.id === c.id ? c : x) : [...categories, c], setCategories)}
+                            onSavePayee={(p) => updateData('payees', payees.some(x => x.id === p.id) ? payees.map(x => x.id === p.id ? p : x) : [...payees, p], setPayees)}
+                            onSaveTag={(t) => updateData('tags', tags.some(x => x.id === t.id) ? tags.map(x => x.id === t.id ? t : x) : [...tags, t], setTags)}
                             onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
                             onSaveReport={(r) => updateData('savedReports', [...savedReports, r], setSavedReports)}
                         />
                     )}
+                    {currentView === 'calendar' && (
+                        <CalendarPage 
+                            transactions={transactions} tasks={tasks} templates={templates} scheduledEvents={scheduledEvents}
+                            taskCompletions={taskCompletions} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users}
+                            onAddEvent={(e) => updateData('scheduledEvents', [...scheduledEvents, e], setScheduledEvents)}
+                            onUpdateTransaction={handleUpdateTransaction} onAddTransaction={(tx) => handleTransactionsAdded([tx])}
+                            onToggleTaskCompletion={async (d, eid, tid) => { const next = {...taskCompletions, [`${d}_${eid}_${tid}`]: !taskCompletions[`${d}_${eid}_${tid}`]}; updateData('taskCompletions', next, setTaskCompletions); }}
+                            onToggleTask={(id) => updateData('tasks', tasks.map(t => t.id === id ? {...t, isCompleted: !t.isCompleted} : t), setTasks)}
+                            onSaveTask={(t) => updateData('tasks', tasks.some(x => x.id === t.id) ? tasks.map(x => x.id === t.id ? t : x) : [t, ...tasks], setTasks)}
+                            transactionTypes={transactionTypes}
+                        />
+                    )}
+                    {currentView === 'rules' && (
+                        <RulesPage 
+                            rules={rules} onSaveRule={(r) => updateData('reconciliationRules', rules.some(x => x.id === r.id) ? rules.map(x => x.id === r.id ? r : x) : [r, ...rules], setRules)}
+                            onDeleteRule={(id) => updateData('reconciliationRules', rules.filter(r => r.id !== id), setRules)}
+                            accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} 
+                            merchants={merchants} locations={locations} users={users} transactions={transactions}
+                            onUpdateTransactions={(txs) => handleTransactionsAdded(txs)}
+                            onSaveCategory={(c) => updateData('categories', categories.some(x => x.id === c.id) ? categories.map(x => x.id === c.id ? c : x) : [...categories, c], setCategories)}
+                            onSavePayee={(p) => updateData('payees', payees.some(x => x.id === p.id) ? payees.map(x => x.id === p.id ? p : x) : [...payees, p], setPayees)}
+                            onSaveMerchant={(m) => updateData('merchants', merchants.some(x => x.id === m.id) ? merchants.map(x => x.id === m.id ? m : x) : [...merchants, m], setMerchants)}
+                            onSaveLocation={(l) => updateData('locations', locations.some(x => x.id === l.id) ? locations.map(x => x.id === l.id ? l : x) : [...locations, l], setLocations)}
+                            onSaveTag={(t) => updateData('tags', tags.some(x => x.id === t.id) ? tags.map(x => x.id === t.id ? t : x) : [...tags, t], setTags)}
+                            onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
+                        />
+                    )}
+                    {currentView === 'management' && (
+                        <ManagementHub 
+                            transactions={transactions} accounts={accounts} categories={categories} tags={tags} payees={payees} 
+                            merchants={merchants} locations={locations} users={users} transactionTypes={transactionTypes} accountTypes={accountTypes}
+                            onSaveCategory={(c) => updateData('categories', categories.some(x => x.id === c.id) ? categories.map(x => x.id === c.id ? c : x) : [...categories, c], setCategories)}
+                            onDeleteCategory={(id) => updateData('categories', categories.filter(c => c.id !== id), setCategories)}
+                            onSaveTag={(t) => updateData('tags', tags.some(x => x.id === t.id) ? tags.map(x => x.id === t.id ? t : x) : [...tags, t], setTags)}
+                            onDeleteTag={(id) => updateData('tags', tags.filter(t => t.id !== id), setTags)}
+                            onSavePayee={(p) => updateData('payees', payees.some(x => x.id === p.id) ? payees.map(x => x.id === p.id ? p : x) : [...payees, p], setPayees)}
+                            onDeletePayee={(id) => updateData('payees', payees.filter(p => p.id !== id), setPayees)}
+                            onSaveMerchant={(m) => updateData('merchants', merchants.some(x => x.id === m.id) ? merchants.map(x => x.id === m.id ? m : x) : [...merchants, m], setMerchants)}
+                            onDeleteMerchant={(id) => updateData('merchants', merchants.filter(m => m.id !== id), setMerchants)}
+                            onSaveLocation={(l) => updateData('locations', locations.some(x => x.id === l.id) ? locations.map(x => x.id === l.id ? l : x) : [...locations, l], setLocations)}
+                            onDeleteLocation={(id) => updateData('locations', locations.filter(l => l.id !== id), setLocations)}
+                            onSaveUser={(u) => updateData('users', users.some(x => x.id === u.id) ? users.map(x => x.id === u.id ? u : x) : [...users, u], setUsers)}
+                            onDeleteUser={(id) => updateData('users', users.filter(u => u.id !== id), setUsers)}
+                            onSaveTransactionType={(t) => updateData('transactionTypes', transactionTypes.some(x => x.id === t.id) ? transactionTypes.map(x => x.id === t.id ? t : x) : [...transactionTypes, t], setTransactionTypes)}
+                            onDeleteTransactionType={(id) => updateData('transactionTypes', transactionTypes.filter(t => t.id !== id), setTransactionTypes)}
+                            onSaveAccountType={(t) => updateData('accountTypes', accountTypes.some(x => x.id === t.id) ? accountTypes.map(x => x.id === t.id ? t : x) : [...accountTypes, t], setAccountTypes)}
+                            onDeleteAccountType={(id) => updateData('accountTypes', accountTypes.filter(t => t.id !== id), setAccountTypes)}
+                        />
+                    )}
                     {currentView === 'accounts' && (
                         <AccountsPage 
-                            accounts={accounts} 
-                            accountTypes={accountTypes}
+                            accounts={accounts} accountTypes={accountTypes} 
                             onAddAccount={(a) => updateData('accounts', [...accounts, a], setAccounts)}
                             onUpdateAccount={(a) => updateData('accounts', accounts.map(x => x.id === a.id ? a : x), setAccounts)}
                             onRemoveAccount={(id) => updateData('accounts', accounts.filter(x => x.id !== id), setAccounts)}
@@ -213,102 +272,39 @@ const App: React.FC = () => {
                             onRemoveAccountType={(id) => updateData('accountTypes', accountTypes.filter(x => x.id !== id), setAccountTypes)}
                         />
                     )}
-                    {currentView === 'rules' && (
-                        <RulesPage 
-                            rules={rules} 
-                            transactions={transactions}
-                            accounts={accounts}
-                            categories={categories}
-                            tags={tags}
-                            payees={payees}
-                            merchants={merchants}
-                            locations={locations}
-                            transactionTypes={transactionTypes}
-                            onSaveRule={(r) => updateData('reconciliationRules', rules.some(x => x.id === r.id) ? rules.map(x => x.id === r.id ? r : x) : [...rules, r], setRules)}
-                            onDeleteRule={(id) => updateData('reconciliationRules', rules.filter(x => x.id !== id), setRules)}
-                            onUpdateTransactions={async (txs) => { await api.saveTransactions(txs); loadCoreData(false); }}
-                            onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
-                            onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
-                            onSaveMerchant={(m) => updateData('merchants', [...merchants, m], setMerchants)}
-                            onSaveLocation={(l) => updateData('locations', [...locations, l], setLocations)}
-                            onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
-                            onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
-                        />
-                    )}
-                    {currentView === 'calendar' && (
-                         <CalendarPage 
-                            transactions={transactions} templates={templates} scheduledEvents={scheduledEvents}
-                            tasks={tasks} taskCompletions={taskCompletions} accounts={accounts} 
-                            categories={categories} tags={tags} payees={payees} users={users}
-                            onAddEvent={(e) => updateData('scheduledEvents', [...scheduledEvents, e], setScheduledEvents)}
-                            onUpdateTransaction={async (t) => { await api.saveTransactions([t]); loadCoreData(false); }}
-                            onAddTransaction={async (t) => { await api.saveTransactions([t]); loadCoreData(false); }}
-                            onToggleTaskCompletion={() => {}} 
-                            onToggleTask={(id) => {}} 
-                            transactionTypes={transactionTypes}
-                         />
-                    )}
-                    {currentView === 'tasks' && (
-                         <TasksPage 
-                            tasks={tasks} 
-                            onSaveTask={(t) => updateData('tasks', tasks.some(x => x.id === t.id) ? tasks.map(x => x.id === t.id ? t : x) : [...tasks, t], setTasks)}
-                            onDeleteTask={(id) => updateData('tasks', tasks.filter(x => x.id !== id), setTasks)}
-                            onToggleTask={(id) => updateData('tasks', tasks.map(x => x.id === id ? { ...x, isCompleted: !x.isCompleted } : x), setTasks)}
-                            templates={templates} 
-                            scheduledEvents={scheduledEvents}
-                            onSaveTemplate={(t) => updateData('templates', templates.some(x => x.id === t.id) ? templates.map(x => x.id === t.id ? t : x) : [...templates, t], setTemplates)}
-                            onRemoveTemplate={(id) => updateData('templates', templates.filter(x => x.id !== id), setTemplates)}
-                         />
-                    )}
                     {currentView === 'reports' && (
                         <Reports 
-                            transactions={transactions} categories={categories} transactionTypes={transactionTypes}
-                            accounts={accounts} users={users} tags={tags} payees={payees}
-                            savedReports={savedReports} setSavedReports={(r) => updateData('savedReports', r, setSavedReports)}
-                            savedDateRanges={savedDateRanges} setSavedDateRanges={(d) => updateData('savedDateRanges', d, setSavedDateRanges)}
+                            transactions={transactions} transactionTypes={transactionTypes} categories={categories} 
+                            payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} 
+                            setSavedReports={(val) => updateData('savedReports', typeof val === 'function' ? val(savedReports) : val, setSavedReports)}
+                            savedDateRanges={savedDateRanges}
+                            setSavedDateRanges={(val) => updateData('savedDateRanges', typeof val === 'function' ? val(savedDateRanges) : val, setSavedDateRanges)}
                             amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics}
                         />
                     )}
-                     {currentView === 'settings' && (
+                    {currentView === 'settings' && (
                         <SettingsPage 
-                            transactions={transactions} transactionTypes={transactionTypes}
-                            onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
-                            onRemoveTransactionType={(id) => updateData('transactionTypes', transactionTypes.filter(t => t.id !== id), setTransactionTypes)}
+                            transactions={transactions} transactionTypes={transactionTypes} onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
+                            onRemoveTransactionType={(id) => updateData('transactionTypes', transactionTypes.filter(x => x.id !== id), setTransactionTypes)}
                             systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)}
-                            accounts={accounts} categories={categories} tags={tags} payees={payees}
-                            rules={rules} templates={templates} scheduledEvents={scheduledEvents}
-                            tasks={tasks} taskCompletions={taskCompletions} users={users}
-                            businessProfile={businessProfile} documentFolders={documentFolders}
+                            accounts={accounts} categories={categories} tags={tags} payees={payees} rules={rules}
+                            templates={templates} scheduledEvents={scheduledEvents} tasks={tasks} taskCompletions={taskCompletions}
+                            users={users} businessProfile={businessProfile} businessNotes={businessNotes} documentFolders={documentFolders}
                             businessDocuments={businessDocuments} onAddDocument={(d) => updateData('businessDocuments', [...businessDocuments, d], setBusinessDocuments)}
                             onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
-                            savedReports={savedReports} savedDateRanges={savedDateRanges}
-                            amazonMetrics={amazonMetrics} amazonVideos={amazonVideos}
-                            youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels}
-                            financialGoals={financialGoals} financialPlan={financialPlan}
-                            contentLinks={contentLinks}
-                            businessNotes={businessNotes}
+                            savedReports={savedReports} savedDateRanges={savedDateRanges} amazonMetrics={amazonMetrics} amazonVideos={amazonVideos}
+                            youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels} financialGoals={financialGoals} 
+                            financialPlan={financialPlan} contentLinks={contentLinks}
                         />
                     )}
-                    {currentView === 'management' && (
-                        <ManagementHub 
-                            transactions={transactions} categories={categories} 
-                            onSaveCategory={(c) => updateData('categories', categories.some(x => x.id === c.id) ? categories.map(x => x.id === c.id ? c : x) : [...categories, c], setCategories)}
-                            onDeleteCategory={(id) => updateData('categories', categories.filter(x => x.id !== id), setCategories)}
-                            tags={tags} onSaveTag={(t) => updateData('tags', tags.some(x => x.id === t.id) ? tags.map(x => x.id === t.id ? t : x) : [...tags, t], setTags)}
-                            onDeleteTag={(id) => updateData('tags', tags.filter(x => x.id !== id), setTags)}
-                            payees={payees} onSavePayee={(p) => updateData('payees', payees.some(x => x.id === p.id) ? payees.map(x => x.id === p.id ? p : x) : [...payees, p], setPayees)}
-                            onDeletePayee={(id) => updateData('payees', payees.filter(x => x.id !== id), setPayees)}
-                            merchants={merchants} onSaveMerchant={(m) => updateData('merchants', merchants.some(x => x.id === m.id) ? merchants.map(x => x.id === m.id ? m : x) : [...merchants, m], setMerchants)}
-                            onDeleteMerchant={(id) => updateData('merchants', merchants.filter(x => x.id !== id), setMerchants)}
-                            locations={locations} onSaveLocation={(l) => updateData('locations', locations.some(x => x.id === l.id) ? locations.map(x => x.id === l.id ? l : x) : [...locations, l], setLocations)}
-                            onDeleteLocation={(id) => updateData('locations', locations.filter(x => x.id !== id), setLocations)}
-                            users={users} onSaveUser={(u) => updateData('users', users.some(x => x.id === u.id) ? users.map(x => x.id === u.id ? u : x) : [...users, u], setUsers)}
-                            onDeleteUser={(id) => updateData('users', users.filter(x => x.id !== id), setUsers)}
-                            transactionTypes={transactionTypes} onSaveTransactionType={(t) => updateData('transactionTypes', transactionTypes.some(x => x.id === t.id) ? transactionTypes.map(x => x.id === t.id ? t : x) : [...transactionTypes, t], setTransactionTypes)}
-                            onDeleteTransactionType={(id) => updateData('transactionTypes', transactionTypes.filter(x => x.id !== id), setTransactionTypes)}
-                            accountTypes={accountTypes} onSaveAccountType={(t) => updateData('accountTypes', accountTypes.some(x => x.id === t.id) ? accountTypes.map(x => x.id === t.id ? t : x) : [...accountTypes, t], setAccountTypes)}
-                            onDeleteAccountType={(id) => updateData('accountTypes', accountTypes.filter(x => x.id !== id), setAccountTypes)}
-                            accounts={accounts}
+                    {currentView === 'tasks' && (
+                        <TasksPage 
+                            tasks={tasks} onSaveTask={(t) => updateData('tasks', tasks.some(x => x.id === t.id) ? tasks.map(x => x.id === t.id ? t : x) : [t, ...tasks], setTasks)}
+                            onDeleteTask={(id) => updateData('tasks', tasks.filter(t => t.id !== id), setTasks)}
+                            onToggleTask={(id) => updateData('tasks', tasks.map(t => t.id === id ? {...t, isCompleted: !t.isCompleted} : t), setTasks)}
+                            templates={templates} scheduledEvents={scheduledEvents}
+                            onSaveTemplate={(t) => updateData('templates', templates.some(x => x.id === t.id) ? templates.map(x => x.id === t.id ? t : x) : [...templates, t], setTemplates)}
+                            onRemoveTemplate={(id) => updateData('templates', templates.filter(t => t.id !== id), setTemplates)}
                         />
                     )}
                     {currentView === 'hub' && (
@@ -321,7 +317,7 @@ const App: React.FC = () => {
                     )}
                     {currentView === 'documents' && (
                         <DocumentsPage 
-                            documents={businessDocuments} folders={documentFolders}
+                            documents={businessDocuments} folders={documentFolders} 
                             onAddDocument={(d) => updateData('businessDocuments', [...businessDocuments, d], setBusinessDocuments)}
                             onRemoveDocument={(id) => updateData('businessDocuments', businessDocuments.filter(d => d.id !== id), setBusinessDocuments)}
                             onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
@@ -330,19 +326,38 @@ const App: React.FC = () => {
                     )}
                     {currentView === 'plan' && (
                         <FinancialPlanPage 
-                            transactions={transactions} goals={financialGoals}
+                            transactions={transactions} goals={financialGoals} 
                             onSaveGoals={(g) => updateData('financialGoals', g, setFinancialGoals)}
                             plan={financialPlan} onSavePlan={(p) => updateData('financialPlan', p, setFinancialPlan)}
-                            categories={categories}
+                            categories={categories} businessProfile={businessProfile}
                         />
                     )}
-                    {currentView === 'integrations' && <IntegrationsPage onNavigate={(v) => setCurrentView(v as View)} />}
-                    {currentView === 'integration-amazon' && <AmazonIntegration metrics={amazonMetrics} onAddMetrics={(m) => updateData('amazonMetrics', [...amazonMetrics, ...m], setAmazonMetrics)} onDeleteMetrics={(ids) => updateData('amazonMetrics', amazonMetrics.filter(m => !ids.includes(m.id)), setAmazonMetrics)} videos={amazonVideos} onAddVideos={(v) => updateData('amazonVideos', [...amazonVideos, ...v], setAmazonVideos)} onDeleteVideos={(ids) => updateData('amazonVideos', amazonVideos.filter(v => !ids.includes(v.id)), setAmazonVideos)} />}
-                    {currentView === 'integration-youtube' && <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={(m) => updateData('youtubeMetrics', [...youtubeMetrics, ...m], setYouTubeMetric)} onDeleteMetrics={(ids) => updateData('youtubeMetrics', youtubeMetrics.filter(m => !ids.includes(m.id)), setYouTubeMetric)} channels={youtubeChannels} onSaveChannel={(c) => updateData('youtubeChannels', youtubeChannels.some(x => x.id === c.id) ? youtubeChannels.map(x => x.id === c.id ? c : x) : [...youtubeChannels, c], setYouTubeChannels)} onDeleteChannel={(id) => updateData('youtubeChannels', youtubeChannels.filter(x => x.id !== id), setYouTubeChannels)} />}
-                    {currentView === 'integration-content-hub' && <ContentHub amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} contentLinks={contentLinks} onUpdateLinks={(l) => updateData('contentLinks', l, setContentLinks)} />}
+                    {currentView === 'integrations' && <IntegrationsPage onNavigate={setCurrentView} />}
+                    {currentView === 'integration-amazon' && (
+                        <AmazonIntegration 
+                            metrics={amazonMetrics} onAddMetrics={(m) => updateData('amazonMetrics', [...amazonMetrics, ...m], setAmazonMetrics)}
+                            onDeleteMetrics={(ids) => updateData('amazonMetrics', amazonMetrics.filter(m => !ids.includes(m.id)), setAmazonMetrics)}
+                            videos={amazonVideos} onAddVideos={(v) => updateData('amazonVideos', [...amazonVideos, ...v], setAmazonVideos)}
+                            onDeleteVideos={(ids) => updateData('amazonVideos', amazonVideos.filter(v => !ids.includes(v.id)), setAmazonVideos)}
+                        />
+                    )}
+                    {currentView === 'integration-youtube' && (
+                        <YouTubeIntegration 
+                            metrics={youtubeMetrics} onAddMetrics={(m) => updateData('youtubeMetrics', [...youtubeMetrics, ...m], setYouTubeMetric)}
+                            onDeleteMetrics={(ids) => updateData('youtubeMetrics', youtubeMetrics.filter(m => !ids.includes(m.id)), setYouTubeMetric)}
+                            channels={youtubeChannels} onSaveChannel={(c) => updateData('youtubeChannels', youtubeChannels.some(x => x.id === c.id) ? youtubeChannels.map(x => x.id === c.id ? c : x) : [...youtubeChannels, c], setYouTubeChannels)}
+                            onDeleteChannel={(id) => updateData('youtubeChannels', youtubeChannels.filter(c => c.id !== id), setYouTubeChannels)}
+                        />
+                    )}
+                    {currentView === 'integration-content-hub' && (
+                        <ContentHub 
+                            amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} contentLinks={contentLinks}
+                            onUpdateLinks={(l) => updateData('contentLinks', l, setContentLinks)}
+                        />
+                    )}
                 </div>
             </main>
-            <Chatbot isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} contextData={{ transactions: transactions.slice(0, 100), accounts }} />
+            <Chatbot contextData={currentContext} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
         </div>
     );
 };

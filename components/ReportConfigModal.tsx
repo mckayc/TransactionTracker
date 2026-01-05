@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, DateOffset, Transaction, AmazonReportType, AmazonMetric } from '../types';
+import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, Transaction, AmazonReportType, AmazonMetric } from '../types';
 import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon, SaveIcon, BoxIcon, YoutubeIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
@@ -29,7 +29,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
 }) => {
     const [name, setName] = useState('');
     const [dataSource, setDataSource] = useState<'financial' | 'amazon' | 'youtube'>('financial');
-    const [datePreset, setDatePreset] = useState<DateRangePreset>('thisMonth');
+    // Fix: loosened state type to allow custom range IDs (strings)
+    const [datePreset, setDatePreset] = useState<DateRangePreset | string>('thisMonth');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
     const [groupBy, setGroupBy] = useState<ReportGroupBy>('category');
@@ -151,7 +152,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             name: name.trim() || 'New Report',
             dataSource,
             datePreset,
-            customStartDate: ['custom', 'specificMonth', 'relativeMonth'].includes(datePreset) ? customStartDate : undefined,
+            customStartDate: ['custom', 'specificMonth', 'relativeMonth'].includes(datePreset as string) ? customStartDate : undefined,
             customEndDate: datePreset === 'custom' ? customEndDate : undefined,
             groupBy,
             subGroupBy: subGroupBy || undefined,
@@ -343,7 +344,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
 
                                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                                     <div className="flex justify-between mb-1"><label className="block text-sm font-bold text-slate-700">Date Range</label><button onClick={() => setIsManagingRanges(true)} className="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1"><EditIcon className="w-3 h-3"/> Manage Custom</button></div>
-                                    <select value={datePreset} onChange={e => setDatePreset(e.target.value as DateRangePreset)} className="w-full p-2 border rounded-md bg-white">
+                                    {/* Fix: removed cast to DateRangePreset as state now accepts general strings for custom range IDs */}
+                                    <select value={datePreset} onChange={e => setDatePreset(e.target.value)} className="w-full p-2 border rounded-md bg-white">
                                         <option value="thisMonth">This Month</option>
                                         <option value="lastMonth">Last Month</option>
                                         <option value="thisYear">This Year</option>
