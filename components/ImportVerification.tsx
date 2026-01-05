@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import RuleModal from './RuleModal';
 
@@ -144,6 +144,18 @@ const RuleInspectorDrawer: React.FC<{
                                     <span className="font-bold text-slate-100 block bg-white/5 px-2 py-1 rounded-lg">{rule.setDescription}</span>
                                 </div>
                             )}
+                            {rule.assignTagIds && rule.assignTagIds.length > 0 && (
+                                <div className="space-y-2">
+                                    <span className="text-xs text-slate-400 block">Append Taxonomy Tags</span>
+                                    <div className="flex flex-wrap gap-1">
+                                        {rule.assignTagIds.map(tid => (
+                                            <span key={tid} className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[8px] font-black uppercase tracking-widest">
+                                                Match found
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -173,6 +185,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
     const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
     const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p])), [payees]);
+    const tagMap = useMemo(() => new Map(tags.map(t => [t.id, t])), [tags]);
 
     useEffect(() => {
         const dbSigs = new Set(existingTransactions.map(t => getTransactionSignature(t)));
@@ -248,7 +261,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                         <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                             <tr>
                                 <th className="p-4 w-12 text-center bg-slate-50 border-b border-slate-200">
-                                    <input type="checkbox" className="rounded text-indigo-600 h-4 w-4" checked={selectedIds.size === transactions.length} onChange={() => setSelectedIds(selectedIds.size === transactions.length ? new Set() : new Set(transactions.map(t => t.tempId)))} />
+                                    <input type="checkbox" className="rounded text-indigo-600 h-4 w-4" checked={selectedIds.size === transactions.length && transactions.length > 0} onChange={() => setSelectedIds(selectedIds.size === transactions.length ? new Set() : new Set(transactions.map(t => t.tempId)))} />
                                 </th>
                                 <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Status</th>
                                 <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('date')}>
@@ -258,6 +271,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                     <div className="flex items-center gap-1">Description <SortIcon className="w-3 h-3" /></div>
                                 </th>
                                 <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Entity / Payee</th>
+                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Tags</th>
                                 <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Direction</th>
                                 <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('categoryId')}>
                                     <div className="flex items-center gap-1">Category <SortIcon className="w-3 h-3" /></div>
@@ -306,6 +320,20 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                                 <option value="">Select Merchant...</option>
                                                 {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                             </select>
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            <div className="flex flex-wrap gap-1 min-w-[80px]">
+                                                {tx.tagIds && tx.tagIds.length > 0 ? (
+                                                    tx.tagIds.map(tid => {
+                                                        const tag = tagMap.get(tid);
+                                                        return tag ? (
+                                                            <span key={tid} className={`px-1.5 py-0.5 text-[8px] font-black uppercase rounded ${tag.color}`}>{tag.name}</span>
+                                                        ) : null;
+                                                    })
+                                                ) : (
+                                                    <span className="text-[8px] text-slate-300 font-bold uppercase italic">None</span>
+                                                )}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-2">
                                             <div className="relative group/select">

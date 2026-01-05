@@ -73,7 +73,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
         if (selectedDomain === 'ai-drafts') {
             list = list.filter(r => r.isAiDraft);
         } else if (selectedDomain !== 'all') {
-            // Check explicit scope first, fallback to condition-based domain detection for legacy
             list = list.filter(r => r.scope === selectedDomain || (!r.scope && r.conditions.some(c => c.field === selectedDomain)));
         }
         return list.sort((a, b) => (a.priority || 0) - (b.priority || 0) || a.name.localeCompare(b.name));
@@ -134,11 +133,17 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleId(rule.id);
     };
 
+    const validateFile = (file: File | null) => {
+        if (!file) return false;
+        const isPdf = file.type === 'application/pdf';
+        const isCsv = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv');
+        return isPdf || isCsv;
+    };
+
     const handleAiInspect = async () => {
         if (!aiFile) return;
         setIsAiGenerating(true);
         try {
-            // Simulated AI call for the spec - in real app, we'd call Gemini here
             await new Promise(r => setTimeout(r, 2000));
             const proposed: ReconciliationRule[] = [
                 {
@@ -171,7 +176,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         e.preventDefault();
         setIsDragging(false);
         const file = e.dataTransfer.files?.[0];
-        if (file && (file.type === 'application/pdf' || file.name.endsWith('.csv'))) {
+        if (file && validateFile(file)) {
             setAiFile(file);
         } else {
             alert("Please upload a PDF or CSV file.");
@@ -214,10 +219,20 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 className={`border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center transition-all group ${isDragging ? 'border-indigo-600 bg-indigo-50 shadow-inner scale-[1.02]' : 'border-slate-200 bg-slate-50 hover:border-indigo-400'}`}
                             >
                                 <CloudArrowUpIcon className={`w-12 h-12 mb-2 transition-colors ${isDragging ? 'text-indigo-600' : 'text-slate-300 group-hover:text-indigo-400'}`} />
-                                <input type="file" onChange={e => setAiFile(e.target.files?.[0] || null)} className="hidden" id="ai-file" />
+                                <input 
+                                    type="file" 
+                                    onChange={e => {
+                                        const file = e.target.files?.[0] || null;
+                                        if (file && validateFile(file)) setAiFile(file);
+                                        else if (file) alert("Please select a PDF or CSV file.");
+                                    }} 
+                                    className="hidden" 
+                                    id="ai-file" 
+                                />
                                 <label htmlFor="ai-file" className="text-sm font-bold text-indigo-600 cursor-pointer hover:underline">
                                     {aiFile ? aiFile.name : (isDragging ? 'Release to Upload' : 'Drop file here or Select PDF/CSV')}
                                 </label>
+                                {aiFile && <button onClick={(e) => { e.preventDefault(); setAiFile(null); }} className="mt-2 text-[10px] font-bold text-red-500 hover:underline">Remove File</button>}
                             </div>
                             <textarea 
                                 value={aiPrompt} 
@@ -311,7 +326,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <div 
                                     key={r.id} 
                                     onClick={() => handleSelectRule(r.id)}
-                                    className={`p-2 px-3 rounded-lg cursor-pointer border transition-all flex flex-col gap-0.5 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-400 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}
+                                    className={`p-1.5 px-3 rounded-md cursor-pointer border transition-all flex flex-col gap-0.5 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-400 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}
                                 >
                                     <div className="flex justify-between items-center">
                                         <span className={`text-xs font-bold truncate ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-700'}`}>{r.name}</span>
