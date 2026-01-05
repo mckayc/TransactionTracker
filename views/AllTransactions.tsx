@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag, SavedReport } from '../types';
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
-import { AddIcon, DeleteIcon, CloseIcon, SearchCircleIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, DownloadIcon, SparklesIcon, CheckCircleIcon } from '../components/Icons';
+import { AddIcon, DeleteIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, DownloadIcon, SparklesIcon, CheckCircleIcon } from '../components/Icons';
 import { api } from '../services/apiService';
 import { generateUUID } from '../utils';
 
@@ -66,15 +66,12 @@ const AllTransactions: React.FC<{
         <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-slate-700">Transactions</h2>
             <div className="relative group min-w-[280px]">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <SearchCircleIcon className="w-5 h-5 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
-                </div>
                 <input 
                     type="text" 
                     placeholder="Search by description, notes..."
                     value={searchTerm}
                     onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
-                    className="block w-full pl-10 pr-4 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 border-slate-200 bg-slate-50/50 group-hover:bg-white transition-all outline-none font-medium"
+                    className="block w-full px-4 py-2 border rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 border-slate-200 bg-slate-50/50 group-hover:bg-white transition-all outline-none font-medium"
                 />
             </div>
         </div>

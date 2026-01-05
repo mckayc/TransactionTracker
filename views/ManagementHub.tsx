@@ -161,7 +161,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
         { id: 'categories', label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
         { id: 'tags', label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
-        { id: 'payees', label: 'Sources', icon: <UsersIcon className="w-4 h-4" /> },
+        { id: 'payees', label: 'Payees', icon: <UsersIcon className="w-4 h-4" /> },
         { id: 'users', label: 'Users', icon: <UserGroupIcon className="w-4 h-4" /> },
         { id: 'transactionTypes', label: 'Tx Types', icon: <ChecklistIcon className="w-4 h-4" /> },
         { id: 'accountTypes', label: 'Acct Types', icon: <ShieldCheckIcon className="w-4 h-4" /> },
@@ -311,7 +311,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                     {activeTab === 'payees' && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Parent Source</label>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Parent Hierarchy</label>
                                                 <select value={parentId} onChange={e => setParentId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white">
                                                     <option value="">-- No Parent --</option>
                                                     {payees.filter(p => !p.parentId && p.id !== selectedId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

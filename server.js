@@ -98,7 +98,7 @@ const initDb = () => {
 
         migrateTable('transaction_types', [{ name: 'balance_effect', type: 'TEXT' }]);
 
-        // Seeder
+        // Seeder: Transaction Types
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
         if (typeCount === 0) {
             const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
@@ -109,6 +109,12 @@ const initDb = () => {
                 insertType.run('type_tax', 'Tax Payment', 'tax');
                 insertType.run('type_investment', 'Investment', 'investment');
             })();
+        }
+
+        // Seeder: Default User
+        const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
+        if (userCount === 0) {
+            db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
         }
 
         console.log("[DB] Engine ready.");
