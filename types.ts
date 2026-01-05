@@ -390,8 +390,7 @@ export interface ContentLink {
     manuallyLinked: boolean;
 }
 
-export type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';
-
+// Added AuditFinding interface to resolve missing exported member error
 export interface AuditFinding {
     id: string;
     title: string;
@@ -402,3 +401,5 @@ export interface AuditFinding {
         typeId?: string;
     };
 }
+
+export type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';

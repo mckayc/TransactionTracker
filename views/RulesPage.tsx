@@ -417,23 +417,22 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label>
-                                            {/* Fix: use spread to avoid mutating readonly prop array and fix possible 'String' non-callable error */}
+                                            {/* Fix: use explicit sorting comparison to avoid potential 'String' call signature issues in some environments */}
                                             <select value={setCategoryId} onChange={e => setSetCategoryId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
-                                                {[...categories].sort((a,b) => a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                {[...categories].sort((a,b) => a.name > b.name ? 1 : -1).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Payee</label>
-                                            {/* Fix: use spread to avoid mutating readonly prop array and fix possible 'String' non-callable error */}
+                                            {/* Fix: use explicit sorting comparison to avoid potential 'String' call signature issues in some environments */}
                                             <select value={setPayeeId} onChange={e => setSetPayeeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
-                                                {[...payees].sort((a,b) => a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                {[...payees].sort((a,b) => a.name > b.name ? 1 : -1).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                             </select>
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Associate Merchant</label>
-                                            {/* Fix: use spread before sorting props */}
                                             <select value={setMerchantId} onChange={e => setSetMerchantId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {[...merchants].sort((a,b) => a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -441,7 +440,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label>
-                                            {/* Fix: use spread before sorting props */}
                                             <select value={setLocationId} onChange={e => setLocationId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {[...locations].sort((a,b) => a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
@@ -449,7 +447,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label>
-                                            {/* Fix: use spread before sorting props */}
                                             <select value={setUserId} onChange={e => setUserId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {[...users].sort((a,b) => a.name.localeCompare(b.name)).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
