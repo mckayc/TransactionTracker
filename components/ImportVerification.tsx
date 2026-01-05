@@ -45,7 +45,7 @@ const MetadataDrawer: React.FC<{ tx: VerifiableTransaction | null; onClose: () =
                         <h3 className="text-xl font-bold text-white">Line Inspector</h3>
                         <p className="text-xs text-slate-400 mt-1 uppercase font-bold">Raw Source Data</p>
                     </div>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full"><CloseIcon className="w-6 h-6" /></button>
+                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
                     {Object.entries(tx.metadata).map(([k, v]) => (
@@ -105,7 +105,7 @@ const RuleInspectorDrawer: React.FC<{
                                         )}
                                     </div>
                                     <p className="text-sm text-slate-200">
-                                        <span className="text-indigo-400 font-bold">{c.operator.replace('_', ' ')}</span> "{c.value}"
+                                        <span className="text-indigo-400 font-bold">{c.operator?.replace('_', ' ') || ''}</span> "{c.value}"
                                     </p>
                                 </div>
                             ))}
