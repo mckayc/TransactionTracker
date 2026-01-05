@@ -1,18 +1,244 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category } from '../types';
-import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon } from '../components/Icons';
+import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote } from '../types';
+// Fixed error: Added CloseIcon to the import list from ../components/Icons
+import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon } from '../components/Icons';
 import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
 interface BusinessHubProps {
     profile: BusinessProfile;
     onUpdateProfile: (profile: BusinessProfile) => void;
+    notes: BusinessNote[];
+    onUpdateNotes: (notes: BusinessNote[]) => void;
     chatSessions: ChatSession[];
     onUpdateChatSessions: (sessions: ChatSession[]) => void;
     transactions: Transaction[];
     accounts: Account[];
     categories: Category[];
 }
+
+const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessNote[]) => void }> = ({ notes, onUpdateNotes }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [filterType, setFilterType] = useState<string>('all');
+    const [isCreating, setIsCreating] = useState(false);
+
+    // Form state
+    const [title, setTitle] = useState('');
+    const [content, setContent] = useState('');
+    const [type, setType] = useState<BusinessNote['type']>('note');
+    const [priority, setPriority] = useState<BusinessNote['priority']>('medium');
+    const [editingId, setEditingId] = useState<string | null>(null);
+
+    const filteredNotes = notes.filter(n => {
+        const matchesSearch = n.title.toLowerCase().includes(searchTerm.toLowerCase()) || n.content.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesType = filterType === 'all' ? true : n.type === filterType;
+        return matchesSearch && matchesType;
+    }).sort((a, b) => {
+        // Uncompleted first, then by date
+        if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+
+    const handleSave = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!title.trim()) return;
+
+        const now = new Date().toISOString();
+        if (editingId) {
+            onUpdateNotes(notes.map(n => n.id === editingId ? { 
+                ...n, title, content, type, priority, updatedAt: now 
+            } : n));
+        } else {
+            const newNote: BusinessNote = {
+                id: generateUUID(),
+                title, content, type, priority,
+                isCompleted: false,
+                createdAt: now,
+                updatedAt: now
+            };
+            onUpdateNotes([newNote, ...notes]);
+        }
+        resetForm();
+    };
+
+    const resetForm = () => {
+        setTitle(''); setContent(''); setType('note'); setPriority('medium');
+        setEditingId(null); setIsCreating(false);
+    };
+
+    const startEdit = (n: BusinessNote) => {
+        setEditingId(n.id); setTitle(n.title); setContent(n.content);
+        setType(n.type); setPriority(n.priority); setIsCreating(true);
+    };
+
+    const toggleComplete = (id: string) => {
+        const now = new Date().toISOString();
+        onUpdateNotes(notes.map(n => n.id === id ? { 
+            ...n, isCompleted: !n.isCompleted, resolvedAt: !n.isCompleted ? now : undefined, updatedAt: now 
+        } : n));
+    };
+
+    const deleteNote = (id: string) => {
+        if (confirm("Permanently delete this item?")) {
+            onUpdateNotes(notes.filter(n => n.id !== id));
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-4 flex-1 w-full">
+                    <div className="relative flex-1">
+                        <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                        <input 
+                            type="text" 
+                            placeholder="Search journal..." 
+                            value={searchTerm} 
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="pl-10 w-full"
+                        />
+                    </div>
+                    <select 
+                        value={filterType} 
+                        onChange={e => setFilterType(e.target.value)}
+                        className="bg-white border rounded-lg p-2 text-sm font-bold text-slate-700 min-w-[140px]"
+                    >
+                        <option value="all">All Items</option>
+                        <option value="note">Notes Only</option>
+                        <option value="bug">Bugs Only</option>
+                        <option value="idea">Ideas Only</option>
+                        <option value="task">Tasks Only</option>
+                    </select>
+                </div>
+                <button 
+                    onClick={() => setIsCreating(true)}
+                    className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-bold shadow-lg shadow-indigo-100 transition-all"
+                >
+                    <AddIcon className="w-5 h-5" /> New Entry
+                </button>
+            </div>
+
+            {isCreating && (
+                <div className="bg-white p-6 rounded-2xl border-2 border-indigo-100 shadow-xl animate-slide-up">
+                    <form onSubmit={handleSave} className="space-y-4">
+                        <div className="flex justify-between items-center mb-2">
+                            <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm">{editingId ? 'Edit Entry' : 'New Journal Entry'}</h3>
+                            <button type="button" onClick={resetForm} className="p-1 rounded-full hover:bg-slate-100"><CloseIcon className="w-5 h-5 text-slate-400" /></button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="md:col-span-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Title</label>
+                                <input 
+                                    type="text" 
+                                    value={title} 
+                                    onChange={e => setTitle(e.target.value)} 
+                                    placeholder="e.g. Bug: Transactions not sorting correctly" 
+                                    className="w-full font-bold"
+                                    required 
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Type</label>
+                                <select value={type} onChange={e => setType(e.target.value as any)}>
+                                    <option value="note">General Note</option>
+                                    <option value="bug">Bug Report</option>
+                                    <option value="idea">Future Idea</option>
+                                    <option value="task">Business Task</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Priority</label>
+                                <select value={priority} onChange={e => setPriority(e.target.value as any)}>
+                                    <option value="low">Low</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="high">High</option>
+                                </select>
+                            </div>
+                            <div className="md:col-span-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Content / Details</label>
+                                <textarea 
+                                    value={content} 
+                                    onChange={e => setContent(e.target.value)} 
+                                    rows={4} 
+                                    placeholder="Describe the bug or write your note here..."
+                                />
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-3 pt-2">
+                            <button type="button" onClick={resetForm} className="px-4 py-2 text-sm font-bold text-slate-500">Cancel</button>
+                            <button type="submit" className="px-8 py-2 bg-indigo-600 text-white rounded-xl font-black shadow-lg">Save Entry</button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredNotes.length === 0 ? (
+                    <div className="col-span-full py-20 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
+                        <NotesIcon className="w-16 h-16 text-slate-200 mx-auto mb-4" />
+                        <p className="text-slate-400 font-bold uppercase tracking-widest text-sm">Empty Journal</p>
+                        <p className="text-xs text-slate-400 mt-1">Start logging your notes, bugs, and ideas.</p>
+                    </div>
+                ) : (
+                    filteredNotes.map(n => (
+                        <div 
+                            key={n.id} 
+                            className={`p-6 rounded-2xl border-2 transition-all group flex flex-col h-full bg-white ${
+                                n.isCompleted ? 'opacity-60 border-slate-100 grayscale' : 
+                                n.priority === 'high' ? 'border-red-100 shadow-sm shadow-red-50' : 'border-slate-100 hover:border-indigo-200 hover:shadow-md'
+                            }`}
+                        >
+                            <div className="flex justify-between items-start mb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${
+                                        n.type === 'bug' ? 'bg-red-50 text-red-600' : 
+                                        n.type === 'idea' ? 'bg-purple-50 text-purple-600' : 
+                                        n.type === 'task' ? 'bg-blue-50 text-blue-600' : 
+                                        'bg-slate-50 text-slate-600'
+                                    }`}>
+                                        {n.type === 'bug' ? <BugIcon className="w-5 h-5" /> : <NotesIcon className="w-5 h-5" />}
+                                    </div>
+                                    <div>
+                                        <h4 className={`font-bold text-slate-800 leading-tight ${n.isCompleted ? 'line-through' : ''}`}>{n.title}</h4>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-[9px] font-black uppercase tracking-tighter text-slate-400">{n.type}</span>
+                                            <span className="text-slate-300">•</span>
+                                            <span className={`text-[9px] font-black uppercase tracking-tighter ${
+                                                n.priority === 'high' ? 'text-red-500' : 
+                                                n.priority === 'medium' ? 'text-amber-500' : 
+                                                'text-slate-400'
+                                            }`}>{n.priority} priority</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => startEdit(n)} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"><EditIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => deleteNote(n.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"><DeleteIcon className="w-4 h-4"/></button>
+                                </div>
+                            </div>
+                            
+                            <p className={`text-sm text-slate-600 flex-grow whitespace-pre-wrap mb-6 line-clamp-4 ${n.isCompleted ? 'line-through opacity-50' : ''}`}>{n.content}</p>
+                            
+                            <div className="mt-auto pt-4 border-t border-slate-50 flex justify-between items-center">
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                    {n.isCompleted ? `Resolved: ${new Date(n.resolvedAt!).toLocaleDateString()}` : `Created: ${new Date(n.createdAt).toLocaleDateString()}`}
+                                </div>
+                                <button 
+                                    onClick={() => toggleComplete(n.id)}
+                                    className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                                        n.isCompleted ? 'bg-slate-100 text-slate-500' : 'bg-green-50 text-green-700 hover:bg-green-100'
+                                    }`}
+                                >
+                                    {n.isCompleted ? 'Reopen' : n.type === 'bug' ? 'Mark Resolved' : 'Done'}
+                                </button>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    );
+};
 
 const SetupGuideTab: React.FC<{ profile: BusinessProfile; onUpdateProfile: (p: BusinessProfile) => void }> = ({ profile, onUpdateProfile }) => {
     const updateInfo = (key: keyof BusinessInfo, value: any) => {
@@ -289,7 +515,6 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
         // Trigger AI response acknowledging receipt
         setIsLoading(true);
         try {
-             // We send a hidden system prompt or just let the AI respond to the data dump
              const stream = await streamTaxAdvice(updatedSession.messages, profile);
              let fullContent = '';
              const aiMsgId = generateUUID();
@@ -320,14 +545,12 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
             timestamp: new Date().toISOString()
         };
 
-        // Optimistic update
         const updatedSession = { 
             ...activeSession, 
             messages: [...activeSession.messages, userMsg],
             updatedAt: new Date().toISOString()
         };
         
-        // Update state immediately
         const otherSessions = sessions.filter(s => s.id !== activeSession.id);
         onUpdateSessions([...otherSessions, updatedSession]);
         
@@ -335,7 +558,6 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
         setIsLoading(true);
 
         try {
-            // Prepare streaming response placeholder
             const aiMsgId = generateUUID();
             const aiMsgPlaceholder: ChatMessage = {
                 id: aiMsgId,
@@ -344,33 +566,26 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
                 timestamp: new Date().toISOString()
             };
             
-            // Add placeholder
             const sessionWithAi = {
                 ...updatedSession,
                 messages: [...updatedSession.messages, aiMsgPlaceholder]
             };
             onUpdateSessions([...otherSessions, sessionWithAi]);
 
-            // Call API with history context
             const stream = await streamTaxAdvice(updatedSession.messages, profile);
-            
             let fullContent = '';
             
             for await (const chunk of stream) {
                 const chunkText = chunk.text;
                 fullContent += chunkText;
-                
-                // Update specific message in state
-                const currentSession = sessionWithAi; // In a real app we'd use functional update, here simplify
+                const currentSession = sessionWithAi;
                 const msgs = [...currentSession.messages];
                 msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullContent };
-                
                 onUpdateSessions([...otherSessions, { ...currentSession, messages: msgs }]);
             }
 
         } catch (error) {
             console.error("Chat error", error);
-            // Append error message
              const errorMsg: ChatMessage = {
                 id: generateUUID(),
                 role: 'ai',
@@ -421,9 +636,7 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start h-[700px]">
-            {/* Left Col: Chat Area */}
             <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden">
-                {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b bg-slate-50">
                     <div className="flex items-center gap-3">
                         <div className="bg-indigo-100 p-2 rounded-lg">
@@ -447,7 +660,6 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
                                 <CloudArrowUpIcon className="w-4 h-4" /> Sync Data
                             </button>
                         )}
-                        {/* Only show 'New Chat' button if we have history but no active session, or to switch */}
                         <button 
                             onClick={handleCreateSession}
                             className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 shadow-sm"
@@ -457,9 +669,7 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
                     </div>
                 </div>
 
-                {/* Main Content Area */}
                 <div className="flex-1 flex overflow-hidden">
-                    {/* Sidebar List (Visible on desktop) */}
                     <div className="w-64 border-r border-slate-100 bg-slate-50 flex-col overflow-y-auto hidden md:flex">
                         <div className="p-3">
                             <p className="text-xs font-bold text-slate-400 uppercase mb-2 px-2">History</p>
@@ -477,20 +687,8 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
                                             <span className="truncate">{session.title}</span>
                                         </div>
                                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleRenameSession(session.id); }}
-                                                className="p-1 text-slate-400 hover:text-indigo-600"
-                                                title="Rename"
-                                            >
-                                                <EditIcon className="w-3 h-3" />
-                                            </button>
-                                            <button 
-                                                onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }}
-                                                className="p-1 text-slate-400 hover:text-red-500"
-                                                title="Delete"
-                                            >
-                                                <DeleteIcon className="w-3 h-3" />
-                                            </button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleRenameSession(session.id); }} className="p-1 text-slate-400 hover:text-indigo-600"><EditIcon className="w-3 h-3" /></button>
+                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }} className="p-1 text-slate-400 hover:text-red-500"><DeleteIcon className="w-3 h-3" /></button>
                                         </div>
                                     </div>
                                 ))
@@ -498,18 +696,13 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
                         </div>
                     </div>
 
-                    {/* Chat Messages Area */}
                     <div className="flex-1 flex flex-col bg-white relative">
                         {!activeSession ? (
                             <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
                                 <SparklesIcon className="w-12 h-12 text-indigo-200 mb-4" />
                                 <h3 className="text-lg font-bold text-slate-700">Expert Tax Guidance</h3>
-                                <p className="text-slate-500 max-w-sm mt-2 mb-6">
-                                    I can help you understand tax obligations for your {profile.info.businessType}, find deductions, and plan for quarterly payments.
-                                </p>
-                                <button onClick={handleCreateSession} className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg transition-transform hover:-translate-y-1">
-                                    Start Consultation
-                                </button>
+                                <p className="text-slate-500 max-w-sm mt-2 mb-6">Ask about tax obligations, deductions, or quarterly plans.</p>
+                                <button onClick={handleCreateSession} className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg transition-transform hover:-translate-y-1">Start Consultation</button>
                             </div>
                         ) : (
                             <>
@@ -518,45 +711,23 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
                                         <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                             <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
                                                 <div className="prose prose-sm prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-                                                <p className={`text-[10px] mt-1 text-right ${msg.role === 'user' ? 'text-indigo-200' : 'text-slate-400'}`}>
-                                                    {new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                                </p>
+                                                <p className={`text-[10px] mt-1 text-right ${msg.role === 'user' ? 'text-indigo-200' : 'text-slate-400'}`}>{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                                             </div>
                                         </div>
                                     ))}
                                     {isLoading && (
                                         <div className="flex justify-start">
                                             <div className="bg-slate-100 p-3 rounded-2xl rounded-bl-none">
-                                                <div className="flex gap-1">
-                                                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span>
-                                                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-100"></span>
-                                                    <span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-200"></span>
-                                                </div>
+                                                <div className="flex gap-1"><span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span><span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-100"></span><span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-200"></span></div>
                                             </div>
                                         </div>
                                     )}
                                     <div ref={messagesEndRef} />
                                 </div>
-
-                                {/* Input Area */}
                                 <div className="p-4 border-t border-slate-100 bg-white">
                                     <div className="flex gap-2">
-                                        <input 
-                                            type="text" 
-                                            value={input} 
-                                            onChange={(e) => setInput(e.target.value)} 
-                                            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                            placeholder="Ask a follow-up question..." 
-                                            className="flex-grow p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-slate-50 focus:bg-white transition-colors"
-                                            disabled={isLoading}
-                                        />
-                                        <button 
-                                            onClick={handleSendMessage} 
-                                            disabled={isLoading || !input.trim()}
-                                            className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 transition-colors shadow-sm"
-                                        >
-                                            <SendIcon className="w-5 h-5" />
-                                        </button>
+                                        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask a follow-up question..." className="flex-grow p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-slate-50 focus:bg-white transition-colors" disabled={isLoading} />
+                                        <button onClick={handleSendMessage} disabled={isLoading || !input.trim()} className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 shadow-sm"><SendIcon className="w-5 h-5" /></button>
                                     </div>
                                 </div>
                             </>
@@ -565,50 +736,25 @@ ${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
                 </div>
             </div>
 
-            {/* Sidebar Section */}
             <div className="space-y-6 lg:h-full lg:overflow-y-auto">
-                {/* Deductions Scout */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <div className="flex items-center gap-2 mb-4">
-                        <SparklesIcon className="w-5 h-5 text-yellow-500" />
-                        <h3 className="font-bold text-slate-800">Deduction Scout</h3>
-                    </div>
-                    <p className="text-sm text-slate-600 mb-4">
-                        Discover tax write-offs tailored to the <strong>{profile.info.industry || 'General'}</strong> industry.
-                    </p>
-                    
+                    <div className="flex items-center gap-2 mb-4"><SparklesIcon className="w-5 h-5 text-yellow-500" /><h3 className="font-bold text-slate-800">Deduction Scout</h3></div>
+                    <p className="text-sm text-slate-600 mb-4"> tailored to <strong>{profile.info.industry || 'General'}</strong>.</p>
                     {deductions.length > 0 ? (
                          <ul className="space-y-2 mb-4 max-h-60 overflow-y-auto custom-scrollbar">
                             {deductions.map((d, i) => (
-                                <li key={i} className="flex items-start gap-2 text-sm text-slate-700 bg-green-50 p-2 rounded-md border border-green-100">
-                                    <CheckCircleIcon className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
-                                    <span>{d}</span>
-                                </li>
+                                <li key={i} className="flex items-start gap-2 text-sm text-slate-700 bg-green-50 p-2 rounded-md border border-green-100"><CheckCircleIcon className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" /><span>{d}</span></li>
                             ))}
                         </ul>
                     ) : (
-                        <button 
-                            onClick={generateDeductions} 
-                            disabled={loadingDeductions}
-                            className="w-full py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 transition-colors mb-4 text-sm"
-                        >
-                            {loadingDeductions ? 'Scouting...' : 'Find Deductions'}
-                        </button>
+                        <button onClick={generateDeductions} disabled={loadingDeductions} className="w-full py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 mb-4 text-sm">{loadingDeductions ? 'Scouting...' : 'Find Deductions'}</button>
                     )}
                 </div>
-
-                {/* Compliance Checklist */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                     <div className="flex items-center gap-2 mb-4">
-                        <CheckCircleIcon className="w-5 h-5 text-blue-500" />
-                        <h3 className="font-bold text-slate-800">Compliance Checklist</h3>
-                    </div>
+                     <div className="flex items-center gap-2 mb-4"><CheckCircleIcon className="w-5 h-5 text-blue-500" /><h3 className="font-bold text-slate-800">Compliance Checklist</h3></div>
                     <ul className="space-y-3">
                         {complianceItems.map((item, i) => (
-                            <li key={i} className="text-sm">
-                                <div className="font-medium text-slate-800">{item.task}</div>
-                                <div className="text-xs text-slate-500">{item.note}</div>
-                            </li>
+                            <li key={i} className="text-sm"><div className="font-medium text-slate-800">{item.task}</div><div className="text-xs text-slate-500">{item.note}</div></li>
                         ))}
                     </ul>
                 </div>
@@ -628,9 +774,7 @@ const CalendarTab: React.FC<{ profile: BusinessProfile }> = ({ profile }) => {
         { date: 'Sep 15', title: 'Q3 Estimated Tax', description: 'Payment for income earned Jun 1 - Aug 31.' },
         { date: 'Jan 15', title: 'Q4 Estimated Tax', description: 'Payment for income earned Sep 1 - Dec 31.' },
     ];
-
     const relevantDeadlines = deadlines.filter(d => !d.type || (entityType && d.type.includes(entityType)));
-
     return (
         <div className="space-y-6">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
@@ -638,74 +782,41 @@ const CalendarTab: React.FC<{ profile: BusinessProfile }> = ({ profile }) => {
                 <div className="space-y-4">
                     {relevantDeadlines.map((event, index) => (
                         <div key={index} className="flex items-start gap-4 p-3 hover:bg-slate-50 rounded-lg transition-colors">
-                            <div className="flex-shrink-0 w-16 text-center">
-                                <span className="block text-sm font-bold text-indigo-600">{event.date}</span>
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-800">{event.title}</h3>
-                                <p className="text-sm text-slate-600">{event.description}</p>
-                            </div>
+                            <div className="flex-shrink-0 w-16 text-center"><span className="block text-sm font-bold text-indigo-600">{event.date}</span></div>
+                            <div><h3 className="text-sm font-bold text-slate-800">{event.title}</h3><p className="text-sm text-slate-600">{event.description}</p></div>
                         </div>
                     ))}
                 </div>
             </div>
              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex items-start gap-3">
                 <SparklesIcon className="w-6 h-6 text-indigo-500 flex-shrink-0 mt-1" />
-                <div>
-                    <h3 className="font-bold text-sm text-slate-800">Estimated Taxes?</h3>
-                    <p className="text-sm text-slate-600 mt-1">
-                        If you expect to owe more than $1,000 in taxes when you file your return, the IRS requires you to make estimated tax payments quarterly. Failure to do so can result in penalties.
-                    </p>
-                </div>
+                <div><h3 className="font-bold text-sm text-slate-800">Estimated Taxes?</h3><p className="text-sm text-slate-600 mt-1">IRS requires quarterly payments if you expect to owe >$1,000.</p></div>
             </div>
         </div>
     );
 }
 
-
-const BusinessHub: React.FC<BusinessHubProps & { transactions: Transaction[], accounts: Account[], categories: Category[] }> = ({ profile, onUpdateProfile, chatSessions, onUpdateChatSessions, transactions, accounts, categories }) => {
-    const [activeTab, setActiveTab] = useState<'guide' | 'calendar' | 'advisor'>('guide');
+const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, notes, onUpdateNotes, chatSessions, onUpdateChatSessions, transactions, accounts, categories }) => {
+    const [activeTab, setActiveTab] = useState<'guide' | 'calendar' | 'advisor' | 'journal'>('guide');
 
     return (
         <div className="max-w-6xl mx-auto space-y-8">
             <div>
                 <h1 className="text-3xl font-bold text-slate-800">Business Hub</h1>
-                <p className="text-slate-500 mt-1">Manage your entity details, tax strategy, and compliance.</p>
+                <p className="text-slate-500 mt-1">Manage your entity details, tax strategy, compliance, and developer logs.</p>
             </div>
 
             <div className="flex border-b border-slate-200 overflow-x-auto">
-                <button 
-                    onClick={() => setActiveTab('guide')}
-                    className={`px-6 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'guide' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                >
-                    Setup Guide
-                </button>
-                <button 
-                    onClick={() => setActiveTab('advisor')}
-                    className={`px-6 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'advisor' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                >
-                    Tax Advisor
-                </button>
-                <button 
-                    onClick={() => setActiveTab('calendar')}
-                    className={`px-6 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'calendar' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
-                >
-                    Tax Calendar
-                </button>
+                <button onClick={() => setActiveTab('guide')} className={`px-6 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'guide' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Setup Guide</button>
+                <button onClick={() => setActiveTab('advisor')} className={`px-6 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'advisor' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Tax Advisor</button>
+                <button onClick={() => setActiveTab('journal')} className={`px-6 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'journal' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Journal & Bugs</button>
+                <button onClick={() => setActiveTab('calendar')} className={`px-6 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === 'calendar' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>Tax Calendar</button>
             </div>
 
             <div className="min-h-[400px]">
                 {activeTab === 'guide' && <SetupGuideTab profile={profile} onUpdateProfile={onUpdateProfile} />}
-                {activeTab === 'advisor' && (
-                    <TaxAdvisorTab 
-                        profile={profile} 
-                        sessions={chatSessions} 
-                        onUpdateSessions={onUpdateChatSessions} 
-                        transactions={transactions}
-                        accounts={accounts}
-                        categories={categories}
-                    />
-                )}
+                {activeTab === 'advisor' && <TaxAdvisorTab profile={profile} sessions={chatSessions} onUpdateSessions={onUpdateChatSessions} transactions={transactions} accounts={accounts} categories={categories} />}
+                {activeTab === 'journal' && <JournalTab notes={notes} onUpdateNotes={onUpdateNotes} />}
                 {activeTab === 'calendar' && <CalendarTab profile={profile} />}
             </div>
         </div>

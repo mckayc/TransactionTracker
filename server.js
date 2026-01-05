@@ -261,19 +261,39 @@ app.post('/api/data/:key', (req, res) => {
     if (key === 'categories' && Array.isArray(value)) {
         db.prepare("DELETE FROM categories").run();
         const stmt = db.prepare("INSERT INTO categories (id, name, parent_id) VALUES (?, ?, ?)");
-        value.forEach(c => stmt.run(c.id, c.name, c.parentId || null));
+        db.transaction(() => {
+            value.forEach(c => stmt.run(c.id, c.name, c.parentId || null));
+        })();
     } else if (key === 'accounts' && Array.isArray(value)) {
         db.prepare("DELETE FROM accounts").run();
         const stmt = db.prepare("INSERT INTO accounts (id, name, identifier, account_type_id) VALUES (?, ?, ?, ?)");
-        value.forEach(a => stmt.run(a.id, a.name, a.identifier, a.accountTypeId));
+        db.transaction(() => {
+            value.forEach(a => stmt.run(a.id, a.name, a.identifier, a.accountTypeId));
+        })();
     } else if (key === 'users' && Array.isArray(value)) {
         db.prepare("DELETE FROM users").run();
         const stmt = db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)");
-        value.forEach(u => stmt.run(u.id, u.name, u.isDefault ? 1 : 0));
+        db.transaction(() => {
+            value.forEach(u => stmt.run(u.id, u.name, u.isDefault ? 1 : 0));
+        })();
     } else if (key === 'transactionTypes' && Array.isArray(value)) {
         db.prepare("DELETE FROM transaction_types").run();
         const stmt = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
-        value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect));
+        db.transaction(() => {
+            value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect));
+        })();
+    } else if (key === 'payees' && Array.isArray(value)) {
+        db.prepare("DELETE FROM payees").run();
+        const stmt = db.prepare("INSERT INTO payees (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
+        db.transaction(() => {
+            value.forEach(p => stmt.run(p.id, p.name, p.parentId || null, p.notes || null, p.userId || null));
+        })();
+    } else if (key === 'tags' && Array.isArray(value)) {
+        db.prepare("DELETE FROM tags").run();
+        const stmt = db.prepare("INSERT INTO tags (id, name, color) VALUES (?, ?, ?)");
+        db.transaction(() => {
+            value.forEach(t => stmt.run(t.id, t.name, t.color));
+        })();
     } else {
         db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
     }
@@ -323,7 +343,8 @@ app.post('/api/admin/reset', async (req, res) => {
                 'tasks': 'tasks',
                 'taskCompletions': 'taskCompletions',
                 'savedReports': 'savedReports',
-                'contentLinks': 'contentLinks'
+                'contentLinks': 'contentLinks',
+                'businessNotes': 'businessNotes'
             };
 
             entities.forEach(entity => {

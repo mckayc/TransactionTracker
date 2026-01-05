@@ -1,8 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo } from '../types';
-/* Fixed: Added missing CheckBadgeIcon import */
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon } from '../components/Icons';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote } from '../types';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { saveFile } from '../services/storageService';
@@ -26,6 +25,7 @@ interface SettingsPageProps {
     taskCompletions: TaskCompletions;
     users: User[];
     businessProfile: BusinessProfile;
+    businessNotes: BusinessNote[];
     documentFolders: DocumentFolder[];
     businessDocuments: BusinessDocument[];
     onAddDocument: (doc: BusinessDocument) => void;
@@ -51,6 +51,7 @@ const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warn
     templates: { label: 'Checklist Templates', icon: <TasksIcon className="w-4 h-4" /> },
     tasks: { label: 'Task Instances', icon: <ChecklistIcon className="w-4 h-4" /> },
     businessProfile: { label: 'Business Profile', icon: <DocumentIcon className="w-4 h-4" /> },
+    businessNotes: { label: 'Journal & Bugs', icon: <BugIcon className="w-4 h-4" /> },
     savedReports: { label: 'Saved Reports', icon: <BarChartIcon className="w-4 h-4" /> },
     amazonMetrics: { label: 'Amazon Affiliate Data', icon: <BoxIcon className="w-4 h-4" /> },
     youtubeMetrics: { label: 'YouTube Analytics', icon: <YoutubeIcon className="w-4 h-4" /> },
@@ -59,7 +60,7 @@ const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warn
     files_meta: { 
         label: 'Document Metadata', 
         icon: <DocumentIcon className="w-4 h-4" />,
-        warning: 'This purges database records, not the actual files. Manually clear /media/files volume if needed.'
+        warning: 'This purges database records, not the actual files.'
     },
     systemSettings: { label: 'App Configuration', icon: <WrenchIcon className="w-4 h-4" /> },
 };
@@ -85,7 +86,7 @@ const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation:
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ 
     transactions, transactionTypes, onAddTransactionType, onRemoveTransactionType, systemSettings, onUpdateSystemSettings,
-    accounts, categories, tags, payees, rules, templates, scheduledEvents, tasks, taskCompletions, users, businessProfile, documentFolders, businessDocuments, onAddDocument, onCreateFolder,
+    accounts, categories, tags, payees, rules, templates, scheduledEvents, tasks, taskCompletions, users, businessProfile, businessNotes, documentFolders, businessDocuments, onAddDocument, onCreateFolder,
     savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks
 }) => {
     const importFileRef = useRef<HTMLInputElement>(null);
@@ -144,12 +145,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         
         setIsPurging(true);
         try {
-            /* Fixed: Cast Array.from result to string[] to resolve 'unknown[]' assignability error on line 149 */
             const targets = Array.from(purgeSelection) as string[];
             const isFullReset = targets.length === Object.keys(ENTITY_LABELS).length;
-            
             const success = await api.resetDatabase(isFullReset ? ['all'] : targets);
-            
             if (success) {
                 window.location.reload();
             } else {
@@ -170,14 +168,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleExportData = () => {
         if (exportSelection.size === 0) { alert("Please select items to back up."); return; }
-        
         const data: any = {
             exportDate: new Date().toISOString(),
             version: '0.0.53',
             transactionTypes,
             users
         };
-
         if (exportSelection.has('transactions')) data.transactions = transactions;
         if (exportSelection.has('accounts')) data.accounts = accounts;
         if (exportSelection.has('categories')) data.categories = categories;
@@ -185,13 +181,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         if (exportSelection.has('payees')) data.payees = payees;
         if (exportSelection.has('reconciliationRules')) data.reconciliationRules = rules;
         if (exportSelection.has('businessProfile')) data.businessProfile = businessProfile;
+        if (exportSelection.has('businessNotes')) data.businessNotes = businessNotes;
         if (exportSelection.has('financialGoals')) data.financialGoals = financialGoals;
         if (exportSelection.has('contentLinks')) data.contentLinks = contentLinks;
         if (exportSelection.has('systemSettings')) data.systemSettings = systemSettings;
-        if (exportSelection.has('files_meta')) {
-            data.businessDocuments = businessDocuments;
-            data.documentFolders = documentFolders;
-        }
+        if (exportSelection.has('files_meta')) { data.businessDocuments = businessDocuments; data.documentFolders = documentFolders; }
         if (exportSelection.has('templates')) { data.templates = templates; data.scheduledEvents = scheduledEvents; }
         if (exportSelection.has('tasks')) { data.tasks = tasks; data.taskCompletions = taskCompletions; }
         if (exportSelection.has('savedReports')) { data.savedReports = savedReports; data.savedDateRanges = savedDateRanges; }
@@ -230,7 +224,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         if (!confirm("This will merge/overwrite existing data. Proceed?")) return;
         try {
             const savePromises: Promise<any>[] = [];
-            /* Fixed: Explicitly typed Array.from results to prevent 'unknown' iteratees */
             for (const key of Array.from(restoreSelection) as string[]) {
                 if (key === 'templates') {
                     savePromises.push(api.save('templates', restoreData.templates));
@@ -256,17 +249,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <h1 className="text-3xl font-bold text-slate-800">Settings</h1>
                 <p className="text-slate-500 mt-1">Global app control and data maintenance.</p>
             </div>
-            
             <div className="space-y-6">
                 <div className="bg-indigo-900 text-white p-6 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center animate-pulse">
-                            <ShieldCheckIcon className="w-8 h-8 text-indigo-300" />
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold">System Integrity</h3>
-                            <p className="text-sm text-indigo-200">Local SQLite instance status: OK</p>
-                        </div>
+                        <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center animate-pulse"><ShieldCheckIcon className="w-8 h-8 text-indigo-300" /></div>
+                        <div><h3 className="text-lg font-bold">System Integrity</h3><p className="text-sm text-indigo-200">Local SQLite instance status: OK</p></div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
                         <div className="text-center"><p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Records</p><p className="text-2xl font-black">{formatNumber(dataHealthSummary.recordCount)}</p></div>
@@ -280,22 +267,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                         <div className={`p-6 rounded-xl border transition-all ${apiKeyActive ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
                             <div className="flex items-start gap-4">
-                                <div className={`p-3 rounded-full shadow-sm ${apiKeyActive ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}>
-                                    <RobotIcon className="w-8 h-8" />
-                                </div>
+                                <div className={`p-3 rounded-full shadow-sm ${apiKeyActive ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}><RobotIcon className="w-8 h-8" /></div>
                                 <div className="flex-grow">
                                     <h3 className={`text-lg font-bold ${apiKeyActive ? 'text-emerald-800' : 'text-amber-800'}`}>AI Status: {apiKeyActive ? 'Enabled' : 'Disabled'}</h3>
-                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Your Gemini 3 connection is healthy. All intelligence features are available." : "Configure API_KEY to enable automated categorization and pattern detection."}</p>
+                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Healthy Gemini 3 connection." : "Missing API_KEY."}</p>
                                 </div>
                             </div>
                         </div>
                         <div className="space-y-4">
                             <h3 className="font-bold text-slate-700 flex items-center gap-2"><SparklesIcon className="w-5 h-5 text-indigo-600" />Intelligence Features:</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {['Pattern Auditing', 'Tax Strategy', 'PDF Extraction', 'Cross-Platform ROI'].map((feature, i) => (
-                                    <div key={i} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700">{feature}</div>
-                                ))}
-                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{['Pattern Auditing', 'Tax Strategy', 'PDF Extraction', 'Cross-Platform ROI'].map((f, i) => (<div key={i} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700">{f}</div>))}</div>
                         </div>
                     </div>
                 </Section>
@@ -303,40 +284,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <Section title="Data Backups">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 space-y-4 flex flex-col h-full">
-                            <div className="flex-grow">
-                                <h3 className="font-bold text-slate-900 flex items-center gap-2"><CheckBadgeIcon className="w-5 h-5 text-green-600" />Backup Frequency</h3>
-                                <p className="text-sm text-slate-600 mt-1">Control automated state snapshots.</p>
-                            </div>
+                            <div className="flex-grow"><h3 className="font-bold text-slate-900 flex items-center gap-2"><CheckBadgeIcon className="w-5 h-5 text-green-600" />Backup Frequency</h3><p className="text-sm text-slate-600 mt-1">Control state snapshots.</p></div>
                             <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Frequency</label><select value={backupFreq} onChange={(e) => setBackupFreq(e.target.value as any)} className="w-full p-2 border rounded-md text-sm bg-white"><option value="never">Manual Only</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
-                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Retention</label><input type="number" min="1" max="50" value={retentionCount} onChange={(e) => setRetentionCount(parseInt(e.target.value) || 1)} className="w-full p-2 border rounded-md text-sm" /></div>
+                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Freq</label><select value={backupFreq} onChange={(e) => setBackupFreq(e.target.value as any)} className="w-full p-2 border rounded-md text-sm"><option value="never">Manual</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></div>
+                                <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Limit</label><input type="number" min="1" max="50" value={retentionCount} onChange={(e) => setRetentionCount(parseInt(e.target.value) || 1)} className="w-full p-2 border rounded-md text-sm" /></div>
                             </div>
-                            <button onClick={handleSaveBackupSettings} className="w-full py-2 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-md border border-indigo-200 hover:bg-indigo-100 transition-colors">Apply Config</button>
+                            <button onClick={handleSaveBackupSettings} className="w-full py-2 bg-indigo-50 text-indigo-700 font-bold text-xs rounded-md border border-indigo-200">Apply Config</button>
                         </div>
 
                         <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-indigo-100 shadow-sm space-y-6">
                             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                                <div><h3 className="font-bold text-indigo-900 flex items-center gap-2 text-lg"><CloudArrowUpIcon className="w-6 h-6 text-indigo-600" />JSON Snapshot</h3><p className="text-sm text-indigo-700">Download a portable version of your datasets.</p></div>
-                                <button onClick={handleExportData} className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg hover:bg-indigo-700 shadow-md">
-                                    <DownloadIcon className="w-4 h-4" /> Export Backup
-                                </button>
+                                <div><h3 className="font-bold text-indigo-900 flex items-center gap-2 text-lg"><CloudArrowUpIcon className="w-6 h-6 text-indigo-600" />Snapshot Tools</h3><p className="text-sm text-indigo-700">Portable backups.</p></div>
+                                <button onClick={handleExportData} className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg"><DownloadIcon className="w-4 h-4" /> Export</button>
                             </div>
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                     {Object.entries(ENTITY_LABELS).map(([key, { label }]) => (
-                                        <button key={key} onClick={() => toggleExportSelection(key)} className={`flex items-center gap-2 p-2 rounded-lg border text-[11px] font-bold transition-all ${exportSelection.has(key) ? 'bg-white border-indigo-400 text-indigo-700 ring-1 ring-indigo-400' : 'bg-slate-100 border-slate-200 text-slate-500 grayscale opacity-60'}`}>
-                                            {label}
-                                        </button>
+                                        <button key={key} onClick={() => toggleExportSelection(key)} className={`flex items-center gap-2 p-2 rounded-lg border text-[11px] font-bold transition-all ${exportSelection.has(key) ? 'bg-white border-indigo-400 text-indigo-700 ring-1 ring-indigo-400' : 'bg-slate-100 border-slate-200 text-slate-500 grayscale opacity-60'}`}>{label}</button>
                                     ))}
                                 </div>
                             </div>
                             <div className="pt-4 border-t border-indigo-50 flex items-center justify-between">
-                                <p className="text-sm text-slate-600">Import snapshot file:</p>
+                                <p className="text-sm text-slate-600">Restore file:</p>
                                 <div className="relative">
                                     <input type="file" accept=".json" ref={importFileRef} onChange={handleImportFileChange} className="hidden" />
-                                    <button onClick={() => importFileRef.current?.click()} className="flex items-center gap-2 px-6 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg hover:bg-slate-900 shadow-md">
-                                        <UploadIcon className="w-4 h-4" /> Restore File
-                                    </button>
+                                    <button onClick={() => importFileRef.current?.click()} className="flex items-center gap-2 px-6 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg"><UploadIcon className="w-4 h-4" /> Restore</button>
                                 </div>
                             </div>
                         </div>
@@ -349,73 +321,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                                 <div>
                                     <h3 className="text-lg font-bold text-red-800 flex items-center gap-2"><ExclamationTriangleIcon className="w-6 h-6" />Selective Data Wipe</h3>
-                                    <p className="text-sm text-red-700 mt-2">Choose specific datasets to purge while preserving the rest of your configuration.</p>
+                                    <p className="text-sm text-red-700 mt-2">Purge datasets preserving configuration.</p>
                                 </div>
-                                <button 
-                                    onClick={() => setPurgeStep('confirm')} 
-                                    disabled={purgeSelection.size === 0}
-                                    className="px-8 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 shadow-md transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-                                >
-                                    Purge Selection
-                                </button>
+                                <button onClick={() => setPurgeStep('confirm')} disabled={purgeSelection.size === 0} className="px-8 py-3 bg-red-600 text-white font-bold rounded-xl disabled:opacity-30">Purge Selection</button>
                             </div>
-
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
                                 {Object.entries(ENTITY_LABELS).map(([key, { label, icon, warning }]) => (
-                                    <button 
-                                        key={key} 
-                                        onClick={() => togglePurgeSelection(key)} 
-                                        className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all group relative ${purgeSelection.has(key) ? 'bg-red-100 border-red-500 shadow-inner' : 'bg-white border-slate-200 hover:border-red-300'}`}
-                                    >
-                                        <div className={`p-2 rounded-lg mb-2 ${purgeSelection.has(key) ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-500 group-hover:bg-red-50 group-hover:text-red-600'}`}>{icon}</div>
+                                    <button key={key} onClick={() => togglePurgeSelection(key)} className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all relative ${purgeSelection.has(key) ? 'bg-red-100 border-red-500' : 'bg-white border-slate-200'}`}>
+                                        <div className={`p-2 rounded-lg mb-2 ${purgeSelection.has(key) ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{icon}</div>
                                         <span className={`text-[10px] font-black uppercase tracking-tighter text-center ${purgeSelection.has(key) ? 'text-red-700' : 'text-slate-600'}`}>{label}</span>
-                                        {warning && (
-                                            <div className="absolute inset-0 opacity-0 hover:opacity-100 z-10 bg-slate-900/90 flex items-center justify-center p-2 rounded-xl transition-opacity pointer-events-none">
-                                                <p className="text-[8px] text-white font-bold text-center leading-tight uppercase">{warning}</p>
-                                            </div>
-                                        )}
                                     </button>
                                 ))}
                             </div>
                         </div>
-
                         {purgeStep === 'confirm' && (
-                            <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-2xl animate-slide-up space-y-6">
+                            <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-2xl space-y-6">
                                 <div className="flex items-center gap-4">
                                     <div className="p-4 bg-red-600 rounded-full animate-bounce"><ExclamationTriangleIcon className="w-8 h-8" /></div>
-                                    <div>
-                                        <h4 className="text-xl font-black">Confirm Deletion</h4>
-                                        <p className="text-slate-400">You are about to permanently delete <strong>{purgeSelection.size}</strong> datasets. This cannot be undone.</p>
-                                    </div>
+                                    <div><h4 className="text-xl font-black">Confirm Deletion</h4><p className="text-slate-400">Permanently delete <strong>{purgeSelection.size}</strong> datasets?</p></div>
                                 </div>
-                                
-                                <div className="bg-white/10 p-4 rounded-xl space-y-2">
-                                    <p className="text-[10px] font-black text-red-400 uppercase tracking-widest">Wipe List:</p>
-                                    <div className="flex flex-wrap gap-2">
-                                        {Array.from(purgeSelection).map(k => (
-                                            <span key={k as string} className="px-2 py-1 bg-white/10 rounded text-xs font-bold">{ENTITY_LABELS[k as string]?.label}</span>
-                                        ))}
-                                    </div>
-                                </div>
-
                                 <div className="space-y-4">
-                                    <p className="text-sm">Type <span className="font-mono font-bold text-red-500">FACTORY PURGE</span> to confirm your intent.</p>
+                                    <p className="text-sm">Type <span className="font-mono font-bold text-red-500">FACTORY PURGE</span></p>
                                     <div className="flex gap-4">
-                                        <input 
-                                            type="text" 
-                                            value={purgeText} 
-                                            onChange={e => setPurgeText(e.target.value.toUpperCase())}
-                                            className="flex-1 bg-white/5 border-2 border-white/20 rounded-xl p-3 text-center font-black tracking-widest text-xl focus:border-red-600 outline-none" 
-                                            placeholder="TYPE HERE"
-                                        />
-                                        <button 
-                                            disabled={purgeText !== 'FACTORY PURGE' || isPurging}
-                                            onClick={handlePurgeAction}
-                                            className="px-10 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl transition-all disabled:opacity-20"
-                                        >
-                                            {isPurging ? 'PURGING...' : 'EXECUTE'}
-                                        </button>
-                                        <button onClick={() => setPurgeStep('idle')} className="px-6 text-slate-400 hover:text-white font-bold">Cancel</button>
+                                        <input type="text" value={purgeText} onChange={e => setPurgeText(e.target.value.toUpperCase())} className="flex-1 bg-white/5 border-2 border-white/20 rounded-xl p-3 text-center font-black tracking-widest text-xl outline-none" />
+                                        <button disabled={purgeText !== 'FACTORY PURGE' || isPurging} onClick={handlePurgeAction} className="px-10 bg-red-600 text-white font-black rounded-xl disabled:opacity-20">{isPurging ? 'PURGING...' : 'EXECUTE'}</button>
+                                        <button onClick={() => setPurgeStep('idle')} className="px-6 text-slate-400 font-bold">Cancel</button>
                                     </div>
                                 </div>
                             </div>
@@ -427,28 +357,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             {isRestoreModalOpen && (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-                            <h3 className="font-bold text-slate-800 text-lg">Selective Restore</h3>
-                            <button onClick={() => setIsRestoreModalOpen(false)}><CloseIcon className="w-6 h-6 text-slate-400"/></button>
-                        </div>
+                        <div className="p-4 border-b flex justify-between items-center bg-slate-50"><h3 className="font-bold text-slate-800 text-lg">Selective Restore</h3><button onClick={() => setIsRestoreModalOpen(false)}><CloseIcon className="w-6 h-6 text-slate-400"/></button></div>
                         <div className="p-6 space-y-4">
                             <div className="max-h-60 overflow-y-auto space-y-1">
                                 {Object.entries(ENTITY_LABELS).map(([key, { label }]) => {
                                     if (!restoreData.hasOwnProperty(key) && !(key === 'files_meta' && restoreData.hasOwnProperty('businessDocuments'))) return null;
                                     return (
-                                        /* Fixed: Resolved potential unknown index type warning by ensuring restoreData is handled as any within the closure */
-                                        <label key={key} className={`flex items-center p-3 border rounded-xl cursor-pointer transition-all ${restoreSelection.has(key) ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
-                                            <input type="checkbox" checked={restoreSelection.has(key)} onChange={() => { const s = new Set(restoreSelection); if(s.has(key)) s.delete(key); else s.add(key); setRestoreSelection(s); }} className="w-5 h-5 text-indigo-600 rounded border-slate-300" />
+                                        <label key={key} className={`flex items-center p-3 border rounded-xl cursor-pointer ${restoreSelection.has(key) ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-slate-200'}`}>
+                                            <input type="checkbox" checked={restoreSelection.has(key)} onChange={() => { const s = new Set(restoreSelection); if(s.has(key)) s.delete(key); else s.add(key); setRestoreSelection(s); }} className="w-5 h-5 text-indigo-600" />
                                             <span className="ml-3 font-bold text-slate-700 text-sm">{label}</span>
                                         </label>
                                     );
                                 })}
                             </div>
                         </div>
-                        <div className="p-4 border-t bg-slate-50 flex justify-end gap-3">
-                            <button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600">Cancel</button>
-                            <button onClick={handleConfirmRestore} disabled={restoreSelection.size === 0} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg hover:bg-indigo-700 shadow-md transition-all">Merge Data</button>
-                        </div>
+                        <div className="p-4 border-t bg-slate-50 flex justify-end gap-3"><button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600">Cancel</button><button onClick={handleConfirmRestore} disabled={restoreSelection.size === 0} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg">Merge Data</button></div>
                     </div>
                 </div>
             )}

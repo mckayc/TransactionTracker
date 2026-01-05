@@ -20,7 +20,6 @@ export interface Category {
     parentId?: string;
 }
 
-// Added missing User interface to fix import errors across the application
 export interface User {
     id: string;
     name: string;
@@ -188,6 +187,18 @@ export interface BusinessDocument {
         keyDates?: string[];
         taxTips?: string[];
     };
+}
+
+export interface BusinessNote {
+    id: string;
+    title: string;
+    content: string;
+    type: 'note' | 'bug' | 'idea' | 'task';
+    priority: 'low' | 'medium' | 'high';
+    isCompleted: boolean;
+    createdAt: string;
+    updatedAt: string;
+    resolvedAt?: string;
 }
 
 export interface BackupConfig {

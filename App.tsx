@@ -1,5 +1,6 @@
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -43,6 +44,7 @@ const App: React.FC = () => {
     const [payees, setPayees] = useState<Payee[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [businessProfile, setBusinessProfile] = useState<BusinessProfile>({ info: {}, tax: {}, completedSteps: [] });
+    const [businessNotes, setBusinessNotes] = useState<BusinessNote[]>([]);
     const [documentFolders, setDocumentFolders] = useState<DocumentFolder[]>([]);
     const [businessDocuments, setBusinessDocuments] = useState<BusinessDocument[]>([]);
     const [templates, setTemplates] = useState<Template[]>([]);
@@ -76,6 +78,7 @@ const App: React.FC = () => {
             setPayees(data.payees || []);
             setUsers(data.users || [{ id: 'user1', name: 'Primary User', isDefault: true }]);
             setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
+            setBusinessNotes(data.businessNotes || []);
             setDocumentFolders(data.documentFolders || []);
             setBusinessDocuments(data.businessDocuments || []);
             setTemplates(data.templates || []);
@@ -155,11 +158,11 @@ const App: React.FC = () => {
                             onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
                             onSaveRule={(r) => updateData('reconciliationRules', [...rules, r], setRules)}
                             onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
-                            onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
-                            onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
                             onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
                             onUpdateTransaction={async (t) => { await api.saveTransactions([t]); loadCoreData(false); }}
                             onDeleteTransaction={async (id) => { await api.deleteTransaction(id); loadCoreData(false); }}
+                            onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
+                            onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
                         />
                     )}
                     {currentView === 'transactions' && (
@@ -258,6 +261,7 @@ const App: React.FC = () => {
                             youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels}
                             financialGoals={financialGoals} financialPlan={financialPlan}
                             contentLinks={contentLinks}
+                            businessNotes={businessNotes}
                         />
                     )}
                     {currentView === 'management' && (
@@ -281,6 +285,7 @@ const App: React.FC = () => {
                     {currentView === 'hub' && (
                         <BusinessHub 
                             profile={businessProfile} onUpdateProfile={(p) => updateData('businessProfile', p, setBusinessProfile)}
+                            notes={businessNotes} onUpdateNotes={(n) => updateData('businessNotes', n, setBusinessNotes)}
                             chatSessions={chatSessions} onUpdateChatSessions={(s) => updateData('chatSessions', s, setChatSessions)}
                             transactions={transactions} accounts={accounts} categories={categories}
                         />
