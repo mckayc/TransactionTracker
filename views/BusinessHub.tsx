@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote } from '../types';
 import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon } from '../components/Icons';
@@ -95,6 +94,36 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
         setSelectedIds(newSelected);
     };
 
+    const copyToClipboard = async (text: string): Promise<boolean> => {
+        // Method 1: Modern Async API
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch (err) {
+                console.error("Modern copy failed", err);
+            }
+        }
+
+        // Method 2: Fallback (Legacy Textarea)
+        try {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            return successful;
+        } catch (err) {
+            console.error("Fallback copy failed", err);
+            return false;
+        }
+    };
+
     const handleBulkCopy = async (formatForAi: boolean) => {
         const selectedNotes = notes.filter(n => selectedIds.has(n.id));
         if (selectedNotes.length === 0) return;
@@ -109,15 +138,14 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
             });
             text += "Please analyze these technical requirements and provide implementation advice.";
         } else {
-            text = selectedNotes.map(n => `${n.title}\n${n.content}`).join('\n\n');
+            text = selectedNotes.map(n => `Title: ${n.title}\nType: ${n.type}\nContent: ${n.content}`).join('\n\n---\n\n');
         }
 
-        try {
-            await navigator.clipboard.writeText(text);
+        const success = await copyToClipboard(text);
+        if (success) {
             setCopyStatus('success');
             setTimeout(() => setCopyStatus('idle'), 3000);
-        } catch (err) {
-            console.error('Failed to copy!', err);
+        } else {
             setCopyStatus('error');
             setTimeout(() => setCopyStatus('idle'), 3000);
         }
@@ -128,55 +156,67 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
             {/* Copy Success Toast */}
             {copyStatus !== 'idle' && (
                 <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[200] animate-slide-up">
-                    <div className={`px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border-2 ${copyStatus === 'success' ? 'bg-indigo-900 border-indigo-500 text-white' : 'bg-red-900 border-red-500 text-white'}`}>
-                        {copyStatus === 'success' ? <CheckCircleIcon className="w-5 h-5 text-green-400" /> : <ExclamationTriangleIcon className="w-5 h-5 text-red-400" />}
-                        <span className="font-bold text-sm">
-                            {copyStatus === 'success' ? `Copied ${selectedIds.size} items to clipboard!` : 'Copy failed. Try again.'}
-                        </span>
+                    <div className={`px-8 py-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center gap-4 border-2 transition-all ${copyStatus === 'success' ? 'bg-slate-900 border-emerald-500 text-white' : 'bg-red-900 border-red-500 text-white'}`}>
+                        {copyStatus === 'success' ? (
+                            <div className="bg-emerald-500 p-1.5 rounded-full"><CheckCircleIcon className="w-5 h-5 text-white" /></div>
+                        ) : (
+                            <div className="bg-red-500 p-1.5 rounded-full"><ExclamationTriangleIcon className="w-5 h-5 text-white" /></div>
+                        )}
+                        <div className="flex flex-col">
+                            <span className="font-black text-sm uppercase tracking-widest">
+                                {copyStatus === 'success' ? 'Clipboard Synchronized' : 'System Error'}
+                            </span>
+                            <span className="text-xs text-slate-400 font-bold">
+                                {copyStatus === 'success' ? `Successfully copied ${selectedIds.size} log entries` : 'Failed to access clipboard permissions'}
+                            </span>
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* Expanded Search Area */}
-            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-6">
-                <div className="flex flex-col md:flex-row items-center gap-6">
-                    <div className="relative flex-1 w-full">
-                        <SearchCircleIcon className="absolute left-6 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-400" />
+            {/* JUMBO Search Area */}
+            <div className="bg-white p-10 rounded-[3.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 space-y-8">
+                <div className="flex flex-col lg:flex-row items-center gap-8">
+                    <div className="relative flex-1 w-full group">
+                        <SearchCircleIcon className="absolute left-8 top-1/2 -translate-y-1/2 w-10 h-10 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
                         <input 
                             type="text" 
-                            placeholder="Search developer logs, bug reports, or feature ideas..." 
+                            placeholder="Type keywords to filter system logs..." 
                             value={searchTerm} 
                             onChange={e => setSearchTerm(e.target.value)}
-                            className="pl-16 pr-6 py-6 w-full bg-slate-50 border-2 border-slate-100 rounded-3xl focus:bg-white focus:border-indigo-500 transition-all font-bold text-xl placeholder:text-slate-300"
+                            className="pl-24 pr-10 py-10 w-full bg-slate-50 border-4 border-slate-100 rounded-[2.5rem] focus:bg-white focus:border-indigo-500 focus:shadow-2xl transition-all font-black text-2xl placeholder:text-slate-300 outline-none"
                         />
                     </div>
-                    <div className="flex items-center gap-4 w-full md:w-auto">
-                        <select 
-                            value={filterType} 
-                            onChange={e => setFilterType(e.target.value)}
-                            className="bg-white border-2 border-slate-100 rounded-3xl p-4 text-sm font-black text-slate-700 min-w-[200px] h-[72px] shadow-sm appearance-none cursor-pointer"
-                        >
-                            <option value="all">All Entries</option>
-                            <option value="note">Notes Only</option>
-                            <option value="bug">Bugs Only</option>
-                            <option value="idea">Ideas Only</option>
-                            <option value="task">Tasks Only</option>
-                        </select>
+                    <div className="flex items-center gap-6 w-full lg:w-auto">
+                        <div className="relative flex-1 lg:flex-none">
+                            <select 
+                                value={filterType} 
+                                onChange={e => setFilterType(e.target.value)}
+                                className="bg-white border-4 border-slate-100 rounded-[2.5rem] p-6 text-lg font-black text-slate-700 min-w-[240px] h-[100px] shadow-sm appearance-none cursor-pointer focus:border-indigo-500 outline-none"
+                            >
+                                <option value="all">All Entries</option>
+                                <option value="note">Notes Only</option>
+                                <option value="bug">Bugs Only</option>
+                                <option value="idea">Ideas Only</option>
+                                <option value="task">Tasks Only</option>
+                            </select>
+                            <ChevronDownIcon className="absolute right-6 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400 pointer-events-none" />
+                        </div>
                         <button 
                             onClick={() => setIsCreating(true)}
-                            className="flex items-center justify-center gap-3 px-8 py-4 bg-indigo-600 text-white rounded-3xl hover:bg-indigo-700 font-black shadow-xl shadow-indigo-100 transition-all h-[72px] whitespace-nowrap active:scale-95"
+                            className="flex items-center justify-center gap-4 px-12 py-6 bg-indigo-600 text-white rounded-[2.5rem] hover:bg-indigo-700 font-black shadow-2xl shadow-indigo-200 transition-all h-[100px] whitespace-nowrap active:scale-95 text-xl"
                         >
-                            <AddIcon className="w-6 h-6" /> New Entry
+                            <AddIcon className="w-8 h-8" /> New
                         </button>
                     </div>
                 </div>
-                <div className="flex items-center justify-between px-4">
-                    <div className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></div>
-                        Index showing {filteredNotes.length} of {notes.length} log entries
+                <div className="flex items-center justify-between px-6">
+                    <div className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
+                        <div className="w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] animate-pulse"></div>
+                        Index showing {filteredNotes.length} of {notes.length} verified records
                     </div>
                     {selectedIds.size > 0 && (
-                        <button onClick={() => setSelectedIds(new Set())} className="text-xs font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest border-b-2 border-indigo-100 pb-0.5">
+                        <button onClick={() => setSelectedIds(new Set())} className="text-sm font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest border-b-4 border-indigo-50 pb-1 hover:border-indigo-500 transition-all">
                             Deselect all ({selectedIds.size})
                         </button>
                     )}
@@ -184,30 +224,30 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
             </div>
 
             {isCreating && (
-                <div className="bg-white p-10 rounded-[3rem] border-2 border-indigo-100 shadow-2xl animate-slide-up">
-                    <form onSubmit={handleSave} className="space-y-8">
-                        <div className="flex justify-between items-center mb-2">
+                <div className="bg-white p-12 rounded-[4rem] border-4 border-indigo-100 shadow-2xl animate-slide-up">
+                    <form onSubmit={handleSave} className="space-y-10">
+                        <div className="flex justify-between items-center mb-4">
                             <div>
-                                <h3 className="font-black text-slate-800 uppercase tracking-[0.2em] text-sm">System Log Entry</h3>
-                                <p className="text-xs text-slate-400 mt-1">{editingId ? 'Updating existing technical record' : 'Capturing new technical information'}</p>
+                                <h3 className="font-black text-slate-800 uppercase tracking-[0.3em] text-lg">System Log Entry</h3>
+                                <p className="text-sm text-slate-400 mt-1 font-bold">{editingId ? 'Refining existing technical record' : 'Drafting new technical capture'}</p>
                             </div>
-                            <button type="button" onClick={resetForm} className="p-3 rounded-full hover:bg-slate-100 transition-colors"><CloseIcon className="w-7 h-7 text-slate-300" /></button>
+                            <button type="button" onClick={resetForm} className="p-4 rounded-full hover:bg-slate-100 transition-colors"><CloseIcon className="w-8 h-8 text-slate-300" /></button>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
                             <div className="md:col-span-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase ml-2 mb-2 block tracking-widest">Entry Subject</label>
+                                <label className="text-xs font-black text-slate-400 uppercase ml-4 mb-3 block tracking-[0.2em]">Subject Line</label>
                                 <input 
                                     type="text" 
                                     value={title} 
                                     onChange={e => setTitle(e.target.value)} 
-                                    placeholder="e.g. Bug: Transactions not reconciling for users with multiple tags" 
-                                    className="w-full font-black p-4 border-2 border-slate-100 rounded-2xl text-lg focus:border-indigo-500 outline-none transition-all"
+                                    placeholder="Summary of the bug or note..." 
+                                    className="w-full font-black p-6 border-4 border-slate-50 rounded-3xl text-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-200"
                                     required 
                                 />
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase ml-2 mb-2 block tracking-widest">Category</label>
-                                <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
+                                <label className="text-xs font-black text-slate-400 uppercase ml-4 mb-3 block tracking-[0.2em]">Classification</label>
+                                <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-6 border-4 border-slate-50 rounded-3xl font-black text-slate-700 focus:border-indigo-500 outline-none h-[80px]">
                                     <option value="note">General Technical Note</option>
                                     <option value="bug">Technical Bug Report</option>
                                     <option value="idea">Product Feature Idea</option>
@@ -215,27 +255,27 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                                 </select>
                             </div>
                             <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase ml-2 mb-2 block tracking-widest">Severity / Priority</label>
-                                <select value={priority} onChange={e => setPriority(e.target.value as any)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
+                                <label className="text-xs font-black text-slate-400 uppercase ml-4 mb-3 block tracking-[0.2em]">Priority Matrix</label>
+                                <select value={priority} onChange={e => setPriority(e.target.value as any)} className="w-full p-6 border-4 border-slate-50 rounded-3xl font-black text-slate-700 focus:border-indigo-500 outline-none h-[80px]">
                                     <option value="low">Low (Backlog)</option>
-                                    <option value="medium">Medium (Next Sprint)</option>
-                                    <option value="high">High (Immediate Action)</option>
+                                    <option value="medium">Medium (Standard)</option>
+                                    <option value="high">High (Mission Critical)</option>
                                 </select>
                             </div>
                             <div className="md:col-span-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase ml-2 mb-2 block tracking-widest">Technical details / context</label>
+                                <label className="text-xs font-black text-slate-400 uppercase ml-4 mb-3 block tracking-[0.2em]">Detailed technical context</label>
                                 <textarea 
                                     value={content} 
                                     onChange={e => setContent(e.target.value)} 
-                                    rows={8} 
-                                    className="w-full p-5 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all font-mono text-sm leading-relaxed"
-                                    placeholder="Steps to reproduce, error messages, or architectural thoughts..."
+                                    rows={10} 
+                                    className="w-full p-8 border-4 border-slate-50 rounded-[2.5rem] focus:bg-white focus:border-indigo-500 transition-all font-mono text-base leading-relaxed"
+                                    placeholder="Enter steps to reproduce, logs, or architectural decisions..."
                                 />
                             </div>
                         </div>
-                        <div className="flex justify-end gap-4 pt-4">
-                            <button type="button" onClick={resetForm} className="px-8 py-3 text-sm font-black text-slate-400 uppercase tracking-widest">Discard</button>
-                            <button type="submit" className="px-12 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-2xl shadow-indigo-100 transition-all hover:bg-indigo-700 active:scale-95">
+                        <div className="flex justify-end gap-6 pt-6">
+                            <button type="button" onClick={resetForm} className="px-12 py-4 text-sm font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Discard</button>
+                            <button type="submit" className="px-16 py-6 bg-indigo-600 text-white rounded-[2rem] font-black shadow-2xl shadow-indigo-100 transition-all hover:bg-indigo-700 active:scale-95 text-lg">
                                 Commit Entry
                             </button>
                         </div>
@@ -243,52 +283,52 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {filteredNotes.length === 0 ? (
-                    <div className="col-span-full py-40 text-center bg-white rounded-[3rem] border-4 border-dashed border-slate-100">
-                        <div className="bg-slate-50 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
-                            <NotesIcon className="w-12 h-12 text-slate-200" />
+                    <div className="col-span-full py-48 text-center bg-white rounded-[4rem] border-4 border-dashed border-slate-100">
+                        <div className="bg-slate-50 w-32 h-32 rounded-full flex items-center justify-center mx-auto mb-8">
+                            <NotesIcon className="w-16 h-16 text-slate-200" />
                         </div>
-                        <p className="text-slate-400 font-black uppercase tracking-[0.3em] text-sm">Log Empty</p>
-                        <p className="text-xs text-slate-300 mt-2 font-medium">No records match your current criteria.</p>
+                        <p className="text-slate-400 font-black uppercase tracking-[0.4em] text-lg">System Empty</p>
+                        <p className="text-sm text-slate-300 mt-3 font-bold max-w-xs mx-auto">No records found matching your current filter configuration.</p>
                     </div>
                 ) : (
                     filteredNotes.map(n => (
                         <div 
                             key={n.id} 
                             onClick={() => toggleSelection(n.id)}
-                            className={`p-8 rounded-[2.5rem] border-2 transition-all group flex flex-col h-full bg-white relative cursor-pointer hover:-translate-y-1 ${
-                                selectedIds.has(n.id) ? 'border-indigo-500 ring-4 ring-indigo-50' : 
+                            className={`p-10 rounded-[3.5rem] border-4 transition-all group flex flex-col h-full bg-white relative cursor-pointer hover:-translate-y-2 ${
+                                selectedIds.has(n.id) ? 'border-indigo-500 ring-[12px] ring-indigo-50 shadow-2xl' : 
                                 n.isCompleted ? 'opacity-60 border-slate-100 grayscale' : 
-                                n.priority === 'high' ? 'border-red-100 shadow-lg shadow-red-50' : 'border-slate-100 hover:border-indigo-200 hover:shadow-xl'
+                                n.priority === 'high' ? 'border-red-100 shadow-2xl shadow-red-100/50' : 'border-slate-50 hover:border-indigo-200 hover:shadow-2xl'
                             }`}
                         >
                             {/* Selection Checkbox */}
-                            <div className="absolute top-8 right-8">
+                            <div className="absolute top-10 right-10">
                                 <input 
                                     type="checkbox" 
                                     checked={selectedIds.has(n.id)} 
                                     onChange={() => {}} 
-                                    className="w-6 h-6 rounded-lg text-indigo-600 border-slate-200 focus:ring-indigo-500 pointer-events-none transition-transform group-hover:scale-110"
+                                    className="w-8 h-8 rounded-xl text-indigo-600 border-4 border-slate-100 focus:ring-indigo-500 pointer-events-none transition-transform group-hover:scale-110"
                                 />
                             </div>
 
-                            <div className="flex justify-between items-start mb-6 pr-10">
-                                <div className="flex items-center gap-4">
-                                    <div className={`p-4 rounded-2xl shadow-sm transition-transform group-hover:rotate-6 ${
+                            <div className="flex justify-between items-start mb-8 pr-12">
+                                <div className="flex items-center gap-6">
+                                    <div className={`p-5 rounded-[1.5rem] shadow-sm transition-transform group-hover:rotate-6 ${
                                         n.type === 'bug' ? 'bg-red-50 text-red-600' : 
                                         n.type === 'idea' ? 'bg-purple-50 text-purple-600' : 
                                         n.type === 'task' ? 'bg-blue-50 text-blue-600' : 
                                         'bg-slate-50 text-slate-600'
                                     }`}>
-                                        {n.type === 'bug' ? <BugIcon className="w-6 h-6" /> : <NotesIcon className="w-6 h-6" />}
+                                        {n.type === 'bug' ? <BugIcon className="w-8 h-8" /> : <NotesIcon className="w-8 h-8" />}
                                     </div>
                                     <div className="min-w-0">
-                                        <h4 className={`font-black text-slate-800 text-lg leading-tight truncate max-w-[220px] ${n.isCompleted ? 'line-through text-slate-400' : ''}`}>{n.title}</h4>
-                                        <div className="flex items-center gap-3 mt-1.5">
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{n.type}</span>
-                                            <div className="w-1 h-1 rounded-full bg-slate-200"></div>
-                                            <span className={`text-[10px] font-black uppercase tracking-widest ${
+                                        <h4 className={`font-black text-slate-800 text-xl leading-tight truncate max-w-[240px] ${n.isCompleted ? 'line-through text-slate-400' : ''}`}>{n.title}</h4>
+                                        <div className="flex items-center gap-4 mt-2">
+                                            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{n.type}</span>
+                                            <div className="w-2 h-2 rounded-full bg-slate-200"></div>
+                                            <span className={`text-[11px] font-black uppercase tracking-[0.2em] ${
                                                 n.priority === 'high' ? 'text-red-500' : 
                                                 n.priority === 'medium' ? 'text-amber-500' : 
                                                 'text-slate-400'
@@ -296,28 +336,28 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                                         </div>
                                     </div>
                                 </div>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all" onClick={e => e.stopPropagation()}>
-                                    <button onClick={() => startEdit(n)} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"><EditIcon className="w-5 h-5"/></button>
-                                    <button onClick={() => deleteNote(n.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"><DeleteIcon className="w-5 h-5"/></button>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all" onClick={e => e.stopPropagation()}>
+                                    <button onClick={() => startEdit(n)} className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all"><EditIcon className="w-6 h-6"/></button>
+                                    <button onClick={() => deleteNote(n.id)} className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"><DeleteIcon className="w-6 h-6"/></button>
                                 </div>
                             </div>
                             
-                            <p className={`text-sm text-slate-500 flex-grow whitespace-pre-wrap mb-8 line-clamp-6 leading-relaxed font-medium ${n.isCompleted ? 'line-through opacity-30 font-normal' : ''}`}>{n.content}</p>
+                            <p className={`text-base text-slate-500 flex-grow whitespace-pre-wrap mb-10 line-clamp-6 leading-relaxed font-bold ${n.isCompleted ? 'line-through opacity-30 font-medium' : ''}`}>{n.content}</p>
                             
-                            <div className="mt-auto pt-6 border-t border-slate-50 flex justify-between items-center" onClick={e => e.stopPropagation()}>
+                            <div className="mt-auto pt-8 border-t-4 border-slate-50 flex justify-between items-center" onClick={e => e.stopPropagation()}>
                                 <div className="flex flex-col">
-                                    <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-1">Timeline</span>
-                                    <div className="text-[10px] text-slate-400 font-mono font-bold">
-                                        {n.isCompleted ? `FIXED: ${new Date(n.resolvedAt!).toLocaleDateString()}` : `LOGGED: ${new Date(n.createdAt).toLocaleDateString()}`}
+                                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1.5">Record Timestamp</span>
+                                    <div className="text-[11px] text-slate-400 font-mono font-black uppercase">
+                                        {n.isCompleted ? `RESOLVED: ${new Date(n.resolvedAt!).toLocaleDateString()}` : `CAPTURED: ${new Date(n.createdAt).toLocaleDateString()}`}
                                     </div>
                                 </div>
                                 <button 
                                     onClick={() => toggleComplete(n.id)}
-                                    className={`px-6 py-2.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] transition-all shadow-sm ${
-                                        n.isCompleted ? 'bg-slate-100 text-slate-400' : 'bg-green-50 text-green-700 hover:bg-green-100 hover:shadow-md'
+                                    className={`px-8 py-3 rounded-[1.5rem] text-xs font-black uppercase tracking-[0.3em] transition-all shadow-sm ${
+                                        n.isCompleted ? 'bg-slate-100 text-slate-400 hover:bg-slate-200' : 'bg-green-50 text-green-700 hover:bg-green-100 hover:shadow-lg'
                                     }`}
                                 >
-                                    {n.isCompleted ? 'Reopen Case' : n.type === 'bug' ? 'Mark Resolved' : 'Task Done'}
+                                    {n.isCompleted ? 'Reopen Case' : n.type === 'bug' ? 'Mark Fixed' : 'Log Done'}
                                 </button>
                             </div>
                         </div>
@@ -327,29 +367,29 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
 
             {/* Bulk Action Bar */}
             {selectedIds.size > 0 && (
-                <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[150] animate-slide-up w-full max-w-2xl px-4">
-                    <div className="bg-slate-900/95 text-white px-8 py-5 rounded-[2.5rem] shadow-[0_25px_50px_-12px_rgba(0,0,0,0.5)] flex items-center gap-8 border-2 border-white/10 backdrop-blur-xl">
+                <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[150] animate-slide-up w-full max-w-3xl px-8">
+                    <div className="bg-slate-900/95 text-white px-10 py-6 rounded-[3rem] shadow-[0_30px_100px_rgba(0,0,0,0.6)] flex items-center gap-10 border-4 border-white/10 backdrop-blur-3xl">
                         <div className="flex flex-col flex-shrink-0">
-                            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.3em]">Batch Action</span>
-                            <span className="text-sm font-black">{selectedIds.size} entries selected</span>
+                            <span className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.4em]">Bulk Selection</span>
+                            <span className="text-lg font-black">{selectedIds.size} records focus</span>
                         </div>
-                        <div className="h-10 w-px bg-white/10" />
-                        <div className="flex gap-3 flex-1">
+                        <div className="h-12 w-px bg-white/10" />
+                        <div className="flex gap-4 flex-1">
                             <button 
                                 onClick={() => handleBulkCopy(false)}
-                                className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 rounded-2xl text-xs font-black uppercase tracking-widest transition-all active:scale-95 border border-white/5"
+                                className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-white/5 hover:bg-white/10 rounded-[1.5rem] text-xs font-black uppercase tracking-widest transition-all active:scale-95 border-2 border-white/5"
                             >
-                                <CopyIcon className="w-4 h-4" /> Copy Raw
+                                <CopyIcon className="w-5 h-5" /> Copy Text
                             </button>
                             <button 
                                 onClick={() => handleBulkCopy(true)}
-                                className="flex-[1.5] flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-2xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/40 active:scale-95 border border-indigo-400/30"
+                                className="flex-[1.8] flex items-center justify-center gap-4 px-8 py-4 bg-indigo-600 hover:bg-indigo-500 rounded-[1.5rem] text-xs font-black uppercase tracking-widest transition-all shadow-2xl shadow-indigo-900/40 active:scale-95 border-2 border-indigo-400/30"
                             >
-                                <SparklesIcon className="w-4 h-4" /> Copy for AI Fix
+                                <SparklesIcon className="w-5 h-5" /> Copy Prompt for AI
                             </button>
                         </div>
-                        <button onClick={() => setSelectedIds(new Set())} className="p-3 hover:bg-white/10 rounded-full transition-colors group">
-                            <CloseIcon className="w-6 h-6 text-slate-500 group-hover:text-white" />
+                        <button onClick={() => setSelectedIds(new Set())} className="p-4 hover:bg-white/10 rounded-full transition-colors group">
+                            <CloseIcon className="w-8 h-8 text-slate-500 group-hover:text-white" />
                         </button>
                     </div>
                 </div>
