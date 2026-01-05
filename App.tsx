@@ -95,8 +95,6 @@ const App: React.FC = () => {
             setContentLinks(data.contentLinks || []);
             setSystemSettings(data.systemSettings || {});
             
-            // Only fetch a small "Recent Pool" for dashboard/import previews.
-            // Millions of records are handled via server-side logic in other views.
             const txResponse = await api.getTransactions({ limit: 100 });
             setTransactions(txResponse.data);
 
@@ -156,7 +154,7 @@ const App: React.FC = () => {
                             onAddAccountType={(t) => updateData('accountTypes', [...accountTypes, t], setAccountTypes)}
                             onAddDocument={(d) => updateData('businessDocuments', [...businessDocuments, d], setBusinessDocuments)}
                             onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
-                            onSaveRule={(r) => api.save('reconciliationRules', [...rules, r])}
+                            onSaveRule={(r) => updateData('reconciliationRules', [...rules, r], setRules)}
                             onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
                             onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
                             onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
@@ -173,12 +171,41 @@ const App: React.FC = () => {
                             onAddTransaction={async (t) => { await api.saveTransactions([t]); loadCoreData(false); }}
                             onDeleteTransaction={async (id) => { await api.deleteTransaction(id); loadCoreData(false); }}
                             onDeleteTransactions={async (ids) => { for(const id of ids) await api.deleteTransaction(id); loadCoreData(false); }}
-                            onSaveRule={(r) => api.save('reconciliationRules', [...rules, r])}
+                            onSaveRule={(r) => updateData('reconciliationRules', [...rules, r], setRules)}
                             onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
                             onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
                             onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
                             onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
                             onSaveReport={(r) => updateData('savedReports', [...savedReports, r], setSavedReports)}
+                        />
+                    )}
+                    {currentView === 'accounts' && (
+                        <AccountsPage 
+                            accounts={accounts} 
+                            accountTypes={accountTypes}
+                            onAddAccount={(a) => updateData('accounts', [...accounts, a], setAccounts)}
+                            onUpdateAccount={(a) => updateData('accounts', accounts.map(x => x.id === a.id ? a : x), setAccounts)}
+                            onRemoveAccount={(id) => updateData('accounts', accounts.filter(x => x.id !== id), setAccounts)}
+                            onAddAccountType={(t) => updateData('accountTypes', [...accountTypes, t], setAccountTypes)}
+                            onRemoveAccountType={(id) => updateData('accountTypes', accountTypes.filter(x => x.id !== id), setAccountTypes)}
+                        />
+                    )}
+                    {currentView === 'rules' && (
+                        <RulesPage 
+                            rules={rules} 
+                            transactions={transactions}
+                            accounts={accounts}
+                            categories={categories}
+                            tags={tags}
+                            payees={payees}
+                            transactionTypes={transactionTypes}
+                            onSaveRule={(r) => updateData('reconciliationRules', rules.some(x => x.id === r.id) ? rules.map(x => x.id === r.id ? r : x) : [...rules, r], setRules)}
+                            onDeleteRule={(id) => updateData('reconciliationRules', rules.filter(x => x.id !== id), setRules)}
+                            onUpdateTransactions={async (txs) => { await api.saveTransactions(txs); loadCoreData(false); }}
+                            onSaveCategory={(c) => updateData('categories', [...categories, c], setCategories)}
+                            onSavePayee={(p) => updateData('payees', [...payees, p], setPayees)}
+                            onSaveTag={(t) => updateData('tags', [...tags, t], setTags)}
+                            onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
                         />
                     )}
                     {currentView === 'calendar' && (
@@ -266,6 +293,7 @@ const App: React.FC = () => {
                     )}
                     {currentView === 'integrations' && <IntegrationsPage onNavigate={(v) => setCurrentView(v as View)} />}
                     {currentView === 'integration-amazon' && <AmazonIntegration metrics={amazonMetrics} onAddMetrics={(m) => updateData('amazonMetrics', [...amazonMetrics, ...m], setAmazonMetrics)} onDeleteMetrics={(ids) => updateData('amazonMetrics', amazonMetrics.filter(m => !ids.includes(m.id)), setAmazonMetrics)} videos={amazonVideos} onAddVideos={(v) => updateData('amazonVideos', [...amazonVideos, ...v], setAmazonVideos)} onDeleteVideos={(ids) => updateData('amazonVideos', amazonVideos.filter(v => !ids.includes(v.id)), setAmazonVideos)} />}
+                    {/* Fixed: Line 295 call to updateData now includes missing third argument and fixed ternary item logic */}
                     {currentView === 'integration-youtube' && <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={(m) => updateData('youtubeMetrics', [...youtubeMetrics, ...m], setYouTubeMetric)} onDeleteMetrics={(ids) => updateData('youtubeMetrics', youtubeMetrics.filter(m => !ids.includes(m.id)), setYouTubeMetric)} channels={youtubeChannels} onSaveChannel={(c) => updateData('youtubeChannels', youtubeChannels.some(x => x.id === c.id) ? youtubeChannels.map(x => x.id === c.id ? c : x) : [...youtubeChannels, c], setYouTubeChannels)} onDeleteChannel={(id) => updateData('youtubeChannels', youtubeChannels.filter(x => x.id !== id), setYouTubeChannels)} />}
                     {currentView === 'integration-content-hub' && <ContentHub amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} contentLinks={contentLinks} onUpdateLinks={(l) => updateData('contentLinks', l, setContentLinks)} />}
                 </div>

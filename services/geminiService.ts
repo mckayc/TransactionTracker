@@ -66,7 +66,7 @@ const EXTRACTION_SCHEMA = {
                     date: { type: Type.STRING, description: 'YYYY-MM-DD' },
                     description: { type: Type.STRING },
                     amount: { type: Type.NUMBER, description: 'Absolute value of the transaction' },
-                    category: { type: Type.STRING, description: 'Broad category like Groceries, Dining, etc.' },
+                    category: { type: Type.STRING, description: 'The closest matching category from the provided list.' },
                     isIncome: { type: Type.BOOLEAN, description: 'True if money in, false if money out' }
                 },
                 required: ['date', 'description', 'amount', 'isIncome']
@@ -76,7 +76,7 @@ const EXTRACTION_SCHEMA = {
     required: ['transactions']
 };
 
-export const extractTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+export const extractTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], categories: Category[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     onProgress("Preparing documents...");
     let allParts: any[] = [];
     for (const f of files) {
@@ -84,12 +84,17 @@ export const extractTransactionsFromFiles = async (files: File[], accountId: str
         allParts = [...allParts, ...parts];
     }
     
+    const categoryNames = categories.map(c => c.name).join(', ');
+    
     onProgress("AI analyzing statements...");
     const result = await callAi({
         model: 'gemini-3-flash-preview',
         contents: { 
             parts: [
-                { text: "Extract every single transaction from the attached financial statements. Be precise with dates and amounts. Return ONLY a JSON object." }, 
+                { text: `Extract every single transaction from the attached financial statements.
+                         Strictly follow this category list for the 'category' field: ${categoryNames}.
+                         If a merchant isn't obvious, use your best financial reasoning to pick the best fit from the list.
+                         Be precise with dates (YYYY-MM-DD) and amounts. Return ONLY a JSON object.` }, 
                 ...allParts
             ] 
         },
@@ -114,11 +119,15 @@ export const extractTransactionsFromFiles = async (files: File[], accountId: str
     });
 };
 
-export const extractTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+export const extractTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], categories: Category[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     onProgress("AI analyzing text...");
+    const categoryNames = categories.map(c => c.name).join(', ');
+    
     const result = await callAi({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: `Extract transactions from this text and return as JSON: ${text}` }] },
+        contents: { parts: [{ text: `Extract transactions from this text and return as JSON. 
+                                     Use these categories if possible: ${categoryNames}.
+                                     Text content: ${text}` }] },
         config: { 
             responseMimeType: 'application/json',
             responseSchema: EXTRACTION_SCHEMA
