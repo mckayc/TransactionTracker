@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import RuleModal from './RuleModal';
 
@@ -93,7 +93,6 @@ const RuleInspectorDrawer: React.FC<{
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                    {/* Conditions */}
                     <div>
                         <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Matching Logic</h4>
                         <div className="space-y-2">
@@ -113,7 +112,6 @@ const RuleInspectorDrawer: React.FC<{
                         </div>
                     </div>
 
-                    {/* Actions */}
                     <div>
                         <h4 className="text-[10px] font-black text-green-400 uppercase tracking-widest mb-4">Applied Transformations</h4>
                         <div className="bg-green-900/10 border border-green-900/20 rounded-2xl p-4 space-y-4">
@@ -165,7 +163,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
     const [inspectedTx, setInspectedTx] = useState<VerifiableTransaction | null>(null);
     const [inspectedRule, setInspectedRule] = useState<ReconciliationRule | null>(null);
-    // Added ruleContextTx state to capture the transaction context when inspecting a rule
     const [ruleContextTx, setRuleContextTx] = useState<VerifiableTransaction | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -175,16 +172,26 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
     const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
+    const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p])), [payees]);
 
     useEffect(() => {
         const dbSigs = new Set(existingTransactions.map(t => getTransactionSignature(t)));
         const processed = initialTransactions.filter(t => Math.abs(t.amount) > 0.001).map(tx => {
             const sig = getTransactionSignature(tx);
             const conflict = dbSigs.has(sig) ? 'database' : null;
-            return { ...tx, conflictType: conflict as any, isIgnored: tx.isIgnored || !!conflict };
+            
+            // Auto-link guessed payees from Parser
+            let finalPayeeId = tx.payeeId;
+            if (tx.payeeId?.startsWith('guess_')) {
+                const guessedName = tx.payeeId.replace('guess_', '');
+                const match = payees.find(p => p.name.toLowerCase() === guessedName.toLowerCase());
+                finalPayeeId = match ? match.id : undefined;
+            }
+
+            return { ...tx, payeeId: finalPayeeId, conflictType: conflict as any, isIgnored: tx.isIgnored || !!conflict };
         });
         setTransactions(processed);
-    }, [initialTransactions, existingTransactions]);
+    }, [initialTransactions, existingTransactions, payees]);
 
     const handleUpdate = (txId: string, field: keyof VerifiableTransaction, value: any) => {
         setTransactions(prev => prev.map(tx => tx.tempId === txId ? { ...tx, [field]: value } : tx));
@@ -214,9 +221,12 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setIsRuleModalOpen(true);
     };
 
+    const sortedPayeeOptions = useMemo(() => [...payees].sort((a,b) => a.name.localeCompare(b.name)), [payees]);
+    const sortedCategoryOptions = useMemo(() => [...categories].sort((a,b) => a.name.localeCompare(b.name)), [categories]);
+
     return (
         <div className="space-y-4 flex flex-col h-full w-full min-h-0 overflow-hidden">
-            <div className="p-5 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 flex-shrink-0">
+            <div className="p-5 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 flex-shrink-0 shadow-sm">
                 <div className="flex items-center gap-4">
                     <div className="p-3 bg-indigo-50 rounded-xl">
                         <TableIcon className="w-6 h-6 text-indigo-600" />
@@ -247,11 +257,12 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('description')}>
                                     <div className="flex items-center gap-1">Description <SortIcon className="w-3 h-3" /></div>
                                 </th>
+                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Entity / Payee</th>
                                 <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Direction</th>
                                 <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('categoryId')}>
                                     <div className="flex items-center gap-1">Category <SortIcon className="w-3 h-3" /></div>
                                 </th>
-                                <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200" onClick={() => requestSort('amount')}>
+                                <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('amount')}>
                                     <div className="flex items-center justify-end gap-1">Amount <SortIcon className="w-3 h-3" /></div>
                                 </th>
                                 <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Rule</th>
@@ -286,17 +297,40 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         </td>
                                         <td className="px-4 py-2 text-xs text-slate-500 font-mono">{tx.date}</td>
                                         <td className="px-4 py-2 text-sm font-bold text-slate-700 truncate max-w-xs">{tx.description}</td>
+                                        <td className="px-4 py-2 min-w-[180px]">
+                                            <select 
+                                                value={tx.payeeId || ''} 
+                                                onChange={e => handleUpdate(tx.tempId, 'payeeId', e.target.value)} 
+                                                className="p-1.5 text-xs border border-slate-200 rounded-lg w-full font-bold text-slate-700 focus:border-indigo-500 focus:ring-0 bg-white"
+                                            >
+                                                <option value="">Select Merchant...</option>
+                                                {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </td>
                                         <td className="px-4 py-2">
-                                            <div className="flex bg-slate-100 p-0.5 rounded-lg w-max">
-                                                {(['expense', 'income', 'transfer'] as BalanceEffect[]).map(e => (
-                                                    <button key={e} onClick={() => handleUpdate(tx.tempId, 'typeId', transactionTypes.find(t => t.balanceEffect === e)?.id)} className={`px-2 py-1 text-[9px] font-black uppercase rounded transition-all ${effect === e ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{e}</button>
-                                                ))}
+                                            <div className="relative group/select">
+                                                <select 
+                                                    value={effect} 
+                                                    onChange={e => {
+                                                        const targetEffect = e.target.value as BalanceEffect;
+                                                        const matchingType = transactionTypes.find(t => t.balanceEffect === targetEffect);
+                                                        if (matchingType) handleUpdate(tx.tempId, 'typeId', matchingType.id);
+                                                    }}
+                                                    className="p-1.5 pr-6 text-[10px] border border-slate-200 rounded-lg w-full font-black uppercase tracking-tighter text-slate-700 focus:border-indigo-500 focus:ring-0 bg-slate-50 appearance-none cursor-pointer"
+                                                >
+                                                    <option value="expense">Expense</option>
+                                                    <option value="income">Income</option>
+                                                    <option value="transfer">Transfer</option>
+                                                </select>
+                                                <div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                                    <ChevronDownIcon className="w-3.5 h-3.5" />
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="px-4 py-2">
                                             <select value={tx.categoryId} onChange={e => handleUpdate(tx.tempId, 'categoryId', e.target.value)} className="p-1.5 text-xs border border-slate-200 rounded-lg w-full font-bold text-slate-700 focus:border-indigo-500 focus:ring-0 bg-white">
                                                 <option value="">Uncategorized</option>
-                                                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                {sortedCategoryOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                             </select>
                                         </td>
                                         <td className={`px-4 py-2 text-right text-sm font-black font-mono ${amountColor}`}>
@@ -305,7 +339,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         <td className="px-4 py-2 text-center">
                                             {matchedRule ? (
                                                 <button 
-                                                    // Updated onClick to set ruleContextTx so it is available in the drawer's onEdit callback
                                                     onClick={() => { setInspectedRule(matchedRule); setRuleContextTx(tx); }}
                                                     className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all border border-green-200 shadow-sm group/rule"
                                                     title={`Applied: ${matchedRule.name}. Click to view/edit.`}
@@ -341,7 +374,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 categories={categories} 
                 payees={payees} 
                 types={transactionTypes} 
-                // Fix: use ruleContextTx instead of undefined tx variable
                 onEdit={(r) => { setInspectedRule(null); setRuleTransactionContext({ ...ruleContextTx, id: 'temp-context' } as any); setIsRuleModalOpen(true); }}
             />
             

@@ -1,3 +1,4 @@
+
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -75,8 +76,7 @@ const cleanDescription = (string: string): string => {
   cleaned = cleaned.replace(/ID NBR:.*$/i, '');
   cleaned = cleaned.replace(/EDI PYMNTS.*$/i, '');
   cleaned = cleaned.replace(/ACH ITEMS.*$/i, '');
-  cleaned = cleaned.replace(/ \d{5,}.*$/g, ''); // Strip trailing long ID strings
-  // Strip common trailing city/state code noise (e.g. SOUTH SALT LA UT)
+  cleaned = cleaned.replace(/ \d{5,}.*$/g, ''); 
   cleaned = cleaned.replace(/\s+[A-Z]{2,}\s+[A-Z]{2}$/, '');
   return cleaned.trim();
 };
@@ -152,7 +152,8 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     amount: lowerHeaders.findIndex(p => p === 'amount' || p.includes('amount')),
     credit: lowerHeaders.findIndex(p => p.includes('credit') || p.includes('deposit')),
     debit: lowerHeaders.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdrawal')),
-    category: lowerHeaders.findIndex(p => p.includes('category') || p === 'type')
+    category: lowerHeaders.findIndex(p => p.includes('category')),
+    type: lowerHeaders.findIndex(p => p.includes('type'))
   };
 
   const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
@@ -170,17 +171,10 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     const parsedDate = parseDate(dateStr);
     if (!parsedDate) continue;
 
-    // Determine the best description
     let rawDesc = '';
-    const genericTypes = ['DEBIT', 'CREDIT', 'POS', 'ACH', 'CHECK'];
     const nameVal = colMap.name > -1 ? parts[colMap.name] : '';
     const descVal = colMap.description > -1 ? parts[colMap.description] : '';
-    
-    if (nameVal && !genericTypes.includes(nameVal.toUpperCase())) {
-      rawDesc = nameVal;
-    } else {
-      rawDesc = descVal || nameVal || 'Unspecified';
-    }
+    rawDesc = nameVal || descVal || 'Unspecified';
 
     const cleanedDesc = cleanDescription(rawDesc);
     const guess = guessMetadata(rawDesc);
@@ -204,6 +198,9 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     let amount = 0;
     let isIncome = false;
 
+    // Fixed logic for Direction detection based on Credit/Debit labels
+    const typeIndicator = colMap.type > -1 ? parts[colMap.type].toLowerCase() : '';
+
     if (colMap.credit > -1 && colMap.debit > -1) {
       const cr = parseFloat(parts[colMap.credit].replace(/[$,\s]/g, '') || '0');
       const db = parseFloat(parts[colMap.debit].replace(/[$,\s]/g, '') || '0');
@@ -212,8 +209,15 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     } else if (colMap.amount > -1) {
       const val = parseFloat(parts[colMap.amount].replace(/[$,\s]/g, ''));
       if (isNaN(val)) continue;
-      isIncome = val > 0;
+      
       amount = Math.abs(val);
+      if (typeIndicator.includes('credit')) {
+          isIncome = true;
+      } else if (typeIndicator.includes('debit')) {
+          isIncome = false;
+      } else {
+          isIncome = val > 0;
+      }
     }
 
     let finalCategory = '';
@@ -244,6 +248,8 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
       categoryId: '',
       category: finalCategory,
       accountId: accountId,
+      payeeId: guess?.payee ? 'guess_' + guess.payee : undefined, // Prefix to help ImportVerification find matches
+      payee: guess?.payee || undefined,
       typeId: finalTypeId,
       sourceFilename: sourceName,
       metadata
