@@ -28,14 +28,15 @@ app.get('/api/health', (req, res) => res.status(200).json({ status: 'live', time
 
 // Runtime Environment Injection for Frontend
 app.get('/env.js', (req, res) => {
+    const key = process.env.API_KEY || '';
+    console.log(`[SYS] Frontend requested /env.js. API_KEY status: ${key ? 'PRESENT (Masked: ' + key.substring(0, 4) + '...)' : 'MISSING'}`);
+    
     res.type('application/javascript');
-    const envVars = {
-        API_KEY: process.env.API_KEY || ''
-    };
     res.send(`
         window.process = window.process || {};
         window.process.env = window.process.env || {};
-        Object.assign(window.process.env, ${JSON.stringify(envVars)});
+        window.process.env.API_KEY = "${key}";
+        console.log("[SYS] Client-side environment shimmed. API_KEY detected:", !!window.process.env.API_KEY);
     `);
 });
 
@@ -46,6 +47,7 @@ console.log("---------------------------------------------------------");
 console.log(`[SYS] Data Engine Starting...`);
 console.log(`[SYS] Database Path: ${DB_PATH}`);
 console.log(`[SYS] Static Assets: ${PUBLIC_DIR}`);
+console.log(`[SYS] AI API_KEY Configuration: ${process.env.API_KEY ? 'CONFIGURED' : 'NOT FOUND IN ENV'}`);
 console.log("---------------------------------------------------------");
 
 let db;

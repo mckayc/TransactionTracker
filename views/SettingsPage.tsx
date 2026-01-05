@@ -92,10 +92,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     
     // Periodically check for API Key availability as it might be shimmed late
     const [apiKeyActive, setApiKeyActive] = useState(hasApiKey());
+    
     useEffect(() => {
+        // Diagnostic Logging
+        console.log("[SYS] Settings Page loaded. Checking process.env.API_KEY visibility...");
+        console.log("[SYS] process.env available:", !!(window as any).process?.env);
+        console.log("[SYS] process.env.API_KEY present:", !!(window as any).process?.env?.API_KEY);
+        
         const interval = setInterval(() => {
             const current = hasApiKey();
-            if (current !== apiKeyActive) setApiKeyActive(current);
+            if (current !== apiKeyActive) {
+                console.log("[SYS] API Key status changed to:", current);
+                setApiKeyActive(current);
+            }
         }, 1000);
         return () => clearInterval(interval);
     }, [apiKeyActive]);
@@ -336,7 +345,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 <div className={`p-3 rounded-full shadow-sm ${apiKeyActive ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}><RobotIcon className="w-8 h-8" /></div>
                                 <div className="flex-grow">
                                     <h3 className={`text-lg font-bold ${apiKeyActive ? 'text-emerald-800' : 'text-amber-800'}`}>AI Status: {apiKeyActive ? 'Enabled' : 'Disabled'}</h3>
-                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Healthy Gemini 3 connection." : "Missing or invalid API_KEY in environment."}</p>
+                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Healthy Gemini 3 connection detected." : "Missing or invalid API_KEY in environment. Check Docker logs."}</p>
                                 </div>
                             </div>
                         </div>
