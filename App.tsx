@@ -101,11 +101,14 @@ const App: React.FC = () => {
             setTransactions(txResponse.data);
 
             if (showLoader) setIsLoading(false);
-            setIsSyncing(false);
-            document.body.classList.add('loaded');
         } catch (err) {
-            console.error(err);
-            setLoadError("Engine startup failed.");
+            console.error("Core Data Load Error:", err);
+            setLoadError("Engine startup failed. Please check server logs.");
+        } finally {
+            setIsSyncing(false);
+            // Crucial: Always add 'loaded' class to hide the HTML splash screen
+            // Even if an error occurred, we want the error UI to be visible.
+            document.body.classList.add('loaded');
         }
     };
 
@@ -127,7 +130,23 @@ const App: React.FC = () => {
         loadCoreData(false);
     };
 
-    if (loadError) return <div className="p-8 text-center">{loadError}</div>;
+    if (loadError) return (
+        <div className="h-screen flex items-center justify-center bg-slate-50 p-6">
+            <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border-2 border-red-100 text-center space-y-6">
+                <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto shadow-inner">
+                    <ExclamationTriangleIcon className="w-10 h-10" />
+                </div>
+                <div>
+                    <h1 className="text-2xl font-black text-slate-800">Boot Error</h1>
+                    <p className="text-slate-500 mt-2 font-medium">{loadError}</p>
+                </div>
+                <button onClick={() => window.location.reload()} className="w-full py-3 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+                    Retry Connection
+                </button>
+            </div>
+        </div>
+    );
+
     if (isLoading) return <div className="h-screen flex items-center justify-center"><Loader message="Optimizing Data Streams..." /></div>;
 
     return (

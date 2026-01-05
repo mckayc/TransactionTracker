@@ -35,25 +35,29 @@ console.log("---------------------------------------------------------");
 let db;
 
 const ensureSeedData = () => {
-    // Seeder: Transaction Types
-    const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
-    if (typeCount === 0) {
-        console.log("[DB] Seeding Transaction Types...");
-        const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
-        db.transaction(() => {
-            insertType.run('type_income', 'Income', 'income');
-            insertType.run('type_purchase', 'Purchase', 'expense');
-            insertType.run('type_transfer', 'Transfer', 'transfer');
-            insertType.run('type_tax', 'Tax Payment', 'tax');
-            insertType.run('type_investment', 'Investment', 'investment');
-        })();
-    }
+    try {
+        // Seeder: Transaction Types
+        const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
+        if (typeCount === 0) {
+            console.log("[DB] Seeding Transaction Types...");
+            const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
+            db.transaction(() => {
+                insertType.run('type_income', 'Income', 'income');
+                insertType.run('type_purchase', 'Purchase', 'expense');
+                insertType.run('type_transfer', 'Transfer', 'transfer');
+                insertType.run('type_tax', 'Tax Payment', 'tax');
+                insertType.run('type_investment', 'Investment', 'investment');
+            })();
+        }
 
-    // Seeder: Default User
-    const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
-    if (userCount === 0) {
-        console.log("[DB] Seeding Default User...");
-        db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
+        // Seeder: Default User
+        const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
+        if (userCount === 0) {
+            console.log("[DB] Seeding Default User...");
+            db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
+        }
+    } catch (err) {
+        console.error("[DB] Seeder warning (non-fatal):", err.message);
     }
 };
 
@@ -90,18 +94,28 @@ const initDb = () => {
           );
         `);
 
-        // Robust Migration Engine: Ensure all columns exist without wiping data
+        // Robust Migration Engine: Individual Column Resilience
         const migrateTable = (tableName, requiredCols) => {
-            const tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
+            let tableInfo;
+            try {
+                tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
+            } catch (err) {
+                console.error(`[DB] Could not inspect table ${tableName}. Skipping migrations.`);
+                return;
+            }
+            
             const existingColumns = new Set(tableInfo.map(c => c.name));
-            db.transaction(() => {
-                requiredCols.forEach(col => {
-                    if (!existingColumns.has(col.name)) {
-                        console.log(`[DB] Migrating ${tableName}: adding column ${col.name}`);
+            
+            requiredCols.forEach(col => {
+                if (!existingColumns.has(col.name)) {
+                    console.log(`[DB] Migrating ${tableName}: adding column ${col.name}`);
+                    try {
                         db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`).run();
+                    } catch (altErr) {
+                        console.warn(`[DB] Column ${col.name} on ${tableName} failed to add:`, altErr.message);
                     }
-                });
-            })();
+                }
+            });
         };
 
         migrateTable('transactions', [
@@ -129,7 +143,8 @@ const initDb = () => {
 
         console.log("[DB] Engine ready.");
     } catch (dbErr) {
-        console.error("[DB] CRITICAL ERROR:", dbErr.message);
+        console.error("[DB] CRITICAL ERROR during init:", dbErr.message);
+        // We don't exit(1) here to allow the server to at least start and provide health info
     }
 };
 
@@ -260,14 +275,15 @@ app.get('/api/data', (req, res) => {
     for (const row of rows) {
       try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
     }
-    // Correct column aliasing for frontend camelCase mapping
-    data.categories = db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all();
-    data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId FROM accounts").all();
-    data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all().map(a => ({...a, isDefault: !!a.isDefault}));
-    data.users = db.prepare("SELECT id, name, is_default AS isDefault FROM users").all().map(u => ({...u, isDefault: !!u.isDefault}));
-    data.payees = db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM payees").all();
-    data.tags = db.prepare("SELECT * FROM tags").all();
-    data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect FROM transaction_types").all();
+    // Hardened Aliasing: Wrap in try/catch to handle partially migrated schemas
+    try { data.categories = db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all(); } catch(e) { data.categories = []; }
+    try { data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId FROM accounts").all(); } catch(e) { data.accounts = []; }
+    try { data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all().map(a => ({...a, isDefault: !!a.isDefault})); } catch(e) { data.accountTypes = []; }
+    try { data.users = db.prepare("SELECT id, name, is_default AS isDefault FROM users").all().map(u => ({...u, isDefault: !!u.isDefault})); } catch(e) { data.users = []; }
+    try { data.payees = db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM payees").all(); } catch(e) { data.payees = []; }
+    try { data.tags = db.prepare("SELECT * FROM tags").all(); } catch(e) { data.tags = []; }
+    try { data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect FROM transaction_types").all(); } catch(e) { data.transactionTypes = []; }
+    
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
