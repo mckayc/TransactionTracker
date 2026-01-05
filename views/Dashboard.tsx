@@ -55,7 +55,7 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, i
 );
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, users, transactionTypes, onSaveCategory, onSavePayee, onUpdateTransaction, onDeleteTransaction 
+    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -167,7 +167,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <SummaryWidget title="Calendar" value="..." helpText="Next Deadline" icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col gap-6">
+      <div className="flex-1 min-h-0 flex flex-col gap-6 overflow-hidden">
         {/* Top: Quick Import Section (Full Width, only visible when not verifying) */}
         {isImportFormVisible && (
             <div className="w-full flex flex-col shrink-0 animate-fade-in">
@@ -177,8 +177,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                             <div className="flex justify-between items-center mb-4">
                                 <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">Quick Import</h2>
                                 <div className="flex p-1 bg-slate-100 rounded-xl">
-                                    <button onClick={() => setImportMethod('upload')} className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${importMethod === 'upload' ? 'bg-white shadow text-indigo-600' : 'text-slate-50'}`}>FILE</button>
-                                    <button onClick={() => setImportMethod('paste')} className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${importMethod === 'paste' ? 'bg-white shadow text-indigo-600' : 'text-slate-50'}`}>TEXT</button>
+                                    <button onClick={() => setImportMethod('upload')} className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${importMethod === 'upload' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>FILE</button>
+                                    <button onClick={() => setImportMethod('paste')} className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${importMethod === 'paste' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>TEXT</button>
                                 </div>
                             </div>
 
@@ -245,13 +245,13 @@ const Dashboard: React.FC<DashboardProps> = ({
         )}
 
         {/* Bottom: Ledger Activity or Verification View (Full Width) */}
-        <div className="flex-1 min-h-[400px] bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
+        <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             {appState === 'verifying_import' ? (
-                <div className="flex-1 min-h-[600px]">
-                    <ImportVerification rules={rules} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} existingTransactions={recentGlobalTransactions} />
+                <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                    <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
                 </div>
             ) : appState === 'post_import_edit' ? (
-                <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-[600px]">
+                <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-0 h-full">
                     <div className="flex justify-between items-center mb-6 bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm">
                         <div>
                             <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> Final Polish</h2>
@@ -264,7 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     </div>
                 </div>
             ) : (
-                <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 flex flex-col overflow-hidden h-full min-h-0">
                     <div className="flex justify-between items-center mb-4">
                         <h2 className="text-xl font-black text-slate-800">Recent Ledger Activity</h2>
                         <div className="flex gap-2">
@@ -273,7 +273,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                              </div>
                         </div>
                     </div>
-                    <div className="flex-1 overflow-hidden relative border rounded-2xl shadow-inner bg-slate-50/30">
+                    <div className="flex-1 overflow-hidden relative border rounded-2xl shadow-inner bg-slate-50/30 min-h-0 h-full">
                         <TransactionTable transactions={recentGlobalTransactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} visibleColumns={new Set(['date', 'description', 'amount', 'category'])} />
                     </div>
                 </div>

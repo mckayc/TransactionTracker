@@ -1,7 +1,9 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
-import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule } from '../types';
+import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag } from '../types';
 import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
+import RuleModal from './RuleModal';
 
 type VerifiableTransaction = RawTransaction & { 
     categoryId: string; 
@@ -19,7 +21,12 @@ interface ImportVerificationProps {
     transactionTypes: TransactionType[];
     payees: Payee[];
     users: User[];
-    onCreateRule?: (tx: RawTransaction) => void;
+    tags: Tag[];
+    onSaveRule: (rule: ReconciliationRule) => void;
+    onSaveCategory: (category: Category) => void;
+    onSavePayee: (payee: Payee) => void;
+    onSaveTag: (tag: Tag) => void;
+    onAddTransactionType: (type: TransactionType) => void;
     existingTransactions: Transaction[];
     rules: ReconciliationRule[];
 }
@@ -59,7 +66,8 @@ const RuleInspectorDrawer: React.FC<{
     categories: Category[]; 
     payees: Payee[]; 
     types: TransactionType[];
-}> = ({ rule, onClose, categories, payees, types }) => {
+    onEdit: (rule: ReconciliationRule) => void;
+}> = ({ rule, onClose, categories, payees, types, onEdit }) => {
     if (!rule) return null;
 
     const getCatName = (id?: string) => categories.find(c => c.id === id)?.name || 'Unknown';
@@ -78,7 +86,10 @@ const RuleInspectorDrawer: React.FC<{
                         </h3>
                         <p className="text-xs text-indigo-300 mt-1 uppercase font-bold tracking-widest">{rule.name}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 text-white/50 hover:text-white rounded-full"><CloseIcon className="w-6 h-6" /></button>
+                    <div className="flex items-center gap-2">
+                        <button onClick={() => onEdit(rule)} className="p-2 text-white/50 hover:text-white rounded-full transition-colors" title="Edit Rule"><WrenchIcon className="w-5 h-5"/></button>
+                        <button onClick={onClose} className="p-2 text-white/50 hover:text-white rounded-full"><CloseIcon className="w-6 h-6" /></button>
+                    </div>
                 </div>
                 
                 <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
@@ -147,14 +158,20 @@ const RuleInspectorDrawer: React.FC<{
 };
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
-    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, users, existingTransactions, rules, onCreateRule
+    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, users, tags, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, existingTransactions, rules
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [sortKey, setSortKey] = useState<SortKey>('date');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
     const [inspectedTx, setInspectedTx] = useState<VerifiableTransaction | null>(null);
     const [inspectedRule, setInspectedRule] = useState<ReconciliationRule | null>(null);
+    // Added ruleContextTx state to capture the transaction context when inspecting a rule
+    const [ruleContextTx, setRuleContextTx] = useState<VerifiableTransaction | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    // Inline Rule Creator State
+    const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+    const [ruleTransactionContext, setRuleTransactionContext] = useState<Transaction | null>(null);
 
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
     const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
@@ -192,8 +209,13 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
     const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
     
+    const handleOpenRuleCreator = (tx: RawTransaction) => {
+        setRuleTransactionContext({ ...tx, id: 'temp-context' } as Transaction);
+        setIsRuleModalOpen(true);
+    };
+
     return (
-        <div className="space-y-4 flex flex-col h-full w-full min-h-[inherit]">
+        <div className="space-y-4 flex flex-col h-full w-full min-h-0 overflow-hidden">
             <div className="p-5 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 flex-shrink-0">
                 <div className="flex items-center gap-4">
                     <div className="p-3 bg-indigo-50 rounded-xl">
@@ -210,8 +232,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col flex-1 min-h-[400px]">
-                <div className="overflow-auto flex-1 custom-scrollbar">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
+                <div className="overflow-auto flex-1 custom-scrollbar min-h-0">
                     <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
                         <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                             <tr>
@@ -229,7 +251,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('categoryId')}>
                                     <div className="flex items-center gap-1">Category <SortIcon className="w-3 h-3" /></div>
                                 </th>
-                                <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('amount')}>
+                                <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200" onClick={() => requestSort('amount')}>
                                     <div className="flex items-center justify-end gap-1">Amount <SortIcon className="w-3 h-3" /></div>
                                 </th>
                                 <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Rule</th>
@@ -283,15 +305,16 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         <td className="px-4 py-2 text-center">
                                             {matchedRule ? (
                                                 <button 
-                                                    onClick={() => setInspectedRule(matchedRule)}
+                                                    // Updated onClick to set ruleContextTx so it is available in the drawer's onEdit callback
+                                                    onClick={() => { setInspectedRule(matchedRule); setRuleContextTx(tx); }}
                                                     className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all border border-green-200 shadow-sm group/rule"
-                                                    title={`Applied: ${matchedRule.name}`}
+                                                    title={`Applied: ${matchedRule.name}. Click to view/edit.`}
                                                 >
                                                     <SparklesIcon className="w-4 h-4" />
                                                 </button>
                                             ) : (
                                                 <button 
-                                                    onClick={() => onCreateRule && onCreateRule(tx)}
+                                                    onClick={() => handleOpenRuleCreator(tx)}
                                                     className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
                                                     title="Create Rule"
                                                 >
@@ -318,6 +341,24 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 categories={categories} 
                 payees={payees} 
                 types={transactionTypes} 
+                // Fix: use ruleContextTx instead of undefined tx variable
+                onEdit={(r) => { setInspectedRule(null); setRuleTransactionContext({ ...ruleContextTx, id: 'temp-context' } as any); setIsRuleModalOpen(true); }}
+            />
+            
+            <RuleModal 
+                isOpen={isRuleModalOpen} 
+                onClose={() => setIsRuleModalOpen(false)} 
+                onSaveRule={onSaveRule}
+                accounts={accounts}
+                transactionTypes={transactionTypes}
+                categories={categories}
+                tags={tags}
+                payees={payees}
+                transaction={ruleTransactionContext}
+                onSaveCategory={onSaveCategory}
+                onSavePayee={onSavePayee}
+                onSaveTag={onSaveTag}
+                onAddTransactionType={onAddTransactionType}
             />
         </div>
     );

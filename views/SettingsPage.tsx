@@ -1,10 +1,9 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon } from '../components/Icons';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote } from '../types';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
-import { saveFile } from '../services/storageService';
 import { hasApiKey } from '../services/geminiService';
 
 interface SettingsPageProps {
@@ -98,6 +97,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
     const [restoreData, setRestoreData] = useState<any>(null);
     const [restoreSelection, setRestoreSelection] = useState<Set<string>>(new Set());
+    
+    // Paste Restore State
+    const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+    const [pasteText, setPasteText] = useState('');
 
     const [purgeStep, setPurgeStep] = useState<'idle' | 'confirm' | 'final'>('idle');
     const [purgeText, setPurgeText] = useState('');
@@ -209,20 +212,43 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         reader.onload = (event) => {
             try {
                 const json = JSON.parse(event.target?.result as string);
-                const detectedKeys = Object.keys(ENTITY_LABELS).filter(key => json.hasOwnProperty(key) || (key === 'files_meta' && json.hasOwnProperty('businessDocuments')));
-                if (detectedKeys.length === 0) throw new Error("No valid data detected.");
-                setRestoreData(json);
-                setRestoreSelection(new Set(detectedKeys));
-                setIsRestoreModalOpen(true);
+                handleLoadedRestoreData(json);
             } catch (err) { alert("Invalid backup file."); }
         };
         reader.readAsText(file);
     };
 
-    const handleConfirmRestore = async () => {
-        if (!restoreData || restoreSelection.size === 0) return;
-        if (!confirm("This will merge/overwrite existing data. Proceed?")) return;
+    const handlePasteRestore = () => {
         try {
+            const json = JSON.parse(pasteText);
+            handleLoadedRestoreData(json);
+            setIsPasteModalOpen(false);
+            setPasteText('');
+        } catch (err) {
+            alert("Invalid JSON text. Please check for syntax errors.");
+        }
+    };
+
+    const handleLoadedRestoreData = (json: any) => {
+        const detectedKeys = Object.keys(ENTITY_LABELS).filter(key => json.hasOwnProperty(key) || (key === 'files_meta' && json.hasOwnProperty('businessDocuments')));
+        if (detectedKeys.length === 0) throw new Error("No valid data detected.");
+        setRestoreData(json);
+        setRestoreSelection(new Set(detectedKeys));
+        setIsRestoreModalOpen(true);
+    };
+
+    const handleConfirmRestore = async (overwrite: boolean = false) => {
+        if (!restoreData || restoreSelection.size === 0) return;
+        
+        const modeLabel = overwrite ? "OVERWRITE AND REPLACE" : "MERGE WITH EXISTING";
+        if (!confirm(`CAUTION: This will ${modeLabel} your data for the selected categories. This cannot be undone. Proceed?`)) return;
+        
+        try {
+            if (overwrite) {
+                // Perform a selective purge before saving new data
+                await api.resetDatabase(Array.from(restoreSelection));
+            }
+
             const savePromises: Promise<any>[] = [];
             for (const key of Array.from(restoreSelection) as string[]) {
                 if (key === 'templates') {
@@ -295,20 +321,21 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         <div className="lg:col-span-2 bg-white p-6 rounded-xl border border-indigo-100 shadow-sm space-y-6">
                             <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                                 <div><h3 className="font-bold text-indigo-900 flex items-center gap-2 text-lg"><CloudArrowUpIcon className="w-6 h-6 text-indigo-600" />Snapshot Tools</h3><p className="text-sm text-indigo-700">Portable backups.</p></div>
-                                <button onClick={handleExportData} className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg"><DownloadIcon className="w-4 h-4" /> Export</button>
+                                <button onClick={handleExportData} className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 text-white text-sm font-bold rounded-lg shadow-sm hover:bg-indigo-700 transition-colors"><DownloadIcon className="w-4 h-4" /> Export All Selected</button>
                             </div>
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                     {Object.entries(ENTITY_LABELS).map(([key, { label }]) => (
-                                        <button key={key} onClick={() => toggleExportSelection(key)} className={`flex items-center gap-2 p-2 rounded-lg border text-[11px] font-bold transition-all ${exportSelection.has(key) ? 'bg-white border-indigo-400 text-indigo-700 ring-1 ring-indigo-400' : 'bg-slate-100 border-slate-200 text-slate-500 grayscale opacity-60'}`}>{label}</button>
+                                        <button key={key} onClick={() => toggleExportSelection(key)} className={`flex items-center gap-2 p-2 rounded-lg border text-[11px] font-bold transition-all ${exportSelection.has(key) ? 'bg-white border-indigo-400 text-indigo-700 shadow-sm ring-1 ring-indigo-400' : 'bg-slate-100 border-slate-200 text-slate-500 grayscale opacity-60'}`}>{label}</button>
                                     ))}
                                 </div>
                             </div>
-                            <div className="pt-4 border-t border-indigo-50 flex items-center justify-between">
-                                <p className="text-sm text-slate-600">Restore file:</p>
-                                <div className="relative">
-                                    <input type="file" accept=".json" ref={importFileRef} onChange={handleImportFileChange} className="hidden" />
-                                    <button onClick={() => importFileRef.current?.click()} className="flex items-center gap-2 px-6 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg"><UploadIcon className="w-4 h-4" /> Restore</button>
+                            <div className="pt-4 border-t border-indigo-50 flex flex-wrap items-center justify-between gap-4">
+                                <p className="text-sm text-slate-600 font-medium">Restore or migrate data:</p>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setIsPasteModalOpen(true)} className="flex items-center gap-2 px-6 py-2 bg-white border border-slate-300 text-slate-700 text-sm font-bold rounded-lg hover:bg-slate-50 transition-colors shadow-sm"><FileCodeIcon className="w-4 h-4 text-indigo-600" /> Paste JSON</button>
+                                    <input type="file" accept=".json" min-h-0 className="hidden" ref={importFileRef} onChange={handleImportFileChange} />
+                                    <button onClick={() => importFileRef.current?.click()} className="flex items-center gap-2 px-6 py-2 bg-slate-800 text-white text-sm font-bold rounded-lg hover:bg-black transition-colors shadow-sm"><UploadIcon className="w-4 h-4" /> Upload File</button>
                                 </div>
                             </div>
                         </div>
@@ -327,7 +354,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
                                 {Object.entries(ENTITY_LABELS).map(([key, { label, icon, warning }]) => (
-                                    <button key={key} onClick={() => togglePurgeSelection(key)} className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all relative ${purgeSelection.has(key) ? 'bg-red-100 border-red-500' : 'bg-white border-slate-200'}`}>
+                                    <button key={key} onClick={() => togglePurgeSelection(key)} className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all relative ${purgeSelection.has(key) ? 'bg-red-100 border-red-500' : 'bg-white border-slate-200 hover:border-red-200'}`}>
                                         <div className={`p-2 rounded-lg mb-2 ${purgeSelection.has(key) ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{icon}</div>
                                         <span className={`text-[10px] font-black uppercase tracking-tighter text-center ${purgeSelection.has(key) ? 'text-red-700' : 'text-slate-600'}`}>{label}</span>
                                     </button>
@@ -335,7 +362,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             </div>
                         </div>
                         {purgeStep === 'confirm' && (
-                            <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-2xl space-y-6">
+                            <div className="bg-slate-900 text-white p-8 rounded-2xl shadow-2xl space-y-6 animate-fade-in">
                                 <div className="flex items-center gap-4">
                                     <div className="p-4 bg-red-600 rounded-full animate-bounce"><ExclamationTriangleIcon className="w-8 h-8" /></div>
                                     <div><h4 className="text-xl font-black">Confirm Deletion</h4><p className="text-slate-400">Permanently delete <strong>{purgeSelection.size}</strong> datasets?</p></div>
@@ -354,24 +381,75 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 </Section>
             </div>
 
+            {/* RESTORE VERIFICATION MODAL */}
             {isRestoreModalOpen && (
-                <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 border-b flex justify-between items-center bg-slate-50"><h3 className="font-bold text-slate-800 text-lg">Selective Restore</h3><button onClick={() => setIsRestoreModalOpen(false)}><CloseIcon className="w-6 h-6 text-slate-400"/></button></div>
-                        <div className="p-6 space-y-4">
-                            <div className="max-h-60 overflow-y-auto space-y-1">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h3 className="font-black text-slate-800 text-xl">Confirm Restore</h3>
+                                <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">Found {restoreSelection.size} Data Categories</p>
+                            </div>
+                            <button onClick={() => setIsRestoreModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar">
                                 {Object.entries(ENTITY_LABELS).map(([key, { label }]) => {
                                     if (!restoreData.hasOwnProperty(key) && !(key === 'files_meta' && restoreData.hasOwnProperty('businessDocuments'))) return null;
                                     return (
-                                        <label key={key} className={`flex items-center p-3 border rounded-xl cursor-pointer ${restoreSelection.has(key) ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-slate-200'}`}>
-                                            <input type="checkbox" checked={restoreSelection.has(key)} onChange={() => { const s = new Set(restoreSelection); if(s.has(key)) s.delete(key); else s.add(key); setRestoreSelection(s); }} className="w-5 h-5 text-indigo-600" />
+                                        <label key={key} className={`flex items-center p-3 border rounded-xl cursor-pointer transition-colors ${restoreSelection.has(key) ? 'bg-indigo-50 border-indigo-400 shadow-sm' : 'bg-white border-slate-200 opacity-60'}`}>
+                                            <input type="checkbox" checked={restoreSelection.has(key)} onChange={() => { const s = new Set(restoreSelection); if(s.has(key)) s.delete(key); else s.add(key); setRestoreSelection(s); }} className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
                                             <span className="ml-3 font-bold text-slate-700 text-sm">{label}</span>
                                         </label>
                                     );
                                 })}
                             </div>
+                            
+                            <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 flex gap-3 items-start">
+                                <InfoIcon className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-800 leading-relaxed font-medium">Choose <strong>Merge</strong> to append data (safe) or <strong>Replace</strong> to wipe current categories before importing (destructive).</p>
+                            </div>
                         </div>
-                        <div className="p-4 border-t bg-slate-50 flex justify-end gap-3"><button onClick={() => setIsRestoreModalOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600">Cancel</button><button onClick={handleConfirmRestore} disabled={restoreSelection.size === 0} className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-lg">Merge Data</button></div>
+                        <div className="p-6 border-t bg-slate-50 flex flex-col sm:flex-row justify-end gap-3">
+                            <button onClick={() => setIsRestoreModalOpen(false)} className="px-6 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
+                            <button onClick={() => handleConfirmRestore(false)} disabled={restoreSelection.size === 0} className="px-6 py-3 bg-white border-2 border-indigo-600 text-indigo-600 font-bold rounded-xl hover:bg-indigo-50 transition-all shadow-sm">Merge Data</button>
+                            <button onClick={() => handleConfirmRestore(true)} disabled={restoreSelection.size === 0} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100">Replace & Overwrite</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* PASTE RESTORE MODAL */}
+            {isPasteModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h3 className="font-black text-slate-800 text-xl">Paste Backup Data</h3>
+                                <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">Raw JSON Restore</p>
+                            </div>
+                            <button onClick={() => setIsPasteModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                        </div>
+                        <div className="p-8 space-y-4">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Backup JSON Content</label>
+                            <textarea 
+                                value={pasteText} 
+                                onChange={e => setPasteText(e.target.value)} 
+                                placeholder='{ "transactions": [...], "accounts": [...] }'
+                                className="w-full h-80 p-4 font-mono text-xs bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none"
+                            />
+                            <p className="text-xs text-slate-400 italic">Formatting tip: Paste content from a .json file export.</p>
+                        </div>
+                        <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
+                            <button onClick={() => setIsPasteModalOpen(false)} className="px-6 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
+                            <button 
+                                onClick={handlePasteRestore} 
+                                disabled={!pasteText.trim()}
+                                className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 disabled:opacity-30"
+                            >
+                                Validate & Restore
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

@@ -197,8 +197,16 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
             <div className="w-72 border-r border-slate-200 flex flex-col min-h-0 bg-white">
                 <div className="p-3 border-b border-slate-100 space-y-2">
                     <div className="relative group">
-                        <SearchCircleIcon className="absolute left-2 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                        <input type="text" placeholder="Filter records..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-medium focus:ring-1 focus:ring-indigo-500 outline-none" />
+                        <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none">
+                            <SearchCircleIcon className="w-4 h-4 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
+                        </div>
+                        <input 
+                            type="text" 
+                            placeholder="Filter records..." 
+                            value={searchTerm} 
+                            onChange={e => setSearchTerm(e.target.value)} 
+                            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-medium focus:ring-1 focus:ring-indigo-500 outline-none" 
+                        />
                     </div>
                     {filteredNotes.length > 0 && (
                         <div className="flex items-center justify-between px-1">
