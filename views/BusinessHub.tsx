@@ -109,10 +109,14 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
 
     const copyToClipboard = async (text: string) => {
         try {
+            if (!navigator.clipboard) {
+                throw new Error("Clipboard API not available");
+            }
             await navigator.clipboard.writeText(text);
             setCopyStatus('success');
             setTimeout(() => setCopyStatus('idle'), 3000);
         } catch (err) {
+            console.error("Clipboard error:", err);
             setCopyStatus('error');
             setTimeout(() => setCopyStatus('idle'), 3000);
         }
@@ -122,11 +126,11 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
         const selected = notes.filter(n => batchSelection.has(n.id));
         if (selected.length === 0) return;
 
-        let text = forAi ? "Below are the logs and notes from my financial/dev journal for analysis:\n\n" : "";
+        let text = forAi ? "Analyze the following engineering logs/notes for architectural insights or bug fixes:\n\n" : "";
         selected.forEach((n, idx) => {
-            text += `${idx + 1}. [${n.type.toUpperCase()}] ${n.title}\n`;
+            text += `[${n.type.toUpperCase()}] ${n.title}\n`;
             if (forAi) text += `Priority: ${n.priority} | Status: ${n.isCompleted ? 'Resolved' : 'Active'}\n`;
-            text += `Content: ${n.content}\n\n`;
+            text += `${n.content}\n\n---\n\n`;
         });
 
         copyToClipboard(text.trim());
@@ -142,7 +146,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
 
     return (
         <div className="flex gap-4 h-[700px] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden relative">
-            {/* SIDEBAR: NAV & CLASSIFICATIONS */}
+            {/* SIDEBAR: CLASSIFICATIONS */}
             <div className="w-56 bg-slate-50 border-r border-slate-200 flex flex-col p-4 flex-shrink-0">
                 <button onClick={() => setIsCreating(true)} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold shadow-md mb-6 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 text-sm">
                     <AddIcon className="w-4 h-4" /> New Capture
@@ -155,12 +159,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                         { id: 'idea', label: 'Ideas', icon: <LightBulbIcon className="w-4 h-4" /> },
                         { id: 'task', label: 'Tasks', icon: <ChecklistIcon className="w-4 h-4" /> }
                     ].map(item => (
-                        <button 
-                            key={item.id} 
-                            // Fix: Remove setActiveTab as it's not defined in JournalTab component
-                            onClick={() => { setActiveClassification(item.id); setSelectedNoteId(null); setBatchSelection(new Set()); }} 
-                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${activeClassification === item.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-800'}`}
-                        >
+                        <button key={item.id} onClick={() => { setActiveClassification(item.id); setSelectedNoteId(null); setBatchSelection(new Set()); }} className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-bold transition-all ${activeClassification === item.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-800'}`}>
                             <div className="flex items-center gap-2">
                                 {item.icon}
                                 <span>{item.label}</span>
@@ -216,7 +215,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                                         type="checkbox" 
                                         checked={batchSelection.has(n.id)} 
                                         onClick={(e) => toggleBatchSelection(e, n.id)} 
-                                        onChange={() => {}} // Controlled by onClick to prevent row selection conflict
+                                        onChange={() => {}} 
                                         className="w-3.5 h-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer" 
                                     />
                                 </div>
@@ -309,7 +308,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                                     <p className="text-[10px] font-bold text-slate-400 italic">Resolved on {new Date(activeNote.resolvedAt!).toLocaleDateString()}</p>
                                 )}
                             </div>
-                            <button onClick={() => copyToClipboard(`Subject: ${activeNote.title}\n\nContext: ${activeNote.content}`)} className="flex items-center gap-2 text-indigo-600 font-bold text-[10px] uppercase hover:underline">
+                            <button onClick={() => copyToClipboard(`Subject: ${activeNote.title}\n\nContent: ${activeNote.content}`)} className="flex items-center gap-2 text-indigo-600 font-bold text-[10px] uppercase hover:underline">
                                 <CopyIcon className="w-4 h-4"/> Copy Details
                             </button>
                         </div>
@@ -401,7 +400,6 @@ const TaxAdvisorTab: React.FC<{
         if (!input.trim() || !activeSession || isLoading) return;
         const userMsg: ChatMessage = { id: generateUUID(), role: 'user', content: input, timestamp: new Date().toISOString() };
         
-        // Fix: Removed broken line with 'activeNote' and fixed typo as suggested in the developer comment.
         const nextMsgs = [...activeSession.messages, userMsg];
         const updatedSess = { ...activeSession, messages: nextMsgs, updatedAt: new Date().toISOString() };
         
