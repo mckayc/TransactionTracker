@@ -90,8 +90,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 }) => {
     const importFileRef = useRef<HTMLInputElement>(null);
     
-    // Explicitly check key presence
-    const apiKeyActive = useMemo(() => hasApiKey(), []);
+    // Periodically check for API Key availability as it might be shimmed late
+    const [apiKeyActive, setApiKeyActive] = useState(hasApiKey());
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const current = hasApiKey();
+            if (current !== apiKeyActive) setApiKeyActive(current);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [apiKeyActive]);
 
     const [exportSelection, setExportSelection] = useState<Set<string>>(new Set(Object.keys(ENTITY_LABELS)));
     const [purgeSelection, setPurgeSelection] = useState<Set<string>>(new Set());

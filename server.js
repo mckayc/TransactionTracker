@@ -17,7 +17,6 @@ const DATA_DIR = path.join(__dirname, 'data', 'config');
 const DOCUMENTS_DIR = path.join(__dirname, 'media', 'files');
 const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 
-// Prefer 'dist' (Vite build output) over 'public'
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'dist')) 
     ? path.join(__dirname, 'dist') 
     : path.join(__dirname, 'public');
@@ -26,6 +25,19 @@ app.use(express.json({ limit: '100mb' }));
 app.use('/api/files', express.raw({ type: '*/*', limit: '100mb' }));
 
 app.get('/api/health', (req, res) => res.status(200).json({ status: 'live', timestamp: new Date().toISOString() }));
+
+// Runtime Environment Injection for Frontend
+app.get('/env.js', (req, res) => {
+    res.type('application/javascript');
+    const envVars = {
+        API_KEY: process.env.API_KEY || ''
+    };
+    res.send(`
+        window.process = window.process || {};
+        window.process.env = window.process.env || {};
+        Object.assign(window.process.env, ${JSON.stringify(envVars)});
+    `);
+});
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });

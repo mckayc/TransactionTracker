@@ -5,7 +5,8 @@ import type { RawTransaction, Transaction, TransactionType, AuditFinding, Catego
 
 /**
  * Returns true if the API_KEY environment variable is defined.
- * Vite replaces process.env.API_KEY with the actual string at build/dev time.
+ * In a bundled Vite app, this is replaced at build time.
+ * in a production container, we shim this via /env.js at runtime.
  */
 export const hasApiKey = (): boolean => {
     try {
