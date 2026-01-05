@@ -15,9 +15,15 @@ const ai = new GoogleGenAI({ apiKey: getApiKey() });
 export const hasApiKey = (): boolean => !!getApiKey();
 
 const fileToGenerativePart = async (file: File) => {
-    const buffer = await file.arrayBuffer();
-    const base64 = btoa(new Uint8Array(buffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
-    return { inlineData: { data: base64, mimeType: file.type } };
+    return new Promise<{ inlineData: { data: string, mimeType: string } }>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const base64 = (reader.result as string).split(',')[1];
+            resolve({ inlineData: { data: base64, mimeType: file.type } });
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 };
 
 /**
@@ -45,17 +51,22 @@ export const generateRulesFromData = async (
     
     GOAL: For EVERY distinct merchant or pattern found in the sample (e.g. Red 8, Costco, SP Crunchlabs), create a specific rule.
     
+    HIERARCHY & NAMING:
+    - If you find a merchant or payee name that DOES NOT exist in the provided IDs, provide a "suggestedName" field.
+    - Match categories to existing IDs where possible.
+    
     RULE FORMAT REQUIREMENTS:
     1. 'name': Friendly descriptive name.
     2. 'scope': The primary field affected (e.g. 'description', 'merchantId', 'categoryId').
-    3. 'conditions': At least one condition. Typically 'description' contains 'MERCHANT_NAME_IN_CAPS'.
-    4. 'setCategoryId': Match to one of the provided category IDs.
-    5. 'setMerchantId': Match to one of the provided merchant IDs if a strong match exists.
-    6. 'setLocationId': Match to one of the provided location IDs.
-    7. 'setUserId': Assign based on the member name/user in the data.
+    3. 'conditions': At least one condition. Typically 'description' contains 'MERCHANT_NAME'.
+    4. 'setCategoryId' / 'suggestedCategoryName': Existing ID or a new Name.
+    5. 'setPayeeId' / 'suggestedPayeeName': Existing ID or a new Name.
+    6. 'setMerchantId' / 'suggestedMerchantName': Existing ID or a new Name.
+    7. 'setLocationId' / 'suggestedLocationName': Existing ID or a new Name.
     
     AVAILABLE SCHEMA CONTEXT (IDs only):
     Categories: ${JSON.stringify(categories.map(c => ({id: c.id, name: c.name})))}
+    Payees: ${JSON.stringify(payees.map(p => ({id: p.id, name: p.name})))}
     Merchants: ${JSON.stringify(merchants.map(m => ({id: m.id, name: m.name})))}
     Locations: ${JSON.stringify(locations.map(l => ({id: l.id, name: l.name})))}
     Users: ${JSON.stringify(users.map(u => ({id: u.id, name: u.name})))}
@@ -84,8 +95,13 @@ export const generateRulesFromData = async (
                             }
                         },
                         setCategoryId: { type: Type.STRING },
+                        suggestedCategoryName: { type: Type.STRING },
+                        setPayeeId: { type: Type.STRING },
+                        suggestedPayeeName: { type: Type.STRING },
                         setMerchantId: { type: Type.STRING },
+                        suggestedMerchantName: { type: Type.STRING },
                         setLocationId: { type: Type.STRING },
+                        suggestedLocationName: { type: Type.STRING },
                         setUserId: { type: Type.STRING },
                         assignTagIds: { type: Type.ARRAY, items: { type: Type.STRING } }
                     }
@@ -95,22 +111,32 @@ export const generateRulesFromData = async (
         required: ['rules']
     };
 
-    const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: [{ parts: [{ text: systemPrompt }, ...sampleParts] }],
-        config: { 
-            responseMimeType: 'application/json',
-            responseSchema: schema
-        }
-    });
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: [{ parts: [{ text: systemPrompt }, ...sampleParts] }],
+            config: { 
+                responseMimeType: 'application/json',
+                responseSchema: schema
+            }
+        });
 
-    const parsed = JSON.parse(response.text || '{"rules": []}');
-    return (parsed.rules || []).map((r: any) => ({
-        ...r,
-        id: Math.random().toString(36).substring(7),
-        isAiDraft: true,
-        conditions: r.conditions.map((c: any) => ({ ...c, id: Math.random().toString(36).substring(7), type: 'basic', nextLogic: 'AND' }))
-    }));
+        const parsed = JSON.parse(response.text || '{"rules": []}');
+        return (parsed.rules || []).map((r: any) => ({
+            ...r,
+            id: Math.random().toString(36).substring(7),
+            isAiDraft: true,
+            conditions: r.conditions.map((c: any) => ({ 
+                ...c, 
+                id: Math.random().toString(36).substring(7), 
+                type: 'basic', 
+                nextLogic: 'AND' 
+            }))
+        }));
+    } catch (e) {
+        console.error("Gemini Rule Forge Error:", e);
+        throw new Error("AI analysis failed to parse the provided data.");
+    }
 };
 
 /**

@@ -133,6 +133,12 @@ export interface ReconciliationRule {
     skipImport?: boolean;
     isAiDraft?: boolean;
     priority?: number;
+    // Fields for AI-suggested entities that don't exist yet
+    suggestedCategoryName?: string;
+    suggestedPayeeName?: string;
+    suggestedMerchantName?: string;
+    suggestedLocationName?: string;
+    suggestedUserName?: string;
 }
 
 export type TaskPriority = 'low' | 'medium' | 'high';

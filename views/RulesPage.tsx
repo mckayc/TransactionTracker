@@ -63,7 +63,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [ruleScope, setRuleScope] = useState('description');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
     
-    // Action Transformation State (Renamed to avoid "not callable" shadowing/inference issues)
+    // Action Transformation State
     const [actionCategoryId, setActionCategoryId] = useState('');
     const [actionPayeeId, setActionPayeeId] = useState('');
     const [actionMerchantId, setActionMerchantId] = useState('');
@@ -151,14 +151,42 @@ const RulesPage: React.FC<RulesPageProps> = ({
             const proposed = await generateRulesFromData(input, categories, payees, merchants, locations, users, aiPrompt);
             setAiProposedRules(proposed);
         } catch (e) {
-            alert("AI Pattern Analysis failed. Ensure data sample is legible.");
+            console.error(e);
+            alert("AI Pattern Analysis failed. Ensure data sample is legible and API key is active.");
         } finally {
             setIsAiGenerating(false);
         }
     };
 
     const acceptAiRule = (proposed: ReconciliationRule) => {
-        onSaveRule({ ...proposed, isAiDraft: false });
+        let finalRule = { ...proposed, isAiDraft: false };
+
+        // Automatic Entity Creation Logic
+        if (proposed.suggestedCategoryName && !proposed.setCategoryId) {
+            const cat = { id: generateUUID(), name: proposed.suggestedCategoryName };
+            onSaveCategory(cat);
+            finalRule.setCategoryId = cat.id;
+        }
+
+        if (proposed.suggestedPayeeName && !proposed.setPayeeId) {
+            const p = { id: generateUUID(), name: proposed.suggestedPayeeName };
+            onSavePayee(p);
+            finalRule.setPayeeId = p.id;
+        }
+
+        if (proposed.suggestedMerchantName && !proposed.setMerchantId) {
+            const m = { id: generateUUID(), name: proposed.suggestedMerchantName };
+            onSaveMerchant(m);
+            finalRule.setMerchantId = m.id;
+        }
+
+        if (proposed.suggestedLocationName && !proposed.setLocationId) {
+            const l = { id: generateUUID(), name: proposed.suggestedLocationName };
+            onSaveLocation(l);
+            finalRule.setLocationId = l.id;
+        }
+
+        onSaveRule(finalRule);
         setAiProposedRules(prev => prev.filter(p => p.id !== proposed.id));
     };
 
@@ -259,24 +287,30 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </div>
                             ) : (
                                 <div className="space-y-3">
-                                    {aiProposedRules.map(r => (
-                                        <div key={r.id} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
-                                            <div className="flex justify-between items-start">
-                                                <h5 className="text-sm font-bold text-slate-800">{r.name}</h5>
-                                                <button onClick={() => acceptAiRule(r)} className="text-[10px] font-black bg-indigo-600 text-white px-2 py-1 rounded uppercase hover:bg-indigo-700">Accept</button>
-                                            </div>
-                                            <div className="text-[10px] text-slate-500 space-y-1">
-                                                <div className="p-2 bg-slate-50 rounded font-mono">
-                                                    If {r.conditions[0].field} {r.conditions[0].operator} "{r.conditions[0].value}"
+                                    {aiProposedRules.map(r => {
+                                        const catName = r.setCategoryId ? categories.find(c => c.id === r.setCategoryId)?.name : r.suggestedCategoryName;
+                                        const mercName = r.setMerchantId ? merchants.find(m => m.id === r.setMerchantId)?.name : r.suggestedMerchantName;
+                                        const payeeName = r.setPayeeId ? payees.find(p => p.id === r.setPayeeId)?.name : r.suggestedPayeeName;
+
+                                        return (
+                                            <div key={r.id} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
+                                                <div className="flex justify-between items-start">
+                                                    <h5 className="text-sm font-bold text-slate-800">{r.name}</h5>
+                                                    <button onClick={() => acceptAiRule(r)} className="text-[10px] font-black bg-indigo-600 text-white px-2 py-1 rounded uppercase hover:bg-indigo-700">Accept</button>
                                                 </div>
-                                                <div className="grid grid-cols-2 gap-2 text-[9px] font-bold">
-                                                    {r.setCategoryId && <div className="text-indigo-600 truncate">&bull; Cat: {categories.find(c => c.id === r.setCategoryId)?.name}</div>}
-                                                    {r.setMerchantId && <div className="text-indigo-600 truncate">&bull; Merc: {merchants.find(m => m.id === r.setMerchantId)?.name}</div>}
-                                                    {r.setUserId && <div className="text-indigo-600 truncate">&bull; User: {users.find(u => u.id === r.setUserId)?.name}</div>}
+                                                <div className="text-[10px] text-slate-500 space-y-1">
+                                                    <div className="p-2 bg-slate-50 rounded font-mono">
+                                                        If {r.conditions[0].field} {r.conditions[0].operator} "{r.conditions[0].value}"
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2 text-[9px] font-bold">
+                                                        {catName && <div className="text-indigo-600 truncate">&bull; Cat: {catName}</div>}
+                                                        {mercName && <div className="text-indigo-600 truncate">&bull; Merc: {mercName}</div>}
+                                                        {payeeName && <div className="text-indigo-600 truncate">&bull; Payee: {payeeName}</div>}
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
