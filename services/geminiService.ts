@@ -77,6 +77,30 @@ const EXTRACTION_SCHEMA = {
     required: ['transactions']
 };
 
+export const healDataSnippet = async (rawText: string): Promise<any> => {
+    const prompt = `You are a data recovery assistant. The user has provided a snippet of JSON data that might be malformed, partial, or missing outer braces. 
+    REPAIR this data into a valid JSON object containing standard FinParser keys.
+    
+    EXPECTED KEYS: transactions, accounts, categories, payees, users, tags, reconciliationRules, businessProfile, amazonMetrics, youtubeMetrics.
+    
+    RULES:
+    1. If the input is just an array of payees, return {"payees": [...]}.
+    2. If the input is missing quotes or has trailing commas, FIX THEM.
+    3. Ensure IDs remain identical.
+    4. Maintain camelCase for property names (e.g., parentId, userId, isDefault).
+    
+    INPUT TEXT:
+    ${rawText}`;
+
+    const result = await callAi({
+        model: 'gemini-3-flash-preview',
+        contents: { parts: [{ text: prompt }] },
+        config: { responseMimeType: 'application/json' }
+    });
+    
+    return JSON.parse(result.text);
+};
+
 const SYSTEM_PROMPT = (categories: string[]) => `You are a World-Class Forensic Financial Accountant. 
 Your task is to parse bank or credit card statements with 100% precision.
 

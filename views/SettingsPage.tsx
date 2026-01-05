@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon } from '../components/Icons';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon, RepeatIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
-import { hasApiKey } from '../services/geminiService';
+import { hasApiKey, healDataSnippet } from '../services/geminiService';
 
 interface SettingsPageProps {
     transactions: Transaction[];
@@ -101,6 +101,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     // Paste Restore State
     const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
     const [pasteText, setPasteText] = useState('');
+    const [isHealing, setIsHealing] = useState(false);
 
     const [purgeStep, setPurgeStep] = useState<'idle' | 'confirm' | 'final'>('idle');
     const [purgeText, setPurgeText] = useState('');
@@ -218,10 +219,27 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         reader.readAsText(file);
     };
 
-    const handlePasteRestore = () => {
+    const handlePasteRestore = async () => {
+        let json;
         try {
-            let json = JSON.parse(pasteText);
-            
+            // First attempt: Standard parser
+            json = JSON.parse(pasteText);
+        } catch (err) {
+            // Second attempt: AI Healing
+            console.warn("Direct JSON parse failed. Attempting AI Healing...");
+            setIsHealing(true);
+            try {
+                json = await healDataSnippet(pasteText);
+            } catch (aiErr) {
+                alert("AI could not repair the data snippet. Please ensure it is a valid list or object.");
+                setIsHealing(false);
+                return;
+            } finally {
+                setIsHealing(false);
+            }
+        }
+        
+        if (json) {
             // Intelligence: Handle raw arrays or missing wrapper keys
             if (Array.isArray(json)) {
                 const first = json[0];
@@ -230,19 +248,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 else if (first.date && first.description && first.amount) json = { transactions: json };
                 else if (first.name && (first.parentId !== undefined || first.notes !== undefined)) json = { payees: json };
                 else if (first.name && first.isDefault !== undefined) json = { users: json };
-            } else if (!json.exportDate && !Object.keys(ENTITY_LABELS).some(k => json[k])) {
-                // If they pasted a partial block but didn't array it (like a single payee)
-                const keys = Object.keys(json);
-                if (keys.length === 1 && Array.isArray(json[keys[0]])) {
-                    // It's likely already a wrapper like {"payees": [...]}
-                }
             }
 
             handleLoadedRestoreData(json);
             setIsPasteModalOpen(false);
             setPasteText('');
-        } catch (err) {
-            alert("Invalid JSON text. Please check for syntax errors.");
         }
     };
 
@@ -471,13 +481,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 placeholder='{ "transactions": [...], "accounts": [...] }'
                                 className="w-full h-80 p-4 font-mono text-xs bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none"
                             />
-                            <p className="text-xs text-slate-400 italic">Formatting tip: Paste content from a .json file export.</p>
+                            <p className="text-xs text-slate-400 italic">Formatting tip: Paste content from a .json file export. If the text is malformed, AI will attempt to heal it.</p>
                         </div>
-                        <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
+                        <div className="p-6 border-t bg-slate-50 flex justify-end gap-3 items-center">
+                            {isHealing && (
+                                <div className="flex items-center gap-2 mr-auto text-indigo-600 animate-pulse">
+                                    <RepeatIcon className="w-4 h-4 animate-spin" />
+                                    <span className="text-xs font-black uppercase tracking-widest">AI Attempting Repair...</span>
+                                </div>
+                            )}
                             <button onClick={() => setIsPasteModalOpen(false)} className="px-6 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
                             <button 
                                 onClick={handlePasteRestore} 
-                                disabled={!pasteText.trim()}
+                                disabled={!pasteText.trim() || isHealing}
                                 className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 disabled:opacity-30"
                             >
                                 Validate & Restore
