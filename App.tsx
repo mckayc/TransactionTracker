@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View } from './types';
 import Sidebar from './components/Sidebar';
@@ -221,6 +220,18 @@ const App: React.FC = () => {
                             transactionTypes={transactionTypes}
                          />
                     )}
+                    {currentView === 'tasks' && (
+                         <TasksPage 
+                            tasks={tasks} 
+                            onSaveTask={(t) => updateData('tasks', tasks.some(x => x.id === t.id) ? tasks.map(x => x.id === t.id ? t : x) : [...tasks, t], setTasks)}
+                            onDeleteTask={(id) => updateData('tasks', tasks.filter(x => x.id !== id), setTasks)}
+                            onToggleTask={(id) => updateData('tasks', tasks.map(x => x.id === id ? { ...x, isCompleted: !x.isCompleted } : x), setTasks)}
+                            templates={templates} 
+                            scheduledEvents={scheduledEvents}
+                            onSaveTemplate={(t) => updateData('templates', templates.some(x => x.id === t.id) ? templates.map(x => x.id === t.id ? t : x) : [...templates, t], setTemplates)}
+                            onRemoveTemplate={(id) => updateData('templates', templates.filter(x => x.id !== id), setTemplates)}
+                         />
+                    )}
                     {currentView === 'reports' && (
                         <Reports 
                             transactions={transactions} categories={categories} transactionTypes={transactionTypes}
@@ -293,7 +304,6 @@ const App: React.FC = () => {
                     )}
                     {currentView === 'integrations' && <IntegrationsPage onNavigate={(v) => setCurrentView(v as View)} />}
                     {currentView === 'integration-amazon' && <AmazonIntegration metrics={amazonMetrics} onAddMetrics={(m) => updateData('amazonMetrics', [...amazonMetrics, ...m], setAmazonMetrics)} onDeleteMetrics={(ids) => updateData('amazonMetrics', amazonMetrics.filter(m => !ids.includes(m.id)), setAmazonMetrics)} videos={amazonVideos} onAddVideos={(v) => updateData('amazonVideos', [...amazonVideos, ...v], setAmazonVideos)} onDeleteVideos={(ids) => updateData('amazonVideos', amazonVideos.filter(v => !ids.includes(v.id)), setAmazonVideos)} />}
-                    {/* Fixed: Line 295 call to updateData now includes missing third argument and fixed ternary item logic */}
                     {currentView === 'integration-youtube' && <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={(m) => updateData('youtubeMetrics', [...youtubeMetrics, ...m], setYouTubeMetric)} onDeleteMetrics={(ids) => updateData('youtubeMetrics', youtubeMetrics.filter(m => !ids.includes(m.id)), setYouTubeMetric)} channels={youtubeChannels} onSaveChannel={(c) => updateData('youtubeChannels', youtubeChannels.some(x => x.id === c.id) ? youtubeChannels.map(x => x.id === c.id ? c : x) : [...youtubeChannels, c], setYouTubeChannels)} onDeleteChannel={(id) => updateData('youtubeChannels', youtubeChannels.filter(x => x.id !== id), setYouTubeChannels)} />}
                     {currentView === 'integration-content-hub' && <ContentHub amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} contentLinks={contentLinks} onUpdateLinks={(l) => updateData('contentLinks', l, setContentLinks)} />}
                 </div>

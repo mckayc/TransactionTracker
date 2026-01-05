@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule } from '../types';
 import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon } from './Icons';
@@ -103,7 +102,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
     
     return (
-        <div className="space-y-4 flex flex-col h-full overflow-hidden">
+        <div className="space-y-4 flex flex-col h-full w-full min-h-[inherit]">
             <div className="p-5 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 flex-shrink-0">
                 <div className="flex items-center gap-4">
                     <div className="p-3 bg-indigo-50 rounded-xl">
@@ -120,7 +119,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col flex-1 min-h-[400px]">
                 <div className="overflow-auto flex-1 custom-scrollbar">
                     <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
                         <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
