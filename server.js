@@ -141,6 +141,7 @@ const initDb = () => {
         migrateTable('transaction_types', [{ name: 'balance_effect', type: 'TEXT' }]);
         migrateTable('users', [{ name: 'is_default', type: 'INTEGER DEFAULT 0' }]);
         migrateTable('payees', [{ name: 'user_id', type: 'TEXT' }, { name: 'parent_id', type: 'TEXT' }, { name: 'notes', type: 'TEXT' }]);
+        migrateTable('accounts', [{ name: 'account_type_id', type: 'TEXT' }]);
 
         ensureSeedData();
 
