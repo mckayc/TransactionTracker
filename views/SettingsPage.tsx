@@ -89,7 +89,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks
 }) => {
     const importFileRef = useRef<HTMLInputElement>(null);
-    const apiKeyActive = hasApiKey();
+    
+    // Explicitly check key presence
+    const apiKeyActive = useMemo(() => hasApiKey(), []);
 
     const [exportSelection, setExportSelection] = useState<Set<string>>(new Set(Object.keys(ENTITY_LABELS)));
     const [purgeSelection, setPurgeSelection] = useState<Set<string>>(new Set());
@@ -222,10 +224,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const handlePasteRestore = async () => {
         let json;
         try {
-            // First attempt: Standard parser
             json = JSON.parse(pasteText);
         } catch (err) {
-            // Second attempt: AI Healing
             console.warn("Direct JSON parse failed. Attempting AI Healing...");
             setIsHealing(true);
             try {
@@ -240,7 +240,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         }
         
         if (json) {
-            // Intelligence: Handle raw arrays or missing wrapper keys
             if (Array.isArray(json)) {
                 const first = json[0];
                 if (first.asin) json = { amazonMetrics: json };
@@ -275,12 +274,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         
         try {
             if (overwrite) {
-                // Perform a selective purge before saving new data
                 await api.resetDatabase(Array.from(restoreSelection));
             }
 
-            // CRITICAL: We process sequentially instead of Promise.all to prevent 
-            // SQLite "Database is locked" errors during heavy restore transactions.
             for (const key of Array.from(restoreSelection) as string[]) {
                 if (key === 'templates') {
                     await api.save('templates', restoreData.templates);
@@ -296,14 +292,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 }
             }
             
-            // Handle core entities if present
             if (restoreData.transactionTypes) await api.save('transactionTypes', restoreData.transactionTypes);
             if (restoreData.users) await api.save('users', restoreData.users);
 
             window.location.reload();
         } catch (err) { 
             console.error("Restore Failure:", err);
-            alert(`Restore failed: ${err instanceof Error ? err.message : 'Unknown internal error'}. Please check server logs.`); 
+            alert(`Restore failed: ${err instanceof Error ? err.message : 'Unknown internal error'}.`); 
         }
     };
 
@@ -334,7 +329,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 <div className={`p-3 rounded-full shadow-sm ${apiKeyActive ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}><RobotIcon className="w-8 h-8" /></div>
                                 <div className="flex-grow">
                                     <h3 className={`text-lg font-bold ${apiKeyActive ? 'text-emerald-800' : 'text-amber-800'}`}>AI Status: {apiKeyActive ? 'Enabled' : 'Disabled'}</h3>
-                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Healthy Gemini 3 connection." : "Missing API_KEY."}</p>
+                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Healthy Gemini 3 connection." : "Missing or invalid API_KEY in environment."}</p>
                                 </div>
                             </div>
                         </div>
@@ -432,7 +427,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 </Section>
             </div>
 
-            {/* RESTORE VERIFICATION MODAL */}
             {isRestoreModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -470,7 +464,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
             )}
 
-            {/* PASTE RESTORE MODAL */}
             {isPasteModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
