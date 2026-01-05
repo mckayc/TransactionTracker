@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote } from '../types';
-// Fixed error: Added CloseIcon to the import list from ../components/Icons
 import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon } from '../components/Icons';
 import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
 import { generateUUID } from '../utils';
@@ -790,7 +789,7 @@ const CalendarTab: React.FC<{ profile: BusinessProfile }> = ({ profile }) => {
             </div>
              <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 flex items-start gap-3">
                 <SparklesIcon className="w-6 h-6 text-indigo-500 flex-shrink-0 mt-1" />
-                <div><h3 className="font-bold text-sm text-slate-800">Estimated Taxes?</h3><p className="text-sm text-slate-600 mt-1">IRS requires quarterly payments if you expect to owe >$1,000.</p></div>
+                <div><h3 className="font-bold text-sm text-slate-800">Estimated Taxes?</h3><p className="text-sm text-slate-600 mt-1">IRS requires quarterly payments if you expect to owe &gt;$1,000.</p></div>
             </div>
         </div>
     );
