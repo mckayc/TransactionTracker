@@ -1,3 +1,4 @@
+
 import { Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, FinancialPlan } from '../types';
 
@@ -184,10 +185,45 @@ export const streamTaxAdvice = async (history: ChatMessage[], profile: BusinessP
     });
 };
 
-export const generateFinancialStrategy = async (transactions: Transaction[], goals: FinancialGoal[], categories: Category[]) => {
+export const generateFinancialStrategy = async (transactions: Transaction[], goals: FinancialGoal[], categories: Category[], businessProfile: BusinessProfile) => {
+    // Collect 6 months of spending for better accuracy
+    const categoryMap = new Map(categories.map(c => [c.id, c.name]));
+    const last6Months = new Date();
+    last6Months.setMonth(last6Months.getMonth() - 6);
+    
+    const spendingSummary = transactions
+        .filter(tx => new Date(tx.date) >= last6Months && !tx.isParent && tx.typeId.includes('expense'))
+        .reduce((acc, tx) => {
+            const name = categoryMap.get(tx.categoryId) || 'Other';
+            acc[name] = (acc[name] || 0) + tx.amount;
+            return acc;
+        }, {} as Record<string, number>);
+
+    const prompt = `Act as a world-class financial planner and tax strategist.
+    
+    BUSINESS CONTEXT:
+    ${JSON.stringify(businessProfile)}
+    
+    GOALS:
+    ${JSON.stringify(goals)}
+    
+    SPENDING TRENDS:
+    ${JSON.stringify(spendingSummary)}
+    
+    TASK:
+    Generate a comprehensive financial roadmap. Focus on:
+    1. TAX OPTIMIZATION: Suggest deductions or structures (like S-Corp or retirement plans) specifically for their business type.
+    2. RETIREMENT PLANNING: Calculate projections based on current savings and goals.
+    3. DEBT VS INVESTING: Provide a prioritized sequence for capital allocation.
+    
+    Return a JSON object with:
+    - strategy: Markdown string.
+    - suggestedBudgets: Array of { categoryId, monthlyLimit }.
+    `;
+
     const result = await callAi({
         model: 'gemini-3-pro-preview',
-        contents: { parts: [{ text: `Generate a financial strategy based on these goals: ${JSON.stringify(goals)}` }] },
+        contents: { parts: [{ text: prompt }] },
         config: { responseMimeType: 'application/json' }
     });
     return JSON.parse(result.text);
