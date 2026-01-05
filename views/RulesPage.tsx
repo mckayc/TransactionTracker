@@ -208,7 +208,7 @@ const RuleEditorModal: React.FC<{
     };
 
     const handleCreatePayee = () => {
-        const name = prompt("Enter new Payee name:");
+        const name = prompt("Enter new Source/Entity name:");
         if (name && name.trim()) {
             const newPayee = { id: generateUUID(), name: name.trim() };
             onSavePayee(newPayee);
@@ -322,7 +322,7 @@ const RuleEditorModal: React.FC<{
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Set Payee</label>
+                                    <label className="block text-xs font-medium text-slate-500 uppercase mb-1">Set Entity</label>
                                     <div className="flex gap-1">
                                         <select value={setPayeeId} onChange={(e) => setSetPayeeId(e.target.value)} className="w-full p-2 text-sm border rounded-md">
                                             <option value="">-- Don't Change --</option>
@@ -436,13 +436,13 @@ const RulesPage: React.FC<RulesPageProps> = ({ rules, onSaveRule, onDeleteRule, 
                     </button>
                 </div>
                 <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4 flex-shrink-0">
-                    <div className="relative flex-grow">
-                        <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                    <div className="relative flex-grow group">
+                        <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-indigo-500" />
                         <input type="text" placeholder="Search rules..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
                     </div>
-                    <div className="relative min-w-[180px]">
-                        <SortIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="w-full pl-9 pr-8 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none bg-white">
+                    <div className="relative min-w-[180px] group">
+                        <SortIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-indigo-500" />
+                        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="w-full pl-10 pr-8 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none appearance-none bg-white">
                             <option value="name_asc">Name (A-Z)</option>
                             <option value="name_desc">Name (Z-A)</option>
                         </select>

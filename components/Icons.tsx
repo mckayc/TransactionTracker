@@ -8,7 +8,7 @@ import {
     Search, Wrench, Info, Eye, EyeOff, Folder, GripVertical, 
     ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Heart, Printer, 
     ShieldCheck, Scissors, UsersRound, Puzzle, Box, BarChart3, ArrowRight,
-    Youtube, Video, TrendingUp, Slash, Bug
+    Youtube, Video, TrendingUp, Slash, Bug, Database, FileCode
 } from 'lucide-react';
 
 export const UploadIcon = Upload;
@@ -74,3 +74,5 @@ export const VideoIcon = Video;
 export const TrendingUpIcon = TrendingUp;
 export const SlashIcon = Slash;
 export const BugIcon = Bug;
+export const DatabaseIcon = Database;
+export const FileCodeIcon = FileCode;

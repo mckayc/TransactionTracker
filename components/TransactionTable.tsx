@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, Account, TransactionType, Payee, Category, User, Tag } from '../types';
-import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon } from './Icons';
+import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon } from './Icons';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -59,6 +59,53 @@ const generateGroupColor = (str: string): string => {
     return colors[Math.abs(hash) % colors.length];
 };
 
+const RawDataDrawer: React.FC<{ tx: Transaction | null; onClose: () => void; }> = ({ tx, onClose }) => {
+    if (!tx) return null;
+    const metadata = tx.metadata || {};
+    return (
+        <div className="fixed inset-0 z-[100] flex justify-end">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-lg bg-slate-900 shadow-2xl flex flex-col h-full animate-slide-in-right">
+                <div className="p-6 border-b border-white/10 bg-slate-800 flex justify-between items-center">
+                    <div>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                            <DatabaseIcon className="w-5 h-5 text-indigo-400" />
+                            Raw Record Inspector
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Transaction ID: {tx.id.substring(0, 8)}...</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                    <div className="bg-indigo-900/20 border border-indigo-500/20 rounded-xl p-4 mb-4">
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">Processed Summary</p>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div><span className="text-slate-500 block text-[10px] uppercase">Final Desc</span><span className="text-white font-bold">{tx.description}</span></div>
+                            <div><span className="text-slate-500 block text-[10px] uppercase">Original Desc</span><span className="text-white font-mono text-xs">{tx.originalDescription || tx.description}</span></div>
+                        </div>
+                    </div>
+                    {Object.entries(metadata).length > 0 ? (
+                        Object.entries(metadata).map(([k, v]) => (
+                            <div key={k} className="bg-white/5 border border-white/5 rounded-xl p-4">
+                                <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 tracking-wider">{k}</p>
+                                <p className="text-sm text-slate-100 font-medium break-words leading-relaxed">{String(v) || <em className="text-slate-700 italic">empty</em>}</p>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="py-20 text-center">
+                            <InfoIcon className="w-12 h-12 text-slate-700 mx-auto mb-4" />
+                            <p className="text-slate-500 font-bold">No additional metadata found for this record.</p>
+                        </div>
+                    )}
+                </div>
+                <div className="p-4 bg-slate-800 border-t border-white/10">
+                    <p className="text-[9px] text-slate-500 font-bold uppercase text-center leading-relaxed">This metadata represents the immutable state of the record during initial ledger ingestion.</p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const TransactionTable: React.FC<TransactionTableProps> = ({ 
   transactions, 
   accounts, 
@@ -85,6 +132,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const [editingCell, setEditingCell] = useState<{ id: string; field: keyof Transaction } | null>(null);
   const [lastClickedId, setLastClickedId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [inspectedTx, setInspectedTx] = useState<Transaction | null>(null);
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -331,7 +379,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const renderRow = (transaction: Transaction, isChild: boolean = false, groupData?: GroupItem) => {
         const type = transactionTypeMap.get(transaction.typeId);
         const typeName = transaction.type || type?.name || 'N/A';
-        const isIncome = type?.balanceEffect === 'income';
+        const isIncome = type?.balanceEffect === 'income' || type?.balanceEffect === 'investment';
         const categoryName = transaction.category || categoryMap.get(transaction.categoryId)?.name || 'Uncategorized';
         const payeeName = transaction.payee || payeeMap.get(transaction.payeeId || '')?.name || '';
         const userName = transaction.user || userMap.get(transaction.userId || '') || 'N/A';
@@ -411,12 +459,18 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   <td className={cellClass(true)}>
                     {editingCell?.id === transaction.id && editingCell.field === 'payeeId' ? (
                         <select defaultValue={transaction.payeeId || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'payeeId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'payeeId')} className={commonInputClass}>
-                            <option value="">-- No Counterparty --</option>
+                            <option value="">-- No Source/Entity --</option>
                             {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     ) : (
-                        <div onClick={() => isIncome && setEditingCell({ id: transaction.id, field: 'payeeId' })} className={`truncate max-w-[180px] ${!isIncome ? 'text-slate-300 italic' : ''}`} title={payeeName}>
-                            {isIncome ? (payeeName || <span className="text-slate-400 italic">None</span>) : '--'}
+                        <div onClick={() => setEditingCell({ id: transaction.id, field: 'payeeId' })} className="max-w-[180px]">
+                            {payeeName ? (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter ${isIncome ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                                    {isIncome ? 'Payee' : 'Merchant'}: {payeeName}
+                                </span>
+                            ) : (
+                                <span className="text-slate-300 italic text-xs">--</span>
+                            )}
                         </div>
                     )}
                   </td>
@@ -506,6 +560,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               {visibleColumns.has('actions') && (
                   <td className={`px-3 py-2 whitespace-nowrap text-center text-sm font-medium sticky-col-right ${stickyBgClass} z-20`}>
                       <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                         <button onClick={(e) => { e.stopPropagation(); setInspectedTx(transaction); }} className="text-slate-400 hover:text-indigo-600 p-1" title="Inspect Raw Data">
+                            <DatabaseIcon className="w-4 h-4" />
+                         </button>
                          {onCreateRule && (
                             <button onClick={(e) => { e.stopPropagation(); onCreateRule(transaction); }} className="text-slate-400 hover:text-indigo-600 p-1" title="Create Rule">
                                 <SparklesIcon className="w-4 h-4" />
@@ -593,7 +650,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 )}
                 {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32 z-40', dateColumnStyle)}
                 {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px] max-w-xs')}
-                {visibleColumns.has('payee') && renderHeader('Counterparty', 'payeeId', 'w-48')}
+                {visibleColumns.has('payee') && renderHeader('Payee / Merchant', 'payeeId', 'w-48')}
                 {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}
                 {visibleColumns.has('tags') && <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200 w-32">Tags</th>}
                 {visibleColumns.has('account') && renderHeader('Account', 'accountId', 'w-40')}
@@ -657,6 +714,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 </div>
             </div>
         )}
+        <RawDataDrawer tx={inspectedTx} onClose={() => setInspectedTx(null)} />
     </div>
   );
 };

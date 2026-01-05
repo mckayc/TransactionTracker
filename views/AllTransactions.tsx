@@ -65,19 +65,19 @@ const AllTransactions: React.FC<{
       <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
         <div className="flex items-center gap-3">
             <h2 className="text-xl font-bold text-slate-700">Transactions</h2>
-            <div className="relative">
-                <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <div className="relative group">
+                <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500" />
                 <input 
                     type="text" 
                     placeholder="Search..."
                     value={searchTerm}
                     onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
-                    className="pl-9 pr-4 py-1.5 border rounded-lg text-sm w-64"
+                    className="pl-10 pr-4 py-1.5 border rounded-lg text-sm w-64 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
                 />
             </div>
         </div>
         <div className="flex items-center gap-2">
-            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium shadow-md hover:bg-indigo-700">
+            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium shadow-md hover:bg-indigo-700 transition-all">
                 <AddIcon className="w-4 h-4"/> Add Entry
             </button>
         </div>

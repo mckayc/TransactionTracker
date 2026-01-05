@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote } from '../types';
-import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon } from '../components/Icons';
+// Fixed missing icon imports: BoxIcon and RepeatIcon
+import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon, ChevronRightIcon, LightBulbIcon, ChecklistIcon, BoxIcon, RepeatIcon } from '../components/Icons';
 import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -18,26 +20,33 @@ interface BusinessHubProps {
 
 const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessNote[]) => void }> = ({ notes, onUpdateNotes }) => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterType, setFilterType] = useState<string>('all');
+    const [activeClassification, setActiveClassification] = useState<string>('bug'); // Default to Bugs
+    const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
-    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
     const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
     // Form state
     const [title, setTitle] = useState('');
     const [content, setContent] = useState('');
-    const [type, setType] = useState<BusinessNote['type']>('note');
+    const [type, setType] = useState<BusinessNote['type']>('bug'); // Default type to bug
     const [priority, setPriority] = useState<BusinessNote['priority']>('medium');
     const [editingId, setEditingId] = useState<string | null>(null);
 
-    const filteredNotes = notes.filter(n => {
-        const matchesSearch = n.title.toLowerCase().includes(searchTerm.toLowerCase()) || n.content.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesType = filterType === 'all' ? true : n.type === filterType;
-        return matchesSearch && matchesType;
-    }).sort((a, b) => {
-        if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
-        return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
-    });
+    // Grouping & Filtering
+    const filteredNotes = useMemo(() => {
+        return notes.filter(n => {
+            const matchesSearch = n.title.toLowerCase().includes(searchTerm.toLowerCase()) || n.content.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            if (activeClassification === 'resolved') return n.isCompleted && matchesSearch;
+            
+            // Logic: if resolved, it goes to Resolved tab regardless of type
+            const matchesType = n.type === activeClassification && !n.isCompleted;
+            return matchesSearch && matchesType;
+        }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    }, [notes, activeClassification, searchTerm]);
+
+    const activeNote = useMemo(() => notes.find(n => n.id === selectedNoteId), [notes, selectedNoteId]);
 
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault();
@@ -57,12 +66,13 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                 updatedAt: now
             };
             onUpdateNotes([newNote, ...notes]);
+            setSelectedNoteId(newNote.id);
         }
         resetForm();
     };
 
     const resetForm = () => {
-        setTitle(''); setContent(''); setType('note'); setPriority('medium');
+        setTitle(''); setContent(''); setType('bug'); setPriority('medium');
         setEditingId(null); setIsCreating(false);
     };
 
@@ -81,316 +91,330 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
     const deleteNote = (id: string) => {
         if (confirm("Permanently delete this item?")) {
             onUpdateNotes(notes.filter(n => n.id !== id));
-            const newSelected = new Set(selectedIds);
-            newSelected.delete(id);
-            setSelectedIds(newSelected);
+            if (selectedNoteId === id) setSelectedNoteId(null);
+            const newBatch = new Set(batchSelection);
+            newBatch.delete(id);
+            setBatchSelection(newBatch);
         }
     };
 
-    const toggleSelection = (id: string) => {
-        const newSelected = new Set(selectedIds);
-        if (newSelected.has(id)) newSelected.delete(id);
-        else newSelected.add(id);
-        setSelectedIds(newSelected);
+    const toggleBatchSelection = (id: string) => {
+        const newBatch = new Set(batchSelection);
+        if (newBatch.has(id)) newBatch.delete(id);
+        else newBatch.add(id);
+        setBatchSelection(newBatch);
     };
 
-    const copyToClipboard = async (text: string): Promise<boolean> => {
-        // Method 1: Modern Async API
-        if (navigator.clipboard && window.isSecureContext) {
-            try {
-                await navigator.clipboard.writeText(text);
-                return true;
-            } catch (err) {
-                console.error("Modern copy failed", err);
-            }
-        }
-
-        // Method 2: Fallback (Legacy Textarea)
-        try {
-            const textArea = document.createElement("textarea");
-            textArea.value = text;
-            textArea.style.position = "fixed";
-            textArea.style.left = "-9999px";
-            textArea.style.top = "0";
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            const successful = document.execCommand('copy');
-            document.body.removeChild(textArea);
-            return successful;
-        } catch (err) {
-            console.error("Fallback copy failed", err);
-            return false;
-        }
-    };
-
-    const handleBulkCopy = async (formatForAi: boolean) => {
-        const selectedNotes = notes.filter(n => selectedIds.has(n.id));
-        if (selectedNotes.length === 0) return;
-
-        let text = "";
-        if (formatForAi) {
-            text = "I have the following bugs/tasks recorded in my application that need addressing. Please provide solutions or code fixes for each:\n\n";
-            selectedNotes.forEach((n, i) => {
-                text += `${i + 1}. [${n.type.toUpperCase()}] ${n.title}\n`;
-                text += `   Priority: ${n.priority}\n`;
-                text += `   Details: ${n.content}\n\n`;
-            });
-            text += "Please analyze these technical requirements and provide implementation advice.";
+    const selectAllInClassification = () => {
+        const allInViewIds = filteredNotes.map(n => n.id);
+        const areAllSelected = allInViewIds.every(id => batchSelection.has(id));
+        
+        const newBatch = new Set(batchSelection);
+        if (areAllSelected) {
+            allInViewIds.forEach(id => newBatch.delete(id));
         } else {
-            text = selectedNotes.map(n => `Title: ${n.title}\nType: ${n.type}\nContent: ${n.content}`).join('\n\n---\n\n');
+            allInViewIds.forEach(id => newBatch.add(id));
         }
+        setBatchSelection(newBatch);
+    };
 
-        const success = await copyToClipboard(text);
-        if (success) {
+    const copyToClipboard = async (text: string) => {
+        try {
+            await navigator.clipboard.writeText(text);
             setCopyStatus('success');
             setTimeout(() => setCopyStatus('idle'), 3000);
-        } else {
+        } catch (err) {
             setCopyStatus('error');
             setTimeout(() => setCopyStatus('idle'), 3000);
         }
     };
 
-    return (
-        <div className="space-y-6 relative pb-24">
-            {/* Copy Success Toast */}
-            {copyStatus !== 'idle' && (
-                <div className="fixed top-8 left-1/2 -translate-x-1/2 z-[200] animate-slide-up">
-                    <div className={`px-8 py-4 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.3)] flex items-center gap-4 border-2 transition-all ${copyStatus === 'success' ? 'bg-slate-900 border-emerald-500 text-white' : 'bg-red-900 border-red-500 text-white'}`}>
-                        {copyStatus === 'success' ? (
-                            <div className="bg-emerald-500 p-1.5 rounded-full"><CheckCircleIcon className="w-5 h-5 text-white" /></div>
-                        ) : (
-                            <div className="bg-red-500 p-1.5 rounded-full"><ExclamationTriangleIcon className="w-5 h-5 text-white" /></div>
-                        )}
-                        <div className="flex flex-col">
-                            <span className="font-black text-sm uppercase tracking-widest">
-                                {copyStatus === 'success' ? 'Clipboard Synchronized' : 'System Error'}
-                            </span>
-                            <span className="text-xs text-slate-400 font-bold">
-                                {copyStatus === 'success' ? `Successfully copied ${selectedIds.size} log entries` : 'Failed to access clipboard permissions'}
-                            </span>
-                        </div>
-                    </div>
-                </div>
-            )}
+    const handleBulkCopy = (formatForAi: boolean) => {
+        const selectedNotes = notes.filter(n => batchSelection.has(n.id));
+        if (selectedNotes.length === 0) return;
 
-            {/* JUMBO Search Area */}
-            <div className="bg-white p-10 rounded-[3.5rem] border border-slate-200 shadow-xl shadow-slate-200/50 space-y-8">
-                <div className="flex flex-col lg:flex-row items-center gap-8">
-                    <div className="relative flex-1 w-full group">
-                        <SearchCircleIcon className="absolute left-8 top-1/2 -translate-y-1/2 w-10 h-10 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
-                        <input 
-                            type="text" 
-                            placeholder="Type keywords to filter system logs..." 
-                            value={searchTerm} 
-                            onChange={e => setSearchTerm(e.target.value)}
-                            className="pl-24 pr-10 py-10 w-full bg-slate-50 border-4 border-slate-100 rounded-[2.5rem] focus:bg-white focus:border-indigo-500 focus:shadow-2xl transition-all font-black text-2xl placeholder:text-slate-300 outline-none"
-                        />
-                    </div>
-                    <div className="flex items-center gap-6 w-full lg:w-auto">
-                        <div className="relative flex-1 lg:flex-none">
-                            <select 
-                                value={filterType} 
-                                onChange={e => setFilterType(e.target.value)}
-                                className="bg-white border-4 border-slate-100 rounded-[2.5rem] p-6 text-lg font-black text-slate-700 min-w-[240px] h-[100px] shadow-sm appearance-none cursor-pointer focus:border-indigo-500 outline-none"
-                            >
-                                <option value="all">All Entries</option>
-                                <option value="note">Notes Only</option>
-                                <option value="bug">Bugs Only</option>
-                                <option value="idea">Ideas Only</option>
-                                <option value="task">Tasks Only</option>
-                            </select>
-                            <ChevronDownIcon className="absolute right-6 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-400 pointer-events-none" />
-                        </div>
+        let text = "";
+        if (formatForAi) {
+            text = "SYSTEM ANALYSIS REQUEST: Please review the following engineering records and provide architectural feedback or bug fixes:\n\n";
+            selectedNotes.forEach((n, i) => {
+                text += `${i + 1}. [${n.type.toUpperCase()}] ${n.title}\n`;
+                text += `   Severity/Priority: ${n.priority}\n`;
+                text += `   Log Details: ${n.content}\n\n`;
+            });
+        } else {
+            text = selectedNotes.map(n => `Title: ${n.title}\nType: ${n.type}\nStatus: ${n.isCompleted ? 'Resolved' : 'Active'}\nDetails: ${n.content}`).join('\n\n---\n\n');
+        }
+        copyToClipboard(text);
+    };
+
+    const classificationStats = useMemo(() => {
+        return {
+            bug: notes.filter(n => n.type === 'bug' && !n.isCompleted).length,
+            note: notes.filter(n => n.type === 'note' && !n.isCompleted).length,
+            idea: notes.filter(n => n.type === 'idea' && !n.isCompleted).length,
+            task: notes.filter(n => n.type === 'task' && !n.isCompleted).length,
+            resolved: notes.filter(n => n.isCompleted).length
+        };
+    }, [notes]);
+
+    return (
+        <div className="flex gap-6 h-[750px] bg-white border border-slate-200 rounded-[2.5rem] shadow-xl overflow-hidden relative">
+            
+            {/* SIDEBAR: NAV & CLASSIFICATIONS */}
+            <div className="w-64 bg-slate-50 border-r border-slate-200 flex flex-col p-6 flex-shrink-0">
+                <button 
+                    onClick={() => setIsCreating(true)}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 mb-8 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95"
+                >
+                    <AddIcon className="w-5 h-5" /> New Capture
+                </button>
+
+                <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2">Classification</p>
+                    {[
+                        { id: 'bug', label: 'Bugs', icon: <BugIcon className="w-4 h-4" /> },
+                        { id: 'note', label: 'Notes', icon: <NotesIcon className="w-4 h-4" /> },
+                        { id: 'idea', label: 'Ideas', icon: <LightBulbIcon className="w-4 h-4" /> },
+                        { id: 'task', label: 'Tasks', icon: <ChecklistIcon className="w-4 h-4" /> }
+                    ].map(item => (
                         <button 
-                            onClick={() => setIsCreating(true)}
-                            className="flex items-center justify-center gap-4 px-12 py-6 bg-indigo-600 text-white rounded-[2.5rem] hover:bg-indigo-700 font-black shadow-2xl shadow-indigo-200 transition-all h-[100px] whitespace-nowrap active:scale-95 text-xl"
+                            key={item.id}
+                            onClick={() => setActiveClassification(item.id)}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${activeClassification === item.id ? 'bg-indigo-50 text-indigo-700' : 'text-slate-500 hover:bg-slate-200/50 hover:text-slate-800'}`}
                         >
-                            <AddIcon className="w-8 h-8" /> New
+                            <div className="flex items-center gap-3">
+                                {item.icon}
+                                <span>{item.label}</span>
+                            </div>
+                            <span className={`text-[10px] px-1.5 rounded-full ${activeClassification === item.id ? 'bg-indigo-100' : 'bg-slate-200'}`}>{(classificationStats as any)[item.id]}</span>
+                        </button>
+                    ))}
+
+                    <div className="pt-6 mt-6 border-t border-slate-200">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-2">History</p>
+                        <button 
+                            onClick={() => setActiveClassification('resolved')}
+                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-bold transition-all ${activeClassification === 'resolved' ? 'bg-emerald-50 text-emerald-700' : 'text-slate-500 hover:bg-slate-200/50'}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <CheckCircleIcon className="w-4 h-4" />
+                                <span>Archive</span>
+                            </div>
+                            <span className="text-[10px] bg-slate-200 px-1.5 rounded-full">{classificationStats.resolved}</span>
                         </button>
                     </div>
                 </div>
-                <div className="flex items-center justify-between px-6">
-                    <div className="text-xs font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-3">
-                        <div className="w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] animate-pulse"></div>
-                        Index showing {filteredNotes.length} of {notes.length} verified records
+
+                <div className="mt-auto pt-6 border-t border-slate-200">
+                    <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-inner">
+                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-tighter mb-2">Cloud Synced</p>
+                        <div className="flex items-center gap-2">
+                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                             <span className="text-[10px] font-bold text-slate-500">Local Integrity OK</span>
+                        </div>
                     </div>
-                    {selectedIds.size > 0 && (
-                        <button onClick={() => setSelectedIds(new Set())} className="text-sm font-black text-indigo-600 hover:text-indigo-800 uppercase tracking-widest border-b-4 border-indigo-50 pb-1 hover:border-indigo-500 transition-all">
-                            Deselect all ({selectedIds.size})
-                        </button>
-                    )}
                 </div>
             </div>
 
-            {isCreating && (
-                <div className="bg-white p-12 rounded-[4rem] border-4 border-indigo-100 shadow-2xl animate-slide-up">
-                    <form onSubmit={handleSave} className="space-y-10">
-                        <div className="flex justify-between items-center mb-4">
-                            <div>
-                                <h3 className="font-black text-slate-800 uppercase tracking-[0.3em] text-lg">System Log Entry</h3>
-                                <p className="text-sm text-slate-400 mt-1 font-bold">{editingId ? 'Refining existing technical record' : 'Drafting new technical capture'}</p>
-                            </div>
-                            <button type="button" onClick={resetForm} className="p-4 rounded-full hover:bg-slate-100 transition-colors"><CloseIcon className="w-8 h-8 text-slate-300" /></button>
+            {/* LIST: MASTER VIEW */}
+            <div className="w-1/3 min-w-[320px] border-r border-slate-200 flex flex-col min-h-0 bg-white">
+                <div className="p-4 border-b border-slate-100 space-y-3">
+                    <div className="relative group">
+                        <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300 group-focus-within:text-indigo-500" />
+                        <input 
+                            type="text" 
+                            placeholder="Filter records..." 
+                            value={searchTerm} 
+                            onChange={e => setSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white focus:ring-0 focus:border-indigo-500 transition-all"
+                        />
+                    </div>
+                    <div className="flex items-center justify-between px-1">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input 
+                                type="checkbox" 
+                                checked={filteredNotes.length > 0 && filteredNotes.every(n => batchSelection.has(n.id))} 
+                                onChange={selectAllInClassification}
+                                className="w-4 h-4 rounded text-indigo-600 border-slate-200"
+                            />
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select All</span>
+                        </label>
+                        {batchSelection.size > 0 && (
+                            <button onClick={() => setBatchSelection(new Set())} className="text-[10px] font-bold text-indigo-600 hover:underline">Clear ({batchSelection.size})</button>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    {filteredNotes.length === 0 ? (
+                        <div className="p-12 text-center text-slate-300 flex flex-col items-center">
+                            <BoxIcon className="w-12 h-12 mb-3 opacity-20" />
+                            <p className="text-sm font-bold">No records found.</p>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                            <div className="md:col-span-2">
-                                <label className="text-xs font-black text-slate-400 uppercase ml-4 mb-3 block tracking-[0.2em]">Subject Line</label>
+                    ) : (
+                        filteredNotes.map(n => (
+                            <div 
+                                key={n.id}
+                                onClick={() => setSelectedNoteId(n.id)}
+                                className={`group p-4 border-b border-slate-50 cursor-pointer transition-all flex items-start gap-4 ${selectedNoteId === n.id ? 'bg-indigo-50 border-l-4 border-l-indigo-600' : 'hover:bg-slate-50'}`}
+                            >
+                                <div className="flex-shrink-0 mt-1" onClick={e => { e.stopPropagation(); toggleBatchSelection(n.id); }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={batchSelection.has(n.id)} 
+                                        onChange={() => {}} 
+                                        className="w-4 h-4 rounded border-slate-200 pointer-events-none" 
+                                    />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <h4 className={`text-sm font-black truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
+                                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${n.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{n.priority}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 line-clamp-2 leading-relaxed">{n.content}</p>
+                                    <p className="text-[9px] text-slate-400 mt-2 font-mono uppercase font-bold">{new Date(n.updatedAt).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                {batchSelection.size > 0 && (
+                    <div className="p-4 bg-slate-900 text-white flex justify-between items-center animate-slide-up">
+                        <span className="text-xs font-black">{batchSelection.size} Selected</span>
+                        <div className="flex gap-3">
+                            <button onClick={() => handleBulkCopy(true)} className="p-2 bg-indigo-600 rounded-lg hover:bg-indigo-500" title="Copy for AI"><SparklesIcon className="w-4 h-4"/></button>
+                            <button onClick={() => handleBulkCopy(false)} className="p-2 bg-slate-700 rounded-lg hover:bg-slate-600" title="Copy Text"><CopyIcon className="w-4 h-4"/></button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* DETAIL: INSPECTOR VIEW */}
+            <div className="flex-1 bg-white flex flex-col min-h-0 relative">
+                {isCreating ? (
+                    <div className="p-10 flex-1 overflow-y-auto animate-fade-in">
+                        <form onSubmit={handleSave} className="space-y-8 max-w-2xl mx-auto">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Drafting Record</h3>
+                                <button type="button" onClick={resetForm} className="p-2 text-slate-400 hover:text-red-500"><CloseIcon className="w-6 h-6" /></button>
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Title</label>
                                 <input 
                                     type="text" 
                                     value={title} 
                                     onChange={e => setTitle(e.target.value)} 
-                                    placeholder="Summary of the bug or note..." 
-                                    className="w-full font-black p-6 border-4 border-slate-50 rounded-3xl text-2xl focus:border-indigo-500 focus:bg-white outline-none transition-all placeholder:text-slate-200"
-                                    required 
+                                    placeholder="Enter descriptive subject..." 
+                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-black text-xl focus:border-indigo-500 outline-none transition-all"
+                                    required
                                 />
                             </div>
-                            <div>
-                                <label className="text-xs font-black text-slate-400 uppercase ml-4 mb-3 block tracking-[0.2em]">Classification</label>
-                                <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-6 border-4 border-slate-50 rounded-3xl font-black text-slate-700 focus:border-indigo-500 outline-none h-[80px]">
-                                    <option value="note">General Technical Note</option>
-                                    <option value="bug">Technical Bug Report</option>
-                                    <option value="idea">Product Feature Idea</option>
-                                    <option value="task">Engineering Task</option>
-                                </select>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Category</label>
+                                    <select value={type} onChange={e => setType(e.target.value as any)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-700">
+                                        <option value="bug">Bug Report</option>
+                                        <option value="note">General Note</option>
+                                        <option value="idea">Product Idea</option>
+                                        <option value="task">Operational Task</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Priority</label>
+                                    <select value={priority} onChange={e => setPriority(e.target.value as any)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-700">
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High (Critical)</option>
+                                    </select>
+                                </div>
                             </div>
                             <div>
-                                <label className="text-xs font-black text-slate-400 uppercase ml-4 mb-3 block tracking-[0.2em]">Priority Matrix</label>
-                                <select value={priority} onChange={e => setPriority(e.target.value as any)} className="w-full p-6 border-4 border-slate-50 rounded-3xl font-black text-slate-700 focus:border-indigo-500 outline-none h-[80px]">
-                                    <option value="low">Low (Backlog)</option>
-                                    <option value="medium">Medium (Standard)</option>
-                                    <option value="high">High (Mission Critical)</option>
-                                </select>
-                            </div>
-                            <div className="md:col-span-2">
-                                <label className="text-xs font-black text-slate-400 uppercase ml-4 mb-3 block tracking-[0.2em]">Detailed technical context</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block ml-1">Context / Description</label>
                                 <textarea 
                                     value={content} 
                                     onChange={e => setContent(e.target.value)} 
-                                    rows={10} 
-                                    className="w-full p-8 border-4 border-slate-50 rounded-[2.5rem] focus:bg-white focus:border-indigo-500 transition-all font-mono text-base leading-relaxed"
-                                    placeholder="Enter steps to reproduce, logs, or architectural decisions..."
+                                    rows={12}
+                                    placeholder="Provide detailed logs or context..."
+                                    className="w-full p-6 border-2 border-slate-100 rounded-[2rem] font-medium leading-relaxed focus:bg-slate-50 transition-colors focus:border-indigo-500 outline-none"
                                 />
                             </div>
+                            <div className="flex justify-end gap-4 pt-6 border-t border-slate-100">
+                                <button type="button" onClick={resetForm} className="px-8 py-3 text-slate-400 font-bold uppercase tracking-widest">Discard</button>
+                                <button type="submit" className="px-12 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-xl shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all">Commit Record</button>
+                            </div>
+                        </form>
+                    </div>
+                ) : activeNote ? (
+                    <div className="p-10 flex-1 overflow-y-auto animate-fade-in custom-scrollbar">
+                        <div className="flex justify-between items-start mb-10">
+                            <div className="max-w-[80%]">
+                                <div className="flex items-center gap-3 mb-2">
+                                    <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border ${activeNote.type === 'bug' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>{activeNote.type}</span>
+                                    <span className="text-slate-300">•</span>
+                                    <span className={`text-[9px] font-black uppercase tracking-widest ${activeNote.priority === 'high' ? 'text-red-500' : 'text-slate-400'}`}>{activeNote.priority} priority</span>
+                                </div>
+                                <h3 className="text-4xl font-black text-slate-800 leading-tight">{activeNote.title}</h3>
+                                <div className="flex items-center gap-6 mt-6">
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-tighter">Initial Discovery</span>
+                                        <span className="text-xs font-bold text-slate-500">{new Date(activeNote.createdAt).toLocaleDateString()}</span>
+                                    </div>
+                                    <div className="flex flex-col">
+                                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-tighter">Last Synchronized</span>
+                                        <span className="text-xs font-bold text-slate-500">{new Date(activeNote.updatedAt).toLocaleDateString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={() => startEdit(activeNote)} className="p-3 bg-slate-50 text-slate-400 hover:text-indigo-600 border border-slate-200 rounded-2xl transition-all" title="Edit"><EditIcon className="w-6 h-6"/></button>
+                                <button onClick={() => deleteNote(activeNote.id)} className="p-3 bg-slate-50 text-slate-400 hover:text-red-500 border border-slate-200 rounded-2xl transition-all" title="Delete"><DeleteIcon className="w-6 h-6"/></button>
+                            </div>
                         </div>
-                        <div className="flex justify-end gap-6 pt-6">
-                            <button type="button" onClick={resetForm} className="px-12 py-4 text-sm font-black text-slate-400 uppercase tracking-widest hover:text-slate-600">Discard</button>
-                            <button type="submit" className="px-16 py-6 bg-indigo-600 text-white rounded-[2rem] font-black shadow-2xl shadow-indigo-100 transition-all hover:bg-indigo-700 active:scale-95 text-lg">
-                                Commit Entry
+
+                        <div className="bg-slate-50 p-8 rounded-[3rem] border border-slate-100 shadow-inner mb-10">
+                            <p className="text-lg text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">{activeNote.content}</p>
+                        </div>
+
+                        <div className="flex justify-between items-center pt-8 border-t-2 border-slate-50">
+                            <div className="flex items-center gap-4">
+                                <button 
+                                    onClick={() => toggleComplete(activeNote.id)}
+                                    className={`px-10 py-4 rounded-2xl font-black uppercase tracking-[0.2em] transition-all flex items-center gap-3 ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+                                >
+                                    {activeNote.isCompleted ? <RepeatIcon className="w-5 h-5"/> : <CheckCircleIcon className="w-5 h-5"/>}
+                                    {activeNote.isCompleted ? 'Move to Backlog' : 'Resolve & Archive'}
+                                </button>
+                                {activeNote.isCompleted && (
+                                    <p className="text-[10px] font-bold text-slate-400 italic">Resolved on {new Date(activeNote.resolvedAt!).toLocaleDateString()}</p>
+                                )}
+                            </div>
+                            <button 
+                                onClick={() => copyToClipboard(`Subject: ${activeNote.title}\n\nContext: ${activeNote.content}`)}
+                                className="flex items-center gap-2 text-indigo-600 font-bold text-sm hover:underline"
+                            >
+                                <CopyIcon className="w-4 h-4"/> Copy Details
                             </button>
                         </div>
-                    </form>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {filteredNotes.length === 0 ? (
-                    <div className="col-span-full py-48 text-center bg-white rounded-[4rem] border-4 border-dashed border-slate-100">
-                        <div className="bg-slate-50 w-32 h-32 rounded-full flex items-center justify-center mx-auto mb-8">
-                            <NotesIcon className="w-16 h-16 text-slate-200" />
-                        </div>
-                        <p className="text-slate-400 font-black uppercase tracking-[0.4em] text-lg">System Empty</p>
-                        <p className="text-sm text-slate-300 mt-3 font-bold max-w-xs mx-auto">No records found matching your current filter configuration.</p>
                     </div>
                 ) : (
-                    filteredNotes.map(n => (
-                        <div 
-                            key={n.id} 
-                            onClick={() => toggleSelection(n.id)}
-                            className={`p-10 rounded-[3.5rem] border-4 transition-all group flex flex-col h-full bg-white relative cursor-pointer hover:-translate-y-2 ${
-                                selectedIds.has(n.id) ? 'border-indigo-500 ring-[12px] ring-indigo-50 shadow-2xl' : 
-                                n.isCompleted ? 'opacity-60 border-slate-100 grayscale' : 
-                                n.priority === 'high' ? 'border-red-100 shadow-2xl shadow-red-100/50' : 'border-slate-50 hover:border-indigo-200 hover:shadow-2xl'
-                            }`}
-                        >
-                            {/* Selection Checkbox */}
-                            <div className="absolute top-10 right-10">
-                                <input 
-                                    type="checkbox" 
-                                    checked={selectedIds.has(n.id)} 
-                                    onChange={() => {}} 
-                                    className="w-8 h-8 rounded-xl text-indigo-600 border-4 border-slate-100 focus:ring-indigo-500 pointer-events-none transition-transform group-hover:scale-110"
-                                />
-                            </div>
-
-                            <div className="flex justify-between items-start mb-8 pr-12">
-                                <div className="flex items-center gap-6">
-                                    <div className={`p-5 rounded-[1.5rem] shadow-sm transition-transform group-hover:rotate-6 ${
-                                        n.type === 'bug' ? 'bg-red-50 text-red-600' : 
-                                        n.type === 'idea' ? 'bg-purple-50 text-purple-600' : 
-                                        n.type === 'task' ? 'bg-blue-50 text-blue-600' : 
-                                        'bg-slate-50 text-slate-600'
-                                    }`}>
-                                        {n.type === 'bug' ? <BugIcon className="w-8 h-8" /> : <NotesIcon className="w-8 h-8" />}
-                                    </div>
-                                    <div className="min-w-0">
-                                        <h4 className={`font-black text-slate-800 text-xl leading-tight truncate max-w-[240px] ${n.isCompleted ? 'line-through text-slate-400' : ''}`}>{n.title}</h4>
-                                        <div className="flex items-center gap-4 mt-2">
-                                            <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">{n.type}</span>
-                                            <div className="w-2 h-2 rounded-full bg-slate-200"></div>
-                                            <span className={`text-[11px] font-black uppercase tracking-[0.2em] ${
-                                                n.priority === 'high' ? 'text-red-500' : 
-                                                n.priority === 'medium' ? 'text-amber-500' : 
-                                                'text-slate-400'
-                                            }`}>{n.priority} priority</span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-all" onClick={e => e.stopPropagation()}>
-                                    <button onClick={() => startEdit(n)} className="p-3 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-2xl transition-all"><EditIcon className="w-6 h-6"/></button>
-                                    <button onClick={() => deleteNote(n.id)} className="p-3 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"><DeleteIcon className="w-6 h-6"/></button>
-                                </div>
-                            </div>
-                            
-                            <p className={`text-base text-slate-500 flex-grow whitespace-pre-wrap mb-10 line-clamp-6 leading-relaxed font-bold ${n.isCompleted ? 'line-through opacity-30 font-medium' : ''}`}>{n.content}</p>
-                            
-                            <div className="mt-auto pt-8 border-t-4 border-slate-50 flex justify-between items-center" onClick={e => e.stopPropagation()}>
-                                <div className="flex flex-col">
-                                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] mb-1.5">Record Timestamp</span>
-                                    <div className="text-[11px] text-slate-400 font-mono font-black uppercase">
-                                        {n.isCompleted ? `RESOLVED: ${new Date(n.resolvedAt!).toLocaleDateString()}` : `CAPTURED: ${new Date(n.createdAt).toLocaleDateString()}`}
-                                    </div>
-                                </div>
-                                <button 
-                                    onClick={() => toggleComplete(n.id)}
-                                    className={`px-8 py-3 rounded-[1.5rem] text-xs font-black uppercase tracking-[0.3em] transition-all shadow-sm ${
-                                        n.isCompleted ? 'bg-slate-100 text-slate-400 hover:bg-slate-200' : 'bg-green-50 text-green-700 hover:bg-green-100 hover:shadow-lg'
-                                    }`}
-                                >
-                                    {n.isCompleted ? 'Reopen Case' : n.type === 'bug' ? 'Mark Fixed' : 'Log Done'}
-                                </button>
-                            </div>
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-slate-50/50">
+                        <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl mb-6 animate-bounce-subtle">
+                             <BoxIcon className="w-12 h-12 text-indigo-100" />
                         </div>
-                    ))
+                        <h4 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">System Selection Required</h4>
+                        <p className="text-slate-400 max-w-sm mt-3 font-bold">Select a record from the master list to view technical documentation and status information.</p>
+                        <button onClick={() => setIsCreating(true)} className="mt-10 text-indigo-600 font-black uppercase tracking-widest text-xs border-b-4 border-indigo-100 pb-1 hover:border-indigo-500 transition-all">Or create new entry</button>
+                    </div>
                 )}
             </div>
 
-            {/* Bulk Action Bar */}
-            {selectedIds.size > 0 && (
-                <div className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[150] animate-slide-up w-full max-w-3xl px-8">
-                    <div className="bg-slate-900/95 text-white px-10 py-6 rounded-[3rem] shadow-[0_30px_100px_rgba(0,0,0,0.6)] flex items-center gap-10 border-4 border-white/10 backdrop-blur-3xl">
-                        <div className="flex flex-col flex-shrink-0">
-                            <span className="text-[11px] font-black text-indigo-400 uppercase tracking-[0.4em]">Bulk Selection</span>
-                            <span className="text-lg font-black">{selectedIds.size} records focus</span>
-                        </div>
-                        <div className="h-12 w-px bg-white/10" />
-                        <div className="flex gap-4 flex-1">
-                            <button 
-                                onClick={() => handleBulkCopy(false)}
-                                className="flex-1 flex items-center justify-center gap-3 px-8 py-4 bg-white/5 hover:bg-white/10 rounded-[1.5rem] text-xs font-black uppercase tracking-widest transition-all active:scale-95 border-2 border-white/5"
-                            >
-                                <CopyIcon className="w-5 h-5" /> Copy Text
-                            </button>
-                            <button 
-                                onClick={() => handleBulkCopy(true)}
-                                className="flex-[1.8] flex items-center justify-center gap-4 px-8 py-4 bg-indigo-600 hover:bg-indigo-500 rounded-[1.5rem] text-xs font-black uppercase tracking-widest transition-all shadow-2xl shadow-indigo-900/40 active:scale-95 border-2 border-indigo-400/30"
-                            >
-                                <SparklesIcon className="w-5 h-5" /> Copy Prompt for AI
-                            </button>
-                        </div>
-                        <button onClick={() => setSelectedIds(new Set())} className="p-4 hover:bg-white/10 rounded-full transition-colors group">
-                            <CloseIcon className="w-8 h-8 text-slate-500 group-hover:text-white" />
-                        </button>
+            {/* Copy Success Toast Overlay */}
+            {copyStatus !== 'idle' && (
+                <div className="fixed bottom-10 right-10 z-[200] animate-slide-in-right">
+                    <div className={`px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border-2 ${copyStatus === 'success' ? 'bg-slate-900 border-emerald-500 text-white' : 'bg-red-900 border-red-500 text-white'}`}>
+                        {copyStatus === 'success' ? <CheckCircleIcon className="w-5 h-5 text-emerald-500" /> : <ExclamationTriangleIcon className="w-5 h-5 text-red-500" />}
+                        <span className="font-bold text-sm">{copyStatus === 'success' ? 'Copied to clipboard' : 'System error'}</span>
                     </div>
                 </div>
             )}
@@ -539,382 +563,6 @@ const SetupGuideTab: React.FC<{ profile: BusinessProfile; onUpdateProfile: (p: B
                 <div className="bg-slate-50 p-4 rounded-lg text-sm text-slate-600">
                     <p className="font-semibold mb-1">Pro Tip:</p>
                     <p>Keep your EIN letter and Articles of Organization handy. You'll need them for opening bank accounts and applying for credit.</p>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-const TaxAdvisorTab: React.FC<{ 
-    profile: BusinessProfile; 
-    sessions: ChatSession[]; 
-    onUpdateSessions: (s: ChatSession[]) => void;
-    transactions: Transaction[];
-    accounts: Account[];
-    categories: Category[];
-}> = ({ profile, sessions, onUpdateSessions, transactions, accounts, categories }) => {
-    
-    // Sort sessions by update time (most recent first)
-    const sortedSessions = [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    
-    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [deductions, setDeductions] = useState<string[]>([]);
-    const [loadingDeductions, setLoadingDeductions] = useState(false);
-    
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const apiKeyAvailable = hasApiKey();
-
-    const activeSession = selectedSessionId ? sessions.find(s => s.id === selectedSessionId) : null;
-
-    useEffect(() => {
-        if (activeSession) {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }
-    }, [activeSession?.messages.length, selectedSessionId]);
-
-    const handleCreateSession = () => {
-        const newSession: ChatSession = {
-            id: generateUUID(),
-            title: `Consultation ${new Date().toLocaleDateString()}`,
-            messages: [{
-                id: generateUUID(),
-                role: 'ai',
-                content: `Hello! I am your AI Tax Advisor. I see you are operating as a **${profile.info.businessType || 'business'}** in **${profile.info.stateOfFormation || 'your state'}**. How can I help you today?`,
-                timestamp: new Date().toISOString()
-            }],
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        };
-        onUpdateSessions([...sessions, newSession]);
-        setSelectedSessionId(newSession.id);
-    };
-
-    const handleDeleteSession = (sessionId: string) => {
-        if (confirm("Delete this chat history?")) {
-            const updated = sessions.filter(s => s.id !== sessionId);
-            onUpdateSessions(updated);
-            if (selectedSessionId === sessionId) setSelectedSessionId(null);
-        }
-    };
-
-    const handleRenameSession = (sessionId: string) => {
-        const newName = prompt("Rename chat session:", sessions.find(s => s.id === sessionId)?.title);
-        if (newName && newName.trim()) {
-            const updated = sessions.map(s => s.id === sessionId ? { ...s, title: newName.trim() } : s);
-            onUpdateSessions(updated);
-        }
-    };
-
-    const handleSyncData = async () => {
-        if (!activeSession) return;
-        
-        // Prepare summary data to inject
-        const categoryMap = new Map(categories.map(c => [c.id, c.name]));
-        const accountMap = new Map(accounts.map(a => [a.id, a.name]));
-        
-        // Calculate totals
-        const income = transactions.reduce((sum, tx) => sum + (tx.typeId.includes('income') ? tx.amount : 0), 0);
-        const expense = transactions.reduce((sum, tx) => sum + (tx.typeId.includes('expense') ? tx.amount : 0), 0);
-        
-        // Recent 100 transactions for context
-        const recentTxs = transactions
-            .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 100)
-            .map(tx => ({
-                date: tx.date,
-                desc: tx.description,
-                amt: tx.amount,
-                cat: categoryMap.get(tx.categoryId) || 'Unknown',
-                acct: accountMap.get(tx.accountId || '') || 'Unknown'
-            }));
-
-        const dataPackage = {
-            summary: {
-                totalIncome: income,
-                totalExpense: expense,
-                netIncome: income - expense,
-                accountCount: accounts.length,
-                transactionCount: transactions.length
-            },
-            recentTransactions: recentTxs
-        };
-
-        const syncMessage = `
-**System Data Sync:**
-I am sharing my current financial data with you for analysis.
-- Total Income: $${income.toFixed(2)}
-- Total Expense: $${expense.toFixed(2)}
-- Accounts: ${accounts.map(a => a.name).join(', ')}
-
-Please use the provided JSON context of my last 100 transactions to answer my next questions.
-\`\`\`json
-${JSON.stringify(dataPackage).slice(0, 15000)} ... (truncated if too long)
-\`\`\`
-        `;
-
-        const userMsg: ChatMessage = {
-            id: generateUUID(),
-            role: 'user',
-            content: syncMessage,
-            timestamp: new Date().toISOString()
-        };
-
-        const updatedSession = { 
-            ...activeSession, 
-            messages: [...activeSession.messages, userMsg],
-            updatedAt: new Date().toISOString()
-        };
-        
-        const otherSessions = sessions.filter(s => s.id !== activeSession.id);
-        onUpdateSessions([...otherSessions, updatedSession]);
-        
-        // Trigger AI response acknowledging receipt
-        setIsLoading(true);
-        try {
-             const stream = await streamTaxAdvice(updatedSession.messages, profile);
-             let fullContent = '';
-             const aiMsgId = generateUUID();
-             const aiMsgPlaceholder: ChatMessage = { id: aiMsgId, role: 'ai', content: '', timestamp: new Date().toISOString() };
-             const sessionWithAi = { ...updatedSession, messages: [...updatedSession.messages, aiMsgPlaceholder] };
-             onUpdateSessions([...otherSessions, sessionWithAi]);
-
-             for await (const chunk of stream) {
-                fullContent += chunk.text;
-                const msgs = [...sessionWithAi.messages];
-                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullContent };
-                onUpdateSessions([...otherSessions, { ...sessionWithAi, messages: msgs }]);
-             }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleSendMessage = async () => {
-        if (!input.trim() || !activeSession || isLoading) return;
-
-        const userMsg: ChatMessage = {
-            id: generateUUID(),
-            role: 'user',
-            content: input,
-            timestamp: new Date().toISOString()
-        };
-
-        const updatedSession = { 
-            ...activeSession, 
-            messages: [...activeSession.messages, userMsg],
-            updatedAt: new Date().toISOString()
-        };
-        
-        const otherSessions = sessions.filter(s => s.id !== activeSession.id);
-        onUpdateSessions([...otherSessions, updatedSession]);
-        
-        setInput('');
-        setIsLoading(true);
-
-        try {
-            const aiMsgId = generateUUID();
-            const aiMsgPlaceholder: ChatMessage = {
-                id: aiMsgId,
-                role: 'ai',
-                content: '',
-                timestamp: new Date().toISOString()
-            };
-            
-            const sessionWithAi = {
-                ...updatedSession,
-                messages: [...updatedSession.messages, aiMsgPlaceholder]
-            };
-            onUpdateSessions([...otherSessions, sessionWithAi]);
-
-            const stream = await streamTaxAdvice(updatedSession.messages, profile);
-            let fullContent = '';
-            
-            for await (const chunk of stream) {
-                const chunkText = chunk.text;
-                fullContent += chunkText;
-                const currentSession = sessionWithAi;
-                const msgs = [...currentSession.messages];
-                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullContent };
-                onUpdateSessions([...otherSessions, { ...currentSession, messages: msgs }]);
-            }
-
-        } catch (error) {
-            console.error("Chat error", error);
-             const errorMsg: ChatMessage = {
-                id: generateUUID(),
-                role: 'ai',
-                content: "I apologize, but I encountered an error connecting to the service. Please try again.",
-                timestamp: new Date().toISOString()
-            };
-            onUpdateSessions([...otherSessions, { ...updatedSession, messages: [...updatedSession.messages, errorMsg] }]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const generateDeductions = async () => {
-        if (!profile.info.industry) {
-            alert('Please enter an Industry in the Setup Guide tab first.');
-            return;
-        }
-        setLoadingDeductions(true);
-        try {
-            const list = await getIndustryDeductions(profile.info.industry);
-            setDeductions(list);
-        } catch (e) {
-            console.error(e);
-            alert('Could not generate deductions list.');
-        } finally {
-            setLoadingDeductions(false);
-        }
-    };
-
-    const complianceItems = [
-        { task: 'File Annual Report', note: `Required in most states (like ${profile.info.stateOfFormation || 'yours'}).` },
-        { task: 'Pay Estimated Taxes', note: 'Quarterly (Apr, Jun, Sep, Jan) if you owe >$1000.' },
-        { task: 'Renew Business License', note: 'Check your local city/county requirements.' },
-        { task: 'File Beneficial Ownership Info (BOI)', note: 'New FinCEN requirement for most LLCs.' },
-    ];
-
-    if (!apiKeyAvailable) {
-        return (
-            <div className="flex flex-col items-center justify-center h-96 bg-slate-50 rounded-xl border border-dashed border-slate-300 p-8 text-center">
-                <ExclamationTriangleIcon className="w-12 h-12 text-slate-300 mb-4" />
-                <h3 className="text-lg font-bold text-slate-700">API Key Missing</h3>
-                <p className="text-slate-500 mt-2 max-w-md">
-                    The Tax Advisor and Deduction Scout features rely on AI. Please configure the <code className="bg-slate-200 px-1 rounded">API_KEY</code> environment variable to unlock these tools.
-                </p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start h-[700px]">
-            <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-full overflow-hidden">
-                <div className="flex items-center justify-between p-4 border-b bg-slate-50">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-indigo-100 p-2 rounded-lg">
-                            <CurrencyDollarIcon className="w-5 h-5 text-indigo-600" />
-                        </div>
-                        <div>
-                            <h2 className="font-bold text-slate-800">Tax Advisor</h2>
-                            <p className="text-xs text-slate-500">
-                                {activeSession ? activeSession.title : 'Select a conversation'}
-                            </p>
-                        </div>
-                    </div>
-                    <div className="flex gap-2">
-                        {activeSession && (
-                            <button 
-                                onClick={handleSyncData}
-                                disabled={isLoading}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-100 shadow-sm transition-colors"
-                                title="Send current financial data to AI context"
-                            >
-                                <CloudArrowUpIcon className="w-4 h-4" /> Sync Data
-                            </button>
-                        )}
-                        <button 
-                            onClick={handleCreateSession}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 shadow-sm"
-                        >
-                            <AddIcon className="w-4 h-4"/> New Chat
-                        </button>
-                    </div>
-                </div>
-
-                <div className="flex-1 flex overflow-hidden">
-                    <div className="w-64 border-r border-slate-100 bg-slate-50 flex-col overflow-y-auto hidden md:flex">
-                        <div className="p-3">
-                            <p className="text-xs font-bold text-slate-400 uppercase mb-2 px-2">History</p>
-                            {sortedSessions.length === 0 ? (
-                                <p className="text-sm text-slate-400 px-2 italic">No past chats.</p>
-                            ) : (
-                                sortedSessions.map(session => (
-                                    <div 
-                                        key={session.id}
-                                        onClick={() => setSelectedSessionId(session.id)}
-                                        className={`group flex items-center justify-between p-2 rounded-lg cursor-pointer text-sm mb-1 ${selectedSessionId === session.id ? 'bg-white shadow-sm text-indigo-700 font-medium' : 'text-slate-600 hover:bg-slate-100'}`}
-                                    >
-                                        <div className="flex items-center gap-2 truncate flex-grow">
-                                            <ChatBubbleIcon className="w-4 h-4 flex-shrink-0 opacity-50" />
-                                            <span className="truncate">{session.title}</span>
-                                        </div>
-                                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={(e) => { e.stopPropagation(); handleRenameSession(session.id); }} className="p-1 text-slate-400 hover:text-indigo-600"><EditIcon className="w-3 h-3" /></button>
-                                            <button onClick={(e) => { e.stopPropagation(); handleDeleteSession(session.id); }} className="p-1 text-slate-400 hover:text-red-500"><DeleteIcon className="w-3 h-3" /></button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="flex-1 flex flex-col bg-white relative">
-                        {!activeSession ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
-                                <SparklesIcon className="w-12 h-12 text-indigo-200 mb-4" />
-                                <h3 className="text-lg font-bold text-slate-700">Expert Tax Guidance</h3>
-                                <p className="text-slate-500 max-w-sm mt-2 mb-6">Ask about tax obligations, deductions, or quarterly plans.</p>
-                                <button onClick={handleCreateSession} className="px-6 py-3 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 shadow-lg transition-transform hover:-translate-y-1">Start Consultation</button>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                                    {activeSession.messages.map((msg) => (
-                                        <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                            <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-slate-100 text-slate-800 rounded-bl-none'}`}>
-                                                <div className="prose prose-sm prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-                                                <p className={`text-[10px] mt-1 text-right ${msg.role === 'user' ? 'text-indigo-200' : 'text-slate-400'}`}>{new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {isLoading && (
-                                        <div className="flex justify-start">
-                                            <div className="bg-slate-100 p-3 rounded-2xl rounded-bl-none">
-                                                <div className="flex gap-1"><span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></span><span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-100"></span><span className="w-2 h-2 bg-slate-400 rounded-full animate-bounce delay-200"></span></div>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div ref={messagesEndRef} />
-                                </div>
-                                <div className="p-4 border-t border-slate-100 bg-white">
-                                    <div className="flex gap-2">
-                                        <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Ask a follow-up question..." className="flex-grow p-3 border rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-slate-50 focus:bg-white transition-colors" disabled={isLoading} />
-                                        <button onClick={handleSendMessage} disabled={isLoading || !input.trim()} className="bg-indigo-600 text-white p-3 rounded-xl hover:bg-indigo-700 disabled:bg-slate-300 shadow-sm"><SendIcon className="w-5 h-5" /></button>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div className="space-y-6 lg:h-full lg:overflow-y-auto">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                    <div className="flex items-center gap-2 mb-4"><SparklesIcon className="w-5 h-5 text-yellow-500" /><h3 className="font-bold text-slate-800">Deduction Scout</h3></div>
-                    <p className="text-sm text-slate-600 mb-4"> tailored to <strong>{profile.info.industry || 'General'}</strong>.</p>
-                    {deductions.length > 0 ? (
-                         <ul className="space-y-2 mb-4 max-h-60 overflow-y-auto custom-scrollbar">
-                            {deductions.map((d, i) => (
-                                <li key={i} className="flex items-start gap-2 text-sm text-slate-700 bg-green-50 p-2 rounded-md border border-green-100"><CheckCircleIcon className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" /><span>{d}</span></li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <button onClick={generateDeductions} disabled={loadingDeductions} className="w-full py-2 bg-slate-100 text-slate-700 font-medium rounded-lg hover:bg-slate-200 mb-4 text-sm">{loadingDeductions ? 'Scouting...' : 'Find Deductions'}</button>
-                    )}
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                     <div className="flex items-center gap-2 mb-4"><CheckCircleIcon className="w-5 h-5 text-blue-500" /><h3 className="font-bold text-slate-800">Compliance Checklist</h3></div>
-                    <ul className="space-y-3">
-                        {complianceItems.map((item, i) => (
-                            <li key={i} className="text-sm"><div className="font-medium text-slate-800">{item.task}</div><div className="text-xs text-slate-500">{item.note}</div></li>
-                        ))}
-                    </ul>
                 </div>
             </div>
         </div>
