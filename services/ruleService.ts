@@ -118,10 +118,11 @@ export const applyRulesToTransactions = (
   }
 
   return rawTransactions.map(tx => {
-    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean } = { ...tx };
+    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string } = { ...tx };
     
     for (const rule of rules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
+        modifiedTx.appliedRuleId = rule.id;
         if (rule.skipImport) {
             modifiedTx.isIgnored = true;
         }

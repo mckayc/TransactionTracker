@@ -20,6 +20,13 @@ export interface Category {
     parentId?: string;
 }
 
+// Added missing User interface to fix import errors across the application
+export interface User {
+    id: string;
+    name: string;
+    isDefault?: boolean;
+}
+
 export interface Payee {
     id: string;
     name: string;
@@ -39,12 +46,6 @@ export interface Account {
     name: string;
     identifier: string;
     accountTypeId: string;
-}
-
-export interface User {
-    id: string;
-    name: string;
-    isDefault?: boolean;
 }
 
 export interface RawTransaction {
@@ -68,6 +69,7 @@ export interface RawTransaction {
     type?: string;
     tags?: string[];
     metadata?: Record<string, string>;
+    appliedRuleId?: string;
 }
 
 export interface Transaction extends RawTransaction {

@@ -165,10 +165,10 @@ const Dashboard: React.FC<DashboardProps> = ({
         <SummaryWidget title="Calendar" value="..." helpText="Next Deadline" icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-6">
-        {/* Left: Quick Import Section (Dynamic sizing) */}
-        <div className="w-full lg:w-1/3 xl:w-1/4 flex flex-col min-w-[320px] max-w-lg">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex-grow flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 flex flex-col gap-6">
+        {/* Top: Quick Import Section (Full Width) */}
+        <div className="w-full flex flex-col shrink-0">
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
                 {appState === 'idle' ? (
                     <div className="flex flex-col h-full overflow-hidden">
                         <div className="flex justify-between items-center mb-4">
@@ -183,24 +183,26 @@ const Dashboard: React.FC<DashboardProps> = ({
                             {importMethod === 'upload' ? (
                                 <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} />
                             ) : (
-                                <div className="space-y-4 animate-fade-in">
-                                    <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full font-bold text-slate-700">
-                                        <option value="">Select Account...</option>
-                                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                                    </select>
-                                    
-                                    <label className="flex items-center justify-between gap-2 cursor-pointer bg-slate-100 px-4 py-3 rounded-2xl group border border-transparent hover:border-indigo-200 transition-all">
-                                        <div className="flex items-center gap-3">
-                                            <RobotIcon className={`w-5 h-5 ${useAi ? 'text-indigo-600' : 'text-slate-400'}`} />
-                                            <span className="text-xs font-black text-slate-500 uppercase tracking-tight">AI Reasoning</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <input type="checkbox" className="sr-only" checked={useAi} onChange={() => setUseAi(!useAi)} />
-                                            <div className={`w-10 h-5 rounded-full relative transition-colors ${useAi ? 'bg-indigo-600' : 'bg-slate-300'}`}>
-                                                <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${useAi ? 'left-6' : 'left-1'}`} />
+                                <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full font-bold text-slate-700">
+                                            <option value="">Select Account...</option>
+                                            {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                        </select>
+                                        
+                                        <label className="flex items-center justify-between gap-2 cursor-pointer bg-slate-100 px-4 py-3 rounded-2xl group border border-transparent hover:border-indigo-200 transition-all">
+                                            <div className="flex items-center gap-3">
+                                                <RobotIcon className={`w-5 h-5 ${useAi ? 'text-indigo-600' : 'text-slate-400'}`} />
+                                                <span className="text-xs font-black text-slate-500 uppercase tracking-tight">AI Reasoning</span>
                                             </div>
-                                        </div>
-                                    </label>
+                                            <div className="flex items-center gap-2">
+                                                <input type="checkbox" className="sr-only" checked={useAi} onChange={() => setUseAi(!useAi)} />
+                                                <div className={`w-10 h-5 rounded-full relative transition-colors ${useAi ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                                                    <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${useAi ? 'left-6' : 'left-1'}`} />
+                                                </div>
+                                            </div>
+                                        </label>
+                                    </div>
 
                                     <textarea 
                                         value={textInput} 
@@ -238,10 +240,10 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
         </div>
 
-        {/* Right: Transactions or Multi-step views */}
+        {/* Bottom: Ledger Activity (Full Width) */}
         <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             {appState === 'verifying_import' ? (
-                <ImportVerification initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} existingTransactions={recentGlobalTransactions} />
+                <ImportVerification rules={rules} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} existingTransactions={recentGlobalTransactions} />
             ) : appState === 'post_import_edit' ? (
                 <div className="flex-1 flex flex-col overflow-hidden animate-fade-in">
                     <div className="flex justify-between items-center mb-6 bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm">

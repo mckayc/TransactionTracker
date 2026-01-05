@@ -145,14 +145,14 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                         </div>
                      </div>
                      <div>
-                        <label className="block text-sm font-medium text-slate-700">Description</label>
+                        <label className="block text-sm font-medium text-slate-700">Description (Raw Statement Info)</label>
                         <input type="text" name="description" value={formData.description} onChange={handleChange} required />
                     </div>
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                          <div>
-                            <label className="block text-sm font-medium text-slate-700">Payee</label>
+                            <label className="block text-sm font-medium text-slate-700">Counterparty (Clean Entity)</label>
                             <select name="payeeId" value={formData.payeeId || ''} onChange={handleChange}>
-                                <option value="">-- No Payee --</option>
+                                <option value="">-- No Counterparty --</option>
                                 {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
                         </div>
@@ -206,7 +206,6 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
                                     {tag.name}
                                 </button>
                             ))}
-                            {tags.length === 0 && <span className="text-sm text-slate-400 italic">No tags available. Create them in the Tags page.</span>}
                         </div>
                     </div>
 

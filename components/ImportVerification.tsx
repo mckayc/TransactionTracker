@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
-import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon } from './Icons';
+import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule } from '../types';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 
 type VerifiableTransaction = RawTransaction & { 
@@ -19,8 +20,9 @@ interface ImportVerificationProps {
     transactionTypes: TransactionType[];
     payees: Payee[];
     users: User[];
-    onCreateRule?: (tx: VerifiableTransaction) => void;
+    onCreateRule?: (tx: RawTransaction) => void;
     existingTransactions: Transaction[];
+    rules: ReconciliationRule[];
 }
 
 type SortKey = 'date' | 'description' | 'payeeId' | 'categoryId' | 'amount' | '';
@@ -53,7 +55,7 @@ const MetadataDrawer: React.FC<{ tx: VerifiableTransaction | null; onClose: () =
 };
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
-    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, users, existingTransactions 
+    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, users, existingTransactions, rules, onCreateRule
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [editingCell, setEditingCell] = useState<{ id: string; field: keyof VerifiableTransaction } | null>(null);
@@ -64,6 +66,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
+    const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
 
     useEffect(() => {
         const dbSigs = new Set(existingTransactions.map(t => getTransactionSignature(t)));
@@ -139,6 +142,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('amount')}>
                                     <div className="flex items-center justify-end gap-1">Amount <SortIcon className="w-3 h-3" /></div>
                                 </th>
+                                <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Rule</th>
                                 <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Raw</th>
                             </tr>
                         </thead>
@@ -146,6 +150,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                             {sortedTransactions.map(tx => {
                                 const type = typeMap.get(tx.typeId);
                                 const effect = type?.balanceEffect || 'expense';
+                                const matchedRule = tx.appliedRuleId ? ruleMap.get(tx.appliedRuleId) : null;
                                 
                                 // Color logic
                                 const amountColor = effect === 'income' 
@@ -185,6 +190,30 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         </td>
                                         <td className={`px-4 py-2 text-right text-sm font-black font-mono ${amountColor}`}>
                                             {effect === 'income' ? '+' : effect === 'transfer' ? '' : '-'}{formatCurrency(tx.amount)}
+                                        </td>
+                                        <td className="px-4 py-2 text-center">
+                                            {matchedRule ? (
+                                                <div className="group/rule relative inline-block">
+                                                    <button 
+                                                        className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all border border-green-200 shadow-sm"
+                                                        title={`Rule Applied: ${matchedRule.name}`}
+                                                    >
+                                                        <SparklesIcon className="w-4 h-4" />
+                                                    </button>
+                                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-max max-w-[200px] p-2 bg-slate-800 text-white text-[10px] rounded shadow-xl opacity-0 group-hover/rule:opacity-100 transition-opacity pointer-events-none z-50">
+                                                        <p className="font-black border-b border-white/10 pb-1 mb-1 uppercase tracking-tighter text-indigo-400">Automation Triggered</p>
+                                                        <p className="font-bold">{matchedRule.name}</p>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <button 
+                                                    onClick={() => onCreateRule && onCreateRule(tx)}
+                                                    className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                                                    title="Create Rule from this Transaction"
+                                                >
+                                                    <WrenchIcon className="w-4 h-4" />
+                                                </button>
+                                            )}
                                         </td>
                                         <td className="px-4 py-2 text-center">
                                             <button onClick={() => setInspectedTx(tx)} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="View Source Metadata">

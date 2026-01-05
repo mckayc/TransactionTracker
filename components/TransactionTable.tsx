@@ -411,7 +411,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   <td className={cellClass(true)}>
                     {editingCell?.id === transaction.id && editingCell.field === 'payeeId' ? (
                         <select defaultValue={transaction.payeeId || ''} autoFocus onBlur={(e) => handleInputBlur(e, transaction, 'payeeId')} onKeyDown={(e) => handleInputKeyDown(e, transaction, 'payeeId')} className={commonInputClass}>
-                            <option value="">-- No Payee --</option>
+                            <option value="">-- No Counterparty --</option>
                             {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
                     ) : (
@@ -593,7 +593,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 )}
                 {visibleColumns.has('date') && renderHeader('Date', 'date', 'sticky-col-left top-0 w-32 z-40', dateColumnStyle)}
                 {visibleColumns.has('description') && renderHeader('Description', 'description', 'w-64 min-w-[200px] max-w-xs')}
-                {visibleColumns.has('payee') && renderHeader('Payee', 'payeeId', 'w-48')}
+                {visibleColumns.has('payee') && renderHeader('Counterparty', 'payeeId', 'w-48')}
                 {visibleColumns.has('category') && renderHeader('Category', 'categoryId', 'w-40')}
                 {visibleColumns.has('tags') && <th className="px-3 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider bg-slate-50 border-b border-slate-200 w-32">Tags</th>}
                 {visibleColumns.has('account') && renderHeader('Account', 'accountId', 'w-40')}
