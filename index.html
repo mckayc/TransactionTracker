@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -19,8 +20,9 @@
         justify-content: center;
         background-color: #f1f5f9;
         z-index: 9999;
-        transition: opacity 0.4s ease-out;
+        transition: opacity 0.5s ease-out, visibility 0.5s linear;
         font-family: 'Inter', sans-serif;
+        visibility: visible;
       }
       .spinner {
         width: 40px;
@@ -42,6 +44,7 @@
       /* Hide splash when React takes over */
       body.loaded #initial-loader {
         opacity: 0;
+        visibility: hidden;
         pointer-events: none;
       }
     </style>
@@ -80,6 +83,14 @@
     <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+        
+        // Robust fallback: remove splash after 10s if app fails to signal load
+        setTimeout(() => {
+            if (!document.body.classList.contains('loaded')) {
+                console.warn("Application taking longer than expected to load. Forcing splash screen removal.");
+                document.body.classList.add('loaded');
+            }
+        }, 10000);
     </script>
   </body>
 </html>

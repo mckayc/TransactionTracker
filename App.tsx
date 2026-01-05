@@ -24,7 +24,14 @@ import { MenuIcon, CloseIcon, SparklesIcon, ExclamationTriangleIcon, RepeatIcon 
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
 
-const syncChannel = new BroadcastChannel('finparser_sync');
+// Global sync channel with safe check
+const getSyncChannel = () => {
+    try {
+        if (typeof BroadcastChannel !== 'undefined') return new BroadcastChannel('finparser_sync');
+    } catch (e) {}
+    return null;
+};
+const syncChannel = getSyncChannel();
 
 const App: React.FC = () => {
     const [currentView, setCurrentView] = useState<View>('dashboard');
@@ -101,40 +108,32 @@ const App: React.FC = () => {
             setContentLinks(data.contentLinks || []);
             setSystemSettings(data.systemSettings || {});
             
-            // Fetch recent transactions separately to speed up initial hydration
             try {
                 const txResponse = await api.getTransactions({ limit: 200 });
-                if (txResponse && txResponse.data) {
-                    setTransactions(txResponse.data);
-                }
-            } catch (txErr) {
-                console.warn("Transactions query failed during boot", txErr);
-            }
-
+                if (txResponse && txResponse.data) setTransactions(txResponse.data);
+            } catch (txErr) {}
         } catch (err) {
             console.error("Core Data Load Error:", err);
-            setLoadError("Critical Engine Connection Failure. Please verify the backend API is active and the database is reachable.");
+            setLoadError("Critical Engine Connection Failure. Verify API/DB reachability.");
         } finally {
             if (showLoader) setIsLoading(false);
             setIsSyncing(false);
-            // Ensure the splash screen is removed immediately after JS attempts to load
+            // Eagerly remove splash screen
             document.body.classList.add('loaded');
         }
     };
 
     useEffect(() => {
         loadCoreData();
-        const handleSync = (event: MessageEvent) => { 
-            if (event.data === 'REFRESH_REQUIRED') loadCoreData(false); 
-        };
-        syncChannel.addEventListener('message', handleSync);
-        return () => syncChannel.removeEventListener('message', handleSync);
+        const handleSync = (event: MessageEvent) => { if (event.data === 'REFRESH_REQUIRED') loadCoreData(false); };
+        if (syncChannel) syncChannel.addEventListener('message', handleSync);
+        return () => { if (syncChannel) syncChannel.removeEventListener('message', handleSync); };
     }, []);
 
     const updateData = async (key: string, value: any, setter: Function) => {
         setter(value);
         await api.save(key, value);
-        syncChannel.postMessage('REFRESH_REQUIRED');
+        if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
     };
 
     const handleTransactionsAdded = async (newTxs: Transaction[], newCategories: Category[] = []) => {
@@ -175,7 +174,14 @@ const App: React.FC = () => {
         </div>
     );
 
-    if (isLoading) return <div className="h-screen flex items-center justify-center"><Loader message="Synchronizing High-Performance Ledger..." /></div>;
+    if (isLoading) return (
+        <div className="h-screen flex items-center justify-center">
+            <div className="animate-pulse flex flex-col items-center">
+                <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Waking Engine...</p>
+            </div>
+        </div>
+    );
 
     const currentContext = { transactions, accounts, categories, tags, payees, merchants, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile };
 

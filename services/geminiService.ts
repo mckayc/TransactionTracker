@@ -2,10 +2,17 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, FinancialPlan, Merchant, Location, User, Payee, ReconciliationRule } from '../types';
 
-// Initialization of Gemini AI client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safe API Key retrieval
+const getApiKey = (): string => {
+    if (typeof process !== 'undefined' && process.env && process.env.API_KEY) return process.env.API_KEY;
+    if (typeof window !== 'undefined' && (window as any).API_KEY) return (window as any).API_KEY;
+    return '';
+};
 
-export const hasApiKey = (): boolean => !!process.env.API_KEY;
+// Initialization of Gemini AI client
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
+
+export const hasApiKey = (): boolean => !!getApiKey();
 
 const fileToGenerativePart = async (file: File) => {
     const buffer = await file.arrayBuffer();

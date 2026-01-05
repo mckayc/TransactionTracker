@@ -16,7 +16,11 @@ const PORT = 3000;
 const DATA_DIR = path.join(__dirname, 'data', 'config');
 const DOCUMENTS_DIR = path.join(__dirname, 'media', 'files');
 const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
-const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// Prefer 'dist' (Vite build output) over 'public'
+const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'dist')) 
+    ? path.join(__dirname, 'dist') 
+    : path.join(__dirname, 'public');
 
 app.use(express.json({ limit: '100mb' }));
 app.use('/api/files', express.raw({ type: '*/*', limit: '100mb' }));
@@ -25,18 +29,17 @@ app.get('/api/health', (req, res) => res.status(200).json({ status: 'live', time
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
-if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
 
 console.log("---------------------------------------------------------");
 console.log(`[SYS] Data Engine Starting...`);
 console.log(`[SYS] Database Path: ${DB_PATH}`);
+console.log(`[SYS] Static Assets: ${PUBLIC_DIR}`);
 console.log("---------------------------------------------------------");
 
 let db;
 
 const ensureSeedData = () => {
     try {
-        // Seeder: Transaction Types
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
         if (typeCount === 0) {
             console.log("[DB] Seeding Transaction Types...");
@@ -50,7 +53,6 @@ const ensureSeedData = () => {
             })();
         }
 
-        // Seeder: Default User
         const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
         if (userCount === 0) {
             console.log("[DB] Seeding Default User...");
@@ -66,8 +68,6 @@ const initDb = () => {
         db = new Database(DB_PATH);
         db.pragma('journal_mode = WAL');
         db.pragma('busy_timeout = 5000');
-        
-        console.log("[DB] Initializing core tables...");
         
         db.exec(`
           CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
@@ -96,29 +96,12 @@ const initDb = () => {
           );
         `);
 
-        // Individual migration handling to prevent chain-failure
         const migrateTable = (tableName, requiredCols) => {
-            let tableInfo;
-            try {
-                tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
-            } catch (err) {
-                console.error(`[DB] Metadata check failed for ${tableName}:`, err.message);
-                return;
-            }
-            
+            let tableInfo = db.prepare(`PRAGMA table_info(${tableName})`).all();
             const existingColumns = new Set(tableInfo.map(c => c.name));
-            
             requiredCols.forEach(col => {
                 if (!existingColumns.has(col.name)) {
-                    console.log(`[DB] Schema patch ${tableName} -> ${col.name}`);
-                    try {
-                        db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`).run();
-                    } catch (altErr) {
-                        // Suppress "duplicate column" errors if PRAGMA was stale
-                        if (!altErr.message.includes('duplicate column name')) {
-                            console.warn(`[DB] Column migration failed:`, altErr.message);
-                        }
-                    }
+                    try { db.prepare(`ALTER TABLE ${tableName} ADD COLUMN ${col.name} ${col.type}`).run(); } catch (err) {}
                 }
             });
         };
@@ -148,14 +131,12 @@ const initDb = () => {
         migrateTable('accounts', [{ name: 'account_type_id', type: 'TEXT' }]);
 
         ensureSeedData();
-
         console.log("[DB] Engine ready.");
     } catch (dbErr) {
         console.error("[DB] ENGINE STARTUP FAILURE:", dbErr.message);
     }
 };
 
-// Defensive Init
 initDb();
 
 const buildTxFilters = (params) => {
@@ -305,160 +286,78 @@ app.post('/api/data/:key', (req, res) => {
     const key = req.params.key;
     const value = req.body;
     
-    console.log(`[DB] Saving data key: ${key} (${Array.isArray(value) ? value.length + ' items' : 'object'})`);
-
     if (key === 'categories' && Array.isArray(value)) {
         db.prepare("DELETE FROM categories").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO categories (id, name, parent_id) VALUES (?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(c => stmt.run(c.id, c.name, c.parentId || null));
-        })();
+        db.transaction(() => { value.forEach(c => stmt.run(c.id, c.name, c.parentId || null)); })();
     } else if (key === 'accounts' && Array.isArray(value)) {
         db.prepare("DELETE FROM accounts").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO accounts (id, name, identifier, account_type_id) VALUES (?, ?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(a => stmt.run(a.id, a.name, a.identifier, a.accountTypeId || null));
-        })();
+        db.transaction(() => { value.forEach(a => stmt.run(a.id, a.name, a.identifier, a.accountTypeId || null)); })();
     } else if (key === 'accountTypes' && Array.isArray(value)) {
         db.prepare("DELETE FROM account_types").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO account_types (id, name, is_default) VALUES (?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(at => stmt.run(at.id, at.name, at.isDefault ? 1 : 0));
-        })();
+        db.transaction(() => { value.forEach(at => stmt.run(at.id, at.name, at.isDefault ? 1 : 0)); })();
     } else if (key === 'users' && Array.isArray(value)) {
         db.prepare("DELETE FROM users").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO users (id, name, is_default) VALUES (?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(u => stmt.run(u.id, u.name, u.isDefault ? 1 : 0));
-        })();
+        db.transaction(() => { value.forEach(u => stmt.run(u.id, u.name, u.isDefault ? 1 : 0)); })();
         ensureSeedData();
     } else if (key === 'transactionTypes' && Array.isArray(value)) {
         db.prepare("DELETE FROM transaction_types").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect));
-        })();
+        db.transaction(() => { value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect)); })();
         ensureSeedData();
     } else if (key === 'payees' && Array.isArray(value)) {
         db.prepare("DELETE FROM payees").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO payees (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(p => stmt.run(p.id, p.name, p.parentId || null, p.notes || null, p.userId || null));
-        })();
+        db.transaction(() => { value.forEach(p => stmt.run(p.id, p.name, p.parentId || null, p.notes || null, p.userId || null)); })();
     } else if (key === 'merchants' && Array.isArray(value)) {
         db.prepare("DELETE FROM merchants").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO merchants (id, name, payee_id, notes) VALUES (?, ?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(m => stmt.run(m.id, m.name, m.payeeId || null, m.notes || null));
-        })();
+        db.transaction(() => { value.forEach(m => stmt.run(m.id, m.name, m.payeeId || null, m.notes || null)); })();
     } else if (key === 'locations' && Array.isArray(value)) {
         db.prepare("DELETE FROM locations").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO locations (id, name, city, state, country) VALUES (?, ?, ?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(l => stmt.run(l.id, l.name, l.city || null, l.state || null, l.country || null));
-        })();
+        db.transaction(() => { value.forEach(l => stmt.run(l.id, l.name, l.city || null, l.state || null, l.country || null)); })();
     } else if (key === 'tags' && Array.isArray(value)) {
         db.prepare("DELETE FROM tags").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO tags (id, name, color) VALUES (?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(t => stmt.run(t.id, t.name, t.color));
-        })();
+        db.transaction(() => { value.forEach(t => stmt.run(t.id, t.name, t.color)); })();
     } else {
         db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
     }
     res.json({ success: true });
-  } catch (e) { 
-    console.error(`[DB] ERROR saving ${req.params.key}:`, e.message);
-    res.status(500).json({ error: e.message }); 
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Admin Reset & Purge Route
 app.post('/api/admin/reset', async (req, res) => {
     const { entities } = req.body || {};
-    
     try {
         if (!entities || entities.includes('all')) {
-            console.warn("[SYS] FULL FACTORY RESET");
             if (db) db.close();
             if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
             initDb();
             return res.json({ success: true, message: "System purged." });
         }
-
-        console.warn(`[SYS] SELECTIVE PURGE: ${entities.join(', ')}`);
-        
         db.transaction(() => {
-            if (entities.includes('transactions')) {
-                db.prepare("DELETE FROM transactions").run();
-                db.prepare("DELETE FROM transaction_tags").run();
-            }
+            if (entities.includes('transactions')) { db.prepare("DELETE FROM transactions").run(); db.prepare("DELETE FROM transaction_tags").run(); }
             if (entities.includes('accounts')) db.prepare("DELETE FROM accounts").run();
             if (entities.includes('accountTypes')) db.prepare("DELETE FROM account_types").run();
             if (entities.includes('categories')) db.prepare("DELETE FROM categories").run();
-            if (entities.includes('tags')) {
-                db.prepare("DELETE FROM tags").run();
-                db.prepare("DELETE FROM transaction_tags").run();
-            }
+            if (entities.includes('tags')) { db.prepare("DELETE FROM tags").run(); db.prepare("DELETE FROM transaction_tags").run(); }
             if (entities.includes('payees')) db.prepare("DELETE FROM payees").run();
             if (entities.includes('merchants')) db.prepare("DELETE FROM merchants").run();
             if (entities.includes('locations')) db.prepare("DELETE FROM locations").run();
             if (entities.includes('users')) db.prepare("DELETE FROM users WHERE is_default = 0").run();
             if (entities.includes('files_meta')) db.prepare("DELETE FROM files_meta").run();
-            
-            // Clean specific app_storage keys
-            const storageKeys = {
-                'amazonMetrics': 'amazonMetrics',
-                'youtubeMetrics': 'youtubeMetrics',
-                'amazonVideos': 'amazonVideos',
-                'financialGoals': 'financialGoals',
-                'financialPlan': 'financialPlan',
-                'reconciliationRules': 'reconciliationRules',
-                'templates': 'templates',
-                'tasks': 'tasks',
-                'taskCompletions': 'taskCompletions',
-                'savedReports': 'savedReports',
-                'contentLinks': 'contentLinks',
-                'businessNotes': 'businessNotes'
-            };
-
-            entities.forEach(entity => {
-                if (storageKeys[entity]) {
-                    db.prepare("DELETE FROM app_storage WHERE key = ?").run(storageKeys[entity]);
-                }
-            });
+            const storageKeys = { 'amazonMetrics': 'amazonMetrics', 'youtubeMetrics': 'youtubeMetrics', 'amazonVideos': 'amazonVideos', 'financialGoals': 'financialGoals', 'financialPlan': 'financialPlan', 'reconciliationRules': 'reconciliationRules', 'templates': 'templates', 'tasks': 'tasks', 'taskCompletions': 'taskCompletions', 'savedReports': 'savedReports', 'contentLinks': 'contentLinks', 'businessNotes': 'businessNotes' };
+            entities.forEach(entity => { if (storageKeys[entity]) db.prepare("DELETE FROM app_storage WHERE key = ?").run(storageKeys[entity]); });
         })();
-
         ensureSeedData();
-
-        // Shrink file size
         db.pragma('vacuum');
         res.json({ success: true, message: "Selective purge complete." });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-app.post('/api/ai/generate', async (req, res) => {
-    try {
-        const { model, contents, config } = req.body;
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const response = await ai.models.generateContent({ model, contents, config });
-        res.json({ text: response.text, candidates: response.candidates });
     } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/ai/stream', async (req, res) => {
-    try {
-        const { model, contents, config } = req.body;
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-        const responseStream = await ai.models.generateContentStream({ model, contents, config });
-        res.setHeader('Content-Type', 'text/event-stream');
-        for await (const chunk of responseStream) {
-            res.write(`data: ${JSON.stringify({ text: chunk.text })}\n\n`);
-        }
-        res.end();
-    } catch (e) { res.status(500).end(); }
 });
 
 app.post('/api/files/:id', (req, res) => {
@@ -485,15 +384,18 @@ app.get('/api/files/:id', (req, res) => {
 app.delete('/api/files/:id', (req, res) => {
   try {
     const meta = db.prepare('SELECT * FROM files_meta WHERE id = ?').get(req.params.id);
-    if (meta) {
-        fs.unlinkSync(path.join(DOCUMENTS_DIR, meta.disk_filename));
-        db.prepare('DELETE FROM files_meta WHERE id = ?').run(req.params.id);
-    }
+    if (meta) { fs.unlinkSync(path.join(DOCUMENTS_DIR, meta.disk_filename)); db.prepare('DELETE FROM files_meta WHERE id = ?').run(req.params.id); }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: 'Failed' }); }
 });
 
-app.use(express.static(PUBLIC_DIR));
-app.get('*', (req, res) => res.sendFile(path.join(PUBLIC_DIR, 'index.html')));
+if (fs.existsSync(PUBLIC_DIR)) {
+    app.use(express.static(PUBLIC_DIR));
+    app.get('*', (req, res) => {
+        const indexPath = path.join(PUBLIC_DIR, 'index.html');
+        if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+        else res.status(404).send('Not found');
+    });
+}
 
 app.listen(PORT, '0.0.0.0', () => console.log(`[SYS] Server running on port ${PORT}`));
