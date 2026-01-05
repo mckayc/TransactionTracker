@@ -1,4 +1,3 @@
-
 import { Type } from '@google/genai';
 import type { RawTransaction, TransactionType, BusinessDocument, Transaction, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, FinancialPlan } from '../types';
 
@@ -56,6 +55,27 @@ const fileToGenerativePart = async (file: File) => {
     return [{ text: `Content of ${file.name}:\n${text}` }];
 };
 
+const EXTRACTION_SCHEMA = {
+    type: Type.OBJECT,
+    properties: {
+        transactions: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    date: { type: Type.STRING, description: 'YYYY-MM-DD' },
+                    description: { type: Type.STRING },
+                    amount: { type: Type.NUMBER, description: 'Absolute value of the transaction' },
+                    category: { type: Type.STRING, description: 'Broad category like Groceries, Dining, etc.' },
+                    isIncome: { type: Type.BOOLEAN, description: 'True if money in, false if money out' }
+                },
+                required: ['date', 'description', 'amount', 'isIncome']
+            }
+        }
+    },
+    required: ['transactions']
+};
+
 export const extractTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     onProgress("Preparing documents...");
     let allParts: any[] = [];
@@ -67,19 +87,25 @@ export const extractTransactionsFromFiles = async (files: File[], accountId: str
     onProgress("AI analyzing statements...");
     const result = await callAi({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: "Extract transactions as JSON. Identify if Bank or Credit Card." }, ...allParts] },
-        config: { responseMimeType: 'application/json' }
+        contents: { 
+            parts: [
+                { text: "Extract every single transaction from the attached financial statements. Be precise with dates and amounts. Return ONLY a JSON object." }, 
+                ...allParts
+            ] 
+        },
+        config: { 
+            responseMimeType: 'application/json',
+            responseSchema: EXTRACTION_SCHEMA
+        }
     });
     
     const parsed = JSON.parse(result.text);
     
-    // Find default types or fall back to first one
     const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
     const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
 
     return (parsed.transactions || []).map((tx: any) => {
-        const isIncome = tx.amount > 0;
-        const targetType = isIncome ? incomeType : expenseType;
+        const targetType = tx.isIncome ? incomeType : expenseType;
         return {
             ...tx,
             accountId,
@@ -92,16 +118,18 @@ export const extractTransactionsFromText = async (text: string, accountId: strin
     onProgress("AI analyzing text...");
     const result = await callAi({
         model: 'gemini-3-flash-preview',
-        contents: { parts: [{ text: `Extract transactions from this text: ${text}` }] },
-        config: { responseMimeType: 'application/json' }
+        contents: { parts: [{ text: `Extract transactions from this text and return as JSON: ${text}` }] },
+        config: { 
+            responseMimeType: 'application/json',
+            responseSchema: EXTRACTION_SCHEMA
+        }
     });
     const parsed = JSON.parse(result.text);
     const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
     const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
 
     return (parsed.transactions || []).map((tx: any) => {
-        const isIncome = tx.amount > 0;
-        const targetType = isIncome ? incomeType : expenseType;
+        const targetType = tx.isIncome ? incomeType : expenseType;
         return {
             ...tx,
             accountId,

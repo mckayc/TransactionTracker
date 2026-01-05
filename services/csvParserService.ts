@@ -40,6 +40,16 @@ const MERCHANT_MAP: Record<string, { category: string; payee?: string }> = {
   'EXXON': { category: 'Transportation', payee: 'Exxon' },
   'CHEVRON': { category: 'Transportation', payee: 'Chevron' },
   'MACEY': { category: 'Groceries', payee: 'Macey\'s' },
+  'SHELL': { category: 'Transportation', payee: 'Shell' },
+  '7-ELEVEN': { category: 'Groceries', payee: '7-Eleven' },
+  'COSTCO': { category: 'Groceries', payee: 'Costco' },
+  'STARBUCKS': { category: 'Dining', payee: 'Starbucks' },
+  'MCDONALD': { category: 'Dining', payee: 'McDonalds' },
+  'NETFLIX': { category: 'Entertainment', payee: 'Netflix' },
+  'SPOTIFY': { category: 'Entertainment', payee: 'Spotify' },
+  'ADOBE': { category: 'Services', payee: 'Adobe' },
+  'MICROSOFT': { category: 'Services', payee: 'Microsoft' },
+  'APPLE.COM': { category: 'Shopping', payee: 'Apple' },
   'INTERNET PAYMENT': { category: 'Transfer', payee: 'Internal' },
   'ONLINE PAYMENT': { category: 'Transfer', payee: 'Internal' },
   'AUTOPAY': { category: 'Transfer', payee: 'Internal' },
@@ -161,10 +171,8 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     if (!parsedDate) continue;
 
     // Determine the best description
-    // If 'name' column exists and isn't just a generic type, prioritize it.
     let rawDesc = '';
     const genericTypes = ['DEBIT', 'CREDIT', 'POS', 'ACH', 'CHECK'];
-    
     const nameVal = colMap.name > -1 ? parts[colMap.name] : '';
     const descVal = colMap.description > -1 ? parts[colMap.description] : '';
     
@@ -177,7 +185,6 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     const cleanedDesc = cleanDescription(rawDesc);
     const guess = guessMetadata(rawDesc);
     
-    // Parse Memo for Reference and MCC
     let parsedMcc = '';
     let parsedRef = '';
     const memoVal = colMap.memo > -1 ? parts[colMap.memo] : '';
@@ -209,7 +216,6 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
       amount = Math.abs(val);
     }
 
-    // Category Logic: MCC First -> Merchant Keywords -> Column Data
     let finalCategory = '';
     if (parsedMcc && MCC_MAP[parsedMcc]) {
       finalCategory = MCC_MAP[parsedMcc];
@@ -221,12 +227,11 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
       finalCategory = 'Uncategorized';
     }
 
-    // Type Logic: detect Transfers
     let finalTypeId = isIncome ? incomeType.id : expenseType.id;
     const isTransferKeyword = cleanedDesc.toUpperCase().includes('TRANSFER') || 
                               cleanedDesc.toUpperCase().includes('PAYMENT THANK YOU') || 
                               cleanedDesc.toUpperCase().includes('ONLINE PAYMENT') ||
-                              parsedMcc === '00300'; // Generic payment code often used for internal transfers
+                              parsedMcc === '00300';
 
     if (isTransferKeyword) {
       finalTypeId = transferType.id;
@@ -253,12 +258,7 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
     const reader = new FileReader();
     const result = await new Promise<string>((resolve) => {
       reader.onload = () => resolve(reader.result as string);
-      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        // Fallback for Excel handled via XLSX in caller, but kept simple here
-        resolve(''); 
-      } else {
-        reader.readAsText(file);
-      }
+      reader.readAsText(file);
     });
     text = result;
 
@@ -270,7 +270,7 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         const lower = lines[i].toLowerCase();
         if (lower.includes('tracking id') && lower.includes('asin')) { headerIndex = i; break; }
     }
-    if (headerIndex === -1) return []; // Silently fail or throw depending on app need
+    if (headerIndex === -1) return [];
     const header = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').toLowerCase());
     const colMap = {
         date: header.findIndex(h => h === 'date' || h === 'date shipped'),

@@ -8,7 +8,6 @@ import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import ImportVerification from '../components/ImportVerification';
-// Added RobotIcon to imports to fix error on line 164
 import { CalendarIcon, SparklesIcon, RobotIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
@@ -54,7 +53,6 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, i
     </div>
 );
 
-// Added tags to destructuring to fix errors on lines 185 and 206
 const Dashboard: React.FC<DashboardProps> = ({ 
     onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, users, transactionTypes, onSaveCategory, onSavePayee, onUpdateTransaction, onDeleteTransaction 
 }) => {
@@ -86,6 +84,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [dashboardRange, recentGlobalTransactions]);
 
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
+    if (!rawTransactions || rawTransactions.length === 0) {
+        setError("No transactions were found in the provided data. Please check the file format or try AI mode.");
+        setAppState('error');
+        return;
+    }
+
     const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
     const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
     const categoryNameToIdMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
@@ -100,14 +104,22 @@ const Dashboard: React.FC<DashboardProps> = ({
   }, [categories, accounts]);
 
   const handleFileUpload = useCallback(async (files: File[], accountId: string, aiMode: boolean) => {
+    setError(null);
     setAppState('processing');
-    setProgressMessage(aiMode ? 'AI thinking...' : 'Parsing files...');
+    setProgressMessage(aiMode ? 'AI Thinking (Analyzing Statements)...' : 'Parsing local files...');
     try {
-      const raw = aiMode ? await extractTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage) : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
+      const raw = aiMode 
+        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage) 
+        : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
+      
+      if (!raw || raw.length === 0) {
+          throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
+      }
+
       applyRulesAndSetStaging(raw, users.find(u => u.isDefault)?.id || users[0]?.id || '', rules);
       setAppState('verifying_import');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
       setAppState('error');
     }
   }, [transactionTypes, users, rules, applyRulesAndSetStaging]);
@@ -123,11 +135,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-8 h-full flex flex-col">
-      <div className="flex justify-between items-center flex-shrink-0">
-        <h1 className="text-3xl font-black text-slate-800">Dashboard</h1>
-        <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200">
+      <div className="flex justify-between items-center flex-shrink-0 px-1">
+        <div>
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Dashboard</h1>
+            <p className="text-sm text-slate-500">Summary and rapid ingestion gateway.</p>
+        </div>
+        <div className="flex bg-white rounded-xl p-1 shadow-sm border border-slate-200">
             {(['all', 'year', 'month'] as const).map(range => (
-                <button key={range} onClick={() => setDashboardRange(range)} className={`px-4 py-2 text-xs font-bold rounded-md transition-all uppercase ${dashboardRange === range ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
+                <button key={range} onClick={() => setDashboardRange(range)} className={`px-4 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-widest ${dashboardRange === range ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
                     {range}
                 </button>
             ))}
@@ -145,7 +160,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         <SummaryWidget title="Calendar" value="..." helpText="Next Deadline" icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
       </div>
 
-      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex-1 flex flex-col overflow-hidden">
+      <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex-1 flex flex-col overflow-hidden relative">
         {appState === 'idle' ? (
           <div className="flex flex-col h-full overflow-y-auto custom-scrollbar">
             <h2 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2">Quick Import</h2>
@@ -176,7 +191,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                              const raw = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
                              applyRulesAndSetStaging(raw, users[0].id, rules);
                              setAppState('verifying_import');
-                         } catch(e) { setAppState('error'); }
+                         } catch(e) { setAppState('error'); setError("Parsing failed. Ensure columns align."); }
                     }} disabled={!textInput.trim() || !pasteAccountId} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700">Process Text</button>
                 </div>
             )}
@@ -189,20 +204,23 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
         ) : appState === 'processing' ? (
-            <div className="py-20 flex-1 flex flex-col items-center justify-center space-y-4">
-                <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-                <p className="font-black text-xl text-slate-800">{progressMessage}</p>
+            <div className="py-20 flex-1 flex flex-col items-center justify-center space-y-6">
+                <div className="w-20 h-20 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin shadow-inner" />
+                <div className="text-center">
+                    <p className="font-black text-2xl text-slate-800">{progressMessage}</p>
+                    <p className="text-slate-500 mt-1">This can take up to 2 minutes for complex PDF statements.</p>
+                </div>
             </div>
         ) : appState === 'verifying_import' ? (
             <ImportVerification initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} users={users} existingTransactions={recentGlobalTransactions} />
         ) : appState === 'post_import_edit' ? (
             <div className="flex-1 flex flex-col overflow-hidden animate-fade-in">
-                <div className="flex justify-between items-center mb-6 bg-slate-50 p-5 rounded-2xl border border-indigo-100">
+                <div className="flex justify-between items-center mb-6 bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm">
                     <div>
                         <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> New Data Preview</h2>
                         <p className="text-sm text-slate-500">Reviewing {importedTxIds.size} successfully ingested transactions.</p>
                     </div>
-                    <button onClick={() => setAppState('idle')} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg">Done</button>
+                    <button onClick={() => setAppState('idle')} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Done</button>
                 </div>
                 <div className="flex-1 overflow-hidden border border-slate-200 rounded-2xl relative shadow-inner">
                     <TransactionTable transactions={recentGlobalTransactions.filter(tx => importedTxIds.has(tx.id))} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
