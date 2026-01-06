@@ -315,7 +315,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                                     {impact === 'inflow' && <TrendingUpIcon className="w-6 h-6" />}
                                                     {impact === 'outflow' && <TrendingUpIcon className="w-6 h-6 transform rotate-180" />}
                                                     {impact === 'neutral' && <RepeatIcon className="w-6 h-6" />}
-                                                    <span className="text-[10px] font-black uppercase tracking-widest">{impact === 'inflow' ? 'Earnings (Inflow)' : impact === 'outflow' ? 'Loss (Outflow)' : 'Neutral (Internal)'}</span>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest">{impact === 'inflow' ? 'Earnings' : impact === 'outflow' ? 'Loss' : 'Neutral'}</span>
                                                 </button>
                                             ))}
                                         </div>
