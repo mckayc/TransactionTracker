@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User, SystemSettings } from '../types';
-import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon, ChevronDownIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, CloudArrowUpIcon, InfoIcon, ShieldCheckIcon, TagIcon, WrenchIcon, UsersIcon, UserGroupIcon } from '../components/Icons';
+import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon, ChevronDownIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, CloudArrowUpIcon, InfoIcon, ShieldCheckIcon, TagIcon, WrenchIcon, UsersIcon, UserGroupIcon, LightBulbIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from '../components/RuleBuilder';
 import RulePreviewModal from '../components/RulePreviewModal';
@@ -74,6 +74,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
     const [skipImport, setSkipImport] = useState(false);
 
+    // Proposed Names (Tracking AI suggestions for UI badges)
+    const [proposedNames, setProposedNames] = useState<{cat?: string; payee?: string; merc?: string; loc?: string}>({});
+
     const filteredRules = useMemo(() => {
         let list = rules.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
         if (selectedDomain !== 'all') {
@@ -98,6 +101,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setActionTypeId(r.setTransactionTypeId || '');
         setAssignTagIds(new Set(r.assignTagIds || []));
         setSkipImport(!!r.skipImport);
+        setProposedNames({});
     };
 
     const handleNew = () => {
@@ -114,18 +118,27 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setActionTypeId('');
         setAssignTagIds(new Set());
         setSkipImport(false);
+        setProposedNames({});
     };
 
     const handleEditProposed = (proposed: ReconciliationRule) => {
-        // Hydrate manual form with AI draft but keep AI panel logically open behind it
         setIsCreating(true);
-        setSelectedRuleId(null); // New rule drafting
+        setSelectedRuleId(null);
         
         setRuleName(proposed.name);
+        // Correctly set Logic Scope based on AI suggestion
         setRuleScope(proposed.scope || 'description');
         setConditions(proposed.conditions);
         
-        // Match existing IDs if suggested names were returned
+        // Track proposed names for visual badges
+        setProposedNames({
+            cat: proposed.suggestedCategoryName,
+            payee: proposed.suggestedPayeeName,
+            merc: proposed.suggestedMerchantName,
+            loc: proposed.suggestedLocationName
+        });
+
+        // Hydrate selects if match exists, otherwise they stay empty (showing 'New' badge)
         let finalCatId = proposed.setCategoryId || '';
         if (!finalCatId && proposed.suggestedCategoryName) {
             const match = categories.find(c => c.name.toLowerCase() === proposed.suggestedCategoryName?.toLowerCase());
@@ -163,30 +176,60 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const handleCancelEdit = () => {
         setSelectedRuleId(null);
         setIsCreating(false);
-        // Returns to AI results list if panel was open
     };
 
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault();
+        
+        // Handle logic for auto-creating entities if they were proposed but not matched
+        let finalCatId = actionCategoryId;
+        if (!finalCatId && proposedNames.cat) {
+            const cat = { id: generateUUID(), name: proposedNames.cat };
+            onSaveCategory(cat);
+            finalCatId = cat.id;
+        }
+
+        let finalPayeeId = actionPayeeId;
+        if (!finalPayeeId && proposedNames.payee) {
+            const p = { id: generateUUID(), name: proposedNames.payee };
+            onSavePayee(p);
+            finalPayeeId = p.id;
+        }
+
+        let finalMerchantId = actionMerchantId;
+        if (!finalMerchantId && proposedNames.merc) {
+            const m = { id: generateUUID(), name: proposedNames.merc };
+            onSaveMerchant(m);
+            finalMerchantId = m.id;
+        }
+
+        let finalLocationId = actionLocationId;
+        if (!finalLocationId && proposedNames.loc) {
+            const l = { id: generateUUID(), name: proposedNames.loc, city: proposedNames.loc.split(',')[0].trim(), state: proposedNames.loc.split(',')[1]?.trim() };
+            onSaveLocation(l);
+            finalLocationId = l.id;
+        }
+
         const rule: ReconciliationRule = {
             id: selectedRuleId || generateUUID(),
             name: ruleName.trim(),
             scope: ruleScope,
             conditions,
-            setCategoryId: actionCategoryId || undefined,
-            setPayeeId: actionPayeeId || undefined,
-            setMerchantId: actionMerchantId || undefined,
-            setLocationId: actionLocationId || undefined,
+            setCategoryId: finalCatId || undefined,
+            setPayeeId: finalPayeeId || undefined,
+            setMerchantId: finalMerchantId || undefined,
+            setLocationId: finalLocationId || undefined,
             setUserId: actionUserId || undefined,
             setTransactionTypeId: actionTypeId || undefined,
             assignTagIds: assignTagIds.size > 0 ? Array.from(assignTagIds) : undefined,
             skipImport
         };
+        
         onSaveRule(rule);
         setIsCreating(false);
         setSelectedRuleId(rule.id);
-        // If it was a proposed rule, remove it from the list
         setAiProposedRules(prev => prev.filter(p => p.name !== rule.name));
+        alert(`Rule "${rule.name}" saved and added to engine.`);
     };
 
     const handleAiInspect = async () => {
@@ -280,13 +323,22 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 <div className="bg-white border-2 border-indigo-100 rounded-3xl p-6 shadow-xl animate-fade-in space-y-6">
                     <div className="flex justify-between items-center border-b pb-4">
                         <div className="flex items-center gap-3"><RobotIcon className="w-6 h-6 text-indigo-600" /><h3 className="text-xl font-bold text-slate-800">AI Rule Forge</h3></div>
+                        <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">
+                            <LightBulbIcon className="w-4 h-4" />
+                            <span className="text-xs font-bold">Pro-tip: Ask for specific targets like "Only find locations" for better precision.</span>
+                        </div>
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-4">
-                            <p className="text-sm text-slate-600 leading-relaxed font-medium">
-                                Describe normalization tasks. Gemini intelligently expands locations (e.g. "PLEASANT GROV" &rarr; "Pleasant Grove, UT") and identifies core merchant brands.
-                            </p>
+                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Prompt Engineering Guide</h4>
+                                <ul className="text-xs text-slate-600 space-y-1.5">
+                                    <li className="flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" /> <strong>"Extract Locations":</strong> standardizes cities to "City, ST".</li>
+                                    <li className="flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" /> <strong>"Categorize only":</strong> skips merchant/location creation.</li>
+                                    <li className="flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" /> <strong>"Clean Merchants":</strong> finds the brand keyword from bank text.</li>
+                                </ul>
+                            </div>
                             {!aiRawData && (
                                 <div 
                                     onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
@@ -299,14 +351,14 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </div>
                             )}
                             {!aiFile && <textarea value={aiRawData} onChange={e => setAiRawData(e.target.value)} placeholder="Paste CSV rows here..." className="w-full h-32 p-3 border rounded-xl text-[10px] font-mono bg-slate-50" />}
-                            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Specific instructions (e.g. 'Identify and create locations as City, State')..." className="w-full p-3 border rounded-xl text-sm min-h-[60px]" />
+                            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Specific instructions (e.g. 'Find categories only')..." className="w-full p-3 border rounded-xl text-sm min-h-[60px] focus:ring-1 focus:ring-indigo-500 outline-none" />
                             <button onClick={handleAiInspect} disabled={(!aiFile && !aiRawData) || isAiGenerating} className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-black disabled:opacity-30 flex items-center justify-center gap-2">
                                 {isAiGenerating ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-4 h-4" />}
                                 Forge Proposed Rules
                             </button>
                         </div>
 
-                        <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 overflow-y-auto max-h-[450px] custom-scrollbar">
+                        <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 overflow-y-auto max-h-[500px] custom-scrollbar">
                             <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Proposed Rules ({aiProposedRules.length})</h4>
                             {aiProposedRules.length === 0 ? (
                                 <div className="h-full flex flex-col items-center justify-center text-slate-300"><TableIcon className="w-10 h-10 mb-2 opacity-20" /><p className="text-sm font-bold">No suggestions yet.</p></div>
@@ -322,32 +374,25 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                             <div key={idx} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in group/card">
                                                 <div className="flex justify-between items-start">
                                                     <div className="flex-1 min-w-0 pr-4">
-                                                        <h5 className="text-sm font-bold text-slate-800 truncate">{r.name}</h5>
+                                                        <div className="flex items-center gap-2">
+                                                            <h5 className="text-sm font-bold text-slate-800 truncate">{r.name}</h5>
+                                                            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-400 text-[8px] font-black rounded uppercase">{r.scope}</span>
+                                                        </div>
                                                         <div className="flex flex-wrap gap-1 mt-2">
                                                             {needsCategory && <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[8px] font-black rounded uppercase border border-purple-100">+ New Category</span>}
                                                             {needsMerchant && <span className="px-1.5 py-0.5 bg-orange-50 text-orange-600 text-[8px] font-black rounded uppercase border border-orange-100">+ New Merchant</span>}
                                                             {needsPayee && <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black rounded uppercase border border-blue-100">+ New Payee</span>}
                                                             {needsLocation && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded uppercase border border-emerald-100">+ New Location</span>}
                                                             
-                                                            {r.suggestedCategoryName && !needsCategory && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-black rounded uppercase border border-slate-200">Category: {r.suggestedCategoryName}</span>}
-                                                            {r.suggestedMerchantName && !needsMerchant && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-black rounded uppercase border border-slate-200">Merchant: {r.suggestedMerchantName}</span>}
-                                                            {r.suggestedLocationName && !needsLocation && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-black rounded uppercase border border-slate-200">Location: {r.suggestedLocationName}</span>}
+                                                            {r.suggestedCategoryName && !needsCategory && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-black rounded uppercase border border-slate-200">Cat: {r.suggestedCategoryName}</span>}
+                                                            {r.suggestedMerchantName && !needsMerchant && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-black rounded uppercase border border-slate-200">Merc: {r.suggestedMerchantName}</span>}
+                                                            {r.suggestedLocationName && !needsLocation && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-black rounded uppercase border border-slate-200">Loc: {r.suggestedLocationName}</span>}
                                                         </div>
                                                     </div>
-                                                    <div className="flex gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                                    <div className="flex gap-1.5">
                                                         <button onClick={() => handleEditProposed(r)} className="p-1 text-indigo-600 hover:bg-indigo-50 rounded" title="Refine Logic"><EditIcon className="w-4 h-4"/></button>
                                                         <button onClick={() => acceptAiRule(r)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Quick Accept"><CheckCircleIcon className="w-4 h-4"/></button>
                                                     </div>
-                                                </div>
-                                                <div className="p-2 bg-slate-50 rounded font-mono text-[9px] text-slate-500">
-                                                    {r.conditions.map((c, i) => (
-                                                        <div key={i} className="flex gap-1">
-                                                            {i > 0 && <span className="text-indigo-600 font-bold">{c.nextLogic || 'AND'}</span>}
-                                                            <span className="text-slate-400">{c.field}</span>
-                                                            <span className="text-indigo-700">{c.operator}</span>
-                                                            <span className="text-slate-800 font-bold truncate">"{c.value}"</span>
-                                                        </div>
-                                                    ))}
                                                 </div>
                                             </div>
                                         );
@@ -399,9 +444,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     {(selectedRuleId || isCreating) ? (
                         <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0 animate-fade-in">
                             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-                                <div><h3 className="text-xl font-black text-slate-800">Rule Architect</h3><p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Normalization Engine</p></div>
+                                <div><h3 className="text-xl font-black text-slate-800">Rule Architect</h3><p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Logic Design & Atomic Transforms</p></div>
                                 <div className="flex gap-2">
-                                    <button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg uppercase text-[10px] active:scale-95 transition-transform">Commit Rule</button>
+                                    <button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg uppercase text-[10px] active:scale-95 transition-transform">Save & Apply Rule</button>
                                     <button type="button" onClick={handleCancelEdit} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                                 </div>
                             </div>
@@ -422,10 +467,26 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <div className="space-y-6">
                                     <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Atomic Transformations</h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label><select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Payee</label><select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Merchant</label><select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
-                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label><select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
+                                        <div className="space-y-1 relative">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label>
+                                            <select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.cat && !actionCategoryId ? 'border-purple-400 ring-1 ring-purple-100' : ''}`}><option value="">-- No Change --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                                            {proposedNames.cat && !actionCategoryId && <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-[7px] font-black px-1 rounded shadow">+ NEW</span>}
+                                        </div>
+                                        <div className="space-y-1 relative">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Payee</label>
+                                            <select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.payee && !actionPayeeId ? 'border-blue-400 ring-1 ring-blue-100' : ''}`}><option value="">-- No Change --</option>{payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                                            {proposedNames.payee && !actionPayeeId && <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[7px] font-black px-1 rounded shadow">+ NEW</span>}
+                                        </div>
+                                        <div className="space-y-1 relative">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Merchant</label>
+                                            <select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.merc && !actionMerchantId ? 'border-orange-400 ring-1 ring-orange-100' : ''}`}><option value="">-- No Change --</option>{merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                                            {proposedNames.merc && !actionMerchantId && <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[7px] font-black px-1 rounded shadow">+ NEW</span>}
+                                        </div>
+                                        <div className="space-y-1 relative">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label>
+                                            <select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.loc && !actionLocationId ? 'border-emerald-400 ring-1 ring-emerald-100' : ''}`}><option value="">-- No Change --</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                                            {proposedNames.loc && !actionLocationId && <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[7px] font-black px-1 rounded shadow">+ NEW</span>}
+                                        </div>
                                         <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label><select value={actionUserId} onChange={e => setActionUserId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
                                         <div className="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-100 self-end"><input type="checkbox" checked={skipImport} onChange={e => setSkipImport(e.target.checked)} className="w-5 h-5 rounded text-red-600 focus:ring-red-500" /><div><label className="text-xs font-black text-red-800 uppercase block">Suppress Record</label><p className="text-[10px] text-red-600">Auto-ignore matching imports.</p></div></div>
                                     </div>
@@ -441,6 +502,20 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     )}
                 </div>
             </div>
+
+            {previewRule && (
+                <RulePreviewModal
+                    isOpen={!!previewRule}
+                    onClose={() => setPreviewRule(null)}
+                    onApply={handleApplyPreview}
+                    rule={previewRule}
+                    transactions={transactions}
+                    accounts={accounts}
+                    transactionTypes={transactionTypes}
+                    categories={categories}
+                    payees={payees}
+                />
+            )}
         </div>
     );
 };

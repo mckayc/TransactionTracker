@@ -108,21 +108,26 @@ export const generateRulesFromData = async (
 
     const systemInstruction = `You are a Senior Financial Architect & Data Normalizer.
     
-    TASK: Generate classification rules in JSON based on the provided sample and user context.
+    TASK: Generate classification rules in JSON based on provided data and user instructions.
     
-    CORE NORMALIZATION LOGIC:
-    1. SNIPPET VS ENTITY: You must distinguish between the "Matching Snippet" (exact raw text in the description) and the "Clean Entity Name" (human-readable).
-       Example: Description "PHO NO 1 PLEASANT GROV UT"
-       - If user asks for Merchant: Condition value "PHO NO 1" -> suggestedMerchantName "Pho No 1"
-       - If user asks for Location: Condition value "PLEASANT GROV UT" -> suggestedLocationName "Pleasant Grove, UT"
+    INTENT-DRIVEN RULES:
+    - If user asks for "Location": Return rules with scope "locationId" and fill suggestedLocationName.
+    - If user asks for "Merchant": Return rules with scope "merchantId" and fill suggestedMerchantName.
+    - If user asks for "Category": Return rules with scope "description" and fill suggestedCategoryName.
+    - If user asks for "Payee": Return rules with scope "payeeId" and fill suggestedPayeeName.
     
-    2. KEYWORD EXTRACTION: Find the MINIMAL unique identifying keyword. Ignore branch IDs, dates, or terminal numbers.
+    NORMALIZATION LOGIC:
+    1. SNIPPET VS ENTITY: Distinguish between "Matching Snippet" (raw text in description) and "Clean Entity Name" (human-readable).
+       Example: "PHO NO 1 PLEASANT GROV UT"
+       - Location Rule: snippet "PLEASANT GROV UT" -> suggestedLocationName "Pleasant Grove, UT"
+       - Merchant Rule: snippet "PHO NO 1" -> suggestedMerchantName "Pho No 1"
     
-    3. LOCATION EXPANSION: If a location is detected, expand abbreviations to a standard "City, ST" format.
-       Examples: "SLC" -> "Salt Lake City, UT", "NY NY" -> "New York, NY", "PLEASANT GROV" -> "Pleasant Grove".
+    2. KEYWORD EXTRACTION: Use the minimal unique identifying keyword. Ignore branch IDs, dates, or terminal numbers.
     
-    4. CONSOLIDATION & LOGIC: If multiple text variants represent the same entity, create ONE rule with OR logic between conditions.
-       CRITICAL: In an OR group, every condition (including the first) should have its 'nextLogic' set to 'OR'.
+    3. LOCATION EXPANSION: Expand abbreviations to standard "City, ST" format.
+       "SLC" -> "Salt Lake City, UT", "NY NY" -> "New York, NY", "PLEASANT GROV" -> "Pleasant Grove".
+    
+    4. SCOPE ASSIGNMENT: The 'scope' field must be one of: 'description', 'payeeId', 'merchantId', 'locationId'.
 
     CONTEXT: ${promptContext || 'Identify recurring patterns and merchants.'}
     CATEGORIES: ${JSON.stringify(slimCategories)}
@@ -137,7 +142,7 @@ export const generateRulesFromData = async (
                     type: Type.OBJECT,
                     properties: {
                         name: { type: Type.STRING },
-                        scope: { type: Type.STRING },
+                        scope: { type: Type.STRING, description: "Must be 'locationId', 'merchantId', 'payeeId', or 'description'" },
                         conditions: {
                             type: Type.ARRAY,
                             items: {
@@ -146,7 +151,7 @@ export const generateRulesFromData = async (
                                     field: { type: Type.STRING },
                                     operator: { type: Type.STRING },
                                     value: { type: Type.STRING },
-                                    nextLogic: { type: Type.STRING, description: "Set to 'OR' to group merchant variants." }
+                                    nextLogic: { type: Type.STRING }
                                 }
                             }
                         },
@@ -159,7 +164,7 @@ export const generateRulesFromData = async (
                         setLocationId: { type: Type.STRING },
                         suggestedLocationName: { type: Type.STRING }
                     },
-                    required: ['name', 'conditions']
+                    required: ['name', 'conditions', 'scope']
                 }
             }
         },
