@@ -11,6 +11,7 @@ import RuleImportVerification from '../components/RuleImportVerification';
 interface RulesPageProps {
     rules: ReconciliationRule[];
     onSaveRule: (rule: ReconciliationRule) => void;
+    onSaveRules: (rules: ReconciliationRule[]) => void;
     onDeleteRule: (ruleId: string) => void;
     accounts: Account[];
     transactionTypes: TransactionType[];
@@ -23,9 +24,13 @@ interface RulesPageProps {
     transactions: Transaction[];
     onUpdateTransactions: (transactions: Transaction[]) => void;
     onSaveCategory: (category: Category) => void;
+    onSaveCategories: (categories: Category[]) => void;
     onSavePayee: (payee: Payee) => void;
+    onSavePayees: (payees: Payee[]) => void;
     onSaveMerchant: (merchant: Merchant) => void;
+    onSaveMerchants: (merchants: Merchant[]) => void;
     onSaveLocation: (location: Location) => void;
+    onSaveLocations: (locations: Location[]) => void;
     onSaveTag: (tag: Tag) => void;
     onAddTransactionType: (type: TransactionType) => void;
 }
@@ -42,7 +47,7 @@ const RULE_DOMAINS = [
 ];
 
 const RulesPage: React.FC<RulesPageProps> = ({ 
-    rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onSaveMerchant, onSaveLocation, onSaveTag, onAddTransactionType 
+    rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSavePayee, onSavePayees, onSaveMerchant, onSaveMerchants, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType 
 }) => {
     const [selectedDomain, setSelectedDomain] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -225,7 +230,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const handleFinalizeImport = (finalRules: ReconciliationRule[]) => {
-        finalRules.forEach(onSaveRule);
+        // Correctly use bulk save to prevent race condition
+        onSaveRules(finalRules);
         setImportDrafts([]);
         setIsImporterOpen(false);
         setImportText('');
@@ -282,9 +288,13 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                     users={users}
                                     transactionTypes={transactionTypes}
                                     onSaveCategory={onSaveCategory}
+                                    onSaveCategories={onSaveCategories}
                                     onSavePayee={onSavePayee}
+                                    onSavePayees={onSavePayees}
                                     onSaveMerchant={onSaveMerchant}
+                                    onSaveMerchants={onSaveMerchants}
                                     onSaveLocation={onSaveLocation}
+                                    onSaveLocations={onSaveLocations}
                                 />
                             ) : (
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 h-full">

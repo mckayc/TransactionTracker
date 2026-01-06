@@ -15,13 +15,18 @@ interface Props {
     users: User[];
     transactionTypes: TransactionType[];
     onSaveCategory: (c: Category) => void;
+    onSaveCategories: (cs: Category[]) => void;
     onSavePayee: (p: Payee) => void;
+    onSavePayees: (ps: Payee[]) => void;
     onSaveMerchant: (m: Merchant) => void;
+    onSaveMerchants: (ms: Merchant[]) => void;
     onSaveLocation: (l: Location) => void;
+    onSaveLocations: (ls: Location[]) => void;
 }
 
 const RuleImportVerification: React.FC<Props> = ({ 
-    drafts: initialDrafts, onCancel, onFinalize, categories, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveMerchant, onSaveLocation 
+    drafts: initialDrafts, onCancel, onFinalize, categories, payees, merchants, locations, users, transactionTypes, 
+    onSaveCategory, onSaveCategories, onSavePayee, onSavePayees, onSaveMerchant, onSaveMerchants, onSaveLocation, onSaveLocations 
 }) => {
     const [drafts, setDrafts] = useState<RuleImportDraft[]>(initialDrafts);
 
@@ -34,36 +39,72 @@ const RuleImportVerification: React.FC<Props> = ({
         if (selectedDrafts.length === 0) return;
 
         const finalizedRules: ReconciliationRule[] = [];
+        
+        // Accumulators for bulk atomic updates
+        const newCategories: Category[] = [];
+        const newPayees: Payee[] = [];
+        const newMerchants: Merchant[] = [];
+        const newLocations: Location[] = [];
+
+        // Temporary maps to prevent duplicate creations within the same batch
+        const createdCats = new Map<string, string>();
+        const createdPayees = new Map<string, string>();
+        const createdMerchants = new Map<string, string>();
+        const createdLocs = new Map<string, string>();
 
         for (const draft of selectedDrafts) {
             let finalRule = { ...draft };
 
             // 1. Resolve Category
             if (draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
-                const newCat: Category = { id: generateUUID(), name: draft.suggestedCategoryName };
-                onSaveCategory(newCat);
-                finalRule.setCategoryId = newCat.id;
+                const normName = draft.suggestedCategoryName.toLowerCase().trim();
+                let catId = createdCats.get(normName);
+                if (!catId) {
+                    catId = generateUUID();
+                    const newCat: Category = { id: catId, name: draft.suggestedCategoryName.trim() };
+                    newCategories.push(newCat);
+                    createdCats.set(normName, catId);
+                }
+                finalRule.setCategoryId = catId;
             }
 
             // 2. Resolve Payee
             if (draft.mappingStatus.payee === 'create' && draft.suggestedPayeeName) {
-                const newPayee: Payee = { id: generateUUID(), name: draft.suggestedPayeeName };
-                onSavePayee(newPayee);
-                finalRule.setPayeeId = newPayee.id;
+                const normName = draft.suggestedPayeeName.toLowerCase().trim();
+                let payeeId = createdPayees.get(normName);
+                if (!payeeId) {
+                    payeeId = generateUUID();
+                    const newPayee: Payee = { id: payeeId, name: draft.suggestedPayeeName.trim() };
+                    newPayees.push(newPayee);
+                    createdPayees.set(normName, payeeId);
+                }
+                finalRule.setPayeeId = payeeId;
             }
 
             // 3. Resolve Merchant
             if (draft.mappingStatus.merchant === 'create' && draft.suggestedMerchantName) {
-                const newMerchant: Merchant = { id: generateUUID(), name: draft.suggestedMerchantName };
-                onSaveMerchant(newMerchant);
-                finalRule.setMerchantId = newMerchant.id;
+                const normName = draft.suggestedMerchantName.toLowerCase().trim();
+                let merchId = createdMerchants.get(normName);
+                if (!merchId) {
+                    merchId = generateUUID();
+                    const newMerchant: Merchant = { id: merchId, name: draft.suggestedMerchantName.trim() };
+                    newMerchants.push(newMerchant);
+                    createdMerchants.set(normName, merchId);
+                }
+                finalRule.setMerchantId = merchId;
             }
 
             // 4. Resolve Location
             if (draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
-                const newLoc: Location = { id: generateUUID(), name: draft.suggestedLocationName };
-                onSaveLocation(newLoc);
-                finalRule.setLocationId = newLoc.id;
+                const normName = draft.suggestedLocationName.toLowerCase().trim();
+                let locId = createdLocs.get(normName);
+                if (!locId) {
+                    locId = generateUUID();
+                    const newLoc: Location = { id: locId, name: draft.suggestedLocationName.trim() };
+                    newLocations.push(newLoc);
+                    createdLocs.set(normName, locId);
+                }
+                finalRule.setLocationId = locId;
             }
 
             // 5. Resolve Type
@@ -73,17 +114,15 @@ const RuleImportVerification: React.FC<Props> = ({
             }
 
             // Clean internal draft fields before saving
-            delete (finalRule as any).isSelected;
-            delete (finalRule as any).mappingStatus;
-            delete (finalRule as any).suggestedCategoryName;
-            delete (finalRule as any).suggestedPayeeName;
-            delete (finalRule as any).suggestedMerchantName;
-            delete (finalRule as any).suggestedLocationName;
-            delete (finalRule as any).suggestedTypeName;
-            delete (finalRule as any).suggestedTags;
-
-            finalizedRules.push(finalRule);
+            const { isSelected, mappingStatus, suggestedCategoryName, suggestedPayeeName, suggestedMerchantName, suggestedLocationName, suggestedTypeName, suggestedTags, ...cleanRule } = finalRule as any;
+            finalizedRules.push(cleanRule);
         }
+
+        // Perform bulk updates before finalizing rules
+        if (newCategories.length > 0) onSaveCategories(newCategories);
+        if (newPayees.length > 0) onSavePayees(newPayees);
+        if (newMerchants.length > 0) onSaveMerchants(newMerchants);
+        if (newLocations.length > 0) onSaveLocations(newLocations);
 
         onFinalize(finalizedRules);
     };
