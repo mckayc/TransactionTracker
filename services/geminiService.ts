@@ -111,10 +111,12 @@ export const generateRulesFromData = async (
     CATEGORIES: ${JSON.stringify(slimCategories)}
     PAYEES: ${JSON.stringify(slimPayees)}
     
-    CRITICAL LOGIC:
-    1. If you detect multiple naming variants for the same real-world entity (e.g., 'Walmart', 'WM Supercenter', 'WalmartSC'), consolidate them into a SINGLE rule.
-    2. Use 'OR' logic in the nextLogic field for variants.
-    3. Suggest names for categories/payees if they don't exist in the provided lists.`;
+    CRITICAL LOGIC & EXTRACTION RULES:
+    1. KEYWORD EXTRACTION: Instead of using full description strings, extract the minimal unique identifying keyword for a merchant (e.g., use 'Walmart' instead of 'WAL-MART #1234').
+    2. LOCATION DETECTION: If requested to find locations, extract them in "City, State" format specifically.
+    3. VARIANT CONSOLIDATION: If multiple naming variants exist for one entity (e.g. 'WM Super' and 'Walmart'), create ONE rule.
+    4. OR LOGIC: When grouping variants, ensure the logic field correctly groups them using 'OR'.
+    5. ENTITY CREATION: If a merchant or category doesn't exist, suggest a clean name for it.`;
 
     const schema = {
         type: Type.OBJECT,
@@ -134,14 +136,16 @@ export const generateRulesFromData = async (
                                     field: { type: Type.STRING },
                                     operator: { type: Type.STRING },
                                     value: { type: Type.STRING },
-                                    nextLogic: { type: Type.STRING, description: "Use 'OR' to group merchant variants, 'AND' for constraints." }
+                                    nextLogic: { type: Type.STRING }
                                 }
                             }
                         },
                         setCategoryId: { type: Type.STRING },
                         suggestedCategoryName: { type: Type.STRING },
                         setPayeeId: { type: Type.STRING },
-                        suggestedPayeeName: { type: Type.STRING }
+                        suggestedPayeeName: { type: Type.STRING },
+                        setMerchantId: { type: Type.STRING },
+                        suggestedMerchantName: { type: Type.STRING }
                     },
                     required: ['name', 'conditions']
                 }

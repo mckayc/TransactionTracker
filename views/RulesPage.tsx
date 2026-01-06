@@ -4,6 +4,7 @@ import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, 
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon, ChevronDownIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, CloudArrowUpIcon, InfoIcon, ShieldCheckIcon, TagIcon, WrenchIcon, UsersIcon, UserGroupIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from '../components/RuleBuilder';
+import RulePreviewModal from '../components/RulePreviewModal';
 import { generateRulesFromData, hasApiKey } from '../services/geminiService';
 
 interface RulesPageProps {
@@ -48,6 +49,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [isAiCreatorOpen, setIsAiCreatorOpen] = useState(false);
+    
+    // Play/Preview state
+    const [previewRule, setPreviewRule] = useState<ReconciliationRule | null>(null);
 
     // AI Creator State
     const [aiFile, setAiFile] = useState<File | null>(null);
@@ -113,10 +117,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const handleEditProposed = (proposed: ReconciliationRule) => {
-        // Close AI panel and populate main form with AI draft
-        setIsAiCreatorOpen(false);
+        // Keep AI panel active but hide it logically to allow returning
         setIsCreating(true);
-        setSelectedRuleId(null); // It's a new rule being drafted
+        setSelectedRuleId(null); // New rule drafting
         
         setRuleName(proposed.name);
         setRuleScope(proposed.scope || 'description');
@@ -135,14 +138,26 @@ const RulesPage: React.FC<RulesPageProps> = ({
             if (match) finalPayeeId = match.id;
         }
 
+        let finalMerchantId = proposed.setMerchantId || '';
+        if (!finalMerchantId && proposed.suggestedMerchantName) {
+            const match = merchants.find(m => m.name.toLowerCase() === proposed.suggestedMerchantName?.toLowerCase());
+            if (match) finalMerchantId = match.id;
+        }
+
         setActionCategoryId(finalCatId);
         setActionPayeeId(finalPayeeId);
-        setActionMerchantId(proposed.setMerchantId || '');
+        setActionMerchantId(finalMerchantId);
         setActionLocationId(proposed.setLocationId || '');
         setActionUserId(proposed.setUserId || '');
         setActionTypeId(proposed.setTransactionTypeId || '');
         setAssignTagIds(new Set(proposed.assignTagIds || []));
         setSkipImport(!!proposed.skipImport);
+    };
+
+    const handleCancelEdit = () => {
+        setSelectedRuleId(null);
+        setIsCreating(false);
+        // If we were editing an AI proposal, it remains in the AI list
     };
 
     const handleSave = (e: React.FormEvent) => {
@@ -164,7 +179,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         onSaveRule(rule);
         setIsCreating(false);
         setSelectedRuleId(rule.id);
-        // If it was a proposed rule, remove it from list
+        // If it was a proposed rule, remove it from the list
         setAiProposedRules(prev => prev.filter(p => p.name !== rule.name));
     };
 
@@ -183,7 +198,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const acceptAiRule = (proposed: ReconciliationRule) => {
-        // Quick Accept: Create suggested entities if missing, then save
         let finalRule = { ...proposed, isAiDraft: false };
 
         if (proposed.suggestedCategoryName && !proposed.setCategoryId) {
@@ -206,8 +220,29 @@ const RulesPage: React.FC<RulesPageProps> = ({
             }
         }
 
+        if (proposed.suggestedMerchantName && !proposed.setMerchantId) {
+            const existing = merchants.find(m => m.name.toLowerCase() === proposed.suggestedMerchantName?.toLowerCase());
+            if (existing) finalRule.setMerchantId = existing.id;
+            else {
+                const m = { id: generateUUID(), name: proposed.suggestedMerchantName };
+                onSaveMerchant(m);
+                finalRule.setMerchantId = m.id;
+            }
+        }
+
         onSaveRule(finalRule);
         setAiProposedRules(prev => prev.filter(p => p.id !== proposed.id));
+    };
+
+    const handleRunRuleManual = (e: React.MouseEvent, rule: ReconciliationRule) => {
+        e.stopPropagation();
+        setPreviewRule(rule);
+    };
+
+    const handleApplyPreview = (updates: Transaction[]) => {
+        onUpdateTransactions(updates);
+        setPreviewRule(null);
+        alert(`Successfully updated ${updates.length} records.`);
     };
 
     return (
@@ -225,7 +260,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 </button>
             </div>
 
-            {isAiCreatorOpen && (
+            {isAiCreatorOpen && !isCreating && (
                 <div className="bg-white border-2 border-indigo-100 rounded-3xl p-6 shadow-xl animate-fade-in space-y-6">
                     <div className="flex justify-between items-center border-b pb-4">
                         <div className="flex items-center gap-3"><RobotIcon className="w-6 h-6 text-indigo-600" /><h3 className="text-xl font-bold text-slate-800">AI Rule Forge</h3></div>
@@ -233,7 +268,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-4">
-                            <p className="text-sm text-slate-600">Upload or paste a data sample. Gemini will consolidate merchant variants into single rules with OR logic.</p>
+                            <p className="text-sm text-slate-600">Gemini will detect patterns and consolidate variants. Describe specific goals (e.g. "Identify locations as City, State").</p>
                             {!aiRawData && (
                                 <div 
                                     onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
@@ -246,7 +281,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </div>
                             )}
                             {!aiFile && <textarea value={aiRawData} onChange={e => setAiRawData(e.target.value)} placeholder="Paste CSV rows here..." className="w-full h-32 p-3 border rounded-xl text-[10px] font-mono bg-slate-50" />}
-                            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Specific instructions..." className="w-full p-3 border rounded-xl text-sm min-h-[60px]" />
+                            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Specific instructions (e.g. 'Standardize locations to City, State')..." className="w-full p-3 border rounded-xl text-sm min-h-[60px]" />
                             <button onClick={handleAiInspect} disabled={(!aiFile && !aiRawData) || isAiGenerating} className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-black disabled:opacity-30 flex items-center justify-center gap-2">
                                 {isAiGenerating ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-4 h-4" />}
                                 Forge Proposed Rules
@@ -259,22 +294,35 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <div className="h-full flex flex-col items-center justify-center text-slate-300"><TableIcon className="w-10 h-10 mb-2 opacity-20" /><p className="text-sm font-bold">No suggestions yet.</p></div>
                             ) : (
                                 <div className="space-y-3">
-                                    {aiProposedRules.map((r, idx) => (
-                                        <div key={idx} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
-                                            <div className="flex justify-between items-start">
-                                                <h5 className="text-sm font-bold text-slate-800">{r.name}</h5>
-                                                <div className="flex gap-2">
-                                                    <button onClick={() => handleEditProposed(r)} className="text-[9px] font-black text-indigo-600 hover:underline uppercase">Edit & Refine</button>
-                                                    <button onClick={() => acceptAiRule(r)} className="text-[10px] font-black bg-indigo-600 text-white px-2 py-1 rounded uppercase hover:bg-indigo-700">Quick Accept</button>
+                                    {aiProposedRules.map((r, idx) => {
+                                        const needsCategory = r.suggestedCategoryName && !categories.some(c => c.name.toLowerCase() === r.suggestedCategoryName?.toLowerCase());
+                                        const needsMerchant = r.suggestedMerchantName && !merchants.some(m => m.name.toLowerCase() === r.suggestedMerchantName?.toLowerCase());
+                                        const needsPayee = r.suggestedPayeeName && !payees.some(p => p.name.toLowerCase() === r.suggestedPayeeName?.toLowerCase());
+
+                                        return (
+                                            <div key={idx} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
+                                                <div className="flex justify-between items-start">
+                                                    <div>
+                                                        <h5 className="text-sm font-bold text-slate-800">{r.name}</h5>
+                                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                                            {needsCategory && <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[8px] font-black rounded uppercase border border-purple-100">+ New Category</span>}
+                                                            {needsMerchant && <span className="px-1.5 py-0.5 bg-orange-50 text-orange-600 text-[8px] font-black rounded uppercase border border-orange-100">+ New Merchant</span>}
+                                                            {needsPayee && <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black rounded uppercase border border-blue-100">+ New Payee</span>}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => handleEditProposed(r)} className="text-[9px] font-black text-indigo-600 hover:underline uppercase">Edit & Refine</button>
+                                                        <button onClick={() => acceptAiRule(r)} className="text-[10px] font-black bg-indigo-600 text-white px-2 py-1 rounded uppercase hover:bg-indigo-700">Quick Accept</button>
+                                                    </div>
+                                                </div>
+                                                <div className="p-2 bg-slate-50 rounded font-mono text-[9px] text-slate-500">
+                                                    {r.conditions.map((c, i) => (
+                                                        <div key={i}>{i > 0 && <span className="text-indigo-600 font-bold">{c.nextLogic || 'AND'} </span>}{c.field} {c.operator} "{c.value}"</div>
+                                                    ))}
                                                 </div>
                                             </div>
-                                            <div className="p-2 bg-slate-50 rounded font-mono text-[9px] text-slate-500">
-                                                {r.conditions.map((c, i) => (
-                                                    <div key={i}>{i > 0 && <span className="text-indigo-600 font-bold">{c.nextLogic || 'AND'} </span>}{c.field} {c.operator} "{c.value}"</div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -304,7 +352,13 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         {filteredRules.map(r => (
                             <div key={r.id} onClick={() => handleSelectRule(r.id)} className={`p-2 px-3 rounded-lg cursor-pointer border transition-all flex flex-col gap-0.5 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-transparent hover:bg-slate-50'}`}>
                                 <div className="flex justify-between items-center"><span className="text-xs font-bold truncate">{r.name}</span>{r.isAiDraft && <SparklesIcon className="w-3 h-3 text-indigo-500" />}</div>
-                                <div className="flex justify-between"><p className="text-[9px] text-slate-400 font-bold uppercase">{r.scope}</p><button onClick={(e) => { e.stopPropagation(); onDeleteRule(r.id); }} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500"><DeleteIcon className="w-3 h-3" /></button></div>
+                                <div className="flex justify-between items-center mt-1">
+                                    <p className="text-[9px] text-slate-400 font-bold uppercase">{r.scope}</p>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={(e) => handleRunRuleManual(e, r)} className="p-1 text-emerald-500 hover:bg-emerald-50 rounded" title="Run Rule Now"><PlayIcon className="w-3.5 h-3.5" /></button>
+                                        <button onClick={(e) => { e.stopPropagation(); onDeleteRule(r.id); }} className="p-1 text-slate-300 hover:text-red-500 rounded" title="Delete"><DeleteIcon className="w-3.5 h-3.5" /></button>
+                                    </div>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -317,7 +371,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
                             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                                 <div><h3 className="text-xl font-black text-slate-800">Rule Architect</h3><p className="text-xs text-slate-500 font-bold uppercase">Manual Enrichment Logic</p></div>
-                                <div className="flex gap-2"><button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg uppercase text-[10px]">Commit Rule</button><button type="button" onClick={() => { setSelectedRuleId(null); setIsCreating(false); }} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400" /></button></div>
+                                <div className="flex gap-2"><button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg uppercase text-[10px]">Commit Rule</button><button type="button" onClick={handleCancelEdit} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400" /></button></div>
                             </div>
                             <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
                                 <div className="grid grid-cols-3 gap-6">
@@ -330,6 +384,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                     <div className="grid grid-cols-3 gap-4">
                                         <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Map Category</label><select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
                                         <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Assign Payee</label><select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Assign Merchant</label><select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
                                         <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Assign User</label><select value={actionUserId} onChange={e => setActionUserId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
                                         <div className="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-100"><input type="checkbox" checked={skipImport} onChange={e => setSkipImport(e.target.checked)} className="w-5 h-5 rounded text-red-600" /><div><label className="text-xs font-black text-red-800 uppercase block">Suppress Record</label><p className="text-[10px] text-red-600">Auto-ignore matching imports.</p></div></div>
                                     </div>
@@ -345,6 +400,20 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     )}
                 </div>
             </div>
+
+            {previewRule && (
+                <RulePreviewModal
+                    isOpen={!!previewRule}
+                    onClose={() => setPreviewRule(null)}
+                    onApply={handleApplyPreview}
+                    rule={previewRule}
+                    transactions={transactions}
+                    accounts={accounts}
+                    transactionTypes={transactionTypes}
+                    categories={categories}
+                    payees={payees}
+                />
+            )}
         </div>
     );
 };
