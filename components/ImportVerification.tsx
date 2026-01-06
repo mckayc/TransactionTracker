@@ -1,10 +1,17 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag, Merchant, Location, SystemSettings } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, LightBulbIcon, EditIcon } from './Icons';
+// Cleaned up duplicate imports and ensured UsersIcon is present
+import { 
+    DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, 
+    SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, 
+    CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, 
+    BoxIcon, MapPinIcon, CloudArrowUpIcon, ShieldCheckIcon, UsersIcon, 
+    UserGroupIcon, LightBulbIcon, EditIcon, EyeIcon 
+} from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import { getRuleSignature, applyRulesToTransactions } from '../services/ruleService';
-import { generateRulesFromData } from '../services/geminiService';
+import { generateRulesFromData, hasApiKey } from '../services/geminiService';
 import RuleModal from './RuleModal';
 import { generateUUID } from '../utils';
 
@@ -229,7 +236,13 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setSkippedDuplicateCount(0);
         try {
             // Sample data from current import (desc, amount, etc.)
-            const sample = transactions.filter(t => !t.isIgnored).slice(0, 50).map(t => `${t.date},${t.description},${t.amount}`).join('\n');
+            const sampleRows = transactions.filter(t => !t.isIgnored).slice(0, 50);
+            if (sampleRows.length === 0) {
+                alert("No transactions available for analysis. Un-ignore some items first.");
+                return;
+            }
+
+            const sample = sampleRows.map(t => `${t.date},${t.description},${t.amount}`).join('\n');
             const proposed = await generateRulesFromData(sample, categories, payees, merchants, locations, users, "Create normalizing rules for this data batch.", systemSettings);
             
             const existingSignatures = new Set(rules.map(r => getRuleSignature(r)));
@@ -259,12 +272,18 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setAiProposedRules(prev => prev.map(r => r.id === ruleId ? { ...r, isExcluded: !r.isExcluded } : r));
     };
 
-    const handleAcceptAllRules = () => {
+    const handleAcceptAllProposed = () => {
         const toSave = aiProposedRules.filter(r => !r.isExcluded);
-        if (toSave.length === 0) { setIsAiForgeOpen(false); return; }
+        if (toSave.length === 0) {
+            alert("No rules selected for acceptance.");
+            return;
+        }
+
+        if (!confirm(`Commit ${toSave.length} automation rules to your ledger settings?`)) return;
 
         toSave.forEach(rule => {
             const finalRule = { ...rule, isAiDraft: false };
+            
             // Auto-resolve new entity creation if possible
             if (rule.suggestedCategoryName && !rule.setCategoryId) {
                 const existing = categories.find(c => c.name.toLowerCase() === rule.suggestedCategoryName?.toLowerCase());
@@ -275,17 +294,28 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     finalRule.setCategoryId = cat.id;
                 }
             }
+
+            if (rule.suggestedPayeeName && !rule.setPayeeId) {
+                const existing = payees.find(p => p.name.toLowerCase() === rule.suggestedPayeeName?.toLowerCase());
+                if (existing) finalRule.setPayeeId = existing.id;
+                else {
+                    const p = { id: generateUUID(), name: rule.suggestedPayeeName };
+                    onSavePayee(p);
+                    finalRule.setPayeeId = p.id;
+                }
+            }
+
             onSaveRule(finalRule);
         });
 
         // Eagerly re-apply new rules to current verification batch
-        const allRules = [...rules, ...toSave];
+        const allRules = [...toSave, ...rules];
         const refreshedTxs = applyRulesToTransactions(transactions, allRules, accounts);
         setTransactions(refreshedTxs as VerifiableTransaction[]);
 
         setAiProposedRules([]);
         setIsAiForgeOpen(false);
-        alert(`Successfully committed ${toSave.length} new automation rules.`);
+        alert(`Successfully committed ${toSave.length} new automation rules and updated the current batch.`);
     };
 
     const sortedPayeeOptions = useMemo(() => [...payees].sort((a,b) => a.name.localeCompare(b.name)), [payees]);
@@ -320,61 +350,86 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
             {/* AI FORGE OVERLAY (Inside Verification) */}
             {isAiForgeOpen && (
-                <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-2xl animate-fade-in flex flex-col gap-6 max-h-[400px] overflow-hidden">
-                    <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-2xl animate-fade-in flex flex-col gap-6 max-h-[450px] overflow-hidden">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-white/10 pb-4 gap-4">
                         <div className="flex items-center gap-3">
                             <RobotIcon className="w-8 h-8 text-indigo-400" />
                             <div>
                                 <h3 className="text-xl font-bold">Suggested Automations</h3>
-                                <p className="text-indigo-300 text-xs font-medium">Batch logic synthesized from current statement rows.</p>
+                                <p className="text-indigo-300 text-xs font-medium">Bulk logic synthesized from current statement rows.</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-4">
+                        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
                             {skippedDuplicateCount > 0 && (
-                                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-white/5 px-2 py-1 rounded">
-                                    {skippedDuplicateCount} existing rules skipped
-                                </span>
+                                <div className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg">
+                                    <ExclamationTriangleIcon className="w-2.5 h-2.5" />
+                                    {skippedDuplicateCount} Existing Rules Skipped
+                                </div>
                             )}
-                            <button onClick={handleAcceptAllRules} className="px-8 py-2.5 bg-white text-indigo-900 font-black rounded-xl shadow-lg hover:bg-indigo-50 transition-all flex items-center gap-2 text-xs uppercase tracking-wider">
+                            <button 
+                                onClick={handleAcceptAllProposed}
+                                disabled={aiProposedRules.filter(r => !r.isExcluded).length === 0}
+                                className="px-6 py-2.5 bg-white text-indigo-900 font-black rounded-xl shadow-lg hover:bg-indigo-50 transition-all flex items-center gap-2 text-[10px] uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
                                 <CheckCircleIcon className="w-4 h-4" />
-                                Accept {aiProposedRules.filter(r => !r.isExcluded).length} Selected
+                                Accept All Selected ({aiProposedRules.filter(r => !r.isExcluded).length})
                             </button>
-                            <button onClick={() => setIsAiForgeOpen(false)} className="p-2 hover:bg-white/10 rounded-full"><CloseIcon className="w-6 h-6" /></button>
+                            <button onClick={() => setIsAiForgeOpen(false)} className="p-2 hover:bg-white/10 rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-x-auto pb-2 custom-scrollbar flex gap-4">
+                    <div className="flex-1 overflow-x-auto pb-4 custom-scrollbar flex gap-4 min-h-0">
                         {aiProposedRules.length === 0 ? (
-                            <div className="flex-1 flex flex-col items-center justify-center text-indigo-400/50 italic py-10">
+                            <div className="flex-1 flex flex-col items-center justify-center text-indigo-400/50 italic py-10 min-w-[400px]">
                                 <LightBulbIcon className="w-10 h-10 mb-2 opacity-20" />
-                                <p>No new automation patterns detected for this batch.</p>
+                                <p className="text-sm font-bold">Everything looks already optimized!</p>
+                                <p className="text-xs">No new patterns detected that aren't already covered by your rules.</p>
                             </div>
                         ) : (
                             aiProposedRules.map(r => (
-                                <div key={r.id} className={`w-80 flex-shrink-0 bg-white/5 border-2 rounded-2xl p-4 transition-all relative group ${r.isExcluded ? 'border-transparent opacity-40 grayscale' : 'border-white/10 hover:border-indigo-400 hover:bg-white/10'}`}>
+                                <div key={r.id} className={`w-80 flex-shrink-0 bg-white/5 border-2 rounded-2xl p-4 transition-all relative group flex flex-col ${r.isExcluded ? 'border-transparent opacity-30 grayscale scale-95' : 'border-white/10 hover:border-indigo-400 hover:bg-white/10'}`}>
                                     <div className="flex justify-between items-start mb-3">
                                         <div className="min-w-0 flex-1">
-                                            <h4 className="text-sm font-bold truncate pr-2">{r.name}</h4>
+                                            <h4 className={`text-sm font-bold truncate pr-2 ${r.isExcluded ? 'line-through' : ''}`}>{r.name}</h4>
                                             <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{r.scope}</p>
                                         </div>
                                         <button 
-                                            onClick={() => toggleRuleExclusion(r.id)} 
-                                            className={`p-1.5 rounded-lg transition-colors ${r.isExcluded ? 'bg-red-600 text-white' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
-                                            title={r.isExcluded ? 'Include in Bulk' : 'Exclude from Bulk'}
+                                            onClick={() => toggleRuleExclusion(ruleId)} 
+                                            className={`p-1.5 rounded-lg transition-all transform active:scale-90 ${r.isExcluded ? 'bg-red-600 text-white shadow-lg rotate-0' : 'bg-white/10 text-white/40 hover:text-white hover:bg-white/20'}`}
+                                            title={r.isExcluded ? 'Include in Bulk Accept' : 'Exclude from Bulk Accept'}
                                         >
-                                            <SlashIcon className="w-4 h-4" />
+                                            {r.isExcluded ? <CloseIcon className="w-4 h-4" /> : <SlashIcon className="w-4 h-4" />}
                                         </button>
                                     </div>
-                                    <div className="space-y-1.5 mb-4">
+                                    
+                                    <div className="space-y-1.5 mb-4 flex-grow min-h-0 overflow-y-auto custom-scrollbar">
                                         {(r.conditions || []).map((c, i) => (
-                                            <div key={i} className="text-[10px] bg-black/20 p-1.5 rounded border border-white/5">
-                                                <span className="text-indigo-400 font-bold uppercase">{c.operator}</span> "{c.value}"
+                                            <div key={i} className="text-[10px] bg-black/20 p-2 rounded border border-white/5 font-mono">
+                                                <span className="text-indigo-400 font-bold uppercase mr-1">{c.operator}</span>
+                                                <span className="text-slate-300">"{c.value}"</span>
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="flex flex-wrap gap-1 mt-auto">
-                                        {r.suggestedCategoryName && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-200 border border-purple-500/20">Set: {r.suggestedCategoryName}</span>}
-                                        {r.suggestedMerchantName && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/30 text-orange-200 border border-orange-500/20">Merchant: {r.suggestedMerchantName}</span>}
+
+                                    <div className="flex flex-wrap gap-1.5 mt-auto pt-3 border-t border-white/10">
+                                        {r.suggestedCategoryName && (
+                                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-200 border border-purple-500/20 flex items-center gap-1">
+                                                <TagIcon className="w-2 h-2" /> {r.suggestedCategoryName}
+                                            </span>
+                                        )}
+                                        {r.suggestedPayeeName && (
+                                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-lg bg-blue-500/20 text-blue-200 border border-blue-500/20 flex items-center gap-1">
+                                                <UsersIcon className="w-2 h-2" /> {r.suggestedPayeeName}
+                                            </span>
+                                        )}
+                                        {r.suggestedMerchantName && (
+                                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-lg bg-orange-500/20 text-orange-200 border border-orange-500/20 flex items-center gap-1">
+                                                <BoxIcon className="w-2 h-2" /> {r.suggestedMerchantName}
+                                            </span>
+                                        )}
+                                        {r.skipImport && (
+                                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-lg bg-red-500/30 text-red-200 border border-red-500/20">Auto-Skip</span>
+                                        )}
                                     </div>
                                 </div>
                             ))
