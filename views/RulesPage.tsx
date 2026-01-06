@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User, SystemSettings } from '../types';
 /* Added ExclamationTriangleIcon to imports */
@@ -471,7 +470,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                         {!r.isExcluded && (
                                                             <>
                                                                 <button onClick={() => handleEditProposed(r)} className="p-1 text-indigo-600 hover:bg-indigo-50 rounded" title="Refine Logic"><EditIcon className="w-4 h-4"/></button>
-                                                                <button onClick={() => { onSaveRule({ ...r, isAiDraft: false }); setAiProposedRules(prev => prev.filter(p => p.id !== rule.id)); }} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Quick Accept"><CheckCircleIcon className="w-4 h-4"/></button>
+                                                                <button onClick={() => { onSaveRule({ ...r, isAiDraft: false }); setAiProposedRules(prev => prev.filter(p => p.id !== r.id)); }} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Quick Accept"><CheckCircleIcon className="w-4 h-4"/></button>
                                                             </>
                                                         )}
                                                     </div>
