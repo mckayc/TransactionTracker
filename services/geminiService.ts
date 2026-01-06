@@ -111,21 +111,21 @@ export const generateRulesFromData = async (
     TASK: Generate classification rules in JSON based on provided data and user instructions.
     
     INTENT-DRIVEN RULES:
-    - If user asks for "Location": Return rules with scope "locationId" and fill suggestedLocationName.
-    - If user asks for "Merchant": Return rules with scope "merchantId" and fill suggestedMerchantName.
-    - If user asks for "Category": Return rules with scope "description" and fill suggestedCategoryName.
-    - If user asks for "Payee": Return rules with scope "payeeId" and fill suggestedPayeeName.
+    - If user mentions "Location": Generate rules with scope "locationId" and suggestedLocationName.
+    - If user mentions "Merchant": Generate rules with scope "merchantId" and suggestedMerchantName.
+    - If user mentions "Category": Generate rules with scope "description" and suggestedCategoryName.
+    - STRICT FILTER: If the user provides a specific intent (e.g. "Only find categories"), DO NOT generate rules for other types like locations or merchants.
     
     NORMALIZATION LOGIC:
-    1. SNIPPET VS ENTITY: Distinguish between "Matching Snippet" (raw text in description) and "Clean Entity Name" (human-readable).
+    1. SNIPPET VS ENTITY: Distinguish between the "Matching Snippet" (raw text found in description) and the "Clean Entity Name" (human-readable).
        Example: "PHO NO 1 PLEASANT GROV UT"
-       - Location Rule: snippet "PLEASANT GROV UT" -> suggestedLocationName "Pleasant Grove, UT"
-       - Merchant Rule: snippet "PHO NO 1" -> suggestedMerchantName "Pho No 1"
+       - For Merchant Rule: snippet "PHO NO 1" -> suggestedMerchantName "Pho No 1"
+       - For Location Rule: snippet "PLEASANT GROV UT" -> suggestedLocationName "Pleasant Grove, UT"
     
-    2. KEYWORD EXTRACTION: Use the minimal unique identifying keyword. Ignore branch IDs, dates, or terminal numbers.
+    2. KEYWORD EXTRACTION: Find the MINIMAL unique identifying keyword. Ignore branch IDs, dates, or terminal numbers.
     
     3. LOCATION EXPANSION: Expand abbreviations to standard "City, ST" format.
-       "SLC" -> "Salt Lake City, UT", "NY NY" -> "New York, NY", "PLEASANT GROV" -> "Pleasant Grove".
+       Examples: "SLC" -> "Salt Lake City, UT", "NY NY" -> "New York, NY", "PLEASANT GROV" -> "Pleasant Grove".
     
     4. SCOPE ASSIGNMENT: The 'scope' field must be one of: 'description', 'payeeId', 'merchantId', 'locationId'.
 

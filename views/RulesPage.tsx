@@ -74,7 +74,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
     const [skipImport, setSkipImport] = useState(false);
 
-    // Proposed Names (Tracking AI suggestions for UI badges)
+    // Proposed Names (Tracking AI suggestions for UI display and editing)
     const [proposedNames, setProposedNames] = useState<{cat?: string; payee?: string; merc?: string; loc?: string}>({});
 
     const filteredRules = useMemo(() => {
@@ -130,7 +130,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setRuleScope(proposed.scope || 'description');
         setConditions(proposed.conditions);
         
-        // Track proposed names for visual badges
+        // Track proposed names for visual editing
         setProposedNames({
             cat: proposed.suggestedCategoryName,
             payee: proposed.suggestedPayeeName,
@@ -138,7 +138,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             loc: proposed.suggestedLocationName
         });
 
-        // Hydrate selects if match exists, otherwise they stay empty (showing 'New' badge)
+        // Hydrate selects if match exists, otherwise they stay empty (showing 'New' input)
         let finalCatId = proposed.setCategoryId || '';
         if (!finalCatId && proposed.suggestedCategoryName) {
             const match = categories.find(c => c.name.toLowerCase() === proposed.suggestedCategoryName?.toLowerCase());
@@ -181,7 +181,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault();
         
-        // Handle logic for auto-creating entities if they were proposed but not matched
+        // Handle logic for auto-creating entities if they were proposed but not matched to existing IDs
         let finalCatId = actionCategoryId;
         if (!finalCatId && proposedNames.cat) {
             const cat = { id: generateUUID(), name: proposedNames.cat };
@@ -205,7 +205,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
         let finalLocationId = actionLocationId;
         if (!finalLocationId && proposedNames.loc) {
-            const l = { id: generateUUID(), name: proposedNames.loc, city: proposedNames.loc.split(',')[0].trim(), state: proposedNames.loc.split(',')[1]?.trim() };
+            const l = { 
+                id: generateUUID(), 
+                name: proposedNames.loc, 
+                city: proposedNames.loc.split(',')[0].trim(), 
+                state: proposedNames.loc.split(',')[1]?.trim() 
+            };
             onSaveLocation(l);
             finalLocationId = l.id;
         }
@@ -229,7 +234,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setIsCreating(false);
         setSelectedRuleId(rule.id);
         setAiProposedRules(prev => prev.filter(p => p.name !== rule.name));
-        alert(`Rule "${rule.name}" saved and added to engine.`);
     };
 
     const handleAiInspect = async () => {
@@ -325,7 +329,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         <div className="flex items-center gap-3"><RobotIcon className="w-6 h-6 text-indigo-600" /><h3 className="text-xl font-bold text-slate-800">AI Rule Forge</h3></div>
                         <div className="flex items-center gap-2 text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">
                             <LightBulbIcon className="w-4 h-4" />
-                            <span className="text-xs font-bold">Pro-tip: Ask for specific targets like "Only find locations" for better precision.</span>
+                            <span className="text-xs font-bold">Try intent prompts like "Extract Locations only" or "Find category patterns."</span>
                         </div>
                     </div>
                     
@@ -334,9 +338,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Prompt Engineering Guide</h4>
                                 <ul className="text-xs text-slate-600 space-y-1.5">
-                                    <li className="flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" /> <strong>"Extract Locations":</strong> standardizes cities to "City, ST".</li>
-                                    <li className="flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" /> <strong>"Categorize only":</strong> skips merchant/location creation.</li>
-                                    <li className="flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" /> <strong>"Clean Merchants":</strong> finds the brand keyword from bank text.</li>
+                                    <li className="flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" /> <strong>"Find locations":</strong> standardizes cities to "City, ST" format.</li>
+                                    <li className="flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" /> <strong>"Only categories":</strong> disables merchant/location creation.</li>
+                                    <li className="flex gap-2"><div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 shrink-0" /> <strong>"Map merchants":</strong> identifies core brands from raw statement text.</li>
                                 </ul>
                             </div>
                             {!aiRawData && (
@@ -351,7 +355,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </div>
                             )}
                             {!aiFile && <textarea value={aiRawData} onChange={e => setAiRawData(e.target.value)} placeholder="Paste CSV rows here..." className="w-full h-32 p-3 border rounded-xl text-[10px] font-mono bg-slate-50" />}
-                            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Specific instructions (e.g. 'Find categories only')..." className="w-full p-3 border rounded-xl text-sm min-h-[60px] focus:ring-1 focus:ring-indigo-500 outline-none" />
+                            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Specific instructions (e.g. 'Categorize only')..." className="w-full p-3 border rounded-xl text-sm min-h-[60px] focus:ring-1 focus:ring-indigo-500 outline-none" />
                             <button onClick={handleAiInspect} disabled={(!aiFile && !aiRawData) || isAiGenerating} className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-black disabled:opacity-30 flex items-center justify-center gap-2">
                                 {isAiGenerating ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-4 h-4" />}
                                 Forge Proposed Rules
@@ -376,7 +380,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                     <div className="flex-1 min-w-0 pr-4">
                                                         <div className="flex items-center gap-2">
                                                             <h5 className="text-sm font-bold text-slate-800 truncate">{r.name}</h5>
-                                                            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-400 text-[8px] font-black rounded uppercase">{r.scope}</span>
+                                                            <span className="px-1.5 py-0.5 bg-slate-100 text-slate-400 text-[8px] font-black rounded uppercase tracking-tighter">{r.scope}</span>
                                                         </div>
                                                         <div className="flex flex-wrap gap-1 mt-2">
                                                             {needsCategory && <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[8px] font-black rounded uppercase border border-purple-100">+ New Category</span>}
@@ -451,10 +455,27 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </div>
                             </div>
                             <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar bg-white">
+                                
+                                {conditions.some(c => c.value) && (
+                                    <div className="bg-indigo-50/50 border-2 border-indigo-100 rounded-2xl p-4">
+                                        <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                            <InfoIcon className="w-3 h-3" /> Raw Statement Source
+                                        </h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {conditions.map(c => c.value && (
+                                                <span key={c.id} className="bg-white border border-indigo-200 px-3 py-1 rounded-lg font-mono text-[11px] text-slate-600 shadow-sm">
+                                                    {c.value}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="grid grid-cols-3 gap-6">
                                     <div className="col-span-2 space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rule Name</label><input type="text" value={ruleName} onChange={e => setRuleName(e.target.value)} className="w-full p-4 border rounded-2xl font-bold focus:ring-0 focus:border-indigo-500 bg-slate-50/50" required /></div>
                                     <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logic Scope</label><select value={ruleScope} onChange={e => setRuleScope(e.target.value)} className="w-full p-4 border rounded-2xl font-bold bg-slate-50/50">{RULE_DOMAINS.filter(d => d.id !== 'all').map(d => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
                                 </div>
+                                
                                 <div className="space-y-4">
                                   <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                                     Conditional Logic Tree 
@@ -464,29 +485,71 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                   </h4>
                                   <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 shadow-inner"><RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} /></div>
                                 </div>
+
                                 <div className="space-y-6">
                                     <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Atomic Transformations</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        <div className="space-y-1 relative">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label>
-                                            <select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.cat && !actionCategoryId ? 'border-purple-400 ring-1 ring-purple-100' : ''}`}><option value="">-- No Change --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-                                            {proposedNames.cat && !actionCategoryId && <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-[7px] font-black px-1 rounded shadow">+ NEW</span>}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                        
+                                        {/* Category Transformation */}
+                                        <div className="space-y-3">
+                                            <div className="relative">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label>
+                                                <select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.cat && !actionCategoryId ? 'border-purple-400 ring-2 ring-purple-100' : ''}`}><option value="">-- No Change --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
+                                                {proposedNames.cat && !actionCategoryId && <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-[7px] font-black px-1.5 rounded shadow-sm animate-pulse">+ NEW</span>}
+                                            </div>
+                                            {proposedNames.cat && !actionCategoryId && (
+                                                <div className="animate-fade-in bg-purple-50 p-2 rounded-lg border border-purple-100">
+                                                    <label className="text-[8px] font-black text-purple-400 uppercase">Suggested Name</label>
+                                                    <input type="text" value={proposedNames.cat} onChange={e => setProposedNames({...proposedNames, cat: e.target.value})} className="w-full p-1 bg-transparent text-purple-700 font-bold text-xs border-none focus:ring-0" />
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="space-y-1 relative">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Payee</label>
-                                            <select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.payee && !actionPayeeId ? 'border-blue-400 ring-1 ring-blue-100' : ''}`}><option value="">-- No Change --</option>{payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                                            {proposedNames.payee && !actionPayeeId && <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[7px] font-black px-1 rounded shadow">+ NEW</span>}
+
+                                        {/* Payee Transformation */}
+                                        <div className="space-y-3">
+                                            <div className="relative">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Payee</label>
+                                                <select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.payee && !actionPayeeId ? 'border-blue-400 ring-2 ring-blue-100' : ''}`}><option value="">-- No Change --</option>{payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+                                                {proposedNames.payee && !actionPayeeId && <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[7px] font-black px-1.5 rounded shadow-sm animate-pulse">+ NEW</span>}
+                                            </div>
+                                            {proposedNames.payee && !actionPayeeId && (
+                                                <div className="animate-fade-in bg-blue-50 p-2 rounded-lg border border-blue-100">
+                                                    <label className="text-[8px] font-black text-blue-400 uppercase">Suggested Name</label>
+                                                    <input type="text" value={proposedNames.payee} onChange={e => setProposedNames({...proposedNames, payee: e.target.value})} className="w-full p-1 bg-transparent text-blue-700 font-bold text-xs border-none focus:ring-0" />
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="space-y-1 relative">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Merchant</label>
-                                            <select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.merc && !actionMerchantId ? 'border-orange-400 ring-1 ring-orange-100' : ''}`}><option value="">-- No Change --</option>{merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-                                            {proposedNames.merc && !actionMerchantId && <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[7px] font-black px-1 rounded shadow">+ NEW</span>}
+
+                                        {/* Merchant Transformation */}
+                                        <div className="space-y-3">
+                                            <div className="relative">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Merchant</label>
+                                                <select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.merc && !actionMerchantId ? 'border-orange-400 ring-2 ring-orange-100' : ''}`}><option value="">-- No Change --</option>{merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
+                                                {proposedNames.merc && !actionMerchantId && <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[7px] font-black px-1.5 rounded shadow-sm animate-pulse">+ NEW</span>}
+                                            </div>
+                                            {proposedNames.merc && !actionMerchantId && (
+                                                <div className="animate-fade-in bg-orange-50 p-2 rounded-lg border border-orange-100">
+                                                    <label className="text-[8px] font-black text-orange-400 uppercase">Suggested Name</label>
+                                                    <input type="text" value={proposedNames.merc} onChange={e => setProposedNames({...proposedNames, merc: e.target.value})} className="w-full p-1 bg-transparent text-orange-700 font-bold text-xs border-none focus:ring-0" />
+                                                </div>
+                                            )}
                                         </div>
-                                        <div className="space-y-1 relative">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label>
-                                            <select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.loc && !actionLocationId ? 'border-emerald-400 ring-1 ring-emerald-100' : ''}`}><option value="">-- No Change --</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-                                            {proposedNames.loc && !actionLocationId && <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[7px] font-black px-1 rounded shadow">+ NEW</span>}
+
+                                        {/* Location Transformation */}
+                                        <div className="space-y-3">
+                                            <div className="relative">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label>
+                                                <select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.loc && !actionLocationId ? 'border-emerald-400 ring-2 ring-emerald-100' : ''}`}><option value="">-- No Change --</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
+                                                {proposedNames.loc && !actionLocationId && <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[7px] font-black px-1.5 rounded shadow-sm animate-pulse">+ NEW</span>}
+                                            </div>
+                                            {proposedNames.loc && !actionLocationId && (
+                                                <div className="animate-fade-in bg-emerald-50 p-2 rounded-lg border border-emerald-100">
+                                                    <label className="text-[8px] font-black text-emerald-400 uppercase">Suggested Name</label>
+                                                    <input type="text" value={proposedNames.loc} onChange={e => setProposedNames({...proposedNames, loc: e.target.value})} className="w-full p-1 bg-transparent text-emerald-700 font-bold text-xs border-none focus:ring-0" />
+                                                </div>
+                                            )}
                                         </div>
+
                                         <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label><select value={actionUserId} onChange={e => setActionUserId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
                                         <div className="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-100 self-end"><input type="checkbox" checked={skipImport} onChange={e => setSkipImport(e.target.checked)} className="w-5 h-5 rounded text-red-600 focus:ring-red-500" /><div><label className="text-xs font-black text-red-800 uppercase block">Suppress Record</label><p className="text-[10px] text-red-600">Auto-ignore matching imports.</p></div></div>
                                     </div>
@@ -502,20 +565,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     )}
                 </div>
             </div>
-
-            {previewRule && (
-                <RulePreviewModal
-                    isOpen={!!previewRule}
-                    onClose={() => setPreviewRule(null)}
-                    onApply={handleApplyPreview}
-                    rule={previewRule}
-                    transactions={transactions}
-                    accounts={accounts}
-                    transactionTypes={transactionTypes}
-                    categories={categories}
-                    payees={payees}
-                />
-            )}
         </div>
     );
 };
