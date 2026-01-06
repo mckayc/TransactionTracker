@@ -5,15 +5,43 @@ import type { RawTransaction, Transaction, TransactionType, AuditFinding, Catego
 
 /**
  * Returns true if the API_KEY environment variable is defined.
- * In a bundled Vite app, this is replaced at build time.
- * in a production container, we shim this via /env.js at runtime.
+ * We explicitly check (globalThis as any).process to ensure we are looking at the injected global object.
  */
 export const hasApiKey = (): boolean => {
     try {
-        const key = process.env.API_KEY;
+        const key = (globalThis as any).process?.env?.API_KEY;
         return !!key && key !== 'undefined' && key !== '';
     } catch {
         return false;
+    }
+};
+
+/**
+ * Connectivity Test: Performs a minimal call to verify the key is actually valid with Google.
+ */
+export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, message: string }> => {
+    if (!hasApiKey()) return { success: false, message: "No API Key found in process.env." };
+    
+    const key = (globalThis as any).process.env.API_KEY;
+    const ai = new GoogleGenAI({ apiKey: key });
+    
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: [{ parts: [{ text: "ping" }] }],
+            config: { maxOutputTokens: 1 }
+        });
+        
+        if (response.text) {
+            return { success: true, message: "Connection successful! Key is active and authorized." };
+        }
+        return { success: false, message: "Empty response from API." };
+    } catch (e: any) {
+        console.error("Gemini Connectivity Test Error:", e);
+        return { 
+            success: false, 
+            message: `API Error: ${e.message || "Unknown error"}. Check billing or quota.` 
+        };
     }
 };
 

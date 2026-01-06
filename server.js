@@ -32,13 +32,18 @@ app.get('/env.js', (req, res) => {
     console.log(`[SYS] Frontend requested /env.js. API_KEY status: ${key ? 'PRESENT (Masked: ' + key.substring(0, 4) + '...)' : 'MISSING'}`);
     
     res.type('application/javascript');
-    // We explicitly set window.process.env to make it globally available
+    // Ensure process is defined globally on window/globalThis for the browser
     res.send(`
         (function() {
-            window.process = window.process || {};
-            window.process.env = window.process.env || {};
-            window.process.env.API_KEY = "${key.replace(/"/g, '\\"')}";
-            console.log("[SYS] Runtime Environment: API_KEY " + (window.process.env.API_KEY ? "loaded successfully." : "is missing!"));
+            var env = {
+                API_KEY: "${key.replace(/"/g, '\\"')}"
+            };
+            if (typeof window !== 'undefined') {
+                window.process = window.process || {};
+                window.process.env = window.process.env || {};
+                Object.assign(window.process.env, env);
+                console.log("[SYS] Runtime Environment: process.env.API_KEY successfully injected into window.");
+            }
         })();
     `);
 });

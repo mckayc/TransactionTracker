@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon, RepeatIcon } from '../components/Icons';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon, RepeatIcon, PlayIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
-import { hasApiKey, healDataSnippet } from '../services/geminiService';
+import { hasApiKey, healDataSnippet, validateApiKeyConnectivity } from '../services/geminiService';
 
 interface SettingsPageProps {
     transactions: Transaction[];
@@ -92,22 +92,44 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     
     // Periodically check for API Key availability as it might be shimmed late
     const [apiKeyActive, setApiKeyActive] = useState(hasApiKey());
+    const [isTestingKey, setIsTestingKey] = useState(false);
+    const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
     
     useEffect(() => {
         // Diagnostic Logging
         console.log("[SYS] Settings Page loaded. Checking process.env.API_KEY visibility...");
-        console.log("[SYS] process.env available:", !!(window as any).process?.env);
-        console.log("[SYS] process.env.API_KEY present:", !!(window as any).process?.env?.API_KEY);
+        const processObj = (window as any).process;
+        console.log("[SYS] Global 'process' object found:", !!processObj);
+        if (processObj) {
+            console.log("[SYS] process.env found:", !!processObj.env);
+            if (processObj.env) {
+                const key = processObj.env.API_KEY;
+                console.log("[SYS] API_KEY value:", key ? "PRESENT (Masked: " + key.substring(0, 4) + "...)" : "MISSING/EMPTY");
+            }
+        }
         
         const interval = setInterval(() => {
             const current = hasApiKey();
             if (current !== apiKeyActive) {
-                console.log("[SYS] API Key status changed to:", current);
+                console.log("[SYS] API Key presence status changed to:", current);
                 setApiKeyActive(current);
             }
-        }, 1000);
+        }, 2000);
         return () => clearInterval(interval);
     }, [apiKeyActive]);
+
+    const handleTestConnectivity = async () => {
+        setIsTestingKey(true);
+        setTestResult(null);
+        try {
+            const result = await validateApiKeyConnectivity();
+            setTestResult(result);
+        } catch (e: any) {
+            setTestResult({ success: false, message: `Unexpected error: ${e.message}` });
+        } finally {
+            setIsTestingKey(false);
+        }
+    };
 
     const [exportSelection, setExportSelection] = useState<Set<string>>(new Set(Object.keys(ENTITY_LABELS)));
     const [purgeSelection, setPurgeSelection] = useState<Set<string>>(new Set());
@@ -346,6 +368,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 <div className="flex-grow">
                                     <h3 className={`text-lg font-bold ${apiKeyActive ? 'text-emerald-800' : 'text-amber-800'}`}>AI Status: {apiKeyActive ? 'Enabled' : 'Disabled'}</h3>
                                     <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Healthy Gemini 3 connection detected." : "Missing or invalid API_KEY in environment. Check Docker logs."}</p>
+                                    
+                                    <div className="mt-4 pt-4 border-t border-indigo-100 flex flex-col gap-3">
+                                        <button 
+                                            onClick={handleTestConnectivity} 
+                                            disabled={isTestingKey || !apiKeyActive}
+                                            className="w-full py-2 bg-indigo-600 text-white font-bold text-xs rounded-lg shadow-md hover:bg-indigo-700 disabled:opacity-30 transition-all flex items-center justify-center gap-2"
+                                        >
+                                            {isTestingKey ? <RepeatIcon className="w-4 h-4 animate-spin" /> : <PlayIcon className="w-4 h-4" />}
+                                            Test API Connectivity
+                                        </button>
+                                        
+                                        {testResult && (
+                                            <div className={`p-3 rounded-lg text-xs font-bold border ${testResult.success ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-red-100 text-red-800 border-red-200'}`}>
+                                                <div className="flex gap-2 items-start">
+                                                    {testResult.success ? <CheckCircleIcon className="w-4 h-4 shrink-0" /> : <ExclamationTriangleIcon className="w-4 h-4 shrink-0" />}
+                                                    <span>{testResult.message}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
