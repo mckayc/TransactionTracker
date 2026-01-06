@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User, RuleImportDraft, FlowDesignation } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon, ChevronDownIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, CloudArrowUpIcon, InfoIcon, ShieldCheckIcon, TagIcon, WrenchIcon, UsersIcon, UserGroupIcon, DownloadIcon, TrashIcon, ExclamationTriangleIcon } from '../components/Icons';
@@ -10,7 +9,6 @@ import { parseRulesFromFile, parseRulesFromLines } from '../services/csvParserSe
 import RuleImportVerification from '../components/RuleImportVerification';
 import RulePreviewModal from '../components/RulePreviewModal';
 
-/* Added flowDesignations to RulesPageProps to resolve IntrinsicAttributes error in App.tsx */
 interface RulesPageProps {
     rules: ReconciliationRule[];
     onSaveRule: (rule: ReconciliationRule) => void;
@@ -49,7 +47,6 @@ const RULE_DOMAINS = [
     { id: 'metadata', label: 'Extraction Hints', icon: <RobotIcon className="w-4 h-4" /> },
 ];
 
-/* Destructured flowDesignations from props to resolve missing property error */
 const RulesPage: React.FC<RulesPageProps> = ({ 
     rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, flowDesignations, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSavePayee, onSavePayees, onSaveMerchant, onSaveMerchants, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser 
 }) => {
@@ -57,27 +54,21 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
     
-    // Bulk Management State
     const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
     const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
     const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
 
-    // Architect Modal State
     const [isArchitectOpen, setIsArchitectOpen] = useState(false);
     const [architectContextRule, setArchitectContextRule] = useState<ReconciliationRule | null>(null);
 
-    // Run/Preview Modal State
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
     const [previewTargetRule, setPreviewTargetRule] = useState<ReconciliationRule | null>(null);
     
-    // Importer State
     const [isImporterOpen, setIsImporterOpen] = useState(false);
     const [importDrafts, setImportDrafts] = useState<RuleImportDraft[]>([]);
-    const [isHealing, setIsHealing] = useState(false);
     const [importText, setImportText] = useState('');
     const [isDragging, setIsDragging] = useState(false);
 
-    // AI Discovery State
     const [isAiCreatorOpen, setIsAiCreatorOpen] = useState(false);
     const [aiFile, setAiFile] = useState<File | null>(null);
     const [aiRawData, setAiRawData] = useState('');
@@ -92,7 +83,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
         );
         
         if (selectedDomain !== 'all') {
-            // Strict filtering by organizational category to avoid rules showing in multiple places
             list = list.filter(r => r.ruleCategory === selectedDomain);
         }
         return list.sort((a, b) => a.name.localeCompare(b.name));
@@ -122,7 +112,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
         }
     };
 
-    // Bulk Logic
     const toggleRuleSelection = (id: string) => {
         const next = new Set(selectedRuleIds);
         if (next.has(id)) next.delete(id);
@@ -157,7 +146,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleIds(new Set());
     };
 
-    // Importer Template
     const downloadTemplate = () => {
         const headers = ["Rule Name", "Rule Category", "Match Field", "Operator", "Match Value", "Set Category", "Set Payee", "Set Merchant", "Set Location", "Set Type", "Set Direction", "Set User", "Tags", "Skip Import"];
         const rows = [
@@ -199,7 +187,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 mappingStatus: {
                     category: cat ? 'match' : (r.suggestedCategoryName ? 'create' : 'none'),
                     payee: pay ? 'match' : (r.suggestedPayeeName ? 'create' : 'none'),
-                    merchant: merch ? 'match' : (r.suggestedMerchantName ? 'create' : 'none'),
+                    merchant: mer ? 'match' : (r.suggestedMerchantName ? 'create' : 'none'),
                     location: loc ? 'match' : (r.suggestedLocationName ? 'create' : 'none'),
                     type: typ ? 'match' : (r.suggestedTypeName ? 'create' : 'none')
                 }
@@ -236,7 +224,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
             </div>
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* LEFT: DOMAINS */}
                 <div className="w-56 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col p-3 flex-shrink-0">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Rule Category</p>
                     <div className="space-y-0.5">
@@ -253,7 +240,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     </div>
                 </div>
 
-                {/* MIDDLE: RULE LIST */}
                 <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 flex-shrink-0">
                     <div className="p-3 border-b border-slate-100 flex flex-col gap-2 bg-slate-50 rounded-t-2xl">
                         <div className="relative">
@@ -325,7 +311,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     </div>
                 </div>
 
-                {/* RIGHT: PREVIEW/DETAIL */}
                 <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
                     {activeRule ? (
                         <div className="flex-1 flex flex-col animate-fade-in">
@@ -405,8 +390,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 </div>
             </div>
 
-            {/* SHARED ARCHITECT MODAL */}
-            {/* Added flowDesignations and removed extraneous onSave... props to fix type mismatch with RuleModalProps */}
             <RuleModal 
                 isOpen={isArchitectOpen}
                 onClose={() => { setIsArchitectOpen(false); setArchitectContextRule(null); }}
@@ -423,7 +406,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 users={users}
             />
 
-            {/* DRY RUN MODAL */}
             {isPreviewOpen && previewTargetRule && (
                 <RulePreviewModal 
                     isOpen={isPreviewOpen}
@@ -441,7 +423,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 />
             )}
 
-            {/* BULK CATEGORY CHANGE MODAL */}
             {isBulkCategoryModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -481,7 +462,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 </div>
             )}
 
-            {/* BULK DELETE CONFIRMATION MODAL */}
             {isBulkDeleteModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -531,7 +511,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 </div>
             )}
 
-            {/* RULE IMPORTER OVERLAY */}
             {isImporterOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden animate-slide-up">
@@ -588,7 +567,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 </div>
             )}
 
-            {/* AI CREATOR DRAWER */}
             {isAiCreatorOpen && (
                 <div className="bg-white border-2 border-indigo-100 rounded-[2rem] p-8 shadow-2xl animate-fade-in space-y-6">
                     <div className="flex justify-between items-start border-b pb-6">
