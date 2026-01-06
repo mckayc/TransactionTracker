@@ -38,21 +38,38 @@ export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, 
     const ai = new GoogleGenAI({ apiKey: key });
     
     try {
+        // For connectivity test, we disable thinking to get a fast, direct result
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
-            contents: [{ parts: [{ text: "ping" }] }],
-            config: { maxOutputTokens: 1 }
+            contents: [{ parts: [{ text: "Respond with exactly the word 'Pong'." }] }],
+            config: { 
+                maxOutputTokens: 10,
+                thinkingConfig: { thinkingBudget: 0 } // Disable thinking for connectivity check
+            }
         });
         
-        if (response.text) {
-            return { success: true, message: "Connection successful! Key is active and authorized." };
+        // If we got a response object at all without an exception, the key is valid.
+        if (response) {
+            const hasText = response.text && response.text.trim().length > 0;
+            return { 
+                success: true, 
+                message: hasText 
+                    ? `Connection successful! Model replied: "${response.text.trim()}"` 
+                    : "Connection successful! Key is authorized (received empty text but valid response)." 
+            };
         }
-        return { success: false, message: "Empty response from API." };
+        return { success: false, message: "Received null response from API." };
     } catch (e: any) {
         console.error("Gemini Connectivity Test Error:", e);
+        
+        // Handle specific "Not Found" error which usually implies a project/API key visibility issue
+        if (e.message?.includes("Requested entity was not found")) {
+            return { success: false, message: "API Key rejected: Project or Model not found. Check if the key is from a paid project." };
+        }
+        
         return { 
             success: false, 
-            message: `API Error: ${e.message || "Unknown error"}. Check billing or quota.` 
+            message: `API Error: ${e.message || "Unknown connection error"}. Check billing, quota, or network.` 
         };
     }
 };
@@ -306,7 +323,10 @@ export const healDataSnippet = async (text: string): Promise<any> => {
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ parts: [{ text: `Repair this malformed JSON snippet: ${text}. Return ONLY the repaired JSON object.` }] }],
-        config: { responseMimeType: 'application/json' }
+        config: { 
+            responseMimeType: 'application/json',
+            thinkingConfig: { thinkingBudget: 0 } // Speed up simple repairs
+        }
     });
     return JSON.parse(response.text || 'null');
 };
@@ -468,7 +488,11 @@ export const generateFinancialStrategy = async (
     const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
         contents: [{ parts: [{ text: prompt }, { text: "Generate a multi-year financial strategy." }] }],
-        config: { responseMimeType: 'application/json', responseSchema: schema }
+        config: { 
+            responseMimeType: 'application/json', 
+            responseSchema: schema,
+            thinkingConfig: { thinkingBudget: 4000 } // Give it some room to strategize
+        }
     });
     return JSON.parse(response.text || '{"strategy": "No strategy found."}');
 };
