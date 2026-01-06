@@ -56,6 +56,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     // Bulk Management State
     const [selectedRuleIds, setSelectedRuleIds] = useState<Set<string>>(new Set());
     const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+    const [isBulkCategoryModalOpen, setIsBulkCategoryModalOpen] = useState(false);
 
     // Architect Modal State
     const [isArchitectOpen, setIsArchitectOpen] = useState(false);
@@ -138,6 +139,14 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleIds(new Set());
         setIsBulkDeleteModalOpen(false);
         setSelectedRuleId(null);
+    };
+
+    const handleBulkCategoryChange = (newCategory: string) => {
+        const rulesToUpdate = rules.filter(r => selectedRuleIds.has(r.id)).map(r => ({ ...r, ruleCategory: newCategory }));
+        onSaveRules(rulesToUpdate);
+        setIsBulkCategoryModalOpen(false);
+        // Fix: Deleted non-existent name 'setBulkSelectedIds'. 'selectedRuleIds' is the local selection state.
+        setSelectedRuleIds(new Set());
     };
 
     // Importer Template
@@ -227,7 +236,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             <button 
                                 key={domain.id} 
                                 onClick={() => { setSelectedDomain(domain.id); setSelectedRuleId(null); setSelectedRuleIds(new Set()); }}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedDomain === domain.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
+                                className={`w-full flex items-center justify-start gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedDomain === domain.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
                             >
                                 {domain.icon}
                                 <span>{domain.label}</span>
@@ -255,10 +264,19 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Select All</span>
                             </label>
                             {selectedRuleIds.size > 0 && (
-                                <button onClick={handleBulkDelete} className="text-red-600 p-1 hover:bg-red-50 rounded transition-colors flex items-center gap-1">
-                                    <TrashIcon className="w-4 h-4" />
-                                    <span className="text-[10px] font-black">{selectedRuleIds.size}</span>
-                                </button>
+                                <div className="flex items-center gap-1">
+                                    <button 
+                                        onClick={() => setIsBulkCategoryModalOpen(true)}
+                                        className="text-indigo-600 p-1.5 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-1"
+                                        title="Change Category"
+                                    >
+                                        <TagIcon className="w-4 h-4" />
+                                    </button>
+                                    <button onClick={handleBulkDelete} className="text-red-600 p-1.5 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1">
+                                        <TrashIcon className="w-4 h-4" />
+                                        <span className="text-[10px] font-black">{selectedRuleIds.size}</span>
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -272,7 +290,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <div 
                                     key={r.id} 
                                     onClick={() => setSelectedRuleId(r.id)}
-                                    className={`p-3 rounded-xl cursor-pointer border transition-all flex items-center gap-3 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-transparent hover:bg-slate-50'}`}
+                                    className={`p-3 rounded-xl cursor-pointer border transition-all flex items-center gap-3 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-transparent hover:bg-slate-50'} ${selectedRuleIds.has(r.id) ? 'ring-1 ring-indigo-200' : ''}`}
                                 >
                                     <input 
                                         type="checkbox" 
@@ -415,6 +433,46 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         setIsPreviewOpen(false);
                     }}
                 />
+            )}
+
+            {/* BULK CATEGORY CHANGE MODAL */}
+            {isBulkCategoryModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h3 className="font-black text-slate-800 text-xl">Reassign Categories</h3>
+                                <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">Updating {selectedRuleIds.size} Rules</p>
+                            </div>
+                            <button onClick={() => setIsBulkCategoryModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                        </div>
+                        <div className="p-8 space-y-6">
+                            <div className="space-y-4">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">New Target Category</label>
+                                <div className="grid grid-cols-1 gap-2">
+                                    {RULE_DOMAINS.filter(d => d.id !== 'all').map(domain => (
+                                        <button 
+                                            key={domain.id}
+                                            onClick={() => handleBulkCategoryChange(domain.id)}
+                                            className="w-full flex items-center gap-3 p-4 bg-white border-2 border-slate-100 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 transition-all group text-left"
+                                        >
+                                            <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                                                {domain.icon}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-slate-800 group-hover:text-indigo-900">{domain.label}</p>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase">{domain.id}</p>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="p-6 bg-slate-50 border-t flex justify-end">
+                            <button onClick={() => setIsBulkCategoryModalOpen(false)} className="px-6 py-2 text-sm font-bold text-slate-500">Cancel</button>
+                        </div>
+                    </div>
+                </div>
             )}
 
             {/* BULK DELETE CONFIRMATION MODAL */}
@@ -623,7 +681,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                 </div>
                                                 <div className="flex flex-wrap gap-2">
                                                     {r.setCategoryId && <span className="text-[8px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-black uppercase">Category Assigned</span>}
-                                                    {r.setPayeeId && <span className="text-[8px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-black uppercase">Payee Identified</span>}
+                                                    {r.setPayeeId && <span className="text-[8px] bg-blue-50 text-blue-700 border-blue-200 px-1.5 py-0.5 rounded font-black uppercase">Payee Identified</span>}
                                                 </div>
                                             </div>
                                         </div>

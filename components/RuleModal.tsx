@@ -208,7 +208,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     </div>
                     <div className="flex items-center gap-3 w-full sm:w-auto">
                         <button type="button" onClick={onClose} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">Cancel</button>
-                        <button type="button" onClick={() => handleAction(false)} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all">Save Rule Only</button>
+                        <button type="button" onClick={() => handleAction(false)} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all">Save</button>
                         <button 
                             type="button" 
                             onClick={() => handleAction(true)} 
@@ -216,7 +216,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                             title={isFromVerification ? "Saves the rule and immediately updates the pending verification list." : "Saves the rule and opens a dry-run preview against existing transactions."}
                         >
                             <SparklesIcon className="w-4 h-4" />
-                            {isFromVerification ? 'Save & Apply to Batch' : 'Save & Run on Database'}
+                            Save & Apply
                         </button>
                     </div>
                 </div>
