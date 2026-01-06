@@ -1,8 +1,32 @@
 
 import React, { useState, useMemo } from 'react';
-import type { BlueprintTemplate, BlueprintExample, ReconciliationRule, Category, Payee, Merchant, Location, User, TransactionType, Tag } from '../types';
-/* Added UsersIcon to imports to fix line 145 error */
-import { CloseIcon, SparklesIcon, AddIcon, DeleteIcon, TableIcon, RobotIcon, InfoIcon, CheckCircleIcon, SaveIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, ChecklistIcon, UsersIcon } from './Icons';
+import type { 
+    BlueprintTemplate, 
+    BlueprintExample, 
+    Category, 
+    Payee, 
+    Merchant, 
+    Location, 
+    User, 
+    TransactionType, 
+    Tag 
+} from '../types';
+import { 
+    CloseIcon, 
+    SparklesIcon, 
+    AddIcon, 
+    DeleteIcon, 
+    RobotIcon, 
+    InfoIcon, 
+    CheckCircleIcon, 
+    SaveIcon, 
+    TagIcon, 
+    BoxIcon, 
+    MapPinIcon, 
+    UserGroupIcon, 
+    ChecklistIcon, 
+    UsersIcon 
+} from './Icons';
 import { generateUUID } from '../utils';
 
 interface BlueprintWorkshopProps {
@@ -17,10 +41,43 @@ interface BlueprintWorkshopProps {
     users: User[];
     types: TransactionType[];
     tags: Tag[];
+    // Add save handlers for inline creation
+    onSaveCategory: (c: Category) => void;
+    onSavePayee: (p: Payee) => void;
+    onSaveMerchant: (m: Merchant) => void;
+    onSaveLocation: (l: Location) => void;
+    onSaveUser: (u: User) => void;
 }
 
+const QuickAddInput: React.FC<{
+    onSave: (name: string) => void;
+    onCancel: () => void;
+    placeholder: string;
+}> = ({ onSave, onCancel, placeholder }) => {
+    const [val, setVal] = useState('');
+    return (
+        <div className="flex gap-1 animate-fade-in">
+            <input 
+                autoFocus
+                type="text" 
+                value={val} 
+                onChange={e => setVal(e.target.value)} 
+                onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); onSave(val); }
+                    if (e.key === 'Escape') onCancel();
+                }}
+                placeholder={placeholder}
+                className="flex-1 p-2 border-2 border-indigo-500 rounded-lg text-xs font-bold focus:ring-0"
+            />
+            <button onClick={() => onSave(val)} className="p-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"><CheckCircleIcon className="w-4 h-4"/></button>
+            <button onClick={onCancel} className="p-2 bg-slate-100 text-slate-400 rounded-lg hover:bg-slate-200 transition-colors"><CloseIcon className="w-4 h-4"/></button>
+        </div>
+    );
+};
+
 const BlueprintWorkshop: React.FC<BlueprintWorkshopProps> = ({ 
-    isOpen, onClose, onSave, rawLines, categories, payees, merchants, locations, users, types, tags 
+    isOpen, onClose, onSave, rawLines, categories, payees, merchants, locations, users, types, tags,
+    onSaveCategory, onSavePayee, onSaveMerchant, onSaveLocation, onSaveUser
 }) => {
     const [name, setName] = useState('');
     const [examples, setExamples] = useState<BlueprintExample[]>([]);
@@ -35,6 +92,9 @@ const BlueprintWorkshop: React.FC<BlueprintWorkshopProps> = ({
     const [eTypeId, setETypeId] = useState(types.find(t => t.balanceEffect === 'expense')?.id || types[0]?.id || '');
     const [eTagIds, setETagIds] = useState<Set<string>>(new Set());
 
+    // Inline Creation State
+    const [inlineType, setInlineType] = useState<null | 'category' | 'payee' | 'merchant' | 'location' | 'user'>(null);
+
     if (!isOpen) return null;
 
     const toggleTag = (id: string) => {
@@ -44,6 +104,21 @@ const BlueprintWorkshop: React.FC<BlueprintWorkshopProps> = ({
             else next.add(id);
             return next;
         });
+    };
+
+    const handleQuickAdd = (value: string) => {
+        if (!value.trim()) { setInlineType(null); return; }
+        const id = generateUUID();
+        const payload = { id, name: value.trim() };
+
+        switch (inlineType) {
+            case 'category': onSaveCategory(payload); setECatId(id); break;
+            case 'payee': onSavePayee(payload); setEPayId(id); break;
+            case 'merchant': onSaveMerchant(payload); setEMerId(id); break;
+            case 'location': onSaveLocation(payload); setELocId(id); break;
+            case 'user': onSaveUser(payload); setEUserId(id); break;
+        }
+        setInlineType(null);
     };
 
     const handleAddExample = () => {
@@ -63,7 +138,7 @@ const BlueprintWorkshop: React.FC<BlueprintWorkshopProps> = ({
         };
         setExamples([...examples, newExample]);
         setActiveLine(null);
-        // Reset form
+        // Reset form but keep User/Type as they are usually consistent across a file
         setECatId(''); setEPayId(''); setEMerId(''); setELocId('');
         setETagIds(new Set());
     };
@@ -134,41 +209,87 @@ const BlueprintWorkshop: React.FC<BlueprintWorkshopProps> = ({
                                         {activeLine}
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-2 gap-x-6 gap-y-4">
+                                        {/* Category */}
                                         <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><TagIcon className="w-3 h-3"/> Category</label>
-                                            <select value={eCatId} onChange={e => setECatId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
-                                                <option value="">-- Inherit or Auto --</option>
-                                                {categories.sort((a,b)=>a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                            </select>
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex justify-between">
+                                                <span className="flex items-center gap-1"><TagIcon className="w-3 h-3"/> Category</span>
+                                                {inlineType !== 'category' && <button type="button" onClick={() => setInlineType('category')} className="text-indigo-600 hover:underline">Create New</button>}
+                                            </label>
+                                            {inlineType === 'category' ? (
+                                                <QuickAddInput onSave={handleQuickAdd} onCancel={() => setInlineType(null)} placeholder="New Category Name..." />
+                                            ) : (
+                                                <select value={eCatId} onChange={e => setECatId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                    <option value="">-- Inherit or Auto --</option>
+                                                    {categories.sort((a,b)=>a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
+                                            )}
                                         </div>
+
+                                        {/* Payee */}
                                         <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><UsersIcon className="w-3 h-3"/> Payee</label>
-                                            <select value={ePayId} onChange={e => setEPayId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
-                                                <option value="">-- Inherit or Auto --</option>
-                                                {payees.sort((a,b)=>a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                                            </select>
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex justify-between">
+                                                <span className="flex items-center gap-1"><UsersIcon className="w-3 h-3"/> Payee</span>
+                                                {inlineType !== 'payee' && <button type="button" onClick={() => setInlineType('payee')} className="text-indigo-600 hover:underline">Create New</button>}
+                                            </label>
+                                            {inlineType === 'payee' ? (
+                                                <QuickAddInput onSave={handleQuickAdd} onCancel={() => setInlineType(null)} placeholder="New Payee Name..." />
+                                            ) : (
+                                                <select value={ePayId} onChange={e => setEPayId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                    <option value="">-- Inherit or Auto --</option>
+                                                    {payees.sort((a,b)=>a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                            )}
                                         </div>
+
+                                        {/* Merchant */}
                                         <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><BoxIcon className="w-3 h-3"/> Merchant</label>
-                                            <select value={eMerId} onChange={e => setEMerId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
-                                                <option value="">-- No Merchant --</option>
-                                                {merchants.sort((a,b)=>a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                            </select>
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex justify-between">
+                                                <span className="flex items-center gap-1"><BoxIcon className="w-3 h-3"/> Merchant</span>
+                                                {inlineType !== 'merchant' && <button type="button" onClick={() => setInlineType('merchant')} className="text-indigo-600 hover:underline">Create New</button>}
+                                            </label>
+                                            {inlineType === 'merchant' ? (
+                                                <QuickAddInput onSave={handleQuickAdd} onCancel={() => setInlineType(null)} placeholder="New Merchant Name..." />
+                                            ) : (
+                                                <select value={eMerId} onChange={e => setEMerId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                    <option value="">-- No Merchant --</option>
+                                                    {merchants.sort((a,b)=>a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                                </select>
+                                            )}
                                         </div>
+
+                                        {/* Location */}
                                         <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><MapPinIcon className="w-3 h-3"/> Location</label>
-                                            <select value={eLocId} onChange={e => setELocId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
-                                                <option value="">-- No Location --</option>
-                                                {locations.sort((a,b)=>a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                                            </select>
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex justify-between">
+                                                <span className="flex items-center gap-1"><MapPinIcon className="w-3 h-3"/> Location</span>
+                                                {inlineType !== 'location' && <button type="button" onClick={() => setInlineType('location')} className="text-indigo-600 hover:underline">Create New</button>}
+                                            </label>
+                                            {inlineType === 'location' ? (
+                                                <QuickAddInput onSave={handleQuickAdd} onCancel={() => setInlineType(null)} placeholder="New Location..." />
+                                            ) : (
+                                                <select value={eLocId} onChange={e => setELocId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                    <option value="">-- No Location --</option>
+                                                    {locations.sort((a,b)=>a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                                </select>
+                                            )}
                                         </div>
+
+                                        {/* Owner */}
                                         <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><UserGroupIcon className="w-3 h-3"/> Owner</label>
-                                            <select value={eUserId} onChange={e => setEUserId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
-                                                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                            </select>
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex justify-between">
+                                                <span className="flex items-center gap-1"><UserGroupIcon className="w-3 h-3"/> Owner</span>
+                                                {inlineType !== 'user' && <button type="button" onClick={() => setInlineType('user')} className="text-indigo-600 hover:underline">Create New</button>}
+                                            </label>
+                                            {inlineType === 'user' ? (
+                                                <QuickAddInput onSave={handleQuickAdd} onCancel={() => setInlineType(null)} placeholder="New User Name..." />
+                                            ) : (
+                                                <select value={eUserId} onChange={e => setEUserId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                                </select>
+                                            )}
                                         </div>
+
+                                        {/* Direction */}
                                         <div className="space-y-1">
                                             <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><ChecklistIcon className="w-3 h-3"/> Direction</label>
                                             <select value={eTypeId} onChange={e => setETypeId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">

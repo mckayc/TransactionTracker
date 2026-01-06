@@ -28,6 +28,7 @@ interface RulesPageProps {
     onSaveMerchant: (merchant: Merchant) => void;
     onSaveLocation: (location: Location) => void;
     onSaveTag: (tag: Tag) => void;
+    onSaveUser: (user: User) => void;
     onAddTransactionType: (type: TransactionType) => void;
     systemSettings?: SystemSettings;
 }
@@ -41,7 +42,7 @@ const DOMAINS = [
 ];
 
 const RulesPage: React.FC<RulesPageProps> = ({ 
-    rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onSaveMerchant, onSaveLocation, onSaveTag, onAddTransactionType, systemSettings 
+    rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onSaveMerchant, onSaveLocation, onSaveTag, onSaveUser, onAddTransactionType, systemSettings 
 }) => {
     const [selectedDomain, setSelectedDomain] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -312,8 +313,24 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 </div>
             </div>
 
-            {/* Added 'tags' prop to BlueprintWorkshop to fix line 315 error */}
-            <BlueprintWorkshop isOpen={isWorkshopOpen} onClose={() => setIsWorkshopOpen(false)} onSave={handleSaveBlueprint} rawLines={workshopRawLines} categories={categories} payees={payees} merchants={merchants} locations={locations} users={users} types={transactionTypes} tags={tags} />
+            <BlueprintWorkshop 
+                isOpen={isWorkshopOpen} 
+                onClose={() => setIsWorkshopOpen(false)} 
+                onSave={handleSaveBlueprint} 
+                rawLines={workshopRawLines} 
+                categories={categories} 
+                payees={payees} 
+                merchants={merchants} 
+                locations={locations} 
+                users={users} 
+                types={transactionTypes} 
+                tags={tags} 
+                onSaveCategory={onSaveCategory}
+                onSavePayee={onSavePayee}
+                onSaveMerchant={onSaveMerchant}
+                onSaveLocation={onSaveLocation}
+                onSaveUser={onSaveUser}
+            />
             {previewRule && <RulePreviewModal isOpen={!!previewRule} onClose={() => setPreviewRule(null)} onApply={onUpdateTransactions} rule={previewRule} transactions={transactions} accounts={accounts} transactionTypes={transactionTypes} categories={categories} payees={payees} />}
         </div>
     );
