@@ -1,4 +1,3 @@
-
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
@@ -52,7 +51,8 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
             return txAccountId === String(condition.value);
         } else {
             const account = accounts.find(a => a.id === txAccountId);
-            const accountName = (account?.name || tx.account || '').toLowerCase();
+            // Fix: remove non-existent property 'account' from tx object (use accountId instead or rely on joined account metadata)
+            const accountName = (account?.name || '').toLowerCase();
             const condValue = String(condition.value || '').toLowerCase();
             
             if (condition.operator === 'contains') return accountName.includes(condValue);

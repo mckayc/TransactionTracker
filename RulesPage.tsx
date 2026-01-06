@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User, RuleImportDraft } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon, ChevronDownIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, CloudArrowUpIcon, InfoIcon, ShieldCheckIcon, TagIcon, WrenchIcon, UsersIcon, UserGroupIcon, DownloadIcon } from '../components/Icons';
@@ -139,6 +138,31 @@ const RulesPage: React.FC<RulesPageProps> = ({
         onSaveRule(rule);
         setIsCreating(false);
         setSelectedRuleId(rule.id);
+    };
+
+    // Fix: Added missing handleAiInspect function
+    const handleAiInspect = async () => {
+        const input = aiFile || aiRawData;
+        if (!input) {
+            alert("Please provide a data sample (file or text).");
+            return;
+        }
+
+        if (!hasApiKey()) {
+            alert("API Key is missing or invalid. Check your environment configuration.");
+            return;
+        }
+
+        setIsAiGenerating(true);
+        try {
+            const proposed = await generateRulesFromData(input, categories, payees, merchants, locations, users, aiPrompt);
+            setAiProposedRules(proposed);
+        } catch (e: any) {
+            console.error("AI Analysis Error:", e);
+            alert(`AI Pattern Analysis failed: ${e.message || "Unknown error"}. Check if your API Key is active.`);
+        } finally {
+            setIsAiGenerating(false);
+        }
     };
 
     // Importer Logic
