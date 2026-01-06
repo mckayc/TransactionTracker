@@ -63,13 +63,20 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose, systemS
                 }
             }
         } catch (error: any) {
-            console.error("Chatbot Analysis Error:", error);
+            console.error("Gemini API Connection Detailed Error:", error);
             
             let errorMsg = "I'm having trouble connecting to the AI brain.";
+            
             if (error.message?.includes("429")) {
                 errorMsg = "AI quota reached. Please wait 60s or switch models in Settings.";
             } else if (error.message?.includes("403")) {
                 errorMsg = "Invalid API Key. Please verify your environment setup.";
+            } else if (error.message?.includes("404")) {
+                errorMsg = "The selected model was not found in your region. Please switch to a stable model in Settings.";
+            } else if (error.message?.includes("fetch")) {
+                errorMsg = "Network error: Unable to reach Gemini servers. Check your internet connection.";
+            } else {
+                errorMsg = `Error: ${error.message || "Unknown technical failure"}`;
             }
 
             const errorMessage: Message = { 

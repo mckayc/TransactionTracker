@@ -16,6 +16,23 @@ const getModel = (settings?: SystemSettings): string => {
     return settings?.aiModel || DEFAULT_MODEL;
 };
 
+/**
+ * Generates configuration based on the model type.
+ * Flash/Lite models get thinking budget disabled to save quota.
+ */
+const getModelConfig = (model: string, systemInstruction?: string) => {
+    const config: any = {
+        systemInstruction,
+    };
+
+    // Pro models (Gemini 3 Pro) allow thinking, others (Flash/Lite) should have it disabled to save quota
+    if (!model.includes('pro')) {
+        config.thinkingConfig = { thinkingBudget: 0 };
+    }
+
+    return config;
+};
+
 export const hasApiKey = (): boolean => {
     return getApiKey().length > 0;
 };
@@ -34,7 +51,7 @@ export const validateApiKeyConnectivity = async (settings?: SystemSettings): Pro
         const response = await ai.models.generateContent({
             model,
             contents: "hi",
-            config: { maxOutputTokens: 5 }
+            config: getModelConfig(model)
         });
         
         if (response && response.text) {
@@ -138,7 +155,7 @@ export const generateRulesFromData = async (
             model,
             contents: { parts: sampleParts },
             config: { 
-                systemInstruction,
+                ...getModelConfig(model, systemInstruction),
                 responseMimeType: 'application/json',
                 responseSchema: schema
             }
@@ -213,7 +230,7 @@ export const extractTransactionsFromFiles = async (
         model,
         contents: { parts: [...fileParts, { text: "Extract all financial records from these documents." }] },
         config: {
-            systemInstruction,
+            ...getModelConfig(model, systemInstruction),
             responseMimeType: "application/json",
             responseSchema: schema
         }
@@ -274,7 +291,7 @@ export const extractTransactionsFromText = async (
         model,
         contents: `Analyze and extract from: ${text}`,
         config: {
-            systemInstruction,
+            ...getModelConfig(model, systemInstruction),
             responseMimeType: "application/json",
             responseSchema: schema
         }
@@ -308,7 +325,7 @@ export const getAiFinancialAnalysis = async (query: string, contextData: any, se
     const stream = await ai.models.generateContentStream({
         model,
         contents: `CONTEXT:\n${JSON.stringify(optimizedContext)}\n\nUSER QUERY: ${query}`,
-        config: { systemInstruction }
+        config: getModelConfig(model, systemInstruction)
     });
     return stream;
 };
@@ -321,7 +338,7 @@ export const healDataSnippet = async (text: string, settings?: SystemSettings): 
     const response = await ai.models.generateContent({
         model,
         contents: `Repair this malformed JSON snippet or extract valid JSON from it: ${text}`,
-        config: { responseMimeType: 'application/json' }
+        config: { ...getModelConfig(model), responseMimeType: 'application/json' }
     });
     return JSON.parse(response.text || '{}');
 };
@@ -333,7 +350,8 @@ export const askAiAdvisor = async (prompt: string, settings?: SystemSettings): P
     const model = getModel(settings);
     const response = await ai.models.generateContent({
         model,
-        contents: prompt
+        contents: prompt,
+        config: getModelConfig(model)
     });
     return response.text || '';
 };
@@ -351,7 +369,7 @@ export const getIndustryDeductions = async (industry: string, settings?: SystemS
     const response = await ai.models.generateContent({
         model,
         contents: `List tax deductions for the ${industry} industry.`,
-        config: { responseMimeType: 'application/json', responseSchema: schema }
+        config: { ...getModelConfig(model), responseMimeType: 'application/json', responseSchema: schema }
     });
     const parsed = JSON.parse(response.text || '{"deductions": []}');
     return parsed.deductions;
@@ -368,7 +386,7 @@ export const streamTaxAdvice = async (messages: ChatMessage[], profile: Business
     const stream = await ai.models.generateContentStream({
         model,
         contents: messages.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.content }] })),
-        config: { systemInstruction }
+        config: getModelConfig(model, systemInstruction)
     });
     return stream;
 };
@@ -424,7 +442,7 @@ export const auditTransactions = async (
         model,
         contents: `Audit these transactions for ${auditType}: ${JSON.stringify(slimTxs)}`,
         config: {
-            systemInstruction: "You are a forensic auditor. Find duplicates, errors, or linked payments.",
+            ...getModelConfig(model, "You are a forensic auditor. Find duplicates, errors, or linked payments."),
             responseMimeType: "application/json",
             responseSchema: schema
         }
@@ -457,6 +475,7 @@ export const analyzeBusinessDocument = async (file: File, onProgress: (msg: stri
         model,
         contents: { parts: [part, { text: "Analyze document purposes." }] },
         config: {
+            ...getModelConfig(model),
             responseMimeType: "application/json",
             responseSchema: schema
         }
@@ -498,7 +517,7 @@ export const generateFinancialStrategy = async (
         model,
         contents: `Generate strategy for: ${JSON.stringify(context)}`,
         config: {
-            systemInstruction: "You are a high-level CFO.",
+            ...getModelConfig(model, "You are a high-level CFO."),
             responseMimeType: "application/json",
             responseSchema: schema
         }

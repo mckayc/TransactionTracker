@@ -41,10 +41,10 @@ interface SettingsPageProps {
 }
 
 const AVAILABLE_MODELS = [
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (Preview)', desc: 'Fastest, intelligent, recommended default.' },
-    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro (Preview)', desc: 'Smartest reasoning, lower free-tier quota.' },
-    { id: 'gemini-2.5-flash-latest', name: 'Gemini 2.5 Flash', desc: 'Robust, highly reliable standard model.' },
-    { id: 'gemini-2.5-flash-lite-latest', name: 'Gemini 2.5 Flash Lite', desc: 'Ultra-fast, often has highest free-tier availability.' }
+    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (Preview)', desc: 'Highest intelligence, lower daily quota on free tier.' },
+    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro (Preview)', desc: 'Maximum reasoning for complex plans.' },
+    { id: 'gemini-flash-latest', name: 'Gemini Flash (Stable)', desc: 'Fast, reliable, standard daily quota.' },
+    { id: 'gemini-flash-lite-latest', name: 'Gemini Flash Lite', desc: 'Maximum efficiency, usually higher availability on free tiers.' }
 ];
 
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {
@@ -351,7 +351,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                     <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2 mb-1">
                                         <WrenchIcon className="w-4 h-4 text-indigo-600" /> Global AI Model
                                     </h4>
-                                    <p className="text-xs text-slate-500">Switching models can resolve "429 Rate Limit" errors.</p>
+                                    <p className="text-xs text-slate-500">Switching models can resolve "429 Rate Limit" or connection errors.</p>
                                 </div>
                                 <div className="space-y-2">
                                     {AVAILABLE_MODELS.map(m => (
@@ -387,9 +387,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             </div>
                             <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex gap-3 mt-4">
                                 <InfoIcon className="w-5 h-5 text-indigo-500 flex-shrink-0" />
-                                <p className="text-xs text-indigo-800 leading-relaxed font-medium">
-                                    <strong>Pro Tip:</strong> If you are on the Gemini Free Tier and hit a limit, switch to <strong>Gemini 2.5 Flash Lite</strong>. It typically has a separate, larger quota bucket for rapid requests.
-                                </p>
+                                <div className="text-xs text-indigo-800 leading-relaxed font-medium">
+                                    <p className="font-bold mb-1">Optimized Connectivity:</p>
+                                    <p>We've updated the aliases to use SDK-stable versions. If you encounter errors, try switching between <strong>Gemini Flash (Stable)</strong> and <strong>Gemini Flash Lite</strong>.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
