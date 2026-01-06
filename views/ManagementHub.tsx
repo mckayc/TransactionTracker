@@ -54,7 +54,6 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
     const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
-    // Form states
     const [name, setName] = useState('');
     const [parentId, setParentId] = useState('');
     const [color, setColor] = useState('bg-slate-100 text-slate-800');
@@ -228,15 +227,6 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
         setIsBulkDeleteModalOpen(false);
     };
 
-    const getImpactLabel = (impact: EconomicImpact) => {
-        switch (impact) {
-            case 'inflow': return 'Earnings';
-            case 'outflow': return 'Loss';
-            case 'neutral': return 'Neutral';
-            default: return impact;
-        }
-    };
-
     const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
         { id: 'categories', label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
         { id: 'tags', label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
@@ -287,7 +277,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                     <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-indigo-600 cursor-pointer flex-shrink-0" checked={bulkSelectedIds.has(item.id)} onClick={(e) => e.stopPropagation()} onChange={() => toggleBulkSelection(item.id)} />
                                     {activeTab === 'tags' && <div className={`w-3 h-3 rounded-full flex-shrink-0 ${(item as Tag).color}`} />}
                                     <span className={`text-sm font-bold truncate ${selectedId === item.id ? 'text-indigo-900' : 'text-slate-700'}`}>{item.name}</span>
-                                    {activeTab === 'flowDesignations' && <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase ${(item as FlowDesignation).impact === 'inflow' ? 'bg-green-100 text-green-700' : (item as FlowDesignation).impact === 'outflow' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'}`}>{getImpactLabel((item as FlowDesignation).impact)}</span>}
+                                    {activeTab === 'flowDesignations' && <span className={`text-[8px] px-1.5 py-0.5 rounded font-black uppercase ${(item as FlowDesignation).impact === 'inflow' ? 'bg-green-100 text-green-700' : (item as FlowDesignation).impact === 'outflow' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'}`}>{(item as FlowDesignation).impact}</span>}
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <span className="text-[9px] font-black bg-slate-100 text-slate-400 px-1.5 rounded-full">{(usageCounts as any)[activeTab].get(item.id) || 0}</span>
@@ -325,9 +315,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                                     {impact === 'inflow' && <TrendingUpIcon className="w-6 h-6" />}
                                                     {impact === 'outflow' && <TrendingUpIcon className="w-6 h-6 transform rotate-180" />}
                                                     {impact === 'neutral' && <RepeatIcon className="w-6 h-6" />}
-                                                    <span className="text-[10px] font-black uppercase tracking-widest">
-                                                        {getImpactLabel(impact)}
-                                                    </span>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest">{impact === 'inflow' ? 'Earnings (Inflow)' : impact === 'outflow' ? 'Loss (Outflow)' : 'Neutral (Internal)'}</span>
                                                 </button>
                                             ))}
                                         </div>

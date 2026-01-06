@@ -13,19 +13,36 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = 3000;
 
-// Use process.cwd() for more reliable pathing in diverse environments
-const ROOT_DIR = process.cwd();
-const DATA_DIR = path.join(ROOT_DIR, 'data', 'config');
-const DOCUMENTS_DIR = path.join(ROOT_DIR, 'media', 'files');
+const DATA_DIR = path.join(__dirname, 'data', 'config');
+const DOCUMENTS_DIR = path.join(__dirname, 'media', 'files');
 const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 
-// Determine where to serve frontend from
-const DIST_DIR = path.join(ROOT_DIR, 'dist');
-const PUBLIC_DIR = fs.existsSync(DIST_DIR) ? DIST_DIR : ROOT_DIR;
+const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'dist')) 
+    ? path.join(__dirname, 'dist') 
+    : path.join(__dirname, 'public');
 
 app.use(express.json({ limit: '100mb' }));
+app.use('/api/files', express.raw({ type: '*/*', limit: '100mb' }));
 
-// Ensure directories exist
+app.get('/api/health', (req, res) => res.status(200).json({ status: 'live', timestamp: new Date().toISOString() }));
+
+// Runtime Environment Injection for Frontend
+app.get('/env.js', (req, res) => {
+    const key = process.env.API_KEY || '';
+    res.type('application/javascript');
+    res.send(`
+        (function() {
+            window.__FINPARSER_CONFIG__ = {
+                API_KEY: "${key.replace(/"/g, '\\"')}"
+            };
+            window.process = window.process || {};
+            window.process.env = window.process.env || {};
+            window.process.env.API_KEY = "${key.replace(/"/g, '\\"')}";
+            console.log("[FINPARSER] Runtime environment injected successfully.");
+        })();
+    `);
+});
+
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 
@@ -129,88 +146,13 @@ const initDb = () => {
         ]);
 
         ensureSeedData();
-        console.log("[DB] Engine ready at " + DB_PATH);
+        console.log("[DB] Engine ready.");
     } catch (dbErr) {
         console.error("[DB] ENGINE STARTUP FAILURE:", dbErr.message);
     }
 };
 
 initDb();
-
-// File API Handlers
-app.post('/api/files/:id', express.raw({ type: '*/*', limit: '100mb' }), (req, res) => {
-    try {
-        const id = req.params.id;
-        const filename = req.headers['x-filename'] || 'unnamed_file';
-        const diskFilename = `${id}_${filename}`;
-        const filePath = path.join(DOCUMENTS_DIR, diskFilename);
-        
-        fs.writeFileSync(filePath, req.body);
-        
-        db.prepare(`
-            INSERT OR REPLACE INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `).run(id, filename, diskFilename, req.headers['content-type'], req.body.length, new Date().toISOString());
-        
-        res.json({ success: true, id });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/files/:id', (req, res) => {
-    try {
-        const meta = db.prepare("SELECT * FROM files_meta WHERE id = ?").get(req.params.id);
-        if (!meta) return res.status(404).send("File not found");
-        const filePath = path.join(DOCUMENTS_DIR, meta.disk_filename);
-        if (!fs.existsSync(filePath)) return res.status(404).send("File missing on disk");
-        
-        res.setHeader('Content-Type', meta.mime_type || 'application/octet-stream');
-        res.setHeader('Content-Disposition', `attachment; filename="${meta.original_name}"`);
-        res.sendFile(filePath);
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete('/api/files/:id', (req, res) => {
-    try {
-        const meta = db.prepare("SELECT * FROM files_meta WHERE id = ?").get(req.params.id);
-        if (meta) {
-            const filePath = path.join(DOCUMENTS_DIR, meta.disk_filename);
-            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-            db.prepare("DELETE FROM files_meta WHERE id = ?").run(req.params.id);
-        }
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// Admin Reset API
-app.post('/api/admin/reset', (req, res) => {
-    try {
-        const { entities } = req.body;
-        const targets = Array.isArray(entities) ? entities : [];
-        
-        db.transaction(() => {
-            if (targets.includes('all') || targets.includes('transactions')) {
-                db.prepare("DELETE FROM transactions").run();
-                db.prepare("DELETE FROM transaction_tags").run();
-            }
-            if (targets.includes('all') || targets.includes('accounts')) db.prepare("DELETE FROM accounts").run();
-            if (targets.includes('all') || targets.includes('categories')) db.prepare("DELETE FROM categories").run();
-            if (targets.includes('all') || targets.includes('tags')) db.prepare("DELETE FROM tags").run();
-            if (targets.includes('all') || targets.includes('payees')) db.prepare("DELETE FROM payees").run();
-            if (targets.includes('all') || targets.includes('flowDesignations')) db.prepare("DELETE FROM flow_designations").run();
-            
-            // App Storage reset for specific keys
-            if (targets.includes('all')) {
-                db.prepare("DELETE FROM app_storage").run();
-            } else {
-                const stmt = db.prepare("DELETE FROM app_storage WHERE key = ?");
-                targets.forEach(t => stmt.run(t));
-            }
-        })();
-        
-        ensureSeedData();
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
 
 const buildTxFilters = (params) => {
     const { search, startDate, endDate, accountIds, categoryIds, userId } = params;
@@ -386,35 +328,4 @@ app.post('/api/data/:key', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET /env.js for runtime config injection
-app.get('/env.js', (req, res) => {
-    const key = process.env.API_KEY || '';
-    res.type('application/javascript');
-    res.send(`
-        (function() {
-            window.__FINPARSER_CONFIG__ = { API_KEY: "${key.replace(/"/g, '\\"')}" };
-            window.process = window.process || {};
-            window.process.env = window.process.env || {};
-            window.process.env.API_KEY = "${key.replace(/"/g, '\\"')}";
-        })();
-    `);
-});
-
-// Serve Static Files
-app.use(express.static(PUBLIC_DIR));
-
-// Catch-all route to serve index.html for SPA
-app.get('*', (req, res) => {
-    const indexPath = path.join(PUBLIC_DIR, 'index.html');
-    if (fs.existsSync(indexPath)) {
-        res.sendFile(indexPath);
-    } else {
-        // Ultimate fallback if index.html is in project root but PUBLIC_DIR resolved differently
-        res.sendFile(path.join(ROOT_DIR, 'index.html'));
-    }
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[SYS] Server running on port ${PORT}`);
-    console.log(`[SYS] Serving frontend from: ${PUBLIC_DIR}`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`[SYS] Server running on port ${PORT}`));
