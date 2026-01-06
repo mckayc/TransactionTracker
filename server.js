@@ -1,4 +1,3 @@
-
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -9,8 +8,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
+// Static assets directory
+const DIST_PATH = path.join(__dirname, 'dist');
 const DATA_DIR = path.join(__dirname, 'data', 'config');
 const DOCUMENTS_DIR = path.join(__dirname, 'media', 'files');
 const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
@@ -18,7 +19,6 @@ const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
 
-// Initializing Database
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 
@@ -52,10 +52,7 @@ db.exec(`
 
 app.use(express.json({ limit: '100mb' }));
 
-// 1. STATIC FILE SERVING (FIX FOR "Cannot GET /")
-app.use(express.static(__dirname));
-
-// 2. RUNTIME ENVIRONMENT SHIM
+// RUNTIME ENVIRONMENT SHIM
 app.get('/env.js', (req, res) => {
     const key = process.env.API_KEY || '';
     res.type('application/javascript');
@@ -76,7 +73,14 @@ app.get('/api/data', (req, res) => {
     for (const row of rows) {
         try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
     }
-    try { data.blueprints = db.prepare("SELECT id, name, examples, last_used as lastUsed FROM blueprints").all().map(b => ({ ...b, examples: JSON.parse(b.examples || '[]') })); } catch(e) { data.blueprints = []; }
+    try { 
+        data.blueprints = db.prepare("SELECT id, name, examples, last_used as lastUsed FROM blueprints").all().map(b => ({ 
+            ...b, 
+            examples: JSON.parse(b.examples || '[]') 
+        })); 
+    } catch(e) { 
+        data.blueprints = []; 
+    }
     res.json(data);
 });
 
@@ -93,7 +97,6 @@ app.post('/api/data/:key', (req, res) => {
     res.json({ success: true });
 });
 
-// Transactional APIs
 app.get('/api/transactions', (req, res) => {
     const { limit = 50, offset = 0, search = '', sortKey = 'date', sortDir = 'DESC' } = req.query;
     let query = `SELECT * FROM transactions WHERE description LIKE ? OR notes LIKE ? ORDER BY ${sortKey} ${sortDir} LIMIT ? OFFSET ?`;
@@ -136,20 +139,33 @@ app.get('/api/analytics/summary', (req, res) => {
     const where = startDate ? `WHERE date >= '${startDate}'` : '';
     const query = `
         SELECT 
-            SUM(CASE WHEN t.type_id IN (SELECT id FROM app_storage WHERE key='transactionTypes' AND value LIKE '%"balanceEffect":"income"%') THEN amount ELSE 0 END) as income,
-            SUM(CASE WHEN t.type_id IN (SELECT id FROM app_storage WHERE key='transactionTypes' AND value LIKE '%"balanceEffect":"expense"%') THEN amount ELSE 0 END) as expense,
-            SUM(CASE WHEN t.type_id IN (SELECT id FROM app_storage WHERE key='transactionTypes' AND value LIKE '%"balanceEffect":"tax"%') THEN amount ELSE 0 END) as tax,
-            SUM(CASE WHEN t.type_id IN (SELECT id FROM app_storage WHERE key='transactionTypes' AND value LIKE '%"balanceEffect":"investment"%') THEN amount ELSE 0 END) as investment
-        FROM transactions t ${where}
+            SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) as income,
+            SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END) as expense
+        FROM transactions ${where}
     `;
-    // Note: The logic above is simplified. Ideally we'd join but app_storage is a JSON blob.
-    // For now, return zeros or fallback to simple type checking.
-    res.json({ income: 0, expense: 0, tax: 0, debt: 0, investment: 0, donation: 0, savings: 0 });
+    const result = db.prepare(query).get();
+    res.json({ 
+        income: result.income || 0, 
+        expense: result.expense || 0, 
+        tax: 0, debt: 0, investment: 0, donation: 0, savings: 0 
+    });
 });
 
-// CATCH-ALL ROUTE FOR SPA SUPPORT
+// STATIC FILE SERVING
+// Check both 'dist' and root for index.html to be robust
+const indexPath = fs.existsSync(path.join(DIST_PATH, 'index.html')) 
+    ? path.join(DIST_PATH, 'index.html') 
+    : path.join(__dirname, 'index.html');
+
+app.use(express.static(DIST_PATH));
+app.use(express.static(__dirname));
+
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    if (fs.existsSync(indexPath)) {
+        res.sendFile(indexPath);
+    } else {
+        res.status(404).send("Application files not found. Ensure build stage succeeded.");
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
