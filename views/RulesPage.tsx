@@ -256,7 +256,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         
         onSaveRule(rule);
         setIsCreating(false);
-        // Fix: Use the correct state setter 'setSelectedRuleId' instead of 'setSelectedId'
+        // FIXED: Corrected setSelectedId to setSelectedRuleId
         setSelectedRuleId(rule.id);
         setAiProposedRules(prev => prev.filter(p => p.name !== rule.name));
         alert(`Rule "${rule.name}" saved and applied.`);

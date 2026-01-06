@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag, Merchant, Location, SystemSettings } from '../types';
-// Cleaned up duplicate imports and ensured UsersIcon is present
 import { 
     DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, 
     SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, 
@@ -362,7 +361,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
                             {skippedDuplicateCount > 0 && (
                                 <div className="flex items-center gap-2 text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg">
-                                    <ExclamationTriangleIcon className="w-2.5 h-2.5" />
+                                    <ExclamationTriangleIcon className="w-3 h-3" />
                                     {skippedDuplicateCount} Existing Rules Skipped
                                 </div>
                             )}
