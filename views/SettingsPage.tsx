@@ -97,21 +97,28 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     
     useEffect(() => {
         // Diagnostic Logging
-        console.log("[SYS] Settings Page loaded. Checking process.env.API_KEY visibility...");
-        const processObj = (window as any).process;
-        console.log("[SYS] Global 'process' object found:", !!processObj);
-        if (processObj) {
-            console.log("[SYS] process.env found:", !!processObj.env);
-            if (processObj.env) {
-                const key = processObj.env.API_KEY;
-                console.log("[SYS] API_KEY value:", key ? "PRESENT (Masked: " + key.substring(0, 4) + "...)" : "MISSING/EMPTY");
+        console.log("[SYS] Settings Page loaded. Diagnostic Check...");
+        
+        const runtimeConfig = (window as any).__FINPARSER_CONFIG__;
+        console.log("[SYS] window.__FINPARSER_CONFIG__ found:", !!runtimeConfig);
+        if (runtimeConfig) {
+            console.log("[SYS] Runtime API_KEY present:", !!runtimeConfig.API_KEY);
+            if (runtimeConfig.API_KEY) {
+                 console.log("[SYS] Runtime API_KEY Length:", runtimeConfig.API_KEY.length);
+                 console.log("[SYS] Runtime API_KEY Prefix:", runtimeConfig.API_KEY.substring(0, 4));
             }
+        }
+
+        const processObj = (window as any).process;
+        console.log("[SYS] window.process object found:", !!processObj);
+        if (processObj?.env) {
+            console.log("[SYS] process.env.API_KEY present:", !!processObj.env.API_KEY);
         }
         
         const interval = setInterval(() => {
             const current = hasApiKey();
             if (current !== apiKeyActive) {
-                console.log("[SYS] API Key presence status changed to:", current);
+                console.log("[SYS] hasApiKey() status changed to:", current);
                 setApiKeyActive(current);
             }
         }, 2000);

@@ -32,18 +32,17 @@ app.get('/env.js', (req, res) => {
     console.log(`[SYS] Frontend requested /env.js. API_KEY status: ${key ? 'PRESENT (Masked: ' + key.substring(0, 4) + '...)' : 'MISSING'}`);
     
     res.type('application/javascript');
-    // Ensure process is defined globally on window/globalThis for the browser
+    // We use a custom object name to avoid Vite's build-time string replacement
     res.send(`
         (function() {
-            var env = {
+            window.__FINPARSER_CONFIG__ = {
                 API_KEY: "${key.replace(/"/g, '\\"')}"
             };
-            if (typeof window !== 'undefined') {
-                window.process = window.process || {};
-                window.process.env = window.process.env || {};
-                Object.assign(window.process.env, env);
-                console.log("[SYS] Runtime Environment: process.env.API_KEY successfully injected into window.");
-            }
+            // Also keep process.env shim for compatibility
+            window.process = window.process || {};
+            window.process.env = window.process.env || {};
+            window.process.env.API_KEY = "${key.replace(/"/g, '\\"')}";
+            console.log("[SYS] Runtime Config Injected. Keys detected:", Object.keys(window.__FINPARSER_CONFIG__));
         })();
     `);
 });

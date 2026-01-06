@@ -4,25 +4,37 @@ import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Merchant, Location, User, Payee, ReconciliationRule } from '../types';
 
 /**
- * Returns true if the API_KEY environment variable is defined.
- * We explicitly check (globalThis as any).process to ensure we are looking at the injected global object.
+ * Robust API Key Retrieval
+ * Prioritizes the custom runtime config object to bypass Vite's build-time replacement.
+ */
+const getApiKey = (): string => {
+    try {
+        const configKey = (globalThis as any).__FINPARSER_CONFIG__?.API_KEY;
+        if (configKey && configKey !== 'undefined' && configKey !== '') return configKey;
+        
+        const processKey = (globalThis as any).process?.env?.API_KEY;
+        if (processKey && processKey !== 'undefined' && processKey !== '') return processKey;
+        
+        return '';
+    } catch {
+        return '';
+    }
+};
+
+/**
+ * Returns true if the API_KEY is present and non-empty.
  */
 export const hasApiKey = (): boolean => {
-    try {
-        const key = (globalThis as any).process?.env?.API_KEY;
-        return !!key && key !== 'undefined' && key !== '';
-    } catch {
-        return false;
-    }
+    return getApiKey() !== '';
 };
 
 /**
  * Connectivity Test: Performs a minimal call to verify the key is actually valid with Google.
  */
 export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, message: string }> => {
-    if (!hasApiKey()) return { success: false, message: "No API Key found in process.env." };
+    const key = getApiKey();
+    if (!key) return { success: false, message: "No API Key found in runtime config." };
     
-    const key = (globalThis as any).process.env.API_KEY;
     const ai = new GoogleGenAI({ apiKey: key });
     
     try {
@@ -71,7 +83,7 @@ export const generateRulesFromData = async (
     users: User[],
     promptContext?: string
 ): Promise<ReconciliationRule[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     
     let sampleParts: any[] = [];
     if (typeof data === 'string') {
@@ -183,7 +195,7 @@ export const extractTransactionsFromFiles = async (
     categories: Category[], 
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     onProgress("AI is analyzing files...");
     const fileParts = await Promise.all(files.map(fileToGenerativePart));
     
@@ -235,7 +247,7 @@ export const extractTransactionsFromText = async (
     categories: Category[], 
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     onProgress("AI is parsing text...");
     const schema = {
         type: Type.OBJECT,
@@ -278,7 +290,7 @@ export const extractTransactionsFromText = async (
  * Streams financial analysis to the chatbot
  */
 export const getAiFinancialAnalysis = async (query: string, contextData: object) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const stream = await ai.models.generateContentStream({
         model: 'gemini-3-flash-preview',
         contents: [{ parts: [{ text: `Context: ${JSON.stringify(contextData)}\n\nQuery: ${query}` }] }],
@@ -290,7 +302,7 @@ export const getAiFinancialAnalysis = async (query: string, contextData: object)
  * Repairs malformed JSON data snippets
  */
 export const healDataSnippet = async (text: string): Promise<any> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ parts: [{ text: `Repair this malformed JSON snippet: ${text}. Return ONLY the repaired JSON object.` }] }],
@@ -303,7 +315,7 @@ export const healDataSnippet = async (text: string): Promise<any> => {
  * Ask AI Advisor for business advice
  */
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: [{ parts: [{ text: prompt }] }],
@@ -315,7 +327,7 @@ export const askAiAdvisor = async (prompt: string): Promise<string> => {
  * Get tax deductions for a specific industry
  */
 export const getIndustryDeductions = async (industry: string): Promise<string[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const schema = {
         type: Type.OBJECT,
         properties: {
@@ -336,7 +348,7 @@ export const getIndustryDeductions = async (industry: string): Promise<string[]>
  * Streams tax advice for a conversation
  */
 export const streamTaxAdvice = async (messages: ChatMessage[], profile: BusinessProfile) => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const contents = messages.map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
@@ -361,7 +373,7 @@ export const auditTransactions = async (
     auditType: string,
     examples?: Transaction[][]
 ): Promise<AuditFinding[]> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const systemPrompt = `You are a Financial Auditor. Audit type: ${auditType}. Categories: ${JSON.stringify(categories.map(c => c.name))}.
     Examples of good grouping: ${JSON.stringify(examples)}`;
     
@@ -405,7 +417,7 @@ export const auditTransactions = async (
  * Analyzes a business document
  */
 export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<any> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     onProgress("AI is reading document...");
     const part = await fileToGenerativePart(file);
     const schema = {
@@ -434,7 +446,7 @@ export const generateFinancialStrategy = async (
     categories: Category[],
     profile: BusinessProfile
 ): Promise<any> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     const prompt = `Profile: ${JSON.stringify(profile)}\nGoals: ${JSON.stringify(goals)}\nHistory: ${JSON.stringify(transactions.slice(0, 100))}`;
     const schema = {
         type: Type.OBJECT,
