@@ -1,3 +1,4 @@
+
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
@@ -51,7 +52,6 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
             return txAccountId === String(condition.value);
         } else {
             const account = accounts.find(a => a.id === txAccountId);
-            // Fix: remove non-existent property 'account' from tx object (use accountId instead or rely on joined account metadata)
             const accountName = (account?.name || '').toLowerCase();
             const condValue = String(condition.value || '').toLowerCase();
             
@@ -100,7 +100,7 @@ export const applyRulesToTransactions = (
   }
 
   return rawTransactions.map(tx => {
-    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string } = { ...tx };
+    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string; typeId?: string } = { ...tx };
     
     for (const rule of rules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
@@ -126,6 +126,10 @@ export const applyRulesToTransactions = (
         if (rule.setTransactionTypeId) {
           modifiedTx.typeId = rule.setTransactionTypeId;
         }
+        // Note: For now, BalanceEffect application relies on the system having a matching TransactionType 
+        // Or if we decide to store Effect directly on RawTransaction (needs broader change).
+        // The UI handles this via type selection mainly.
+
         if (rule.assignTagIds && rule.assignTagIds.length > 0) {
             const currentTags = new Set(modifiedTx.tagIds || []);
             rule.assignTagIds.forEach(id => currentTags.add(id));
