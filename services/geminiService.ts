@@ -162,7 +162,8 @@ export const generateRulesFromData = async (
                         setMerchantId: { type: Type.STRING },
                         suggestedMerchantName: { type: Type.STRING },
                         setLocationId: { type: Type.STRING },
-                        suggestedLocationName: { type: Type.STRING }
+                        suggestedLocationName: { type: Type.STRING },
+                        originalDescription: { type: Type.STRING, description: "The full raw text line from the statement that this rule targets." }
                     },
                     required: ['name', 'conditions', 'scope']
                 }

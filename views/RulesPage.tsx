@@ -73,9 +73,17 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [actionTypeId, setActionTypeId] = useState('');
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
     const [skipImport, setSkipImport] = useState(false);
+    const [originalDescription, setOriginalDescription] = useState<string | undefined>(undefined);
 
-    // Proposed Names (Tracking AI suggestions for UI display and editing)
-    const [proposedNames, setProposedNames] = useState<{cat?: string; payee?: string; merc?: string; loc?: string}>({});
+    // Entity Creation States
+    const [isAddingNewCategory, setIsAddingNewCategory] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [isAddingNewPayee, setIsAddingNewPayee] = useState(false);
+    const [newPayeeName, setNewPayeeName] = useState('');
+    const [isAddingNewMerchant, setIsAddingNewMerchant] = useState(false);
+    const [newMerchantName, setNewMerchantName] = useState('');
+    const [isAddingNewLocation, setIsAddingNewLocation] = useState(false);
+    const [newLocationName, setNewLocationName] = useState('');
 
     const filteredRules = useMemo(() => {
         let list = rules.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -101,7 +109,13 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setActionTypeId(r.setTransactionTypeId || '');
         setAssignTagIds(new Set(r.assignTagIds || []));
         setSkipImport(!!r.skipImport);
-        setProposedNames({});
+        setOriginalDescription(r.originalDescription);
+        
+        // Reset local entity additions
+        setIsAddingNewCategory(false);
+        setIsAddingNewPayee(false);
+        setIsAddingNewMerchant(false);
+        setIsAddingNewLocation(false);
     };
 
     const handleNew = () => {
@@ -118,7 +132,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setActionTypeId('');
         setAssignTagIds(new Set());
         setSkipImport(false);
-        setProposedNames({});
+        setOriginalDescription(undefined);
+        
+        setIsAddingNewCategory(false);
+        setIsAddingNewPayee(false);
+        setIsAddingNewMerchant(false);
+        setIsAddingNewLocation(false);
     };
 
     const handleEditProposed = (proposed: ReconciliationRule) => {
@@ -126,41 +145,50 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleId(null);
         
         setRuleName(proposed.name);
-        // Correctly set Logic Scope based on AI suggestion
+        // CRITICAL: Correctly hydrate the scope from the AI's proposal
         setRuleScope(proposed.scope || 'description');
         setConditions(proposed.conditions);
+        setOriginalDescription(proposed.originalDescription);
         
-        // Track proposed names for visual editing
-        setProposedNames({
-            cat: proposed.suggestedCategoryName,
-            payee: proposed.suggestedPayeeName,
-            merc: proposed.suggestedMerchantName,
-            loc: proposed.suggestedLocationName
-        });
-
-        // Hydrate selects if match exists, otherwise they stay empty (showing 'New' input)
+        // Match existing IDs or set up "New" state
         let finalCatId = proposed.setCategoryId || '';
         if (!finalCatId && proposed.suggestedCategoryName) {
             const match = categories.find(c => c.name.toLowerCase() === proposed.suggestedCategoryName?.toLowerCase());
             if (match) finalCatId = match.id;
+            else {
+                setIsAddingNewCategory(true);
+                setNewCategoryName(proposed.suggestedCategoryName);
+            }
         }
         
         let finalPayeeId = proposed.setPayeeId || '';
         if (!finalPayeeId && proposed.suggestedPayeeName) {
             const match = payees.find(p => p.name.toLowerCase() === proposed.suggestedPayeeName?.toLowerCase());
             if (match) finalPayeeId = match.id;
+            else {
+                setIsAddingNewPayee(true);
+                setNewPayeeName(proposed.suggestedPayeeName);
+            }
         }
 
         let finalMerchantId = proposed.setMerchantId || '';
         if (!finalMerchantId && proposed.suggestedMerchantName) {
             const match = merchants.find(m => m.name.toLowerCase() === proposed.suggestedMerchantName?.toLowerCase());
             if (match) finalMerchantId = match.id;
+            else {
+                setIsAddingNewMerchant(true);
+                setNewMerchantName(proposed.suggestedMerchantName);
+            }
         }
 
         let finalLocationId = proposed.setLocationId || '';
         if (!finalLocationId && proposed.suggestedLocationName) {
             const match = locations.find(l => l.name.toLowerCase() === proposed.suggestedLocationName?.toLowerCase());
             if (match) finalLocationId = match.id;
+            else {
+                setIsAddingNewLocation(true);
+                setNewLocationName(proposed.suggestedLocationName);
+            }
         }
 
         setActionCategoryId(finalCatId);
@@ -181,38 +209,33 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const handleSave = (e: React.FormEvent) => {
         e.preventDefault();
         
-        // Handle logic for auto-creating entities if they were proposed but not matched to existing IDs
+        // 1. Process potential new entities
         let finalCatId = actionCategoryId;
-        if (!finalCatId && proposedNames.cat) {
-            const cat = { id: generateUUID(), name: proposedNames.cat };
-            onSaveCategory(cat);
-            finalCatId = cat.id;
+        if (isAddingNewCategory && newCategoryName.trim()) {
+            const newCat = { id: generateUUID(), name: newCategoryName.trim() };
+            onSaveCategory(newCat);
+            finalCatId = newCat.id;
         }
 
         let finalPayeeId = actionPayeeId;
-        if (!finalPayeeId && proposedNames.payee) {
-            const p = { id: generateUUID(), name: proposedNames.payee };
-            onSavePayee(p);
-            finalPayeeId = p.id;
+        if (isAddingNewPayee && newPayeeName.trim()) {
+            const newPayee = { id: generateUUID(), name: newPayeeName.trim() };
+            onSavePayee(newPayee);
+            finalPayeeId = newPayee.id;
         }
 
         let finalMerchantId = actionMerchantId;
-        if (!finalMerchantId && proposedNames.merc) {
-            const m = { id: generateUUID(), name: proposedNames.merc };
-            onSaveMerchant(m);
-            finalMerchantId = m.id;
+        if (isAddingNewMerchant && newMerchantName.trim()) {
+            const newMerchant = { id: generateUUID(), name: newMerchantName.trim() };
+            onSaveMerchant(newMerchant);
+            finalMerchantId = newMerchant.id;
         }
 
         let finalLocationId = actionLocationId;
-        if (!finalLocationId && proposedNames.loc) {
-            const l = { 
-                id: generateUUID(), 
-                name: proposedNames.loc, 
-                city: proposedNames.loc.split(',')[0].trim(), 
-                state: proposedNames.loc.split(',')[1]?.trim() 
-            };
-            onSaveLocation(l);
-            finalLocationId = l.id;
+        if (isAddingNewLocation && newLocationName.trim()) {
+            const newLocation = { id: generateUUID(), name: newLocationName.trim() };
+            onSaveLocation(newLocation);
+            finalLocationId = newLocation.id;
         }
 
         const rule: ReconciliationRule = {
@@ -227,13 +250,16 @@ const RulesPage: React.FC<RulesPageProps> = ({
             setUserId: actionUserId || undefined,
             setTransactionTypeId: actionTypeId || undefined,
             assignTagIds: assignTagIds.size > 0 ? Array.from(assignTagIds) : undefined,
-            skipImport
+            skipImport,
+            originalDescription
         };
         
         onSaveRule(rule);
         setIsCreating(false);
+        // Fix: Use the correct state setter 'setSelectedRuleId' instead of 'setSelectedId'
         setSelectedRuleId(rule.id);
         setAiProposedRules(prev => prev.filter(p => p.name !== rule.name));
+        alert(`Rule "${rule.name}" saved and applied.`);
     };
 
     const handleAiInspect = async () => {
@@ -307,6 +333,16 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setPreviewRule(null);
         alert(`Successfully updated ${updates.length} records.`);
     };
+
+    // Use either the explicit context string from AI or the condition values
+    const sourceContextDisplay = useMemo(() => {
+        if (originalDescription) return [originalDescription];
+        
+        const descVals = conditions
+            .filter(c => c.field === 'description' && c.value)
+            .map(c => c.value);
+        return Array.from(new Set(descVals));
+    }, [conditions, originalDescription]);
 
     return (
         <div className="h-full flex flex-col gap-6">
@@ -456,15 +492,15 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             </div>
                             <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar bg-white">
                                 
-                                {conditions.some(c => c.value) && (
+                                {sourceContextDisplay.length > 0 && (
                                     <div className="bg-indigo-50/50 border-2 border-indigo-100 rounded-2xl p-4">
                                         <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                                             <InfoIcon className="w-3 h-3" /> Raw Statement Source
                                         </h4>
                                         <div className="flex flex-wrap gap-2">
-                                            {conditions.map(c => c.value && (
-                                                <span key={c.id} className="bg-white border border-indigo-200 px-3 py-1 rounded-lg font-mono text-[11px] text-slate-600 shadow-sm">
-                                                    {c.value}
+                                            {sourceContextDisplay.map((val, i) => (
+                                                <span key={i} className="bg-white border border-indigo-200 px-3 py-1 rounded-lg font-mono text-[11px] text-slate-600 shadow-sm block w-full">
+                                                    {val}
                                                 </span>
                                             ))}
                                         </div>
@@ -491,62 +527,83 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                         
                                         {/* Category Transformation */}
-                                        <div className="space-y-3">
-                                            <div className="relative">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label>
-                                                <select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.cat && !actionCategoryId ? 'border-purple-400 ring-2 ring-purple-100' : ''}`}><option value="">-- No Change --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
-                                                {proposedNames.cat && !actionCategoryId && <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-[7px] font-black px-1.5 rounded shadow-sm animate-pulse">+ NEW</span>}
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Map Category</label>
+                                                <button type="button" onClick={() => setIsAddingNewCategory(!isAddingNewCategory)} className={`text-[9px] font-black uppercase transition-colors px-1.5 py-0.5 rounded ${isAddingNewCategory ? 'bg-purple-600 text-white' : 'text-purple-600 bg-purple-50 hover:bg-purple-100'}`}>
+                                                    {isAddingNewCategory ? 'Pick Existing' : '+ Create New'}
+                                                </button>
                                             </div>
-                                            {proposedNames.cat && !actionCategoryId && (
-                                                <div className="animate-fade-in bg-purple-50 p-2 rounded-lg border border-purple-100">
-                                                    <label className="text-[8px] font-black text-purple-400 uppercase">Suggested Name</label>
-                                                    <input type="text" value={proposedNames.cat} onChange={e => setProposedNames({...proposedNames, cat: e.target.value})} className="w-full p-1 bg-transparent text-purple-700 font-bold text-xs border-none focus:ring-0" />
+                                            {isAddingNewCategory ? (
+                                                <div className="animate-fade-in bg-purple-50 p-3 rounded-xl border-2 border-purple-200">
+                                                    <input type="text" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} placeholder="New Category Name..." className="w-full p-2 bg-white text-xs font-bold border-purple-300 focus:border-purple-600 outline-none" />
+                                                    <p className="text-[8px] text-purple-400 mt-1 font-bold uppercase">Will be added to system on save</p>
                                                 </div>
+                                            ) : (
+                                                <select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs">
+                                                    <option value="">-- No Change --</option>
+                                                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                                </select>
                                             )}
                                         </div>
 
                                         {/* Payee Transformation */}
-                                        <div className="space-y-3">
-                                            <div className="relative">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Payee</label>
-                                                <select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.payee && !actionPayeeId ? 'border-blue-400 ring-2 ring-blue-100' : ''}`}><option value="">-- No Change --</option>{payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-                                                {proposedNames.payee && !actionPayeeId && <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[7px] font-black px-1.5 rounded shadow-sm animate-pulse">+ NEW</span>}
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Assign Payee</label>
+                                                <button type="button" onClick={() => setIsAddingNewPayee(!isAddingNewPayee)} className={`text-[9px] font-black uppercase transition-colors px-1.5 py-0.5 rounded ${isAddingNewPayee ? 'bg-blue-600 text-white' : 'text-blue-600 bg-blue-50 hover:bg-blue-100'}`}>
+                                                    {isAddingNewPayee ? 'Pick Existing' : '+ Create New'}
+                                                </button>
                                             </div>
-                                            {proposedNames.payee && !actionPayeeId && (
-                                                <div className="animate-fade-in bg-blue-50 p-2 rounded-lg border border-blue-100">
-                                                    <label className="text-[8px] font-black text-blue-400 uppercase">Suggested Name</label>
-                                                    <input type="text" value={proposedNames.payee} onChange={e => setProposedNames({...proposedNames, payee: e.target.value})} className="w-full p-1 bg-transparent text-blue-700 font-bold text-xs border-none focus:ring-0" />
+                                            {isAddingNewPayee ? (
+                                                <div className="animate-fade-in bg-blue-50 p-3 rounded-xl border-2 border-blue-200">
+                                                    <input type="text" value={newPayeeName} onChange={e => setNewPayeeName(e.target.value)} placeholder="New Payee Name..." className="w-full p-2 bg-white text-xs font-bold border-blue-300 focus:border-blue-600 outline-none" />
                                                 </div>
+                                            ) : (
+                                                <select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs">
+                                                    <option value="">-- No Change --</option>
+                                                    {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
                                             )}
                                         </div>
 
                                         {/* Merchant Transformation */}
-                                        <div className="space-y-3">
-                                            <div className="relative">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Merchant</label>
-                                                <select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.merc && !actionMerchantId ? 'border-orange-400 ring-2 ring-orange-100' : ''}`}><option value="">-- No Change --</option>{merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select>
-                                                {proposedNames.merc && !actionMerchantId && <span className="absolute -top-1 -right-1 bg-orange-600 text-white text-[7px] font-black px-1.5 rounded shadow-sm animate-pulse">+ NEW</span>}
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Assign Merchant</label>
+                                                <button type="button" onClick={() => setIsAddingNewMerchant(!isAddingNewMerchant)} className={`text-[9px] font-black uppercase transition-colors px-1.5 py-0.5 rounded ${isAddingNewMerchant ? 'bg-orange-600 text-white' : 'text-orange-600 bg-orange-50 hover:bg-orange-100'}`}>
+                                                    {isAddingNewMerchant ? 'Pick Existing' : '+ Create New'}
+                                                </button>
                                             </div>
-                                            {proposedNames.merc && !actionMerchantId && (
-                                                <div className="animate-fade-in bg-orange-50 p-2 rounded-lg border border-orange-100">
-                                                    <label className="text-[8px] font-black text-orange-400 uppercase">Suggested Name</label>
-                                                    <input type="text" value={proposedNames.merc} onChange={e => setProposedNames({...proposedNames, merc: e.target.value})} className="w-full p-1 bg-transparent text-orange-700 font-bold text-xs border-none focus:ring-0" />
+                                            {isAddingNewMerchant ? (
+                                                <div className="animate-fade-in bg-orange-50 p-3 rounded-xl border-2 border-orange-200">
+                                                    <input type="text" value={newMerchantName} onChange={e => setNewMerchantName(e.target.value)} placeholder="New Merchant Name..." className="w-full p-2 bg-white text-xs font-bold border-orange-300 focus:border-orange-600 outline-none" />
                                                 </div>
+                                            ) : (
+                                                <select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs">
+                                                    <option value="">-- No Change --</option>
+                                                    {merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                                </select>
                                             )}
                                         </div>
 
                                         {/* Location Transformation */}
-                                        <div className="space-y-3">
-                                            <div className="relative">
-                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label>
-                                                <select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className={`w-full p-2.5 border rounded-xl font-bold bg-white text-xs ${proposedNames.loc && !actionLocationId ? 'border-emerald-400 ring-2 ring-emerald-100' : ''}`}><option value="">-- No Change --</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>
-                                                {proposedNames.loc && !actionLocationId && <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[7px] font-black px-1.5 rounded shadow-sm animate-pulse">+ NEW</span>}
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pin Location</label>
+                                                <button type="button" onClick={() => setIsAddingNewLocation(!isAddingNewLocation)} className={`text-[9px] font-black uppercase transition-colors px-1.5 py-0.5 rounded ${isAddingNewLocation ? 'bg-emerald-600 text-white' : 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100'}`}>
+                                                    {isAddingNewLocation ? 'Pick Existing' : '+ Create New'}
+                                                </button>
                                             </div>
-                                            {proposedNames.loc && !actionLocationId && (
-                                                <div className="animate-fade-in bg-emerald-50 p-2 rounded-lg border border-emerald-100">
-                                                    <label className="text-[8px] font-black text-emerald-400 uppercase">Suggested Name</label>
-                                                    <input type="text" value={proposedNames.loc} onChange={e => setProposedNames({...proposedNames, loc: e.target.value})} className="w-full p-1 bg-transparent text-emerald-700 font-bold text-xs border-none focus:ring-0" />
+                                            {isAddingNewLocation ? (
+                                                <div className="animate-fade-in bg-emerald-50 p-3 rounded-xl border-2 border-emerald-200">
+                                                    <input type="text" value={newLocationName} onChange={e => setNewLocationName(e.target.value)} placeholder="New Location (City, ST)..." className="w-full p-2 bg-white text-xs font-bold border-emerald-300 focus:border-emerald-600 outline-none" />
                                                 </div>
+                                            ) : (
+                                                <select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs">
+                                                    <option value="">-- No Change --</option>
+                                                    {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                                </select>
                                             )}
                                         </div>
 

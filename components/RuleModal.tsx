@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleCondition, Tag, Merchant, Location, User } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, CheckCircleIcon, BoxIcon, MapPinIcon, UserGroupIcon } from './Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, CheckCircleIcon, BoxIcon, MapPinIcon, UserGroupIcon, InfoIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
 
@@ -30,6 +30,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
     
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
+    const [originalDescription, setOriginalDescription] = useState<string | undefined>(undefined);
     
     // Actions
     const [setCategoryId, setSetCategoryId] = useState('');
@@ -45,6 +46,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
         if (isOpen) {
             if (transaction) {
                 setName(`${transaction.description} Rule`);
+                setOriginalDescription(transaction.originalDescription || transaction.description);
                 const newConditions: RuleCondition[] = [
                     { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: transaction.description, nextLogic: 'AND' }
                 ];
@@ -63,6 +65,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 setSkipImport(false);
             } else {
                 setName('');
+                setOriginalDescription(undefined);
                 setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
                 setSetCategoryId('');
                 setSetPayeeId('');
@@ -109,6 +112,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
             id: generateUUID(),
             name: name.trim(),
             conditions,
+            originalDescription,
             setCategoryId: setCategoryId || undefined,
             setPayeeId: setPayeeId || undefined,
             setMerchantId: setMerchantId || undefined,
@@ -139,6 +143,15 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 </div>
                 
                  <form onSubmit={handleSave} className="p-8 space-y-8 overflow-y-auto bg-slate-50/50">
+                    {originalDescription && (
+                        <div className="bg-indigo-50 border-2 border-indigo-100 p-4 rounded-2xl">
+                             <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                <InfoIcon className="w-3 h-3" /> Raw Statement Source
+                             </h4>
+                             <p className="text-xs font-mono text-slate-600 bg-white p-2 rounded-lg border border-indigo-100">{originalDescription}</p>
+                        </div>
+                    )}
+
                     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Identity</label>
                         <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Friendly name for this pattern..." className="w-full p-3 border-2 border-slate-100 rounded-xl focus:border-indigo-500 focus:ring-0 transition-all font-bold text-slate-800 text-lg" required />

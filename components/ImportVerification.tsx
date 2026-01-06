@@ -1,9 +1,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag, Merchant, Location } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon } from './Icons';
+import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag, Merchant, Location, SystemSettings } from '../types';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, LightBulbIcon, EditIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
+import { getRuleSignature, applyRulesToTransactions } from '../services/ruleService';
+import { generateRulesFromData } from '../services/geminiService';
 import RuleModal from './RuleModal';
+import { generateUUID } from '../utils';
 
 type VerifiableTransaction = RawTransaction & { 
     categoryId: string; 
@@ -31,6 +34,7 @@ interface ImportVerificationProps {
     onAddTransactionType: (type: TransactionType) => void;
     existingTransactions: Transaction[];
     rules: ReconciliationRule[];
+    systemSettings?: SystemSettings;
 }
 
 type SortKey = 'date' | 'description' | 'payeeId' | 'categoryId' | 'amount' | '';
@@ -137,7 +141,7 @@ const RuleInspectorDrawer: React.FC<{
                                     <span className="text-xs text-slate-400 block">Append Taxonomy Tags</span>
                                     <div className="flex flex-wrap gap-1">
                                         {rule.assignTagIds.map(tid => (
-                                            <span key={tid} className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[8px] font-black uppercase tracking-widest">{getTagName(tid)}</span>
+                                            <span key={tid} className={`px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[8px] font-black uppercase tracking-widest`}>{getTagName(tid)}</span>
                                         ))}
                                     </div>
                                 </div>
@@ -151,7 +155,7 @@ const RuleInspectorDrawer: React.FC<{
 };
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
-    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, merchants, locations, users, tags, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, existingTransactions, rules
+    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, merchants, locations, users, tags, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, existingTransactions, rules, systemSettings
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [sortKey, setSortKey] = useState<SortKey>('date');
@@ -160,6 +164,12 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const [inspectedRule, setInspectedRule] = useState<ReconciliationRule | null>(null);
     const [ruleContextTx, setRuleContextTx] = useState<VerifiableTransaction | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    // Bulk AI Forge State
+    const [isAiForgeOpen, setIsAiForgeOpen] = useState(false);
+    const [isAiGenerating, setIsAiGenerating] = useState(false);
+    const [aiProposedRules, setAiProposedRules] = useState<(ReconciliationRule & { isExcluded?: boolean })[]>([]);
+    const [skippedDuplicateCount, setSkippedDuplicateCount] = useState(0);
 
     // Inline Rule Creator State
     const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
@@ -213,11 +223,76 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setIsRuleModalOpen(true);
     };
 
+    // --- Bulk AI Forge Logic ---
+    const handleSmartGenerate = async () => {
+        setIsAiGenerating(true);
+        setSkippedDuplicateCount(0);
+        try {
+            // Sample data from current import (desc, amount, etc.)
+            const sample = transactions.filter(t => !t.isIgnored).slice(0, 50).map(t => `${t.date},${t.description},${t.amount}`).join('\n');
+            const proposed = await generateRulesFromData(sample, categories, payees, merchants, locations, users, "Create normalizing rules for this data batch.", systemSettings);
+            
+            const existingSignatures = new Set(rules.map(r => getRuleSignature(r)));
+            
+            const uniqueProposed: (ReconciliationRule & { isExcluded?: boolean })[] = [];
+            let duplicates = 0;
+
+            proposed.forEach(p => {
+                if (existingSignatures.has(getRuleSignature(p))) {
+                    duplicates++;
+                } else {
+                    uniqueProposed.push({ ...p, isExcluded: false });
+                }
+            });
+
+            setAiProposedRules(uniqueProposed);
+            setSkippedDuplicateCount(duplicates);
+            setIsAiForgeOpen(true);
+        } catch (e: any) {
+            alert(e.message || "AI logic generation failed.");
+        } finally {
+            setIsAiGenerating(false);
+        }
+    };
+
+    const toggleRuleExclusion = (ruleId: string) => {
+        setAiProposedRules(prev => prev.map(r => r.id === ruleId ? { ...r, isExcluded: !r.isExcluded } : r));
+    };
+
+    const handleAcceptAllRules = () => {
+        const toSave = aiProposedRules.filter(r => !r.isExcluded);
+        if (toSave.length === 0) { setIsAiForgeOpen(false); return; }
+
+        toSave.forEach(rule => {
+            const finalRule = { ...rule, isAiDraft: false };
+            // Auto-resolve new entity creation if possible
+            if (rule.suggestedCategoryName && !rule.setCategoryId) {
+                const existing = categories.find(c => c.name.toLowerCase() === rule.suggestedCategoryName?.toLowerCase());
+                if (existing) finalRule.setCategoryId = existing.id;
+                else {
+                    const cat = { id: generateUUID(), name: rule.suggestedCategoryName };
+                    onSaveCategory(cat);
+                    finalRule.setCategoryId = cat.id;
+                }
+            }
+            onSaveRule(finalRule);
+        });
+
+        // Eagerly re-apply new rules to current verification batch
+        const allRules = [...rules, ...toSave];
+        const refreshedTxs = applyRulesToTransactions(transactions, allRules, accounts);
+        setTransactions(refreshedTxs as VerifiableTransaction[]);
+
+        setAiProposedRules([]);
+        setIsAiForgeOpen(false);
+        alert(`Successfully committed ${toSave.length} new automation rules.`);
+    };
+
     const sortedPayeeOptions = useMemo(() => [...payees].sort((a,b) => a.name.localeCompare(b.name)), [payees]);
     const sortedCategoryOptions = useMemo(() => [...categories].sort((a,b) => a.name.localeCompare(b.name)), [categories]);
 
     return (
-        <div className="space-y-4 flex flex-col h-full w-full min-h-0 overflow-hidden">
+        <div className="space-y-4 flex flex-col h-full w-full min-h-0 overflow-hidden relative">
             <div className="p-5 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 flex-shrink-0 shadow-sm">
                 <div className="flex items-center gap-4">
                     <div className="p-3 bg-indigo-50 rounded-xl">
@@ -229,10 +304,84 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     </div>
                 </div>
                 <div className="flex gap-3 w-full sm:w-auto">
-                    <button onClick={onCancel} className="flex-1 sm:flex-none px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Discard</button>
-                    <button onClick={() => onComplete(transactions.filter(t => !t.isIgnored))} className="flex-1 sm:flex-none px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all">Finalize Import</button>
+                    <button 
+                        onClick={handleSmartGenerate} 
+                        disabled={isAiGenerating || transactions.length === 0}
+                        className="flex items-center gap-2 px-6 py-2.5 bg-indigo-50 text-indigo-700 font-black rounded-xl hover:bg-indigo-100 transition-all shadow-sm disabled:opacity-50"
+                    >
+                        {isAiGenerating ? <div className="w-4 h-4 border-2 border-t-indigo-600 rounded-full animate-spin" /> : <SparklesIcon className="w-4 h-4" />}
+                        Smart Generate Rules
+                    </button>
+                    <div className="h-10 w-px bg-slate-200 mx-1 hidden sm:block" />
+                    <button onClick={onCancel} className="px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Discard</button>
+                    <button onClick={() => onComplete(transactions.filter(t => !t.isIgnored))} className="px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all">Finalize Import</button>
                 </div>
             </div>
+
+            {/* AI FORGE OVERLAY (Inside Verification) */}
+            {isAiForgeOpen && (
+                <div className="bg-indigo-900 text-white p-6 rounded-3xl shadow-2xl animate-fade-in flex flex-col gap-6 max-h-[400px] overflow-hidden">
+                    <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                        <div className="flex items-center gap-3">
+                            <RobotIcon className="w-8 h-8 text-indigo-400" />
+                            <div>
+                                <h3 className="text-xl font-bold">Suggested Automations</h3>
+                                <p className="text-indigo-300 text-xs font-medium">Batch logic synthesized from current statement rows.</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            {skippedDuplicateCount > 0 && (
+                                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-white/5 px-2 py-1 rounded">
+                                    {skippedDuplicateCount} existing rules skipped
+                                </span>
+                            )}
+                            <button onClick={handleAcceptAllRules} className="px-8 py-2.5 bg-white text-indigo-900 font-black rounded-xl shadow-lg hover:bg-indigo-50 transition-all flex items-center gap-2 text-xs uppercase tracking-wider">
+                                <CheckCircleIcon className="w-4 h-4" />
+                                Accept {aiProposedRules.filter(r => !r.isExcluded).length} Selected
+                            </button>
+                            <button onClick={() => setIsAiForgeOpen(false)} className="p-2 hover:bg-white/10 rounded-full"><CloseIcon className="w-6 h-6" /></button>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-x-auto pb-2 custom-scrollbar flex gap-4">
+                        {aiProposedRules.length === 0 ? (
+                            <div className="flex-1 flex flex-col items-center justify-center text-indigo-400/50 italic py-10">
+                                <LightBulbIcon className="w-10 h-10 mb-2 opacity-20" />
+                                <p>No new automation patterns detected for this batch.</p>
+                            </div>
+                        ) : (
+                            aiProposedRules.map(r => (
+                                <div key={r.id} className={`w-80 flex-shrink-0 bg-white/5 border-2 rounded-2xl p-4 transition-all relative group ${r.isExcluded ? 'border-transparent opacity-40 grayscale' : 'border-white/10 hover:border-indigo-400 hover:bg-white/10'}`}>
+                                    <div className="flex justify-between items-start mb-3">
+                                        <div className="min-w-0 flex-1">
+                                            <h4 className="text-sm font-bold truncate pr-2">{r.name}</h4>
+                                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{r.scope}</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => toggleRuleExclusion(r.id)} 
+                                            className={`p-1.5 rounded-lg transition-colors ${r.isExcluded ? 'bg-red-600 text-white' : 'text-white/40 hover:text-white hover:bg-white/10'}`}
+                                            title={r.isExcluded ? 'Include in Bulk' : 'Exclude from Bulk'}
+                                        >
+                                            <SlashIcon className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <div className="space-y-1.5 mb-4">
+                                        {(r.conditions || []).map((c, i) => (
+                                            <div key={i} className="text-[10px] bg-black/20 p-1.5 rounded border border-white/5">
+                                                <span className="text-indigo-400 font-bold uppercase">{c.operator}</span> "{c.value}"
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 mt-auto">
+                                        {r.suggestedCategoryName && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-purple-500/30 text-purple-200 border border-purple-500/20">Set: {r.suggestedCategoryName}</span>}
+                                        {r.suggestedMerchantName && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-orange-500/30 text-orange-200 border border-orange-500/20">Merchant: {r.suggestedMerchantName}</span>}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
 
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
                 <div className="overflow-auto flex-1 custom-scrollbar min-h-0">

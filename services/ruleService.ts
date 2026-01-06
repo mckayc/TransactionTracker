@@ -1,6 +1,28 @@
 
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
+/**
+ * Generates a stable signature for a rule based on its logic and effects.
+ * Used to detect duplicate rules.
+ */
+export const getRuleSignature = (rule: ReconciliationRule): string => {
+    const conditions = (rule.conditions || [])
+        .map(c => `${c.field}:${c.operator}:${String(c.value).toLowerCase()}`)
+        .sort()
+        .join('|');
+    
+    const actions = [
+        rule.setCategoryId,
+        rule.setPayeeId,
+        rule.setMerchantId,
+        rule.setLocationId,
+        rule.setUserId,
+        rule.skipImport ? 'skip' : 'keep'
+    ].filter(Boolean).join(',');
+
+    return `${rule.scope || 'description'}@${conditions}@${actions}`;
+};
+
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
     let txValue: any;
     
@@ -94,7 +116,7 @@ export const applyRulesToTransactions = (
   rawTransactions: RawTransaction[],
   rules: ReconciliationRule[],
   accounts: Account[] = []
-): (RawTransaction & { categoryId?: string; isIgnored?: boolean })[] => {
+): (RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string })[] => {
   if (!rules || rules.length === 0) {
     return rawTransactions;
   }

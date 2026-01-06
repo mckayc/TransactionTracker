@@ -133,6 +133,7 @@ export interface ReconciliationRule {
     skipImport?: boolean;
     isAiDraft?: boolean;
     priority?: number;
+    originalDescription?: string;
     // Fields for AI-suggested entities that don't exist yet
     suggestedCategoryName?: string;
     suggestedPayeeName?: string;
