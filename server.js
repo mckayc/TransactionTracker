@@ -19,7 +19,7 @@ const DB_PATH = path.join(DATA_DIR, 'database.sqlite');
 
 const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'dist')) 
     ? path.join(__dirname, 'dist') 
-    : path.join(__dirname, 'public');
+    : __dirname; // Fallback to root if dist doesn't exist (useful for some dev environments)
 
 app.use(express.json({ limit: '100mb' }));
 app.use('/api/files', express.raw({ type: '*/*', limit: '100mb' }));
@@ -326,6 +326,14 @@ app.post('/api/data/:key', (req, res) => {
     }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Serve Static Files for Frontend
+app.use(express.static(PUBLIC_DIR));
+
+// Catch-all route to serve index.html for client-side routing
+app.get('*', (req, res) => {
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 app.listen(PORT, '0.0.0.0', () => console.log(`[SYS] Server running on port ${PORT}`));

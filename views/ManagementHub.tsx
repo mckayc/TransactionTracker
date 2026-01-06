@@ -54,6 +54,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
     const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
+    // Form states
     const [name, setName] = useState('');
     const [parentId, setParentId] = useState('');
     const [color, setColor] = useState('bg-slate-100 text-slate-800');
@@ -315,7 +316,9 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                                     {impact === 'inflow' && <TrendingUpIcon className="w-6 h-6" />}
                                                     {impact === 'outflow' && <TrendingUpIcon className="w-6 h-6 transform rotate-180" />}
                                                     {impact === 'neutral' && <RepeatIcon className="w-6 h-6" />}
-                                                    <span className="text-[10px] font-black uppercase tracking-widest">{impact === 'inflow' ? 'Earnings (Inflow)' : impact === 'outflow' ? 'Loss (Outflow)' : 'Neutral (Internal)'}</span>
+                                                    <span className="text-[10px] font-black uppercase tracking-widest">
+                                                        {impact === 'inflow' ? 'Earnings' : impact === 'outflow' ? 'Loss' : 'Neutral'}
+                                                    </span>
                                                 </button>
                                             ))}
                                         </div>
