@@ -30,7 +30,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
     // Initial greeting when opened
     useEffect(() => {
         if(isOpen && messages.length === 0) {
-             setMessages([{ role: 'ai', content: "Hello! How can I help you analyze your finances today? You can ask things like 'How much did I spend on groceries this month?' or 'What are my top 3 expense categories?'" }]);
+             setMessages([{ role: 'ai', content: "Hello! I'm your financial assistant. How can I help you analyze your data today?" }]);
         }
     }, [isOpen]);
 
@@ -61,15 +61,13 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
                 }
             }
         } catch (error: any) {
-            console.error("Chatbot Analysis Error Detail:", error);
+            console.error("Chatbot Analysis Error:", error);
             
-            let errorMsg = "I'm having trouble analyzing your data.";
-            if (error.message?.includes("413") || error.message?.includes("Payload Too Large")) {
-                errorMsg = "Your transaction history is too large to send in a single request. Try narrowing your search or asking about recent activity.";
-            } else if (error.message?.includes("403") || error.message?.includes("API key")) {
-                errorMsg = "Your API Key appears to be invalid or restricted. Please check your settings.";
-            } else if (error.message?.includes("500")) {
-                errorMsg = "Google's AI servers encountered an error. Please try again in a few moments.";
+            let errorMsg = "I'm having trouble connecting to the AI brain.";
+            if (error.message?.includes("429")) {
+                errorMsg = "The AI is currently at its limit (Quota exceeded). Please wait a minute and try again.";
+            } else if (error.message?.includes("403")) {
+                errorMsg = "Invalid API Key. Please verify your environment setup.";
             }
 
             const errorMessage: Message = { 
@@ -137,9 +135,8 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
                         className="flex-1"
                         disabled={isLoading}
                         autoFocus
-                        aria-label="Chat input"
                     />
-                    <button onClick={handleSend} disabled={isLoading || !input.trim()} className="bg-indigo-600 text-white rounded-lg p-3 disabled:bg-slate-400 hover:bg-indigo-700 transition-colors" aria-label="Send message">
+                    <button onClick={handleSend} disabled={isLoading || !input.trim()} className="bg-indigo-600 text-white rounded-lg p-3 disabled:bg-slate-400 hover:bg-indigo-700 transition-colors">
                         <SendIcon className="w-5 h-5"/>
                     </button>
                 </div>
