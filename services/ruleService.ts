@@ -47,14 +47,12 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
         }
     } else if (condition.field === 'accountId') {
         const txAccountId = tx.accountId || '';
-        
         if (condition.operator === 'equals') {
             return txAccountId === String(condition.value);
         } else {
             const account = accounts.find(a => a.id === txAccountId);
             const accountName = (account?.name || '').toLowerCase();
             const condValue = String(condition.value || '').toLowerCase();
-            
             if (condition.operator === 'contains') return accountName.includes(condValue);
             if (condition.operator === 'does_not_contain') return !accountName.includes(condValue);
             return false;
@@ -66,7 +64,6 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
 const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule, accounts: Account[]): boolean => {
     if (rule.conditions && rule.conditions.length > 0) {
         const validConditions = rule.conditions.filter(c => 'field' in c) as RuleCondition[];
-        
         if (validConditions.length === 0) return true;
 
         let result = evaluateCondition(tx, validConditions[0], accounts);
@@ -75,16 +72,10 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule,
             const currentCond = validConditions[i];
             const nextCond = validConditions[i + 1];
             const logic = currentCond.nextLogic || 'AND';
-
             const nextResult = evaluateCondition(tx, nextCond, accounts);
-
-            if (logic === 'AND') {
-                result = result && nextResult;
-            } else {
-                result = result || nextResult;
-            }
+            if (logic === 'AND') result = result && nextResult;
+            else result = result || nextResult;
         }
-        
         return result;
     }
     return true;
@@ -95,41 +86,24 @@ export const applyRulesToTransactions = (
   rules: ReconciliationRule[],
   accounts: Account[] = []
 ): (RawTransaction & { categoryId?: string; isIgnored?: boolean })[] => {
-  if (!rules || rules.length === 0) {
-    return rawTransactions;
-  }
+  if (!rules || rules.length === 0) return rawTransactions;
 
-  // Reverse rules to ensure newest logic (like one just created via "Save & Apply") 
-  // takes precedence in a first-match scenario.
   const prioritizedRules = [...rules].reverse();
 
   return rawTransactions.map(tx => {
-    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string; typeId?: string } = { ...tx };
+    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string; typeId?: string; flowDesignationId?: string } = { ...tx };
     
     for (const rule of prioritizedRules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
         modifiedTx.appliedRuleId = rule.id;
-        if (rule.skipImport) {
-            modifiedTx.isIgnored = true;
-        }
-        if (rule.setCategoryId) {
-          modifiedTx.categoryId = rule.setCategoryId;
-        }
-        if (rule.setPayeeId) {
-          modifiedTx.payeeId = rule.setPayeeId;
-        }
-        if (rule.setMerchantId) {
-          modifiedTx.merchantId = rule.setMerchantId;
-        }
-        if (rule.setLocationId) {
-          modifiedTx.locationId = rule.setLocationId;
-        }
-        if (rule.setUserId) {
-          modifiedTx.userId = rule.setUserId;
-        }
-        if (rule.setTransactionTypeId) {
-          modifiedTx.typeId = rule.setTransactionTypeId;
-        }
+        if (rule.skipImport) modifiedTx.isIgnored = true;
+        if (rule.setCategoryId) modifiedTx.categoryId = rule.setCategoryId;
+        if (rule.setPayeeId) modifiedTx.payeeId = rule.setPayeeId;
+        if (rule.setMerchantId) modifiedTx.merchantId = rule.setMerchantId;
+        if (rule.setLocationId) modifiedTx.locationId = rule.setLocationId;
+        if (rule.setUserId) modifiedTx.userId = rule.setUserId;
+        if (rule.setTransactionTypeId) modifiedTx.typeId = rule.setTransactionTypeId;
+        if (rule.setFlowDesignationId) modifiedTx.flowDesignationId = rule.setFlowDesignationId;
 
         if (rule.assignTagIds && rule.assignTagIds.length > 0) {
             const currentTags = new Set(modifiedTx.tagIds || []);
@@ -139,7 +113,6 @@ export const applyRulesToTransactions = (
         return modifiedTx;
       }
     }
-    
     return modifiedTx;
   });
 };
@@ -156,44 +129,22 @@ export const findMatchingTransactions = (
       const updatedTx = { ...tx };
       let changed = false;
 
-      if (rule.setCategoryId && updatedTx.categoryId !== rule.setCategoryId) {
-        updatedTx.categoryId = rule.setCategoryId;
-        changed = true;
-      }
-      if (rule.setPayeeId && updatedTx.payeeId !== rule.setPayeeId) {
-        updatedTx.payeeId = rule.setPayeeId;
-        changed = true;
-      }
-      if (rule.setMerchantId && updatedTx.merchantId !== rule.setMerchantId) {
-        updatedTx.merchantId = rule.setMerchantId;
-        changed = true;
-      }
-      if (rule.setLocationId && updatedTx.locationId !== rule.setLocationId) {
-        updatedTx.locationId = rule.setLocationId;
-        changed = true;
-      }
-      if (rule.setUserId && updatedTx.userId !== rule.setUserId) {
-        updatedTx.userId = rule.setUserId;
-        changed = true;
-      }
-      if (rule.setTransactionTypeId && updatedTx.typeId !== rule.setTransactionTypeId) {
-        updatedTx.typeId = rule.setTransactionTypeId;
-        changed = true;
-      }
+      if (rule.setCategoryId && updatedTx.categoryId !== rule.setCategoryId) { updatedTx.categoryId = rule.setCategoryId; changed = true; }
+      if (rule.setPayeeId && updatedTx.payeeId !== rule.setPayeeId) { updatedTx.payeeId = rule.setPayeeId; changed = true; }
+      if (rule.setMerchantId && updatedTx.merchantId !== rule.setMerchantId) { updatedTx.merchantId = rule.setMerchantId; changed = true; }
+      if (rule.setLocationId && updatedTx.locationId !== rule.setLocationId) { updatedTx.locationId = rule.setLocationId; changed = true; }
+      if (rule.setUserId && updatedTx.userId !== rule.setUserId) { updatedTx.userId = rule.setUserId; changed = true; }
+      if (rule.setTransactionTypeId && updatedTx.typeId !== rule.setTransactionTypeId) { updatedTx.typeId = rule.setTransactionTypeId; changed = true; }
+      if (rule.setFlowDesignationId && updatedTx.flowDesignationId !== rule.setFlowDesignationId) { updatedTx.flowDesignationId = rule.setFlowDesignationId; changed = true; }
+      
       if (rule.assignTagIds && rule.assignTagIds.length > 0) {
           const originalTagSet = new Set(updatedTx.tagIds || []);
           const newTagSet = new Set(updatedTx.tagIds || []);
           rule.assignTagIds.forEach(id => newTagSet.add(id));
-          
-          if (newTagSet.size > originalTagSet.size) {
-              updatedTx.tagIds = Array.from(newTagSet);
-              changed = true;
-          }
+          if (newTagSet.size > originalTagSet.size) { updatedTx.tagIds = Array.from(newTagSet); changed = true; }
       }
       
-      if (changed) {
-        matchedPairs.push({ original: tx, updated: updatedTx });
-      }
+      if (changed) matchedPairs.push({ original: tx, updated: updatedTx });
     }
   });
 

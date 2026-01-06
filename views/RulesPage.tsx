@@ -1,6 +1,7 @@
 
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User, RuleImportDraft } from '../types';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User, RuleImportDraft, FlowDesignation } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon, ChevronDownIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, CloudArrowUpIcon, InfoIcon, ShieldCheckIcon, TagIcon, WrenchIcon, UsersIcon, UserGroupIcon, DownloadIcon, TrashIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import RuleModal from '../components/RuleModal';
@@ -9,6 +10,7 @@ import { parseRulesFromFile, parseRulesFromLines } from '../services/csvParserSe
 import RuleImportVerification from '../components/RuleImportVerification';
 import RulePreviewModal from '../components/RulePreviewModal';
 
+/* Added flowDesignations to RulesPageProps to resolve IntrinsicAttributes error in App.tsx */
 interface RulesPageProps {
     rules: ReconciliationRule[];
     onSaveRule: (rule: ReconciliationRule) => void;
@@ -16,6 +18,7 @@ interface RulesPageProps {
     onDeleteRule: (ruleId: string) => void;
     accounts: Account[];
     transactionTypes: TransactionType[];
+    flowDesignations: FlowDesignation[];
     categories: Category[];
     tags: Tag[];
     payees: Payee[];
@@ -46,8 +49,9 @@ const RULE_DOMAINS = [
     { id: 'metadata', label: 'Extraction Hints', icon: <RobotIcon className="w-4 h-4" /> },
 ];
 
+/* Destructured flowDesignations from props to resolve missing property error */
 const RulesPage: React.FC<RulesPageProps> = ({ 
-    rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSavePayee, onSavePayees, onSaveMerchant, onSaveMerchants, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser 
+    rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, flowDesignations, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSavePayee, onSavePayees, onSaveMerchant, onSaveMerchants, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser 
 }) => {
     const [selectedDomain, setSelectedDomain] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -195,7 +199,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 mappingStatus: {
                     category: cat ? 'match' : (r.suggestedCategoryName ? 'create' : 'none'),
                     payee: pay ? 'match' : (r.suggestedPayeeName ? 'create' : 'none'),
-                    merchant: mer ? 'match' : (r.suggestedMerchantName ? 'create' : 'none'),
+                    merchant: merch ? 'match' : (r.suggestedMerchantName ? 'create' : 'none'),
                     location: loc ? 'match' : (r.suggestedLocationName ? 'create' : 'none'),
                     type: typ ? 'match' : (r.suggestedTypeName ? 'create' : 'none')
                 }
@@ -294,22 +298,22 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <div 
                                     key={r.id} 
                                     onClick={() => setSelectedRuleId(r.id)}
-                                    className={`p-3 rounded-xl cursor-pointer border transition-all flex items-center gap-3 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-400' : 'bg-white border-transparent hover:bg-slate-50'} ${selectedRuleIds.has(r.id) ? 'ring-1 ring-indigo-200' : ''}`}
+                                    className={`p-3 rounded-xl cursor-pointer flex justify-between items-center transition-all border-2 ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'} ${selectedRuleIds.has(r.id) ? 'ring-1 ring-indigo-200' : ''}`}
                                 >
-                                    <input 
-                                        type="checkbox" 
-                                        checked={selectedRuleIds.has(r.id)} 
-                                        onClick={(e) => { e.stopPropagation(); toggleRuleSelection(r.id); }}
-                                        onChange={() => {}}
-                                        className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 cursor-pointer"
-                                    />
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex justify-between items-center">
-                                            <span className={`text-xs font-bold truncate ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-700'}`}>{r.name}</span>
-                                            <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete rule?')) onDeleteRule(r.id); }} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-opacity"><DeleteIcon className="w-3.5 h-3.5" /></button>
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectedRuleIds.has(r.id)} 
+                                            onClick={(e) => { e.stopPropagation(); toggleRuleSelection(r.id); }}
+                                            onChange={() => {}}
+                                            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0 cursor-pointer"
+                                        />
+                                        <div className="min-w-0">
+                                            <span className={`text-xs font-bold truncate block ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-700'}`}>{r.name}</span>
+                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{RULE_DOMAINS.find(d => d.id === r.ruleCategory)?.label || 'General'}</p>
                                         </div>
-                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{RULE_DOMAINS.find(d => d.id === r.ruleCategory)?.label || 'General'}</p>
                                     </div>
+                                    <button onClick={(e) => { e.stopPropagation(); if(confirm('Delete rule?')) onDeleteRule(r.id); }} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-opacity p-1.5"><DeleteIcon className="w-3.5 h-3.5" /></button>
                                 </div>
                             ))
                         )}
@@ -402,6 +406,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             </div>
 
             {/* SHARED ARCHITECT MODAL */}
+            {/* Added flowDesignations and removed extraneous onSave... props to fix type mismatch with RuleModalProps */}
             <RuleModal 
                 isOpen={isArchitectOpen}
                 onClose={() => { setIsArchitectOpen(false); setArchitectContextRule(null); }}
@@ -409,16 +414,13 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 existingRule={architectContextRule}
                 accounts={accounts}
                 transactionTypes={transactionTypes}
+                flowDesignations={flowDesignations}
                 categories={categories}
                 tags={tags}
                 payees={payees}
                 merchants={merchants}
                 locations={locations}
                 users={users}
-                onSaveCategory={onSaveCategory}
-                onSavePayee={onSavePayee}
-                onSaveTag={onSaveTag}
-                onAddTransactionType={onAddTransactionType}
             />
 
             {/* DRY RUN MODAL */}

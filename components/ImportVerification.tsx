@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag, Merchant, Location } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon } from './Icons';
+import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, BalanceEffect, ReconciliationRule, Tag, Merchant, Location, FlowDesignation } from '../types';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, RepeatIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
 import RuleModal from './RuleModal';
@@ -14,13 +14,13 @@ type VerifiableTransaction = RawTransaction & {
 };
 
 interface ImportVerificationProps {
-    // rawTransactions should be the pure output from the parser
     rawTransactions: RawTransaction[];
     onComplete: (verifiedTransactions: (RawTransaction & { categoryId: string })[]) => void;
     onCancel: () => void;
     accounts: Account[];
     categories: Category[];
     transactionTypes: TransactionType[];
+    flowDesignations: FlowDesignation[];
     payees: Payee[];
     merchants: Merchant[];
     locations: Location[];
@@ -38,235 +38,93 @@ interface ImportVerificationProps {
 type SortKey = 'date' | 'description' | 'payeeId' | 'categoryId' | 'amount' | '';
 type SortDirection = 'asc' | 'desc';
 
-const MetadataDrawer: React.FC<{ tx: VerifiableTransaction | null; onClose: () => void; }> = ({ tx, onClose }) => {
-    if (!tx || !tx.metadata) return null;
-    return (
-        <div className="fixed inset-0 z-[100] flex justify-end">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative w-full max-w-md bg-slate-900 shadow-2xl flex flex-col h-full animate-slide-in-right">
-                <div className="p-6 border-b border-white/10 bg-slate-800 flex justify-between items-center">
-                    <div>
-                        <h3 className="text-xl font-bold text-white">Line Inspector</h3>
-                        <p className="text-xs text-slate-400 mt-1 uppercase font-bold">Raw Source Data</p>
-                    </div>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
-                    {Object.entries(tx.metadata).map(([k, v]) => (
-                        <div key={k} className="bg-white/5 border border-white/5 rounded-xl p-4">
-                            <p className="text-[10px] font-black text-indigo-400 uppercase mb-1">{k}</p>
-                            <p className="text-sm text-slate-100 font-medium break-words">{v || <em className="text-slate-700 italic">empty</em>}</p>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const RuleInspectorDrawer: React.FC<{ 
-    rule: ReconciliationRule | null; 
-    onClose: () => void; 
-    categories: Category[]; 
-    payees: Payee[]; 
-    merchants: Merchant[];
-    locations: Location[];
-    users: User[];
-    tags: Tag[];
-    types: TransactionType[];
-    onEdit: (rule: ReconciliationRule) => void;
-}> = ({ rule, onClose, categories, payees, merchants, locations, users, tags, types, onEdit }) => {
-    if (!rule) return null;
-
-    const getCatName = (id?: string) => categories.find(c => c.id === id)?.name || 'Unknown';
-    const getPayeeName = (id?: string) => payees.find(p => p.id === id)?.name || 'Unknown';
-    const getMerchantName = (id?: string) => merchants.find(m => m.id === id)?.name || 'Unknown';
-    const getLocationName = (id?: string) => locations.find(l => l.id === id)?.name || 'Unknown';
-    const getUserName = (id?: string) => users.find(u => u.id === id)?.name || 'Unknown';
-    const getTypeName = (id?: string) => types.find(t => t.id === id)?.name || 'Unknown';
-    const getTagName = (id: string) => tags.find(t => t.id === id)?.name || id;
-
-    return (
-        <div className="fixed inset-0 z-[100] flex justify-end">
-            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative w-full max-w-md bg-slate-900 shadow-2xl flex flex-col h-full animate-slide-in-right">
-                <div className="p-6 border-b border-white/10 bg-indigo-900 flex justify-between items-center">
-                    <div>
-                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                            <SparklesIcon className="w-5 h-5 text-indigo-400" />
-                            Rule Inspector
-                        </h3>
-                        <p className="text-xs text-indigo-300 mt-1 uppercase font-bold tracking-widest">{rule.name}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => onEdit(rule)} className="p-2 text-white/50 hover:text-white rounded-full transition-colors" title="Edit Rule"><WrenchIcon className="w-5 h-5"/></button>
-                        <button onClick={onClose} className="p-2 text-white/50 hover:text-white rounded-full"><CloseIcon className="w-6 h-6" /></button>
-                    </div>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                    <div>
-                        <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Matching Logic</h4>
-                        <div className="space-y-2">
-                            {(rule.conditions || []).map((c, i) => (
-                                <div key={c.id} className="bg-white/5 border border-white/5 rounded-xl p-4">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <p className="text-[10px] font-bold text-slate-500 uppercase">Field: {c.field}</p>
-                                        {i < (rule.conditions?.length || 0) - 1 && (
-                                            <span className="px-1.5 py-0.5 bg-indigo-600/30 text-indigo-300 text-[8px] font-black rounded uppercase">{c.nextLogic || 'AND'}</span>
-                                        )}
-                                    </div>
-                                    <p className="text-sm text-slate-200">
-                                        <span className="text-indigo-400 font-bold">{c.operator?.replace('_', ' ') || ''}</span> "{c.value}"
-                                    </p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div>
-                        <h4 className="text-[10px] font-black text-green-400 uppercase tracking-widest mb-4">Atomic Transforms</h4>
-                        <div className="bg-green-900/10 border border-green-900/20 rounded-2xl p-4 space-y-4">
-                            {rule.skipImport && <div className="flex items-center gap-2 text-red-400 font-bold text-sm"><SlashIcon className="w-4 h-4" /> Automatically Ignored</div>}
-                            {rule.setCategoryId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Category</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getCatName(rule.setCategoryId)}</span></div>}
-                            {rule.setMerchantId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Merchant</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getMerchantName(rule.setMerchantId)}</span></div>}
-                            {rule.setLocationId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Location</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getLocationName(rule.setLocationId)}</span></div>}
-                            {rule.setUserId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">User</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getUserName(rule.setUserId)}</span></div>}
-                            {rule.setPayeeId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Payee</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getPayeeName(rule.setPayeeId)}</span></div>}
-                            {rule.setTransactionTypeId && <div className="flex justify-between items-center text-sm"><span className="text-slate-400">Type</span><span className="font-bold text-slate-100 bg-white/5 px-2 py-1 rounded-lg">{getTypeName(rule.setTransactionTypeId)}</span></div>}
-                            {rule.assignTagIds && rule.assignTagIds.length > 0 && (
-                                <div className="space-y-2">
-                                    <span className="text-xs text-slate-400 block">Append Taxonomy Tags</span>
-                                    <div className="flex flex-wrap gap-1">
-                                        {rule.assignTagIds.map(tid => (
-                                            <span key={tid} className="px-1.5 py-0.5 bg-indigo-600 text-white rounded text-[8px] font-black uppercase tracking-widest">{getTagName(tid)}</span>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
-    rawTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, merchants, locations, users, tags, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, existingTransactions, rules
+    rawTransactions, onComplete, onCancel, accounts, categories, transactionTypes, flowDesignations, payees, merchants, locations, users, tags, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, existingTransactions, rules
 }) => {
-    const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [sortKey, setSortKey] = useState<SortKey>('date');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-    const [inspectedTx, setInspectedTx] = useState<VerifiableTransaction | null>(null);
-    const [inspectedRule, setInspectedRule] = useState<ReconciliationRule | null>(null);
-    const [ruleContextTx, setRuleContextTx] = useState<VerifiableTransaction | null>(null);
+    const [inspectedTxId, setInspectedTxId] = useState<string | null>(null);
+    const [inspectedRuleId, setInspectedRuleId] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-    const [userManualOverrides, setUserManualOverrides] = useState<Record<string, Partial<VerifiableTransaction>>>({});
+    
+    // User manual overrides are stored locally. Manual choices always win over rules.
+    const [manualOverrides, setManualOverrides] = useState<Record<string, Partial<VerifiableTransaction>>>({});
 
-    // Inline Rule Creator State
-    const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
-    const [ruleTransactionContext, setRuleTransactionContext] = useState<Transaction | null>(null);
-
-    const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
-    const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
-    const tagMap = useMemo(() => new Map(tags.map(t => [t.id, t])), [tags]);
-    const categoryNameToIdMap = useMemo(() => new Map(categories.map(c => [c.name.toLowerCase(), c.id])), [categories]);
-    const otherCategoryId = useMemo(() => categoryNameToIdMap.get('other') || categories[0]?.id || '', [categoryNameToIdMap, categories]);
-
-    // Reactive Rule Application:
-    // This is the core logic that makes "Save & Apply" work.
-    // It runs from the truly raw data every time the rules or overrides change.
-    useEffect(() => {
-        if (!rawTransactions || rawTransactions.length === 0) return;
-
+    // 1. Prepare truly raw base with consistent IDs and duplicate detection
+    const baseTransactions = useMemo(() => {
         const dbSigs = new Set(existingTransactions.map(t => getTransactionSignature(t)));
         const defaultUserId = users.find(u => u.isDefault)?.id || users[0]?.id || 'user_primary';
+        const otherCategoryId = categories.find(c => c.name.toLowerCase() === 'other')?.id || categories[0]?.id || '';
 
-        // 1. Prepare raw base with consistent IDs and conflict detection
-        const baseTransactions = rawTransactions.map((raw, idx) => {
+        return rawTransactions.map((raw, idx) => {
             const sig = getTransactionSignature(raw);
             const conflict = dbSigs.has(sig) ? 'database' : null;
-            
-            // Initial categorization from data if possible
-            const aiCategoryName = (raw.category || '').toLowerCase();
-            const initialCatId = categoryNameToIdMap.get(aiCategoryName) || otherCategoryId;
+            const tempId = `import_${idx}`;
 
             return { 
                 ...raw, 
                 userId: raw.userId || defaultUserId,
-                tempId: `import_${idx}`, // Stable ID based on position in raw set
+                tempId,
                 conflictType: conflict as any, 
                 isIgnored: !!conflict,
-                categoryId: initialCatId
+                categoryId: otherCategoryId
             };
         });
+    }, [rawTransactions, existingTransactions, users, categories]);
 
-        // 2. Apply Rule Engine to the clean base
-        const ruleApplied = applyRulesToTransactions(baseTransactions as any, rules, accounts);
+    // 2. Reactively project the rule-applied state whenever rules change
+    // This derived state ensures "Save and Apply" works instantly.
+    const ruleAppliedTransactions = useMemo(() => {
+        return applyRulesToTransactions(baseTransactions as any, rules, accounts) as VerifiableTransaction[];
+    }, [baseTransactions, rules, accounts]);
 
-        // 3. Merge with user manual overrides (Manual changes in the table win over rules)
-        const finalSet = ruleApplied.map((applied: any) => {
-            const override = userManualOverrides[applied.tempId];
-            return {
-                ...applied,
-                ...override, // Overwrite rule results with user manual choices
-            };
+    // 3. Final merge: Rule results + Manual Overrides
+    const displayedTransactions = useMemo(() => {
+        return ruleAppliedTransactions.map(applied => {
+            const override = manualOverrides[applied.tempId];
+            return { ...applied, ...override };
         });
+    }, [ruleAppliedTransactions, manualOverrides]);
 
-        setTransactions(finalSet);
-    }, [rawTransactions, rules, userManualOverrides, existingTransactions, accounts, categoryNameToIdMap, otherCategoryId, users]);
-
-    const handleUpdate = (txId: string, field: keyof VerifiableTransaction, value: any) => {
-        setUserManualOverrides(prev => ({
+    const handleUpdateManual = (txId: string, field: keyof VerifiableTransaction, value: any) => {
+        setManualOverrides(prev => ({
             ...prev,
-            [txId]: {
-                ...(prev[txId] || {}),
-                [field]: value
-            }
+            [txId]: { ...(prev[txId] || {}), [field]: value }
         }));
     };
 
-    const requestSort = (key: SortKey) => {
-        if (sortKey === key) setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-        else { setSortKey(key); setSortDirection('asc'); }
-    };
-
     const sortedTransactions = useMemo(() => {
-        if (!sortKey) return transactions;
-        return [...transactions].sort((a, b) => {
+        if (!sortKey) return displayedTransactions;
+        return [...displayedTransactions].sort((a, b) => {
             let valA = a[sortKey as keyof VerifiableTransaction] as any;
             let valB = b[sortKey as keyof VerifiableTransaction] as any;
             if (sortKey === 'amount') return sortDirection === 'asc' ? valA - valB : valB - valA;
-            return sortDirection === 'asc' ? (valA < valB ? -1 : 1) : (valA > valB ? -1 : 1);
+            return sortDirection === 'asc' ? (String(valA).localeCompare(String(valB))) : (String(valB).localeCompare(String(valA)));
         });
-    }, [transactions, sortKey, sortDirection]);
+    }, [displayedTransactions, sortKey, sortDirection]);
+
+    const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
+    const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
+    const flowMap = useMemo(() => new Map(flowDesignations.map(f => [f.id, f])), [flowDesignations]);
 
     const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
-    
-    const handleOpenRuleCreator = (tx: RawTransaction) => {
-        setRuleTransactionContext({ ...tx, id: 'temp-context' } as Transaction);
-        setIsRuleModalOpen(true);
-    };
 
-    const sortedPayeeOptions = useMemo(() => [...payees].sort((a,b) => a.name.localeCompare(b.name)), [payees]);
-    const sortedCategoryOptions = useMemo(() => [...categories].sort((a,b) => a.name.localeCompare(b.name)), [categories]);
+    const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+    const [ruleTransactionContext, setRuleTransactionContext] = useState<Transaction | null>(null);
 
     return (
         <div className="space-y-4 flex flex-col h-full w-full min-h-0 overflow-hidden">
             <div className="p-5 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-4 flex-shrink-0 shadow-sm">
                 <div className="flex items-center gap-4">
-                    <div className="p-3 bg-indigo-50 rounded-xl">
-                        <TableIcon className="w-6 h-6 text-indigo-600" />
-                    </div>
+                    <div className="p-3 bg-indigo-50 rounded-xl"><TableIcon className="w-6 h-6 text-indigo-600" /></div>
                     <div>
                         <h2 className="text-xl font-black text-slate-800 tracking-tight">Verify Import</h2>
-                        <p className="text-sm text-slate-500">Review {transactions.length} detected records. {transactions.filter(t => t.conflictType === 'database').length} potential duplicates flagged.</p>
+                        <p className="text-sm text-slate-500">Recalculating {displayedTransactions.length} records against {rules.length} patterns.</p>
                     </div>
                 </div>
                 <div className="flex gap-3 w-full sm:w-auto">
                     <button onClick={onCancel} className="flex-1 sm:flex-none px-6 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Discard</button>
-                    <button onClick={() => onComplete(transactions.filter(t => !t.isIgnored))} className="flex-1 sm:flex-none px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all">Finalize Import</button>
+                    <button onClick={() => onComplete(displayedTransactions.filter(t => !t.isIgnored))} className="flex-1 sm:flex-none px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all">Finalize Import</button>
                 </div>
             </div>
 
@@ -275,27 +133,14 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
                         <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="p-4 w-12 text-center bg-slate-50 border-b border-slate-200">
-                                    <input type="checkbox" className="rounded text-indigo-600 h-4 w-4" checked={selectedIds.size === transactions.length && transactions.length > 0} onChange={() => setSelectedIds(selectedIds.size === transactions.length ? new Set() : new Set(transactions.map(t => t.tempId)))} />
-                                </th>
-                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Status</th>
-                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('date')}>
-                                    <div className="flex items-center gap-1">Date <SortIcon className="w-3 h-3" /></div>
-                                </th>
-                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('description')}>
-                                    <div className="flex items-center gap-1">Description <SortIcon className="w-3 h-3" /></div>
-                                </th>
-                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Entity / Payee</th>
-                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Tags</th>
-                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Direction</th>
-                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('categoryId')}>
-                                    <div className="flex items-center gap-1">Category <SortIcon className="w-3 h-3" /></div>
-                                </th>
-                                <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('amount')}>
-                                    <div className="flex items-center justify-end gap-1">Amount <SortIcon className="w-3 h-3" /></div>
-                                </th>
-                                <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Rule</th>
-                                <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Raw</th>
+                                <th className="p-4 w-12 text-center bg-slate-50 border-b border-slate-200"><input type="checkbox" className="rounded text-indigo-600 h-4 w-4" checked={selectedIds.size === displayedTransactions.length && displayedTransactions.length > 0} onChange={() => setSelectedIds(selectedIds.size === displayedTransactions.length ? new Set() : new Set(displayedTransactions.map(t => t.tempId)))} /></th>
+                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Status</th>
+                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:text-indigo-600" onClick={() => { setSortKey('date'); setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc'); }}>Date <SortIcon className="w-3 h-3 inline ml-1"/></th>
+                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Description</th>
+                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Designation</th>
+                                <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Category</th>
+                                <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Amount</th>
+                                <th className="px-4 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Logic</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white">
@@ -303,33 +148,32 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 const type = typeMap.get(tx.typeId);
                                 const effect = type?.balanceEffect || 'expense';
                                 const matchedRule = tx.appliedRuleId ? ruleMap.get(tx.appliedRuleId) : null;
+                                const impact = flowMap.get(tx.flowDesignationId || '')?.impact;
                                 
-                                const amountColor = effect === 'income' ? 'text-green-600' : effect === 'transfer' ? 'text-slate-400' : 'text-red-600';
-
                                 return (
                                     <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-40 bg-slate-50' : 'hover:bg-slate-50'}`}>
-                                        <td className="p-4 text-center"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-4 w-4" /></td>
-                                        <td className="px-4 py-2">{tx.conflictType === 'database' ? (<span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black rounded uppercase flex items-center gap-1 w-max"><ExclamationTriangleIcon className="w-2.5 h-2.5" /> Exists</span>) : (<span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[8px] font-black rounded uppercase w-max">New Entry</span>)}</td>
+                                        <td className="p-4 text-center"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdateManual(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-4 w-4" /></td>
+                                        <td className="px-4 py-2">{tx.conflictType === 'database' ? (<span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[8px] font-black rounded uppercase flex items-center gap-1 w-max">Duplicate</span>) : (<span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[8px] font-black rounded uppercase w-max">New</span>)}</td>
                                         <td className="px-4 py-2 text-xs text-slate-500 font-mono">{tx.date}</td>
                                         <td className="px-4 py-2 text-sm font-bold text-slate-700 truncate max-w-xs">{tx.description}</td>
-                                        <td className="px-4 py-2 min-w-[180px]"><select value={tx.payeeId || ''} onChange={e => handleUpdate(tx.tempId, 'payeeId', e.target.value)} className="p-1.5 text-xs border border-slate-200 rounded-lg w-full font-bold text-slate-700 focus:border-indigo-500 focus:ring-0 bg-white"><option value="">Select Payee...</option>{sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></td>
-                                        <td className="px-4 py-2"><div className="flex flex-wrap gap-1 min-w-[80px]">{tx.tagIds && tx.tagIds.length > 0 ? (tx.tagIds.map(tid => { const tag = tagMap.get(tid); return tag ? (<span key={tid} className={`px-1.5 py-0.5 text-[8px] font-black uppercase rounded ${tag.color}`}>{tag.name}</span>) : null; })) : (<span className="text-[8px] text-slate-300 font-bold uppercase italic">None</span>)}</div></td>
-                                        <td className="px-4 py-2"><div className="relative group/select"><select value={effect} onChange={e => { const targetEffect = e.target.value as BalanceEffect; const matchingType = transactionTypes.find(t => t.balanceEffect === targetEffect); if (matchingType) handleUpdate(tx.tempId, 'typeId', matchingType.id); }} className="p-1.5 pr-6 text-[10px] border border-slate-200 rounded-lg w-full font-black uppercase tracking-tighter text-slate-700 focus:border-indigo-500 focus:ring-0 bg-slate-50 appearance-none cursor-pointer"><option value="expense">Expense</option><option value="income">Income</option><option value="transfer">Transfer</option></select><div className="absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400"><ChevronDownIcon className="w-3.5 h-3.5" /></div></div></td>
-                                        <td className="px-4 py-2"><select value={tx.categoryId} onChange={e => handleUpdate(tx.tempId, 'categoryId', e.target.value)} className="p-1.5 text-xs border border-slate-200 rounded-lg w-full font-bold text-slate-700 focus:border-indigo-500 focus:ring-0 bg-white"><option value="">Uncategorized</option>{sortedCategoryOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
-                                        <td className={`px-4 py-2 text-right text-sm font-black font-mono ${amountColor}`}>{effect === 'income' ? '+' : effect === 'transfer' ? '' : '-'}{formatCurrency(tx.amount)}</td>
+                                        <td className="px-4 py-2 min-w-[150px]">
+                                            <select value={tx.flowDesignationId || ''} onChange={e => handleUpdateManual(tx.tempId, 'flowDesignationId', e.target.value)} className="p-1.5 text-[10px] border border-slate-200 rounded-lg w-full font-black uppercase tracking-tight text-slate-600 focus:border-indigo-500 bg-white shadow-sm">
+                                                <option value="">No Designation</option>
+                                                {flowDesignations.map(fd => <option key={fd.id} value={fd.id}>{fd.name} ({fd.impact})</option>)}
+                                            </select>
+                                        </td>
+                                        <td className="px-4 py-2">
+                                            <select value={tx.categoryId} onChange={e => handleUpdateManual(tx.tempId, 'categoryId', e.target.value)} className="p-1.5 text-xs border border-slate-200 rounded-lg w-full font-bold text-slate-700 focus:border-indigo-500 bg-white shadow-sm">
+                                                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                            </select>
+                                        </td>
+                                        <td className={`px-4 py-2 text-right text-sm font-black font-mono ${effect === 'income' ? 'text-green-600' : 'text-red-600'}`}>{formatCurrency(tx.amount)}</td>
                                         <td className="px-4 py-2 text-center">
                                             <div className="flex items-center justify-center gap-1">
-                                                {matchedRule && (
-                                                    <button onClick={() => { setInspectedRule(matchedRule); setRuleContextTx(tx); }} className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-all border border-green-200 shadow-sm group/rule" title={`Applied: ${matchedRule.name}. Click to view/edit.`}>
-                                                        <SparklesIcon className="w-4 h-4" />
-                                                    </button>
-                                                )}
-                                                <button onClick={() => handleOpenRuleCreator(tx)} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Create Rule">
-                                                    <WrenchIcon className="w-4 h-4" />
-                                                </button>
+                                                {matchedRule && <button onClick={() => { setInspectedRuleId(matchedRule.id); setRuleTransactionContext(tx as any); setIsRuleModalOpen(true); }} className="p-2 bg-green-50 text-green-600 rounded-lg hover:bg-green-100 border border-green-200 shadow-sm"><SparklesIcon className="w-4 h-4" /></button>}
+                                                <button onClick={() => { setRuleTransactionContext(tx as any); setIsRuleModalOpen(true); }} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"><WrenchIcon className="w-4 h-4" /></button>
                                             </div>
                                         </td>
-                                        <td className="px-4 py-2 text-center"><button onClick={() => setInspectedTx(tx)} className="p-2 text-slate-300 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Raw Data"><TableIcon className="w-4 h-4"/></button></td>
                                     </tr>
                                 );
                             })}
@@ -337,26 +181,14 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     </table>
                 </div>
             </div>
-            <MetadataDrawer tx={inspectedTx} onClose={() => setInspectedTx(null)} />
-            <RuleInspectorDrawer 
-                rule={inspectedRule} 
-                onClose={() => setInspectedRule(null)} 
-                categories={categories} 
-                payees={payees} 
-                merchants={merchants}
-                locations={locations}
-                users={users}
-                tags={tags}
-                types={transactionTypes} 
-                onEdit={(r) => { setInspectedRule(null); setRuleTransactionContext({ ...ruleContextTx, id: 'temp-context' } as any); setIsRuleModalOpen(true); }}
-            />
             
             <RuleModal 
                 isOpen={isRuleModalOpen} 
-                onClose={() => setIsRuleModalOpen(false)} 
+                onClose={() => { setIsRuleModalOpen(false); setRuleTransactionContext(null); setInspectedRuleId(null); }} 
                 onSaveRule={onSaveRule}
                 accounts={accounts}
                 transactionTypes={transactionTypes}
+                flowDesignations={flowDesignations}
                 categories={categories}
                 tags={tags}
                 payees={payees}
@@ -364,10 +196,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 locations={locations}
                 users={users}
                 transaction={ruleTransactionContext}
-                onSaveCategory={onSaveCategory}
-                onSavePayee={onSavePayee}
-                onSaveTag={onSaveTag}
-                onAddTransactionType={onAddTransactionType}
+                existingRule={inspectedRuleId ? ruleMap.get(inspectedRuleId) : null}
             />
         </div>
     );

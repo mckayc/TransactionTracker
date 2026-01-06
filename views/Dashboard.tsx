@@ -1,6 +1,7 @@
 
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location, FlowDesignation } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
@@ -15,6 +16,7 @@ import { api } from '../services/apiService';
 type AppState = 'idle' | 'processing' | 'verifying_import' | 'post_import_edit' | 'success' | 'error';
 type ImportMethod = 'upload' | 'paste';
 
+/* Added flowDesignations to DashboardProps to resolve IntrinsicAttributes error in App.tsx */
 interface DashboardProps {
   onTransactionsAdded: (newTransactions: Transaction[], newCategories: Category[]) => void;
   transactions: Transaction[]; 
@@ -25,6 +27,7 @@ interface DashboardProps {
   categories: Category[];
   tags: Tag[];
   transactionTypes: TransactionType[];
+  flowDesignations: FlowDesignation[];
   rules: ReconciliationRule[];
   payees: Payee[];
   merchants: Merchant[];
@@ -55,8 +58,9 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, i
     </div>
 );
 
+/* Destructured flowDesignations from props to resolve missing property error */
 const Dashboard: React.FC<DashboardProps> = ({ 
-    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
+    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, flowDesignations, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -225,7 +229,8 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             {appState === 'verifying_import' ? (
                 <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                    <ImportVerification rules={rules} onSaveRule={onSaveRule} rawTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} merchants={merchants} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
+                    {/* Passed flowDesignations to ImportVerification to fix missing property error */}
+                    <ImportVerification rules={rules} onSaveRule={onSaveRule} rawTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} flowDesignations={flowDesignations} payees={payees} merchants={merchants} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
                 </div>
             ) : appState === 'post_import_edit' ? (
                 <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-0 h-full">

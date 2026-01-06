@@ -1,5 +1,13 @@
 
+
 export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation' | 'tax' | 'savings' | 'debt';
+export type EconomicImpact = 'inflow' | 'outflow' | 'neutral';
+
+export interface FlowDesignation {
+    id: string;
+    name: string;
+    impact: EconomicImpact;
+}
 
 export interface TransactionType {
     id: string;
@@ -69,6 +77,7 @@ export interface RawTransaction {
     category: string;
     accountId: string;
     typeId: string;
+    flowDesignationId?: string;
     location?: string;
     sourceFilename?: string;
     originalDescription?: string;
@@ -118,6 +127,7 @@ export interface ReconciliationRule {
     setLocationId?: string;
     setUserId?: string;
     setTransactionTypeId?: string;
+    setFlowDesignationId?: string;
     setBalanceEffect?: BalanceEffect;
     assignTagIds?: string[];
     skipImport?: boolean;
@@ -389,7 +399,8 @@ export interface FinancialPlan {
     id: string;
     createdAt: string;
     strategy: string;
-    suggestedBudgets: { categoryId: string; limit: number }[];
+    /* Fixed line 401: '?' at the end of a type is not valid TypeScript. It should be prop?: type */
+    suggestedBudgets?: { categoryId: string; limit: number }[];
 }
 
 export interface ContentLink {
