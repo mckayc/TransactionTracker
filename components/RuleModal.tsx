@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleCondition, Tag, Merchant, Location, User } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, CheckCircleIcon, BoxIcon, MapPinIcon, UserGroupIcon } from './Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, CheckCircleIcon, BoxIcon, MapPinIcon, UserGroupIcon, AddIcon, WrenchIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
 
@@ -22,10 +22,13 @@ interface RuleModalProps {
     onSavePayee?: (payee: Payee) => void;
     onSaveTag?: (tag: Tag) => void;
     onAddTransactionType?: (type: TransactionType) => void;
+    onSaveMerchant?: (m: Merchant) => void;
+    onSaveLocation?: (l: Location) => void;
+    onSaveUser?: (u: User) => void;
 }
 
 const RuleModal: React.FC<RuleModalProps> = ({ 
-    isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transaction, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType 
+    isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transaction, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onSaveMerchant, onSaveLocation, onSaveUser
 }) => {
     
     const [name, setName] = useState('');
@@ -39,6 +42,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const [setUserId, setSetUserId] = useState('');
     const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
+    const [customTagsText, setCustomTagsText] = useState('');
     const [skipImport, setSkipImport] = useState(false);
 
     useEffect(() => {
@@ -60,6 +64,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 setSetUserId(transaction.userId || '');
                 setSetTransactionTypeId(transaction.typeId || '');
                 setAssignTagIds(new Set());
+                setCustomTagsText('');
                 setSkipImport(false);
             } else {
                 setName('');
@@ -71,6 +76,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 setSetUserId('');
                 setSetTransactionTypeId('');
                 setAssignTagIds(new Set());
+                setCustomTagsText('');
                 setSkipImport(false);
             }
         }
@@ -100,10 +106,45 @@ const RuleModal: React.FC<RuleModalProps> = ({
         });
     };
 
-    const handleSave = (e: React.FormEvent) => {
-        e.preventDefault();
+    const quickAdd = (type: 'category' | 'payee' | 'merchant' | 'location' | 'user' | 'tag' | 'type') => {
+        const val = prompt(`Enter new ${type} name:`);
+        if (!val || !val.trim()) return;
+        const id = generateUUID();
+        const label = val.trim();
+
+        if (type === 'category' && onSaveCategory) { onSaveCategory({ id, name: label }); setSetCategoryId(id); }
+        else if (type === 'payee' && onSavePayee) { onSavePayee({ id, name: label }); setSetPayeeId(id); }
+        else if (type === 'merchant' && onSaveMerchant) { onSaveMerchant({ id, name: label }); setSetMerchantId(id); }
+        else if (type === 'location' && onSaveLocation) { onSaveLocation({ id, name: label }); setSetLocationId(id); }
+        else if (type === 'user' && onSaveUser) { onSaveUser({ id, name: label }); setSetUserId(id); }
+        else if (type === 'type' && onAddTransactionType) { onAddTransactionType({ id, name: label, balanceEffect: 'expense' }); setSetTransactionTypeId(id); }
+        else if (type === 'tag' && onSaveTag) { 
+            const colors = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-rose-100 text-rose-700', 'bg-amber-100 text-amber-700'];
+            onSaveTag({ id, name: label, color: colors[Math.floor(Math.random() * colors.length)] }); 
+            setAssignTagIds(prev => new Set(prev).add(id));
+        }
+    };
+
+    const handleSave = (e: React.FormEvent | React.MouseEvent) => {
+        if (e) e.preventDefault();
         if (!name.trim()) { alert('Rule Name is required.'); return; }
         if (conditions.length === 0) { alert('Please add at least one condition.'); return; }
+
+        // Process custom tags
+        const processedTagIds = new Set(assignTagIds);
+        if (customTagsText.trim() && onSaveTag) {
+            const rawTags = customTagsText.split(',').map(t => t.trim()).filter(Boolean);
+            rawTags.forEach(tagName => {
+                const existing = tags.find(t => t.name.toLowerCase() === tagName.toLowerCase());
+                if (existing) {
+                    processedTagIds.add(existing.id);
+                } else {
+                    const id = generateUUID();
+                    onSaveTag({ id, name: tagName, color: 'bg-slate-100 text-slate-600' });
+                    processedTagIds.add(id);
+                }
+            });
+        }
 
         onSaveRule({
             id: generateUUID(),
@@ -115,7 +156,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
             setLocationId: setLocationId || undefined,
             setUserId: setUserId || undefined,
             setTransactionTypeId: setTransactionTypeId || undefined,
-            assignTagIds: assignTagIds.size > 0 ? Array.from(assignTagIds) : undefined,
+            assignTagIds: processedTagIds.size > 0 ? Array.from(processedTagIds) : undefined,
             skipImport
         });
         onClose();
@@ -134,7 +175,11 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     </div>
                     <div className="flex items-center gap-3">
                         <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">Cancel</button>
-                        <button onClick={handleSave} className="px-8 py-2.5 text-sm font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all">Commit Automation</button>
+                        <button type="button" onClick={handleSave} className="px-5 py-2.5 text-sm font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all">Save Rule Only</button>
+                        <button type="button" onClick={handleSave} className="px-8 py-2.5 text-sm font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all flex items-center gap-2">
+                            <WrenchIcon className="w-4 h-4" />
+                            Save & Run on Batch
+                        </button>
                     </div>
                 </div>
                 
@@ -167,53 +212,85 @@ const RuleModal: React.FC<RuleModalProps> = ({
                         {!skipImport ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Set Category</label>
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Direction</label>
+                                        <button type="button" onClick={() => quickAdd('type')} className="text-[10px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                    </div>
+                                    <select value={setTransactionTypeId} onChange={(e) => setSetTransactionTypeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
+                                        <option value="">-- No Change --</option>
+                                        {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</label>
+                                        <button type="button" onClick={() => quickAdd('category')} className="text-[10px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                    </div>
                                     <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
                                         <option value="">-- No Change --</option>
                                         {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                                     </select>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Merchant</label>
-                                    <select value={setMerchantId} onChange={(e) => setSetMerchantId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
-                                        <option value="">-- No Change --</option>
-                                        {merchants.sort((a,b)=>a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label>
-                                    <select value={setUserId} onChange={(e) => setSetUserId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
-                                        <option value="">-- No Change --</option>
-                                        {users.sort((a,b)=>a.name.localeCompare(b.name)).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label>
-                                    <select value={setLocationId} onChange={(e) => setSetLocationId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
-                                        <option value="">-- No Change --</option>
-                                        {locations.sort((a,b)=>a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Counterparty (Payee)</label>
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Payee</label>
+                                        <button type="button" onClick={() => quickAdd('payee')} className="text-[10px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                    </div>
                                     <select value={setPayeeId} onChange={(e) => setSetPayeeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
                                         <option value="">-- No Change --</option>
                                         {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                     </select>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Type</label>
-                                    <select value={setTransactionTypeId} onChange={(e) => setSetTransactionTypeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Merchant</label>
+                                        <button type="button" onClick={() => quickAdd('merchant')} className="text-[10px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                    </div>
+                                    <select value={setMerchantId} onChange={(e) => setSetMerchantId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
                                         <option value="">-- No Change --</option>
-                                        {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
+                                        {merchants.sort((a,b)=>a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                     </select>
                                 </div>
-                                <div className="col-span-1 md:col-span-3">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Append Tags</label>
-                                    <div className="flex flex-wrap gap-2 p-4 border rounded-2xl bg-slate-50 shadow-inner">
-                                        {tags.map(tag => (
-                                            <button key={tag.id} type="button" onClick={() => toggleTag(tag.id)} className={`px-3 py-1.5 rounded-full text-xs border-2 transition-all font-bold ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200'}`}>{tag.name}</button>
-                                        ))}
+                                <div className="space-y-1">
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Location</label>
+                                        <button type="button" onClick={() => quickAdd('location')} className="text-[10px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                    </div>
+                                    <select value={setLocationId} onChange={(e) => setSetLocationId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
+                                        <option value="">-- No Change --</option>
+                                        {locations.sort((a,b)=>a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">User</label>
+                                        <button type="button" onClick={() => quickAdd('user')} className="text-[10px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                    </div>
+                                    <select value={setUserId} onChange={(e) => setSetUserId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
+                                        <option value="">-- No Change --</option>
+                                        {users.sort((a,b)=>a.name.localeCompare(b.name)).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                    </select>
+                                </div>
+                                <div className="col-span-1 md:col-span-3 space-y-4">
+                                    <div>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Append Taxonomy Tags (Selection)</label>
+                                        <div className="flex flex-wrap gap-2 p-4 border rounded-2xl bg-slate-50 shadow-inner">
+                                            {tags.map(tag => (
+                                                <button key={tag.id} type="button" onClick={() => toggleTag(tag.id)} className={`px-3 py-1.5 rounded-full text-xs border-2 transition-all font-bold ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-500 shadow-sm' : 'bg-white text-slate-500 border-slate-200'}`}>{tag.name}</button>
+                                            ))}
+                                            <button type="button" onClick={() => quickAdd('tag')} className="px-3 py-1.5 rounded-full text-xs border-2 border-dashed border-indigo-300 text-indigo-600 font-bold hover:bg-indigo-50">+ Add Global Tag</button>
+                                        </div>
+                                    </div>
+                                    <div className="bg-indigo-50/30 p-4 rounded-xl border border-indigo-100">
+                                        <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2 ml-1">Write-in Tags</label>
+                                        <input 
+                                            type="text" 
+                                            value={customTagsText} 
+                                            onChange={e => setCustomTagsText(e.target.value)}
+                                            placeholder="Tax, Personal, etc." 
+                                            className="w-full p-3 border rounded-xl bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-medium"
+                                        />
+                                        <p className="text-[10px] text-slate-400 mt-2 font-medium italic">Separate multiple tags with commas. New tags will be created automatically using a default theme.</p>
                                     </div>
                                 </div>
                             </div>
