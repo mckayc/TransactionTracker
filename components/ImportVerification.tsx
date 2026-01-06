@@ -394,7 +394,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{r.scope}</p>
                                         </div>
                                         <button 
-                                            onClick={() => toggleRuleExclusion(ruleId)} 
+                                            onClick={() => toggleRuleExclusion(r.id)} 
                                             className={`p-1.5 rounded-lg transition-all transform active:scale-90 ${r.isExcluded ? 'bg-red-600 text-white shadow-lg rotate-0' : 'bg-white/10 text-white/40 hover:text-white hover:bg-white/20'}`}
                                             title={r.isExcluded ? 'Include in Bulk Accept' : 'Exclude from Bulk Accept'}
                                         >
