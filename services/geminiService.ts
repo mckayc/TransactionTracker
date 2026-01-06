@@ -87,7 +87,8 @@ export const generateRulesFromData = async (
     locations: Location[], 
     users: User[],
     promptContext?: string,
-    settings?: SystemSettings
+    settings?: SystemSettings,
+    existingRules: ReconciliationRule[] = []
 ): Promise<ReconciliationRule[]> => {
     const key = getApiKey();
     if (!key) throw new Error("API Key is missing.");
@@ -98,40 +99,43 @@ export const generateRulesFromData = async (
     let sampleParts: any[] = [];
     if (typeof data === 'string') {
         const truncatedData = data.length > 5000 ? data.substring(0, 5000) + "... [truncated]" : data;
-        sampleParts = [{ text: `DATA SAMPLE:\n${truncatedData}` }];
+        sampleParts = [{ text: `DATA SAMPLE (VERBATIM LINES):\n${truncatedData}` }];
     } else {
         sampleParts = [await fileToGenerativePart(data)];
     }
 
     const slimCategories = categories.slice(0, 100).map(c => ({ id: c.id, name: c.name }));
     const slimPayees = payees.slice(0, 100).map(p => ({ id: p.id, name: p.name }));
+    const slimRules = existingRules.slice(0, 50).map(r => ({ name: r.name, conditions: r.conditions.map(c => `${c.field} ${c.operator} ${c.value}`) }));
 
     const systemInstruction = `You are a Senior Financial Architect & Data Normalizer.
     
-    TASK: Generate classification rules in JSON based on provided data and user instructions.
+    TASK: Generate classification rules in JSON.
+    
+    CRITICAL: DUPLICATE PREVENTION
+    - I have provided a list of EXISTING_RULES. 
+    - DO NOT suggest a rule if the logic (Description Contains X) is already covered.
+    - If a rule already handles "OREM UT", do not suggest another one for "OREM UT".
+    
+    VERBATIM REQUIREMENT:
+    - The 'originalDescription' field MUST be the EXACT verbatim line from the input data.
+    - DO NOT truncate the original line. If the line is "RED RIBBON TUKWILA TUKWILA WA", the originalDescription must be "RED RIBBON TUKWILA TUKWILA WA".
     
     INTENT-DRIVEN RULES:
     - If user mentions "Location": Generate rules with scope "locationId" and suggestedLocationName.
     - If user mentions "Merchant": Generate rules with scope "merchantId" and suggestedMerchantName.
-    - If user mentions "Category": Generate rules with scope "description" and suggestedCategoryName.
-    - STRICT FILTER: If the user provides a specific intent (e.g. "Only find categories"), DO NOT generate rules for other types like locations or merchants.
+    - VERIFY logic: Ensure the Location you suggest actually matches the text in the condition. (e.g. Do not map "OREM UT" text to "Tukwila" location).
     
     NORMALIZATION LOGIC:
-    1. SNIPPET VS ENTITY: Distinguish between the "Matching Snippet" (raw text found in description) and the "Clean Entity Name" (human-readable).
-       Example: "PHO NO 1 PLEASANT GROV UT"
-       - For Merchant Rule: snippet "PHO NO 1" -> suggestedMerchantName "Pho No 1"
-       - For Location Rule: snippet "PLEASANT GROV UT" -> suggestedLocationName "Pleasant Grove, UT"
-    
-    2. KEYWORD EXTRACTION: Find the MINIMAL unique identifying keyword. Ignore branch IDs, dates, or terminal numbers.
-    
-    3. LOCATION EXPANSION: Expand abbreviations to standard "City, ST" format.
-       Examples: "SLC" -> "Salt Lake City, UT", "NY NY" -> "New York, NY", "PLEASANT GROV" -> "Pleasant Grove".
-    
-    4. SCOPE ASSIGNMENT: The 'scope' field must be one of: 'description', 'payeeId', 'merchantId', 'locationId'.
+    1. SNIPPET VS ENTITY: Snippet is raw text, Entity is human-readable.
+    2. KEYWORD EXTRACTION: Minimal unique identifying keyword.
+    3. LOCATION EXPANSION: Abbreviations to "City, ST".
+    4. SCOPE ASSIGNMENT: 'description', 'payeeId', 'merchantId', 'locationId'.
 
     CONTEXT: ${promptContext || 'Identify recurring patterns and merchants.'}
     CATEGORIES: ${JSON.stringify(slimCategories)}
-    PAYEES: ${JSON.stringify(slimPayees)}`;
+    PAYEES: ${JSON.stringify(slimPayees)}
+    EXISTING_RULES: ${JSON.stringify(slimRules)}`;
 
     const schema = {
         type: Type.OBJECT,
@@ -163,9 +167,9 @@ export const generateRulesFromData = async (
                         suggestedMerchantName: { type: Type.STRING },
                         setLocationId: { type: Type.STRING },
                         suggestedLocationName: { type: Type.STRING },
-                        originalDescription: { type: Type.STRING, description: "The full raw text line from the statement that this rule targets." }
+                        originalDescription: { type: Type.STRING, description: "The EXACT VERBATIM line from the input data (no cleaning)." }
                     },
-                    required: ['name', 'conditions', 'scope']
+                    required: ['name', 'conditions', 'scope', 'originalDescription']
                 }
             }
         },
@@ -225,7 +229,7 @@ export const extractTransactionsFromFiles = async (
     TASK: Please look over the document and based on the data assign an appropriate description, merchant or payee and category.
     AVAILABLE CATEGORIES: ${categoryNames}.
     FORMAT: Date (YYYY-MM-DD), cleaned Description, exact Amount, Type (income/expense).
-    PRECISION: Match amounts exactly. Group multi-line entries if they represent one charge.`;
+    PRECISION: Match amounts exactly. Return 'originalDescription' as the verbatim line from the doc.`;
 
     const schema = {
         type: Type.OBJECT,
@@ -237,11 +241,12 @@ export const extractTransactionsFromFiles = async (
                     properties: {
                         date: { type: Type.STRING },
                         description: { type: Type.STRING },
+                        originalDescription: { type: Type.STRING },
                         amount: { type: Type.NUMBER },
                         category: { type: Type.STRING },
                         type: { type: Type.STRING, description: "income or expense" }
                     },
-                    required: ["date", "description", "amount", "type"]
+                    required: ["date", "description", "amount", "type", "originalDescription"]
                 }
             }
         },
@@ -286,7 +291,7 @@ export const extractTransactionsFromText = async (
     const categoryNames = categories.map(c => c.name).join(', ');
     const systemInstruction = `You are an Expert Accountant. 
     TASK: Please look over the text and based on the data assign an appropriate description, merchant or payee and category.
-    AVAILABLE CATEGORIES: ${categoryNames}.`;
+    AVAILABLE CATEGORIES: ${categoryNames}. Return 'originalDescription' as verbatim line.`;
 
     const schema = {
         type: Type.OBJECT,
@@ -298,11 +303,12 @@ export const extractTransactionsFromText = async (
                     properties: {
                         date: { type: Type.STRING },
                         description: { type: Type.STRING },
+                        originalDescription: { type: Type.STRING },
                         amount: { type: Type.NUMBER },
                         category: { type: Type.STRING },
                         type: { type: Type.STRING }
                     },
-                    required: ["date", "description", "amount", "type"]
+                    required: ["date", "description", "amount", "type", "originalDescription"]
                 }
             }
         },
