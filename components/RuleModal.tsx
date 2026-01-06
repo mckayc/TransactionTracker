@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, RuleCondition, Tag, Merchant, Location, User, BalanceEffect } from '../types';
-// Added InfoIcon to imports to fix 'Cannot find name' error
 import { CloseIcon, SlashIcon, SparklesIcon, CheckCircleIcon, BoxIcon, MapPinIcon, UserGroupIcon, AddIcon, WrenchIcon, TrendingUpIcon, TagIcon, InfoIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
@@ -18,7 +17,7 @@ interface RuleModalProps {
     merchants: Merchant[];
     locations: Location[];
     users: User[];
-    // Contextual: Creating from a transaction
+    // Contextual: Creating from a transaction (likely from Import view)
     transaction?: Transaction | null;
     // Contextual: Editing an existing rule
     existingRule?: ReconciliationRule | null;
@@ -187,6 +186,8 @@ const RuleModal: React.FC<RuleModalProps> = ({
         onClose();
     };
     
+    const isFromVerification = !!transaction;
+
     return (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-[70] flex justify-center items-center p-4" onClick={onClose}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col" onClick={e => e.stopPropagation()}>
@@ -208,9 +209,14 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     <div className="flex items-center gap-3 w-full sm:w-auto">
                         <button type="button" onClick={onClose} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">Cancel</button>
                         <button type="button" onClick={() => handleAction(false)} className="flex-1 sm:flex-none px-5 py-2.5 text-sm font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-all">Save Rule Only</button>
-                        <button type="button" onClick={() => handleAction(true)} className="flex-1 sm:flex-none px-8 py-2.5 text-sm font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2">
+                        <button 
+                            type="button" 
+                            onClick={() => handleAction(true)} 
+                            className="flex-1 sm:flex-none px-8 py-2.5 text-sm font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all flex items-center justify-center gap-2"
+                            title={isFromVerification ? "Saves the rule and immediately updates the pending verification list." : "Saves the rule and opens a dry-run preview against existing transactions."}
+                        >
                             <SparklesIcon className="w-4 h-4" />
-                            Save & Run on Batch
+                            {isFromVerification ? 'Save & Apply to Batch' : 'Save & Run on Database'}
                         </button>
                     </div>
                 </div>
@@ -223,13 +229,13 @@ const RuleModal: React.FC<RuleModalProps> = ({
                             <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Friendly name for this pattern..." className="w-full p-3 border-2 border-slate-100 rounded-xl focus:border-indigo-500 focus:ring-0 transition-all font-bold text-slate-800 text-lg" required />
                         </div>
                         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Logic Scope</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Rule Category</label>
                             <select value={ruleCategory} onChange={e => setRuleCategory(e.target.value)} className="w-full p-3.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700">
-                                <option value="description">Transaction Descriptions</option>
-                                <option value="payeeId">Payee Entities</option>
+                                <option value="description">Descriptions</option>
+                                <option value="payeeId">Payees</option>
                                 <option value="merchantId">Merchants</option>
-                                <option value="locationId">Geography</option>
-                                <option value="metadata">Source Metadata</option>
+                                <option value="locationId">Locations</option>
+                                <option value="metadata">Extraction Hints</option>
                             </select>
                         </div>
                     </div>
