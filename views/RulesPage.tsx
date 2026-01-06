@@ -312,7 +312,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 </div>
             </div>
 
-            <BlueprintWorkshop isOpen={isWorkshopOpen} onClose={() => setIsWorkshopOpen(false)} onSave={handleSaveBlueprint} rawLines={workshopRawLines} categories={categories} payees={payees} merchants={merchants} locations={locations} users={users} types={transactionTypes} />
+            {/* Added 'tags' prop to BlueprintWorkshop to fix line 315 error */}
+            <BlueprintWorkshop isOpen={isWorkshopOpen} onClose={() => setIsWorkshopOpen(false)} onSave={handleSaveBlueprint} rawLines={workshopRawLines} categories={categories} payees={payees} merchants={merchants} locations={locations} users={users} types={transactionTypes} tags={tags} />
             {previewRule && <RulePreviewModal isOpen={!!previewRule} onClose={() => setPreviewRule(null)} onApply={onUpdateTransactions} rule={previewRule} transactions={transactions} accounts={accounts} transactionTypes={transactionTypes} categories={categories} payees={payees} />}
         </div>
     );

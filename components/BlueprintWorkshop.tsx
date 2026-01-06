@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
-import type { BlueprintTemplate, BlueprintExample, ReconciliationRule, Category, Payee, Merchant, Location, User, TransactionType, Account } from '../types';
-/* Added SaveIcon to the import list */
-import { CloseIcon, SparklesIcon, AddIcon, DeleteIcon, TableIcon, RobotIcon, InfoIcon, CheckCircleIcon, SaveIcon } from './Icons';
+import type { BlueprintTemplate, BlueprintExample, ReconciliationRule, Category, Payee, Merchant, Location, User, TransactionType, Tag } from '../types';
+/* Added UsersIcon to imports to fix line 145 error */
+import { CloseIcon, SparklesIcon, AddIcon, DeleteIcon, TableIcon, RobotIcon, InfoIcon, CheckCircleIcon, SaveIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, ChecklistIcon, UsersIcon } from './Icons';
 import { generateUUID } from '../utils';
 
 interface BlueprintWorkshopProps {
@@ -15,40 +16,61 @@ interface BlueprintWorkshopProps {
     locations: Location[];
     users: User[];
     types: TransactionType[];
+    tags: Tag[];
 }
 
 const BlueprintWorkshop: React.FC<BlueprintWorkshopProps> = ({ 
-    isOpen, onClose, onSave, rawLines, categories, payees, merchants, locations, users, types 
+    isOpen, onClose, onSave, rawLines, categories, payees, merchants, locations, users, types, tags 
 }) => {
     const [name, setName] = useState('');
     const [examples, setExamples] = useState<BlueprintExample[]>([]);
     const [activeLine, setActiveLine] = useState<string | null>(null);
 
-    // Temp Example Form
+    // Full Example Mapping Form State
     const [eCatId, setECatId] = useState('');
     const [ePayId, setEPayId] = useState('');
+    const [eMerId, setEMerId] = useState('');
+    const [eLocId, setELocId] = useState('');
+    const [eUserId, setEUserId] = useState(users.find(u => u.isDefault)?.id || users[0]?.id || '');
+    const [eTypeId, setETypeId] = useState(types.find(t => t.balanceEffect === 'expense')?.id || types[0]?.id || '');
+    const [eTagIds, setETagIds] = useState<Set<string>>(new Set());
 
     if (!isOpen) return null;
+
+    const toggleTag = (id: string) => {
+        setETagIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
 
     const handleAddExample = () => {
         if (!activeLine) return;
         const newExample: BlueprintExample = {
             rawLine: activeLine,
             suggestedRule: {
-                name: `Example: ${activeLine.substring(0, 20)}`,
+                name: `Example: ${activeLine.substring(0, 25)}`,
                 setCategoryId: eCatId || undefined,
-                setPayeeId: ePayId || undefined
+                setPayeeId: ePayId || undefined,
+                setMerchantId: eMerId || undefined,
+                setLocationId: eLocId || undefined,
+                setUserId: eUserId || undefined,
+                setTransactionTypeId: eTypeId || undefined,
+                assignTagIds: eTagIds.size > 0 ? Array.from(eTagIds) : undefined
             }
         };
         setExamples([...examples, newExample]);
         setActiveLine(null);
-        setECatId('');
-        setEPayId('');
+        // Reset form
+        setECatId(''); setEPayId(''); setEMerId(''); setELocId('');
+        setETagIds(new Set());
     };
 
     const handleSave = () => {
         if (!name.trim() || examples.length === 0) {
-            alert("Name and at least one example are required.");
+            alert("Blueprint name and at least one example mapping are required.");
             return;
         }
         onSave({
@@ -61,7 +83,7 @@ const BlueprintWorkshop: React.FC<BlueprintWorkshopProps> = ({
 
     return (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                 <div className="p-6 border-b flex justify-between items-center bg-indigo-600 text-white">
                     <div className="flex items-center gap-3">
                         <SparklesIcon className="w-8 h-8" />
@@ -75,17 +97,17 @@ const BlueprintWorkshop: React.FC<BlueprintWorkshopProps> = ({
 
                 <div className="flex-1 flex min-h-0">
                     {/* LEFT: RAW LINES */}
-                    <div className="w-1/2 border-r border-slate-100 flex flex-col bg-slate-50">
+                    <div className="w-2/5 border-r border-slate-100 flex flex-col bg-slate-50">
                         <div className="p-4 border-b bg-white">
-                            <h4 className="text-xs font-black text-slate-400 uppercase mb-2">Raw File Content (First 20 Lines)</h4>
-                            <p className="text-[10px] text-slate-500 leading-tight">Click a line to create a training rule for the AI.</p>
+                            <h4 className="text-xs font-black text-slate-400 uppercase mb-2">Raw File Content</h4>
+                            <p className="text-[10px] text-slate-500 leading-tight">Select a line that represents a unique transaction pattern.</p>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
-                            {rawLines.slice(0, 20).map((line, i) => (
+                            {rawLines.map((line, i) => (
                                 <button 
                                     key={i} 
                                     onClick={() => setActiveLine(line)}
-                                    className={`w-full text-left p-3 rounded-xl border-2 transition-all font-mono text-[10px] ${activeLine === line ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:border-slate-200'}`}
+                                    className={`w-full text-left p-3 rounded-xl border-2 transition-all font-mono text-[10px] break-all ${activeLine === line ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:border-slate-200'}`}
                                 >
                                     {line}
                                 </button>
@@ -94,78 +116,145 @@ const BlueprintWorkshop: React.FC<BlueprintWorkshopProps> = ({
                     </div>
 
                     {/* RIGHT: BUILDER & EXAMPLES */}
-                    <div className="w-1/2 flex flex-col bg-white overflow-y-auto custom-scrollbar">
-                        <div className="p-6 space-y-6">
-                            <div>
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Template Identity</label>
-                                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Chase Visa Platinum Blueprint" className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-800" />
+                    <div className="w-3/5 flex flex-col bg-white overflow-hidden">
+                        <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2 ml-1">Template Label</label>
+                                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. AMEX Platinum Statement Blueprint" className="w-full p-3 border-2 border-white rounded-xl font-bold text-slate-800 text-lg shadow-sm" />
                             </div>
 
                             {activeLine ? (
-                                <div className="p-6 bg-indigo-50 border-2 border-indigo-100 rounded-2xl animate-fade-in space-y-4">
-                                    <h5 className="font-bold text-indigo-900 text-sm flex items-center gap-2"><AddIcon className="w-4 h-4"/> Create Blueprint Rule</h5>
-                                    <div className="bg-white p-3 rounded-xl border border-indigo-100 font-mono text-[10px] text-slate-500">{activeLine}</div>
+                                <div className="p-6 bg-indigo-50 border-2 border-indigo-100 rounded-[2rem] animate-fade-in space-y-6 shadow-sm">
+                                    <div className="flex justify-between items-center">
+                                        <h5 className="font-black text-indigo-900 text-sm uppercase tracking-widest flex items-center gap-2"><AddIcon className="w-4 h-4"/> Map Training Instance</h5>
+                                        <button onClick={() => setActiveLine(null)} className="text-indigo-400 hover:text-indigo-600"><CloseIcon className="w-5 h-5"/></button>
+                                    </div>
+                                    
+                                    <div className="bg-white p-4 rounded-xl border border-indigo-100 font-mono text-[10px] text-slate-500 leading-relaxed shadow-inner break-all">
+                                        {activeLine}
+                                    </div>
+
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase">Map to Category</label>
-                                            <select value={eCatId} onChange={e => setECatId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold">
-                                                <option value="">-- Select --</option>
-                                                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><TagIcon className="w-3 h-3"/> Category</label>
+                                            <select value={eCatId} onChange={e => setECatId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                <option value="">-- Inherit or Auto --</option>
+                                                {categories.sort((a,b)=>a.name.localeCompare(b.name)).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                             </select>
                                         </div>
-                                        <div>
-                                            <label className="text-[10px] font-black text-slate-400 uppercase">Map to Payee</label>
-                                            <select value={ePayId} onChange={e => setEPayId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold">
-                                                <option value="">-- Select --</option>
-                                                {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><UsersIcon className="w-3 h-3"/> Payee</label>
+                                            <select value={ePayId} onChange={e => setEPayId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                <option value="">-- Inherit or Auto --</option>
+                                                {payees.sort((a,b)=>a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><BoxIcon className="w-3 h-3"/> Merchant</label>
+                                            <select value={eMerId} onChange={e => setEMerId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                <option value="">-- No Merchant --</option>
+                                                {merchants.sort((a,b)=>a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><MapPinIcon className="w-3 h-3"/> Location</label>
+                                            <select value={eLocId} onChange={e => setELocId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                <option value="">-- No Location --</option>
+                                                {locations.sort((a,b)=>a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><UserGroupIcon className="w-3 h-3"/> Owner</label>
+                                            <select value={eUserId} onChange={e => setEUserId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-indigo-400 uppercase ml-1 flex items-center gap-1"><ChecklistIcon className="w-3 h-3"/> Direction</label>
+                                            <select value={eTypeId} onChange={e => setETypeId(e.target.value)} className="w-full p-2 border rounded-lg text-xs font-bold text-slate-700">
+                                                {types.map(t => <option key={t.id} value={t.id}>{t.name} ({t.balanceEffect})</option>)}
                                             </select>
                                         </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setActiveLine(null)} className="flex-1 py-2 text-xs font-bold text-slate-500">Cancel</button>
-                                        <button onClick={handleAddExample} className="flex-[2] py-2 bg-indigo-600 text-white font-black rounded-lg text-xs">Confirm Example</button>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[9px] font-black text-indigo-400 uppercase ml-1">Append Taxonomy Tags</label>
+                                        <div className="flex flex-wrap gap-2 p-3 bg-white/50 rounded-xl border border-indigo-100">
+                                            {tags.map(tag => (
+                                                <button 
+                                                    key={tag.id} 
+                                                    type="button"
+                                                    onClick={() => toggleTag(tag.id)}
+                                                    className={`px-2 py-1 rounded-lg text-[10px] font-bold border-2 transition-all ${eTagIds.has(tag.id) ? 'bg-indigo-600 text-white border-indigo-600 shadow-md' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200'}`}
+                                                >
+                                                    {tag.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3 pt-2">
+                                        <button onClick={handleAddExample} className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest text-xs">Confirm Training Pair</button>
                                     </div>
                                 </div>
                             ) : (
-                                <div className="p-10 border-2 border-dashed border-slate-200 rounded-3xl text-center">
-                                    <RobotIcon className="w-10 h-10 text-slate-200 mx-auto mb-2" />
-                                    <p className="text-xs text-slate-400 font-medium">Select a line from the left to start teaching the AI.</p>
+                                <div className="p-16 border-2 border-dashed border-slate-200 rounded-[3rem] text-center bg-slate-50/50">
+                                    <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-xl mx-auto mb-6">
+                                        <RobotIcon className="w-10 h-10 text-indigo-600" />
+                                    </div>
+                                    <h4 className="text-lg font-black text-slate-800">Deterministic Learning</h4>
+                                    <p className="text-sm text-slate-500 max-w-xs mx-auto mt-2 leading-relaxed">Select a line from the raw statement text on the left to teach Gemini how to map this specific bank's format.</p>
                                 </div>
                             )}
 
-                            <div className="space-y-3">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex justify-between">
-                                    <span>Blueprint Examples ({examples.length})</span>
-                                    {examples.length >= 3 && <span className="text-emerald-500 flex items-center gap-1"><CheckCircleIcon className="w-3 h-3"/> Strong Blueprint</span>}
-                                </h4>
-                                {examples.map((ex, idx) => (
-                                    <div key={idx} className="p-3 bg-slate-50 border rounded-xl flex justify-between items-center group">
-                                        <div className="min-w-0 flex-1">
-                                            <p className="text-[9px] font-mono text-slate-400 truncate">{ex.rawLine}</p>
-                                            <p className="text-[10px] font-bold text-indigo-700 mt-1">
-                                                {categories.find(c => c.id === ex.suggestedRule.setCategoryId)?.name || 'No Cat'} &rarr; {payees.find(p => p.id === ex.suggestedRule.setPayeeId)?.name || 'No Payee'}
-                                            </p>
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center px-1">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                        <span>Blueprint Training Set ({examples.length})</span>
+                                    </h4>
+                                    {examples.length >= 3 && <div className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[8px] font-black uppercase flex items-center gap-1 shadow-sm border border-emerald-200 animate-pulse"><CheckCircleIcon className="w-3 h-3"/> High Reliability</div>}
+                                </div>
+                                
+                                <div className="grid grid-cols-1 gap-3">
+                                    {examples.map((ex, idx) => (
+                                        <div key={idx} className="p-4 bg-white border border-slate-200 rounded-2xl flex justify-between items-center group hover:border-indigo-300 transition-all shadow-sm">
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[10px] font-mono text-slate-400 truncate mb-2">{ex.rawLine}</p>
+                                                <div className="flex flex-wrap gap-1.5">
+                                                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded text-[9px] font-black uppercase">{categories.find(c => c.id === ex.suggestedRule.setCategoryId)?.name || 'Generic'}</span>
+                                                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded text-[9px] font-black uppercase">{payees.find(p => p.id === ex.suggestedRule.setPayeeId)?.name || 'Auto'}</span>
+                                                    {ex.suggestedRule.assignTagIds?.map(tid => (
+                                                        <span key={tid} className="px-2 py-0.5 bg-slate-800 text-white rounded text-[8px] font-black uppercase">{tags.find(t => t.id === tid)?.name}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <button onClick={() => setExamples(examples.filter((_, i) => i !== idx))} className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><DeleteIcon className="w-4 h-4"/></button>
                                         </div>
-                                        <button onClick={() => setExamples(examples.filter((_, i) => i !== idx))} className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100"><DeleteIcon className="w-4 h-4"/></button>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <div className="p-6 border-t bg-slate-50 flex justify-between items-center">
-                    <div className="flex items-center gap-2 text-slate-400">
-                        <InfoIcon className="w-4 h-4" />
-                        <span className="text-[10px] font-medium uppercase">3+ Examples recommended for high accuracy.</span>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white rounded-xl border border-slate-200 shadow-sm"><InfoIcon className="w-5 h-5 text-indigo-400" /></div>
+                        <div>
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-tight">Requirement</p>
+                            <p className="text-xs font-bold text-slate-400">At least 1 example mapping required. 3+ recommended.</p>
+                        </div>
                     </div>
-                    <button 
-                        onClick={handleSave} 
-                        disabled={examples.length === 0 || !name.trim()}
-                        className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl shadow-xl hover:bg-indigo-700 disabled:opacity-30 flex items-center gap-2"
-                    >
-                        <SaveIcon className="w-5 h-5" /> Finish & Create Template
-                    </button>
+                    <div className="flex gap-3">
+                         <button onClick={onClose} className="px-8 py-3 text-sm font-bold text-slate-500 hover:text-slate-800 transition-colors">Discard</button>
+                         <button 
+                            onClick={handleSave} 
+                            disabled={examples.length === 0 || !name.trim()}
+                            className="px-12 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 disabled:opacity-30 flex items-center gap-2 transition-all transform active:scale-95"
+                        >
+                            <SaveIcon className="w-5 h-5" /> Commit Blueprint
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
