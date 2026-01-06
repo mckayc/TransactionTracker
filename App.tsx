@@ -1,6 +1,7 @@
 
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Merchant, Location, FlowDesignation } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Merchant, Location } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import AllTransactions from './views/AllTransactions';
@@ -24,7 +25,7 @@ import { MenuIcon, CloseIcon, SparklesIcon, ExclamationTriangleIcon, RepeatIcon 
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
 
-// Global sync channel
+// Global sync channel with safe check
 const getSyncChannel = () => {
     try {
         if (typeof BroadcastChannel !== 'undefined') return new BroadcastChannel('finparser_sync');
@@ -47,7 +48,6 @@ const App: React.FC = () => {
     const [categories, setCategories] = useState<Category[]>([]);
     const [tags, setTags] = useState<Tag[]>([]);
     const [transactionTypes, setTransactionTypes] = useState<TransactionType[]>([]);
-    const [flowDesignations, setFlowDesignations] = useState<FlowDesignation[]>([]);
     const [rules, setRules] = useState<ReconciliationRule[]>([]);
     const [payees, setPayees] = useState<Payee[]>([]);
     const [merchants, setMerchants] = useState<Merchant[]>([]);
@@ -84,7 +84,6 @@ const App: React.FC = () => {
             setCategories(data.categories || []);
             setTags(data.tags || []);
             setTransactionTypes(data.transactionTypes || []);
-            setFlowDesignations(data.flowDesignations || []);
             setRules(data.reconciliationRules || []);
             setPayees(data.payees || []);
             setMerchants(data.merchants || []);
@@ -120,6 +119,7 @@ const App: React.FC = () => {
         } finally {
             if (showLoader) setIsLoading(false);
             setIsSyncing(false);
+            // Eagerly remove splash screen
             document.body.classList.add('loaded');
         }
     };
@@ -137,6 +137,7 @@ const App: React.FC = () => {
         if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
     };
 
+    // Bulk Atomic Update Helper
     const bulkUpdateData = async (key: string, newItems: any[], setter: Function) => {
         setter((prev: any[]) => {
             const next = [...prev];
@@ -199,7 +200,7 @@ const App: React.FC = () => {
         </div>
     );
 
-    const currentContext = { transactions, accounts, categories, tags, payees, merchants, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile, flowDesignations };
+    const currentContext = { transactions, accounts, categories, tags, payees, merchants, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile };
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
@@ -222,7 +223,7 @@ const App: React.FC = () => {
                             transactions={transactions} accounts={accounts} accountTypes={accountTypes}
                             categories={categories} tags={tags} transactionTypes={transactionTypes}
                             rules={rules} payees={payees} merchants={merchants} locations={locations} users={users}
-                            flowDesignations={flowDesignations} documentFolders={documentFolders} onTransactionsAdded={handleTransactionsAdded}
+                            documentFolders={documentFolders} onTransactionsAdded={handleTransactionsAdded}
                             onAddAccount={(a) => bulkUpdateData('accounts', [a], setAccounts)}
                             onAddAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes)}
                             onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules)}
@@ -257,7 +258,7 @@ const App: React.FC = () => {
                             onAddEvent={(e) => bulkUpdateData('scheduledEvents', [e], setScheduledEvents)}
                             onUpdateTransaction={handleUpdateTransaction} onAddTransaction={(tx) => handleTransactionsAdded([tx])}
                             onToggleTaskCompletion={async (d, eid, tid) => { const next = {...taskCompletions, [`${d}_${eid}_${tid}`]: !taskCompletions[`${d}_${eid}_${tid}`]}; updateData('taskCompletions', next, setTaskCompletions); }}
-                            onToggleTask={(id) => setTaskCompletions(prev => ({...prev, [id]: !prev[id]}))}
+                            onToggleTask={(id) => setTaskCompletions(prev => ({...prev, [id]: !prev[id]}))} // Simplified
                             onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks)}
                             transactionTypes={transactionTypes}
                         />
@@ -270,7 +271,6 @@ const App: React.FC = () => {
                             onDeleteRule={(id) => setRules(prev => { const next = prev.filter(r => r.id !== id); api.save('reconciliationRules', next); return next; })}
                             accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} 
                             merchants={merchants} locations={locations} users={users} transactions={transactions}
-                            flowDesignations={flowDesignations}
                             onUpdateTransactions={(txs) => handleTransactionsAdded(txs)}
                             onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
                             onSaveCategories={(cs) => bulkUpdateData('categories', cs, setCategories)}
@@ -282,6 +282,7 @@ const App: React.FC = () => {
                             onSaveLocations={(ls) => bulkUpdateData('locations', ls, setLocations)}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
                             onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
+                            /* Added missing onSaveUser prop to resolve Type Error */
                             onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
                         />
                     )}
@@ -289,9 +290,6 @@ const App: React.FC = () => {
                         <ManagementHub 
                             transactions={transactions} accounts={accounts} categories={categories} tags={tags} payees={payees} 
                             merchants={merchants} locations={locations} users={users} transactionTypes={transactionTypes} accountTypes={accountTypes}
-                            flowDesignations={flowDesignations}
-                            onSaveFlowDesignation={(fd) => bulkUpdateData('flowDesignations', [fd], setFlowDesignations)}
-                            onDeleteFlowDesignation={(id) => setFlowDesignations(prev => { const next = prev.filter(f => f.id !== id); api.save('flowDesignations', next); return next; })}
                             onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
                             onDeleteCategory={(id) => setCategories(prev => { const next = prev.filter(c => c.id !== id); api.save('categories', next); return next; })}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}

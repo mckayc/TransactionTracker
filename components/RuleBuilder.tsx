@@ -119,24 +119,13 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                             </div>
 
                             <div className={`${condition.field === 'metadata' ? 'xl:col-span-3' : 'xl:col-span-5'}`}>
-                                {condition.field === 'accountId' && condition.operator === 'equals' ? (
-                                    <select 
-                                        value={condition.value} 
-                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                        className="w-full p-2 text-xs border rounded-lg focus:border-indigo-500 outline-none font-bold"
-                                    >
-                                        <option value="">Select Account...</option>
-                                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.identifier})</option>)}
-                                    </select>
-                                ) : (
-                                    <input 
-                                        type={condition.field === 'amount' ? 'number' : 'text'} 
-                                        value={condition.value} 
-                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                        placeholder="Comparison value..."
-                                        className="w-full p-2 text-xs border rounded-lg focus:border-indigo-500 outline-none"
-                                    />
-                                )}
+                                <input 
+                                    type={condition.field === 'amount' ? 'number' : 'text'} 
+                                    value={condition.value} 
+                                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                    placeholder="Comparison value..."
+                                    className="w-full p-2 text-xs border rounded-lg focus:border-indigo-500 outline-none"
+                                />
                             </div>
 
                             <div className="xl:col-span-1 flex justify-end">

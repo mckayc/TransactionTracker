@@ -1,10 +1,11 @@
 
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location, FlowDesignation } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location } from '../types';
+// Fixed: Imports for AI extraction functions are now expected to be available in geminiService.ts
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
+import { applyRulesToTransactions } from '../services/ruleService';
 import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
@@ -16,7 +17,6 @@ import { api } from '../services/apiService';
 type AppState = 'idle' | 'processing' | 'verifying_import' | 'post_import_edit' | 'success' | 'error';
 type ImportMethod = 'upload' | 'paste';
 
-/* Added flowDesignations to DashboardProps to resolve IntrinsicAttributes error in App.tsx */
 interface DashboardProps {
   onTransactionsAdded: (newTransactions: Transaction[], newCategories: Category[]) => void;
   transactions: Transaction[]; 
@@ -27,7 +27,6 @@ interface DashboardProps {
   categories: Category[];
   tags: Tag[];
   transactionTypes: TransactionType[];
-  flowDesignations: FlowDesignation[];
   rules: ReconciliationRule[];
   payees: Payee[];
   merchants: Merchant[];
@@ -58,9 +57,8 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, i
     </div>
 );
 
-/* Destructured flowDesignations from props to resolve missing property error */
 const Dashboard: React.FC<DashboardProps> = ({ 
-    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, flowDesignations, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
+    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -72,9 +70,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [pasteAccountId, setPasteAccountId] = useState<string>('');
   const [useAi, setUseAi] = useState(true);
 
-  // rawTransactionsToVerify now holds the UN-MODIFIED transactions from the parser.
-  // The verification component will apply rules reactively.
-  const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<RawTransaction[]>([]);
+  const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
   const [importedTxIds, setImportedTxIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -91,6 +87,29 @@ const Dashboard: React.FC<DashboardProps> = ({
     fetchSummary();
   }, [dashboardRange, recentGlobalTransactions]);
 
+  const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
+    if (!rawTransactions || rawTransactions.length === 0) {
+        setError("No transactions were found in the provided data. Please check the file format or try AI mode.");
+        setAppState('error');
+        return;
+    }
+
+    const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
+    const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
+    const categoryNameToIdMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
+    const otherCategoryId = categoryNameToIdMap.get('other') || categories[0]?.id || '';
+
+    const processedTransactions = transactionsWithRules.map(tx => {
+        let finalCategoryId = tx.categoryId;
+        if (!finalCategoryId) {
+            const aiCategoryName = (tx.category || '').toLowerCase();
+            finalCategoryId = categoryNameToIdMap.get(aiCategoryName) || otherCategoryId;
+        }
+        return { ...tx, categoryId: finalCategoryId, tempId: generateUUID() };
+    });
+    setRawTransactionsToVerify(processedTransactions);
+  }, [categories, accounts]);
+
   const handleFileUpload = useCallback(async (files: File[], accountId: string, aiMode: boolean) => {
     setError(null);
     setAppState('processing');
@@ -104,13 +123,13 @@ const Dashboard: React.FC<DashboardProps> = ({
           throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
       }
 
-      setRawTransactionsToVerify(raw);
+      applyRulesAndSetStaging(raw, users.find(u => u.isDefault)?.id || users[0]?.id || '', rules);
       setAppState('verifying_import');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
       setAppState('error');
     }
-  }, [transactionTypes, categories]);
+  }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
       const { added } = mergeTransactions(recentGlobalTransactions, verified);
@@ -121,6 +140,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
+  // Determine if the top import card should be visible
   const isImportFormVisible = appState === 'idle' || appState === 'processing' || appState === 'error';
 
   return (
@@ -151,6 +171,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col gap-6 overflow-hidden">
+        {/* Top: Quick Import Section (Full Width, only visible when not verifying) */}
         {isImportFormVisible && (
             <div className="w-full flex flex-col shrink-0 animate-fade-in">
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
@@ -200,7 +221,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                 setAppState('processing');
                                                 try {
                                                     const raw = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
-                                                    setRawTransactionsToVerify(raw);
+                                                    applyRulesAndSetStaging(raw, users[0]?.id || 'default', rules);
                                                     setAppState('verifying_import');
                                                 } catch(e) { setAppState('error'); setError("Parsing failed. Ensure columns align."); }
                                             }} 
@@ -226,11 +247,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
         )}
 
+        {/* Bottom: Ledger Activity or Verification View (Full Width) */}
         <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             {appState === 'verifying_import' ? (
                 <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                    {/* Passed flowDesignations to ImportVerification to fix missing property error */}
-                    <ImportVerification rules={rules} onSaveRule={onSaveRule} rawTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} flowDesignations={flowDesignations} payees={payees} merchants={merchants} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
+                    {/* Fixed: Pass missing merchants and locations props */}
+                    <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} merchants={merchants} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
                 </div>
             ) : appState === 'post_import_edit' ? (
                 <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-0 h-full">

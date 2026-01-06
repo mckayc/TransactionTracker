@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { YouTubeMetric, YouTubeChannel } from '../../types';
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, YoutubeIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, SearchCircleIcon, ExternalLinkIcon, AddIcon, EditIcon, VideoIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, ChartPieIcon, BoxIcon, HeartIcon, CalendarIcon, UsersIcon } from '../../components/Icons';
@@ -560,6 +561,7 @@ const YouTubeIntegration: React.FC<YouTubeIntegrationProps> = ({ metrics, onAddM
         else { setInsightsSortKey(key as any); setInsightsSortDir('desc'); }
     };
 
+    // Fixed: Added string cast to key to resolve assignment mismatch
     const getSortIcon = (key: keyof YouTubeMetric | 'rpm', currentKey: string, currentDir: string) => {
         if (String(currentKey) !== String(key)) return <SortIcon className="w-3 h-3 text-slate-300 opacity-50" />;
         return currentDir === 'asc' ? <SortIcon className="w-3 h-3 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-indigo-600" />;
@@ -691,18 +693,23 @@ Conv Rate: ${conv.toFixed(2)}%
                                         <tr>
                                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Video Content</th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('views')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Views {getSortIcon('views', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('watchTimeHours')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Watch Time {getSortIcon('watchTimeHours', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('subscribersGained')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Subs {getSortIcon('subscribersGained', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('rpm')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1" title="Revenue per 1000 views">RPM {getSortIcon('rpm', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-red-600 transition-colors group" onClick={() => handleInsightsSort('estimatedRevenue')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                         </tr>
@@ -1024,25 +1031,30 @@ Conv Rate: ${conv.toFixed(2)}%
 
                         <div className="bg-white rounded-xl shadow-sm border border-slate-200 flex-1 flex flex-col min-h-0 overflow-hidden relative">
                             <div className="overflow-auto flex-grow">
-                                <table className="min-w-full text-left text-sm divide-y divide-slate-200">
+                                <table className="min-w-full divide-y divide-slate-200">
                                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
                                             <th className="px-4 py-3 w-10 bg-slate-50">
                                                 {!groupByVideo && <input type="checkbox" checked={selectedIds.size === tableMetrics.length && tableMetrics.length > 0} onChange={() => { if (selectedIds.size === tableMetrics.length) setSelectedIds(new Set()); else setSelectedIds(new Set(tableMetrics.map(m => m.id))); }} className="rounded border-slate-300 text-red-600 focus:ring-red-500 cursor-pointer" />}
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('reportYear')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center gap-1">Report Year {getSortIcon('reportYear', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('publishDate')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center gap-1">Published {getSortIcon('publishDate', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('videoTitle')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center gap-1">Video {getSortIcon('videoTitle', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('views')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Views {getSortIcon('views', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleInsightsSort('estimatedRevenue')}>
+                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('estimatedRevenue', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                         </tr>
@@ -1243,33 +1255,30 @@ Conv Rate: ${conv.toFixed(2)}%
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (Publish Yr)</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Fix line 897: Removed as any[] cast and reduce type param to fix unknown type inference error */}
                                     {formatCurrency(
-                                        Array.from(videoAggregateMap.values())
+                                        (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum, v) => sum + (v.creationYearRevenue || 0), 0)
+                                            .reduce<number>((sum, v) => sum + (v.creationYearRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Revenue (All Time)</p>
                                 <p className="text-2xl font-black text-indigo-600 font-mono">
-                                    {/* Removed redundant any[] cast and reduce type param */}
                                     {formatCurrency(
-                                        Array.from(videoAggregateMap.values())
+                                        (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum, v) => sum + (v.lifetimeRevenue || 0), 0)
+                                            .reduce<number>((sum, v) => sum + (v.lifetimeRevenue || 0), 0)
                                     )}
                                 </p>
                             </div>
                             <div>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Batch Total Views</p>
                                 <p className="text-2xl font-black text-slate-800 font-mono">
-                                    {/* Removed redundant any[] cast and reduce type param */}
                                     {formatNumber(
-                                        Array.from(videoAggregateMap.values())
+                                        (Array.from(videoAggregateMap.values()) as any[])
                                             .filter(v => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                            .reduce((sum, v) => sum + (v.lifetimeViews || 0), 0)
+                                            .reduce<number>((sum, v) => sum + (v.lifetimeViews || 0), 0)
                                     )}
                                 </p>
                             </div>
@@ -1294,11 +1303,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-100">
-                                    {/* Removed any[] cast to allow correct type inference from Map */}
-                                    {Array.from(videoAggregateMap.values())
-                                        .filter((v) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
-                                        .sort((a, b) => b.lifetimeRevenue - a.lifetimeRevenue)
-                                        .map((v, idx) => (
+                                    {(Array.from(videoAggregateMap.values()) as any[])
+                                        .filter((v: any) => v.publishDate.startsWith(selectedVelocityYear!) && (!filterChannelId || v.channelId === filterChannelId))
+                                        .sort((a: any, b: any) => (b.lifetimeRevenue || 0) - (a.lifetimeRevenue || 0))
+                                        .map((v: any, idx: number) => (
                                             <tr key={v.videoId} className="hover:bg-slate-50 transition-colors group">
                                                 <td className="px-6 py-3 text-xs font-mono text-slate-300">#{idx + 1}</td>
                                                 <td className="px-6 py-3 max-w-md">
@@ -1310,10 +1318,10 @@ Conv Rate: ${conv.toFixed(2)}%
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-6 py-3 text-right text-xs text-slate-600 font-mono border-l border-slate-50">{formatNumber(v.creationYearViews)}</td>
-                                                <td className="px-6 py-3 text-right text-xs font-bold text-slate-700 font-mono">{formatCurrency(v.creationYearRevenue)}</td>
-                                                <td className="px-6 py-3 text-right text-xs text-slate-500 font-mono border-l border-slate-50">{formatNumber(v.lifetimeViews)}</td>
-                                                <td className="px-6 py-3 text-right text-xs font-black text-indigo-600 font-mono">{formatCurrency(v.lifetimeRevenue)}</td>
+                                                <td className="px-6 py-3 text-right text-xs text-slate-600 font-mono border-l border-slate-50">{formatNumber(v.creationYearViews || 0)}</td>
+                                                <td className="px-6 py-3 text-right text-xs font-bold text-slate-700 font-mono">{formatCurrency(v.creationYearRevenue || 0)}</td>
+                                                <td className="px-6 py-3 text-right text-xs text-slate-500 font-mono border-l border-slate-50">{formatNumber(v.lifetimeViews || 0)}</td>
+                                                <td className="px-6 py-3 text-right text-xs font-black text-indigo-600 font-mono">{formatCurrency(v.lifetimeRevenue || 0)}</td>
                                             </tr>
                                         ))}
                                 </tbody>

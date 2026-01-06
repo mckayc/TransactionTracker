@@ -1,5 +1,5 @@
 
-import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition, BalanceEffect } from '../types';
+import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
 
@@ -7,7 +7,7 @@ declare const pdfjsLib: any;
 
 /**
  * Parses Rule Manifests for bulk ingestion
- * Updated to handle multiple OR conditions via pipe symbols and BalanceEffect
+ * Updated to handle multiple OR conditions via pipe symbols
  */
 export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     const rules: ReconciliationRule[] = [];
@@ -27,7 +27,6 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         setMerchant: header.indexOf('set merchant'),
         setLocation: header.indexOf('set location'),
         setType: header.indexOf('set type'),
-        setDirection: header.indexOf('set direction'),
         setUser: header.indexOf('set user'),
         setTags: header.indexOf('tags'),
         skip: header.indexOf('skip import')
@@ -76,7 +75,6 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
             suggestedMerchantName: parts[colMap.setMerchant],
             suggestedLocationName: parts[colMap.setLocation],
             suggestedTypeName: parts[colMap.setType],
-            setBalanceEffect: (parts[colMap.setDirection]?.toLowerCase() as BalanceEffect) || undefined,
             suggestedUserName: parts[colMap.setUser],
             suggestedTags: parts[colMap.setTags] ? parts[colMap.setTags].split(';').map(t => t.trim()) : undefined,
             skipImport: parts[colMap.skip]?.toLowerCase() === 'true'

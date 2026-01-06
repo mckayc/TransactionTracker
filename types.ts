@@ -1,13 +1,5 @@
 
-
 export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation' | 'tax' | 'savings' | 'debt';
-export type EconomicImpact = 'inflow' | 'outflow' | 'neutral';
-
-export interface FlowDesignation {
-    id: string;
-    name: string;
-    impact: EconomicImpact;
-}
 
 export interface TransactionType {
     id: string;
@@ -77,7 +69,6 @@ export interface RawTransaction {
     category: string;
     accountId: string;
     typeId: string;
-    flowDesignationId?: string;
     location?: string;
     sourceFilename?: string;
     originalDescription?: string;
@@ -88,6 +79,7 @@ export interface RawTransaction {
     tagIds?: string[];
     notes?: string;
     appliedRuleId?: string;
+    // Fix: Added metadata to RawTransaction to store pattern-specific data
     metadata?: Record<string, any>;
 }
 
@@ -127,20 +119,19 @@ export interface ReconciliationRule {
     setLocationId?: string;
     setUserId?: string;
     setTransactionTypeId?: string;
-    setFlowDesignationId?: string;
-    setBalanceEffect?: BalanceEffect;
     assignTagIds?: string[];
     skipImport?: boolean;
     isAiDraft?: boolean;
     priority?: number;
+    // Fix: Added scope to ReconciliationRule to track logical application domain
     scope?: string;
+    // Fields for Import/AI-suggested entities that don't exist yet
     suggestedCategoryName?: string;
     suggestedPayeeName?: string;
     suggestedMerchantName?: string;
     suggestedLocationName?: string;
     suggestedUserName?: string;
     suggestedTypeName?: string;
-    suggestedEffectName?: string;
     suggestedTags?: string[];
 }
 
@@ -155,6 +146,7 @@ export interface RuleImportDraft extends ReconciliationRule {
     };
 }
 
+// Fix: Added TaskPriority export for components that handle task criticality
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface TaskItem {
@@ -187,6 +179,7 @@ export interface RecurrenceRule {
     endDate?: string;
 }
 
+// Fix: Added Task interface for checklist template structures
 export interface Task {
     id: string;
     text: string;
@@ -208,6 +201,7 @@ export interface ScheduledEvent {
 
 export type TaskCompletions = Record<string, boolean>;
 
+// Fix: Exported BusinessInfo and TaxInfo to resolve missing imports in BusinessWizard and Hub
 export interface BusinessInfo {
     llcName?: string;
     businessType?: string;
@@ -262,6 +256,7 @@ export interface DocumentFolder {
     createdAt: string;
 }
 
+// Fix: Added BackupConfig export for SystemSettings management
 export interface BackupConfig {
     frequency: 'daily' | 'weekly' | 'monthly' | 'never';
     retentionCount: number;
@@ -399,8 +394,7 @@ export interface FinancialPlan {
     id: string;
     createdAt: string;
     strategy: string;
-    /* Fixed line 401: '?' at the end of a type is not valid TypeScript. It should be prop?: type */
-    suggestedBudgets?: { categoryId: string; limit: number }[];
+    suggestedBudgets: { categoryId: string; limit: number }[];
 }
 
 export interface ContentLink {
@@ -422,6 +416,7 @@ export interface AuditFinding {
     };
 }
 
+// Fix: Added DuplicatePair interface for duplicate transaction handling
 export interface DuplicatePair {
     newTx: Transaction;
     existingTx: Transaction;
