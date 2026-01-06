@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Category, Tag, Payee, User, TransactionType, Transaction, AccountType, Account, BalanceEffect, Merchant, Location } from '../types';
-import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, DeleteIcon, EditIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon, CloseIcon, SparklesIcon, TableIcon, LightBulbIcon, BoxIcon, MapPinIcon } from '../components/Icons';
+import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, DeleteIcon, EditIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon, CloseIcon, SparklesIcon, TableIcon, LightBulbIcon, BoxIcon, MapPinIcon, ExclamationTriangleIcon, TrashIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface ManagementHubProps {
@@ -45,6 +45,10 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const [activeTab, setActiveTab] = useState<Tab>('categories');
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
+    
+    // Bulk Selection State
+    const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+    const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
 
     // Form states
     const [name, setName] = useState('');
@@ -57,6 +61,11 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const [state, setState] = useState('');
     const [country, setCountry] = useState('');
     const [balanceEffect, setBalanceEffect] = useState<BalanceEffect>('expense');
+
+    // Reset selection when tab changes
+    useEffect(() => {
+        setBulkSelectedIds(new Set());
+    }, [activeTab]);
 
     // Usage analysis
     const usageCounts = useMemo(() => {
@@ -87,6 +96,21 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
 
         return counts;
     }, [transactions, accounts]);
+
+    const currentList = useMemo(() => {
+        let list: any[] = [];
+        switch (activeTab) {
+            case 'categories': list = [...categories]; break;
+            case 'tags': list = [...tags]; break;
+            case 'payees': list = [...payees]; break;
+            case 'merchants': list = [...merchants]; break;
+            case 'locations': list = [...locations]; break;
+            case 'users': list = [...users]; break;
+            case 'transactionTypes': list = [...transactionTypes]; break;
+            case 'accountTypes': list = [...accountTypes]; break;
+        }
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+    }, [activeTab, categories, tags, payees, merchants, locations, users, transactionTypes, accountTypes]);
 
     const handleSelect = (id: string) => {
         setSelectedId(id);
@@ -140,36 +164,21 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
         const payload: any = { id, name: name.trim() };
 
         switch (activeTab) {
-            case 'categories':
-                onSaveCategory({ ...payload, parentId: parentId || undefined });
-                break;
-            case 'tags':
-                onSaveTag({ ...payload, color });
-                break;
-            case 'payees':
-                onSavePayee({ ...payload, parentId: parentId || undefined, notes: notes || undefined, userId: userId || undefined });
-                break;
-            case 'merchants':
-                onSaveMerchant({ ...payload, payeeId: payeeId || undefined, notes: notes || undefined });
-                break;
-            case 'locations':
-                onSaveLocation({ ...payload, city, state, country });
-                break;
-            case 'users':
-                onSaveUser(payload);
-                break;
-            case 'transactionTypes':
-                onSaveTransactionType({ ...payload, balanceEffect });
-                break;
-            case 'accountTypes':
-                onSaveAccountType(payload);
-                break;
+            case 'categories': onSaveCategory({ ...payload, parentId: parentId || undefined }); break;
+            case 'tags': onSaveTag({ ...payload, color }); break;
+            case 'payees': onSavePayee({ ...payload, parentId: parentId || undefined, notes: notes || undefined, userId: userId || undefined }); break;
+            case 'merchants': onSaveMerchant({ ...payload, payeeId: payeeId || undefined, notes: notes || undefined }); break;
+            case 'locations': onSaveLocation({ ...payload, city, state, country }); break;
+            case 'users': onSaveUser(payload); break;
+            case 'transactionTypes': onSaveTransactionType({ ...payload, balanceEffect }); break;
+            case 'accountTypes': onSaveAccountType(payload); break;
         }
         setIsCreating(false);
         setSelectedId(id);
     };
 
-    const handleDelete = (id: string) => {
+    // Single item delete (No verification per prompt)
+    const handleIndividualDelete = (id: string) => {
         if (activeTab === 'users') {
             const user = users.find(u => u.id === id);
             if (user?.isDefault) {
@@ -182,8 +191,28 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
             alert(`Cannot delete this ${activeTab.slice(0, -1)}. It is currently being used by ${count} records.`);
             return;
         }
-        if (!confirm("Permanently delete this item?")) return;
 
+        executeDeletion(id);
+        if (selectedId === id) setSelectedId(null);
+    };
+
+    // Batch management
+    const toggleBulkSelection = (id: string) => {
+        const next = new Set(bulkSelectedIds);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        setBulkSelectedIds(next);
+    };
+
+    const toggleSelectAll = () => {
+        if (bulkSelectedIds.size === currentList.length) {
+            setBulkSelectedIds(new Set());
+        } else {
+            setBulkSelectedIds(new Set(currentList.map(item => item.id)));
+        }
+    };
+
+    const executeDeletion = (id: string) => {
         switch (activeTab) {
             case 'categories': onDeleteCategory(id); break;
             case 'tags': onDeleteTag(id); break;
@@ -194,6 +223,34 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
             case 'transactionTypes': onDeleteTransactionType(id); break;
             case 'accountTypes': onDeleteAccountType(id); break;
         }
+    };
+
+    const handleConfirmBulkDelete = () => {
+        const selected = Array.from(bulkSelectedIds);
+        
+        // Final sanity check for usage before executing bulk delete
+        const validToDelete: string[] = [];
+        const inUse: string[] = [];
+
+        selected.forEach(id => {
+            const item = currentList.find(x => x.id === id);
+            const count = (usageCounts as any)[activeTab].get(id) || 0;
+            const isDefaultUser = activeTab === 'users' && item?.isDefault;
+
+            if (count > 0 || isDefaultUser) {
+                inUse.push(item?.name || id);
+            } else {
+                validToDelete.push(id);
+            }
+        });
+
+        if (inUse.length > 0) {
+            alert(`Skipping ${inUse.length} items that are either in use or system defaults: ${inUse.join(', ')}`);
+        }
+
+        validToDelete.forEach(executeDeletion);
+        setBulkSelectedIds(new Set());
+        setIsBulkDeleteModalOpen(false);
         setSelectedId(null);
     };
 
@@ -208,25 +265,11 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
         { id: 'accountTypes', label: 'Acct Types', icon: <ShieldCheckIcon className="w-4 h-4" /> },
     ];
 
-    const currentList = useMemo(() => {
-        switch (activeTab) {
-            case 'categories': return categories.sort((a,b) => a.name.localeCompare(b.name));
-            case 'tags': return tags.sort((a,b) => a.name.localeCompare(b.name));
-            case 'payees': return payees.sort((a,b) => a.name.localeCompare(b.name));
-            case 'merchants': return merchants.sort((a,b) => a.name.localeCompare(b.name));
-            case 'locations': return locations.sort((a,b) => a.name.localeCompare(b.name));
-            case 'users': return users.sort((a,b) => a.name.localeCompare(b.name));
-            case 'transactionTypes': return transactionTypes.sort((a,b) => a.name.localeCompare(b.name));
-            case 'accountTypes': return accountTypes.sort((a,b) => a.name.localeCompare(b.name));
-            default: return [];
-        }
-    }, [activeTab, categories, tags, payees, merchants, locations, users, transactionTypes, accountTypes]);
-
     return (
         <div className="h-full flex flex-col gap-6">
             <div>
                 <h1 className="text-3xl font-bold text-slate-800">Organization Hub</h1>
-                <p className="text-slate-500 mt-1">Manage the taxonomies and logical structures that power your accounting.</p>
+                <p className="text-slate-500 mt-1">Refine the logical blueprints of your financial ledger.</p>
             </div>
 
             <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
@@ -245,10 +288,30 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                 {/* LIST PANEL */}
                 <div className="w-1/3 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
                     <div className="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
-                        <h3 className="font-bold text-slate-700 capitalize">{activeTab}</h3>
-                        <button onClick={handleNew} className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-transform active:scale-95 shadow-md">
-                            <AddIcon className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-3">
+                            <input 
+                                type="checkbox" 
+                                className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                checked={bulkSelectedIds.size === currentList.length && currentList.length > 0}
+                                onChange={toggleSelectAll}
+                            />
+                            <h3 className="font-bold text-slate-700 capitalize">{activeTab}</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {bulkSelectedIds.size > 0 && (
+                                <button 
+                                    onClick={() => setIsBulkDeleteModalOpen(true)}
+                                    className="p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all border border-red-200 flex items-center gap-1.5"
+                                    title="Bulk Delete"
+                                >
+                                    <DeleteIcon className="w-4 h-4" />
+                                    <span className="text-[10px] font-black">{bulkSelectedIds.size}</span>
+                                </button>
+                            )}
+                            <button onClick={handleNew} className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-transform active:scale-95 shadow-md">
+                                <AddIcon className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 custom-scrollbar">
                         {currentList.length === 0 ? (
@@ -261,14 +324,23 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                 {currentList.map(item => {
                                     const count = (usageCounts as any)[activeTab].get(item.id) || 0;
                                     const isDefaultUser = activeTab === 'users' && (item as User).isDefault;
+                                    const isItemBulkSelected = bulkSelectedIds.has(item.id);
+
                                     return (
                                         <div 
                                             key={item.id}
                                             onClick={() => handleSelect(item.id)}
-                                            className={`p-3 rounded-xl cursor-pointer flex justify-between items-center transition-all border-2 ${selectedId === item.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'}`}
+                                            className={`p-3 rounded-xl cursor-pointer flex justify-between items-center transition-all border-2 ${selectedId === item.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'} ${isItemBulkSelected ? 'ring-1 ring-indigo-200' : ''}`}
                                         >
                                             <div className="flex items-center gap-3 overflow-hidden">
-                                                {activeTab === 'tags' && <div className={`w-3 h-3 rounded-full ${(item as Tag).color}`} />}
+                                                <input 
+                                                    type="checkbox" 
+                                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer flex-shrink-0"
+                                                    checked={isItemBulkSelected}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    onChange={() => toggleBulkSelection(item.id)}
+                                                />
+                                                {activeTab === 'tags' && <div className={`w-3 h-3 rounded-full flex-shrink-0 ${(item as Tag).color}`} />}
                                                 <span className={`text-sm font-bold truncate ${selectedId === item.id ? 'text-indigo-900' : 'text-slate-700'}`}>{item.name}</span>
                                                 {isDefaultUser && <span className="text-[8px] bg-indigo-600 text-white px-1 rounded uppercase font-black">System</span>}
                                             </div>
@@ -277,7 +349,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                                     {count}
                                                 </span>
                                                 <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleDelete(item.id); }}
+                                                    onClick={(e) => { e.stopPropagation(); handleIndividualDelete(item.id); }}
                                                     disabled={isDefaultUser}
                                                     className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all disabled:opacity-10"
                                                 >
@@ -298,22 +370,22 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                         <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
                             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                                 <div>
-                                    <h3 className="text-xl font-black text-slate-800">{isCreating ? 'Create New Entry' : 'Edit Entry'}</h3>
-                                    <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-0.5">Management Cockpit</p>
+                                    <h3 className="text-xl font-black text-slate-800">{isCreating ? 'Architect New Entry' : 'Edit Entry Properties'}</h3>
+                                    <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-0.5">Entity Controller v1.0</p>
                                 </div>
                                 <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="p-2 rounded-full hover:bg-slate-200"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-8 space-y-6">
+                            <div className="flex-1 overflow-y-auto p-8 space-y-8">
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Title / Label</label>
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Title / Identification Label</label>
                                         <input 
                                             type="text" 
                                             value={name} 
                                             onChange={e => setName(e.target.value)} 
-                                            className="w-full p-3 border-2 border-slate-100 rounded-xl focus:border-indigo-500 focus:ring-0 font-bold text-slate-800" 
-                                            placeholder="e.g. My Custom Category"
+                                            className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:ring-0 font-bold text-slate-800 text-lg" 
+                                            placeholder="Enter a descriptive name..."
                                             required 
                                         />
                                     </div>
@@ -326,7 +398,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                                 onChange={e => setParentId(e.target.value)} 
                                                 className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white"
                                             >
-                                                <option value="">-- Top Level (No Parent) --</option>
+                                                <option value="">-- Top Level Category --</option>
                                                 {categories.filter(c => !c.parentId && c.id !== selectedId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                             </select>
                                         </div>
@@ -334,8 +406,8 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
 
                                     {activeTab === 'tags' && (
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Visual Color Marker</label>
-                                            <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Visual Marker Color</label>
+                                            <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                                 {[
                                                     'bg-slate-100 text-slate-800', 'bg-red-100 text-red-800', 'bg-orange-100 text-orange-800',
                                                     'bg-amber-100 text-amber-800', 'bg-green-100 text-green-800', 'bg-emerald-100 text-emerald-800',
@@ -357,21 +429,21 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                     {activeTab === 'payees' && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Parent Hierarchy</label>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Parent Entity</label>
                                                 <select value={parentId} onChange={e => setParentId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white">
-                                                    <option value="">-- No Parent --</option>
+                                                    <option value="">-- No Parent (Root) --</option>
                                                     {payees.filter(p => !p.parentId && p.id !== selectedId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                                 </select>
                                             </div>
                                             <div>
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Assigned User</label>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Assigned Account User</label>
                                                 <select value={userId} onChange={e => setUserId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white">
                                                     {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                                 </select>
                                             </div>
                                             <div className="col-span-2">
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Internal Reference / Notes</label>
-                                                <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-medium min-h-[100px]" placeholder="Add account details, URLs, or pattern info..." />
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Internal Reference Notes</label>
+                                                <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium min-h-[120px]" placeholder="Add context, branch details, or relationship history..." />
                                             </div>
                                         </div>
                                     )}
@@ -379,39 +451,39 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                     {activeTab === 'merchants' && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Parent Payee</label>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Associated Payee</label>
                                                 <select value={payeeId} onChange={e => setPayeeId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white">
-                                                    <option value="">-- No Payee --</option>
+                                                    <option value="">-- Direct Parent --</option>
                                                     {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                                                 </select>
                                             </div>
                                             <div className="col-span-2">
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Merchant Notes</label>
-                                                <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-medium min-h-[100px]" placeholder="Specific branch info, etc..." />
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Merchant Details</label>
+                                                <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium min-h-[100px]" placeholder="Store number, specialized branch info..." />
                                             </div>
                                         </div>
                                     )}
 
                                     {activeTab === 'locations' && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                             <div>
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">City</label>
-                                                <input type="text" value={city} onChange={e => setCity(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" />
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Municipality / City</label>
+                                                <input type="text" value={city} onChange={e => setCity(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" placeholder="e.g. Salt Lake City" />
                                             </div>
                                             <div>
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">State</label>
-                                                <input type="text" value={state} onChange={e => setState(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" />
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Region / State</label>
+                                                <input type="text" value={state} onChange={e => setState(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" placeholder="e.g. Utah" />
                                             </div>
                                             <div>
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Country</label>
-                                                <input type="text" value={country} onChange={e => setCountry(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" />
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Nation / Country</label>
+                                                <input type="text" value={country} onChange={e => setCountry(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" placeholder="e.g. USA" />
                                             </div>
                                         </div>
                                     )}
 
                                     {activeTab === 'transactionTypes' && (
                                         <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Net Worth / Balance Effect</label>
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Financial Impact Direction</label>
                                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                                                 {(['income', 'expense', 'transfer', 'investment', 'donation', 'tax', 'savings', 'debt'] as const).map(effect => (
                                                     <button 
@@ -424,22 +496,22 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                                     </button>
                                                 ))}
                                             </div>
-                                            <p className="text-[10px] text-slate-400 font-medium mt-3 italic">
-                                                This determines how the AI calculates your profit/loss summaries. Use 'Transfer' for internal account moves.
+                                            <p className="text-[10px] text-slate-400 font-medium mt-4 leading-relaxed">
+                                                Classification here affects AI normalization and reporting logic. Ensure you match the real-world flow of funds.
                                             </p>
                                         </div>
                                     )}
                                 </div>
                                 
                                 {!isCreating && selectedId && (
-                                    <div className="bg-slate-50 p-6 rounded-2xl border-2 border-slate-200 flex items-center justify-between">
+                                    <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex items-center justify-between shadow-inner">
                                         <div className="flex items-center gap-4">
-                                            <div className="p-3 bg-white rounded-xl shadow-sm border border-slate-200">
-                                                <TableIcon className="w-6 h-6 text-indigo-600" />
+                                            <div className="p-3 bg-white rounded-2xl shadow-sm border border-slate-200 text-indigo-500">
+                                                <TableIcon className="w-6 h-6" />
                                             </div>
                                             <div>
-                                                <p className="text-[10px] font-black text-slate-400 uppercase">Usage Statistics</p>
-                                                <p className="text-xl font-black text-slate-800">Linked to {(usageCounts as any)[activeTab].get(selectedId) || 0} records</p>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Database References</p>
+                                                <p className="text-xl font-black text-slate-800">Linked to {(usageCounts as any)[activeTab].get(selectedId) || 0} total records</p>
                                             </div>
                                         </div>
                                     </div>
@@ -447,24 +519,73 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                             </div>
 
                             <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
-                                <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="px-6 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Discard</button>
+                                <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Discard</button>
                                 <button type="submit" className="px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 transition-all active:scale-95">
-                                    {isCreating ? 'Create Entry' : 'Update Item'}
+                                    {isCreating ? 'Confirm & Create' : 'Update Entry'}
                                 </button>
                             </div>
                         </form>
                     ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-                            <div className="p-6 bg-slate-50 rounded-full border border-slate-200 mb-6">
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
+                            <div className="p-8 bg-white rounded-full shadow-2xl border border-slate-100 mb-8 animate-bounce-subtle">
                                 <LightBulbIcon className="w-16 h-16 text-indigo-300" />
                             </div>
-                            <h3 className="text-2xl font-black text-slate-800">Master Data Editor</h3>
-                            <p className="text-slate-500 max-w-sm mt-2">Select an item from the left to refine its properties, or create a new taxonomy label to start organizing your ledger.</p>
-                            <button onClick={handleNew} className="mt-8 px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg transition-transform hover:-translate-y-1">Add First Item</button>
+                            <h3 className="text-2xl font-black text-slate-800">Resource Architect</h3>
+                            <p className="text-slate-500 max-w-sm mt-3 font-medium">Select an item from the list to refine its properties or manage its hierarchy. Use bulk selection for mass cleanup.</p>
+                            <button onClick={handleNew} className="mt-8 px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl transition-transform hover:-translate-y-1">Create New Item</button>
                         </div>
                     )}
                 </div>
             </div>
+
+            {/* BULK DELETE VERIFICATION MODAL */}
+            {isBulkDeleteModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-8 pb-4 text-center">
+                            <div className="w-20 h-20 bg-red-50 text-red-600 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner ring-4 ring-red-100">
+                                <ExclamationTriangleIcon className="w-10 h-10" />
+                            </div>
+                            <h2 className="text-2xl font-black text-slate-800 mb-2">Massive Deletion Alert</h2>
+                            <p className="text-slate-500 font-medium">You are about to purge <span className="text-red-600 font-black">{bulkSelectedIds.size}</span> item(s) from the <span className="capitalize font-bold">{activeTab}</span> dataset.</p>
+                        </div>
+
+                        <div className="p-8 py-4">
+                            <div className="bg-slate-50 rounded-2xl border-2 border-slate-100 p-4 max-h-48 overflow-y-auto custom-scrollbar">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 border-b pb-2">Targeted List</p>
+                                <div className="space-y-2">
+                                    {Array.from(bulkSelectedIds).map(id => {
+                                        const item = currentList.find(x => x.id === id);
+                                        const count = (usageCounts as any)[activeTab].get(id) || 0;
+                                        return (
+                                            <div key={id} className="flex justify-between items-center text-sm font-bold text-slate-700">
+                                                <span className="truncate">{item?.name || id}</span>
+                                                {count > 0 && <span className="text-[10px] text-red-500 uppercase font-black tracking-tighter">In Use!</span>}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-8 flex flex-col gap-3">
+                            <button 
+                                onClick={handleConfirmBulkDelete}
+                                className="w-full py-4 bg-red-600 text-white font-black rounded-2xl hover:bg-red-700 shadow-xl shadow-red-100 transition-all active:scale-95 flex items-center justify-center gap-2"
+                            >
+                                <TrashIcon className="w-5 h-5" />
+                                Execute Deletion
+                            </button>
+                            <button 
+                                onClick={() => setIsBulkDeleteModalOpen(false)}
+                                className="w-full py-3 bg-white border-2 border-slate-100 text-slate-500 font-bold rounded-2xl hover:bg-slate-50 transition-colors"
+                            >
+                                Nevermind, Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
