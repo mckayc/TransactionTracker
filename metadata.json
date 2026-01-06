@@ -1,5 +1,5 @@
 {
-  "name": "Transaction Tracker - Rule Engine - v0.3.07",
+  "name": "Transaction Tracker - Rule Engine Refactor - v0.3.30",
   "description": "High-performance normalized SQLite architecture for millions of financial records.",
   "requestFramePermissions": []
 }

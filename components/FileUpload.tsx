@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { UploadIcon, AddIcon, CheckCircleIcon, SparklesIcon, RobotIcon } from './Icons';
 import type { Account } from '../types';
@@ -63,13 +64,15 @@ const FileUpload: React.FC<FileUploadProps> = ({ onFileUpload, disabled, account
     e.preventDefault();
     setIsDragging(false);
     if (disabled) return;
-    const files = Array.from(e.dataTransfer.files).filter(f => f.type === 'application/pdf' || f.type === 'text/csv' || EXCEL_MIME_TYPES.includes(f.type));
+    // Fix: Explicitly type iterated files to File to avoid 'unknown' type errors
+    const files = Array.from(e.dataTransfer.files).filter((f: File) => f.type === 'application/pdf' || f.type === 'text/csv' || EXCEL_MIME_TYPES.includes(f.type));
     if (files.length > 0) setSelectedFiles(files);
   }, [disabled]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const files = Array.from(e.target.files).filter(f => f.type === 'application/pdf' || f.type === 'text/csv' || EXCEL_MIME_TYPES.includes(f.type));
+      // Fix: Explicitly type iterated files to File to avoid 'unknown' type errors
+      const files = Array.from(e.target.files).filter((f: File) => f.type === 'application/pdf' || f.type === 'text/csv' || EXCEL_MIME_TYPES.includes(f.type));
       setSelectedFiles(files);
     }
   };

@@ -1,69 +1,86 @@
 
-import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '../types';
+import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
 
 declare const pdfjsLib: any;
 
-const MCC_MAP: Record<string, string> = {
-  '05411': 'Groceries',
-  '05499': 'Groceries',
-  '05310': 'Shopping',
-  '05912': 'Health',
-  '04816': 'Utilities',
-  '00300': 'Travel',
-  '05811': 'Dining',
-  '05812': 'Dining',
-  '05814': 'Dining',
-  '05541': 'Transportation',
-  '04121': 'Transportation',
+/**
+ * Parses Rule Manifests for bulk ingestion
+ */
+export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
+    const rules: ReconciliationRule[] = [];
+    if (lines.length < 2) return rules;
+
+    const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(',') ? ',' : ';');
+    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    
+    const colMap = {
+        name: header.indexOf('rule name'),
+        category: header.indexOf('rule category'),
+        field: header.indexOf('match field'),
+        operator: header.indexOf('operator'),
+        value: header.indexOf('match value'),
+        setCategory: header.indexOf('set category'),
+        setPayee: header.indexOf('set payee'),
+        setMerchant: header.indexOf('set merchant'),
+        setLocation: header.indexOf('set location'),
+        setType: header.indexOf('set type'),
+        setTags: header.indexOf('tags'),
+        skip: header.indexOf('skip import')
+    };
+
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const parts = line.split(delimiter).map(p => p.trim().replace(/^"|"$/g, ''));
+        if (parts.length < 4) continue;
+
+        const rule: ReconciliationRule = {
+            id: generateUUID(),
+            name: parts[colMap.name] || `Imported Rule ${i}`,
+            ruleCategory: parts[colMap.category] || 'General',
+            conditions: [{
+                id: generateUUID(),
+                type: 'basic',
+                field: (parts[colMap.field] || 'description') as any,
+                operator: (parts[colMap.operator] || 'contains') as any,
+                value: parts[colMap.value] || '',
+                nextLogic: 'AND'
+            }],
+            suggestedCategoryName: parts[colMap.setCategory],
+            suggestedPayeeName: parts[colMap.setPayee],
+            suggestedMerchantName: parts[colMap.setMerchant],
+            suggestedLocationName: parts[colMap.setLocation],
+            suggestedTypeName: parts[colMap.setType],
+            suggestedTags: parts[colMap.setTags] ? parts[colMap.setTags].split(';').map(t => t.trim()) : undefined,
+            skipImport: parts[colMap.skip]?.toLowerCase() === 'true'
+        };
+        rules.push(rule);
+    }
+    return rules;
 };
 
-const MERCHANT_MAP: Record<string, { category: string; payee?: string }> = {
-  'WAL-MART': { category: 'Groceries', payee: 'Walmart' },
-  'WM SUPERCENTER': { category: 'Groceries', payee: 'Walmart' },
-  'WALMART': { category: 'Groceries', payee: 'Walmart' },
-  'TARGET': { category: 'Shopping', payee: 'Target' },
-  'UTOPIA FIBER': { category: 'Utilities', payee: 'Utopia Fiber' },
-  'QUESTARGAS': { category: 'Utilities', payee: 'Questar Gas' },
-  'ROCKYMTN': { category: 'Utilities', payee: 'Rocky Mountain Power' },
-  'PACIFIC POWER': { category: 'Utilities', payee: 'Pacific Power' },
-  'AMERICAN FAMILY': { category: 'Services', payee: 'American Family Insurance' },
-  'CITI CARD': { category: 'Services', payee: 'Citi' },
-  'GOOGLE': { category: 'Revenue', payee: 'Google' },
-  'YOUTUBE': { category: 'Revenue', payee: 'YouTube' },
-  'AMAZON.COM': { category: 'Shopping', payee: 'Amazon' },
-  'AMAZON EUROPE': { category: 'Revenue', payee: 'Amazon' },
-  'PAYPAL': { category: 'Services', payee: 'PayPal' },
-  'GUSTO': { category: 'Payroll', payee: 'Gusto' },
-  'CHINATOWN': { category: 'Groceries', payee: 'Chinatown Supermarket' },
-  'MAVERIK': { category: 'Transportation', payee: 'Maverik' },
-  'EXXON': { category: 'Transportation', payee: 'Exxon' },
-  'CHEVRON': { category: 'Transportation', payee: 'Chevron' },
-  'MACEY': { category: 'Groceries', payee: 'Macey\'s' },
-  'SHELL': { category: 'Transportation', payee: 'Shell' },
-  '7-ELEVEN': { category: 'Groceries', payee: '7-Eleven' },
-  'COSTCO': { category: 'Groceries', payee: 'Costco' },
-  'STARBUCKS': { category: 'Dining', payee: 'Starbucks' },
-  'MCDONALD': { category: 'Dining', payee: 'McDonalds' },
-  'NETFLIX': { category: 'Entertainment', payee: 'Netflix' },
-  'SPOTIFY': { category: 'Entertainment', payee: 'Spotify' },
-  'ADOBE': { category: 'Services', payee: 'Adobe' },
-  'MICROSOFT': { category: 'Services', payee: 'Microsoft' },
-  'APPLE.COM': { category: 'Shopping', payee: 'Apple' },
-  'INTERNET PAYMENT': { category: 'Transfer', payee: 'Internal' },
-  'ONLINE PAYMENT': { category: 'Transfer', payee: 'Internal' },
-  'AUTOPAY': { category: 'Transfer', payee: 'Internal' },
-  'ZELLE': { category: 'Transfer', payee: 'Internal' },
-  'TRANSFER': { category: 'Transfer', payee: 'Internal' },
-};
-
-const guessMetadata = (description: string) => {
-  const upper = description.toUpperCase();
-  for (const [key, value] of Object.entries(MERCHANT_MAP)) {
-    if (upper.includes(key)) return value;
-  }
-  return null;
+export const parseRulesFromFile = async (file: File): Promise<ReconciliationRule[]> => {
+    const reader = new FileReader();
+    
+    if (file.name.endsWith('.csv')) {
+        const text = await new Promise<string>((res) => {
+            reader.onload = () => res(reader.result as string);
+            reader.readAsText(file);
+        });
+        return parseRulesFromLines(text.split('\n'));
+    } else {
+        // Excel processing
+        const data = await new Promise<ArrayBuffer>((res) => {
+            reader.onload = () => res(reader.result as ArrayBuffer);
+            reader.readAsArrayBuffer(file);
+        });
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const csv = XLSX.utils.sheet_to_csv(firstSheet);
+        return parseRulesFromLines(csv.split('\n'));
+    }
 };
 
 const cleanDescription = (string: string): string => {
@@ -177,28 +194,15 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     rawDesc = nameVal || descVal || 'Unspecified';
 
     const cleanedDesc = cleanDescription(rawDesc);
-    const guess = guessMetadata(rawDesc);
     
-    let parsedMcc = '';
-    let parsedRef = '';
-    const memoVal = colMap.memo > -1 ? parts[colMap.memo] : '';
-    if (memoVal && memoVal.includes(';')) {
-      const memoParts = memoVal.split(';').map(p => p.trim());
-      parsedRef = memoParts[0] || '';
-      parsedMcc = memoParts[1] || '';
-    }
-
     const metadata: Record<string, string> = { 
-      _raw: line,
-      reference_id: parsedRef,
-      mcc: parsedMcc
+      _raw: line
     };
     rawHeaders.forEach((h, idx) => { if (parts[idx] !== undefined) metadata[h] = parts[idx]; });
 
     let amount = 0;
     let isIncome = false;
 
-    // Fixed logic for Direction detection based on Credit/Debit labels
     const typeIndicator = colMap.type > -1 ? parts[colMap.type].toLowerCase() : '';
 
     if (colMap.credit > -1 && colMap.debit > -1) {
@@ -220,37 +224,13 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
       }
     }
 
-    let finalCategory = '';
-    if (parsedMcc && MCC_MAP[parsedMcc]) {
-      finalCategory = MCC_MAP[parsedMcc];
-    } else if (guess?.category) {
-      finalCategory = guess.category;
-    } else if (colMap.category > -1) {
-      finalCategory = parts[colMap.category];
-    } else {
-      finalCategory = 'Uncategorized';
-    }
-
-    let finalTypeId = isIncome ? incomeType.id : expenseType.id;
-    const isTransferKeyword = cleanedDesc.toUpperCase().includes('TRANSFER') || 
-                              cleanedDesc.toUpperCase().includes('PAYMENT THANK YOU') || 
-                              cleanedDesc.toUpperCase().includes('ONLINE PAYMENT') ||
-                              parsedMcc === '00300';
-
-    if (isTransferKeyword) {
-      finalTypeId = transferType.id;
-    }
-
     transactions.push({
       date: formatDate(parsedDate),
       description: toTitleCase(cleanedDesc),
       amount: amount,
-      categoryId: '',
-      category: finalCategory,
+      category: colMap.category > -1 ? parts[colMap.category] : 'Uncategorized',
       accountId: accountId,
-      payeeId: guess?.payee ? 'guess_' + guess.payee : undefined, // Prefix to help ImportVerification find matches
-      payee: guess?.payee || undefined,
-      typeId: finalTypeId,
+      typeId: isIncome ? incomeType.id : expenseType.id,
       sourceFilename: sourceName,
       metadata
     });

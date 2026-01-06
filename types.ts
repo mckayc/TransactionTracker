@@ -78,14 +78,9 @@ export interface RawTransaction {
     userId?: string;
     tagIds?: string[];
     notes?: string;
-    categoryId?: string; 
-    account?: string;
-    payee?: string;
-    user?: string;
-    type?: string;
-    tags?: string[];
-    metadata?: Record<string, string>;
     appliedRuleId?: string;
+    // Fix: Added metadata to RawTransaction to store pattern-specific data
+    metadata?: Record<string, any>;
 }
 
 export interface Transaction extends RawTransaction {
@@ -96,11 +91,6 @@ export interface Transaction extends RawTransaction {
     isParent?: boolean;
     parentTransactionId?: string;
     isCompleted?: boolean;
-}
-
-export interface DuplicatePair {
-    newTx: Transaction;
-    existingTx: Transaction;
 }
 
 export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'exists' | 'regex_match';
@@ -121,7 +111,7 @@ export interface RuleCondition {
 export interface ReconciliationRule {
     id: string;
     name: string;
-    scope?: string; 
+    ruleCategory?: string; 
     conditions: RuleCondition[];
     setCategoryId?: string;
     setPayeeId?: string;
@@ -133,15 +123,44 @@ export interface ReconciliationRule {
     skipImport?: boolean;
     isAiDraft?: boolean;
     priority?: number;
-    // Fields for AI-suggested entities that don't exist yet
+    // Fix: Added scope to ReconciliationRule to track logical application domain
+    scope?: string;
+    // Fields for Import/AI-suggested entities that don't exist yet
     suggestedCategoryName?: string;
     suggestedPayeeName?: string;
     suggestedMerchantName?: string;
     suggestedLocationName?: string;
     suggestedUserName?: string;
+    suggestedTypeName?: string;
+    suggestedTags?: string[];
 }
 
+export interface RuleImportDraft extends ReconciliationRule {
+    isSelected: boolean;
+    mappingStatus: {
+        category: 'match' | 'create' | 'none';
+        payee: 'match' | 'create' | 'none';
+        merchant: 'match' | 'create' | 'none';
+        location: 'match' | 'create' | 'none';
+        type: 'match' | 'create' | 'none';
+    };
+}
+
+// Fix: Added TaskPriority export for components that handle task criticality
 export type TaskPriority = 'low' | 'medium' | 'high';
+
+export interface TaskItem {
+    id: string;
+    title: string;
+    description?: string;
+    notes?: string;
+    priority: TaskPriority;
+    dueDate?: string;
+    isCompleted: boolean;
+    createdAt: string;
+    subtasks?: SubTask[];
+    recurrence?: RecurrenceRule;
+}
 
 export interface SubTask {
     id: string;
@@ -160,19 +179,7 @@ export interface RecurrenceRule {
     endDate?: string;
 }
 
-export interface TaskItem {
-    id: string;
-    title: string;
-    description?: string;
-    notes?: string;
-    priority: TaskPriority;
-    dueDate?: string;
-    isCompleted: boolean;
-    createdAt: string;
-    subtasks?: SubTask[];
-    recurrence?: RecurrenceRule;
-}
-
+// Fix: Added Task interface for checklist template structures
 export interface Task {
     id: string;
     text: string;
@@ -194,6 +201,7 @@ export interface ScheduledEvent {
 
 export type TaskCompletions = Record<string, boolean>;
 
+// Fix: Exported BusinessInfo and TaxInfo to resolve missing imports in BusinessWizard and Hub
 export interface BusinessInfo {
     llcName?: string;
     businessType?: string;
@@ -248,6 +256,7 @@ export interface DocumentFolder {
     createdAt: string;
 }
 
+// Fix: Added BackupConfig export for SystemSettings management
 export interface BackupConfig {
     frequency: 'daily' | 'weekly' | 'monthly' | 'never';
     retentionCount: number;
@@ -396,7 +405,6 @@ export interface ContentLink {
     manuallyLinked: boolean;
 }
 
-// Added AuditFinding interface to resolve missing exported member error
 export interface AuditFinding {
     id: string;
     title: string;
@@ -406,6 +414,12 @@ export interface AuditFinding {
         categoryId?: string;
         typeId?: string;
     };
+}
+
+// Fix: Added DuplicatePair interface for duplicate transaction handling
+export interface DuplicatePair {
+    newTx: Transaction;
+    existingTx: Transaction;
 }
 
 export type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';
