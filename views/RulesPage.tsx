@@ -172,6 +172,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             ["Example - User", "userId", "description", "contains", "LUNCH WITH TEAM", "Dining", "", "", "", "Purchase", "Business Partner", "Food;Networking", "FALSE"],
             ["Example - Type", "description", "description", "contains", "TRANSFER FROM", "Internal", "", "", "", "Transfer", "", "", "FALSE"],
             ["Example - Tag", "tagIds", "description", "contains", "TAX PREP", "", "", "", "", "Purchase", "", "Tax Deductible", "FALSE"],
+            ["Example - Multiple Match", "description", "description", "contains", "McDonalds || MCDONALD'S || McDs", "Dining", "McDonald's", "McDonald's", "", "Purchase", "", "Fast Food", "FALSE"],
             ["Example - Skip Import", "metadata", "description", "contains", "INTERNAL AD", "", "", "", "", "", "", "", "TRUE"]
         ];
         const csvContent = [headers.join(','), ...rows.map(r => r.map(cell => `"${cell}"`).join(','))].join('\n');

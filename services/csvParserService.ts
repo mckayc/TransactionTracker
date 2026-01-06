@@ -1,5 +1,5 @@
 
-import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule } from '../types';
+import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
 
@@ -7,7 +7,7 @@ declare const pdfjsLib: any;
 
 /**
  * Parses Rule Manifests for bulk ingestion
- * Updated with robust regex to handle quoted commas correctly
+ * Updated to handle multiple OR conditions via pipe symbols
  */
 export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     const rules: ReconciliationRule[] = [];
@@ -27,6 +27,7 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         setMerchant: header.indexOf('set merchant'),
         setLocation: header.indexOf('set location'),
         setType: header.indexOf('set type'),
+        setUser: header.indexOf('set user'),
         setTags: header.indexOf('tags'),
         skip: header.indexOf('skip import')
     };
@@ -42,23 +43,39 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
 
         if (parts.length < 4) continue;
 
-        const rule: ReconciliationRule = {
-            id: generateUUID(),
-            name: parts[colMap.name] || `Imported Rule ${i}`,
-            ruleCategory: parts[colMap.category] || 'General',
-            conditions: [{
+        const rawMatchValue = parts[colMap.value] || '';
+        // Split by | or || for OR logic
+        const matchValues = rawMatchValue.split(/\s*\|\|\s*|\s*\|\s*/).filter(Boolean);
+        
+        const conditions: RuleCondition[] = matchValues.length > 0 
+            ? matchValues.map((val, idx) => ({
                 id: generateUUID(),
                 type: 'basic',
                 field: (parts[colMap.field] || 'description') as any,
                 operator: (parts[colMap.operator] || 'contains') as any,
-                value: parts[colMap.value] || '',
+                value: val.trim(),
+                nextLogic: idx === matchValues.length - 1 ? 'AND' : 'OR'
+            }))
+            : [{
+                id: generateUUID(),
+                type: 'basic',
+                field: (parts[colMap.field] || 'description') as any,
+                operator: (parts[colMap.operator] || 'contains') as any,
+                value: '',
                 nextLogic: 'AND'
-            }],
+            }];
+
+        const rule: ReconciliationRule = {
+            id: generateUUID(),
+            name: parts[colMap.name] || `Imported Rule ${i}`,
+            ruleCategory: parts[colMap.category] || 'description',
+            conditions: conditions,
             suggestedCategoryName: parts[colMap.setCategory],
             suggestedPayeeName: parts[colMap.setPayee],
             suggestedMerchantName: parts[colMap.setMerchant],
             suggestedLocationName: parts[colMap.setLocation],
             suggestedTypeName: parts[colMap.setType],
+            suggestedUserName: parts[colMap.setUser],
             suggestedTags: parts[colMap.setTags] ? parts[colMap.setTags].split(';').map(t => t.trim()) : undefined,
             skipImport: parts[colMap.skip]?.toLowerCase() === 'true'
         };
@@ -77,7 +94,6 @@ export const parseRulesFromFile = async (file: File): Promise<ReconciliationRule
         });
         return parseRulesFromLines(text.split('\n'));
     } else {
-        // Excel processing
         const data = await new Promise<ArrayBuffer>((res) => {
             reader.onload = () => res(reader.result as ArrayBuffer);
             reader.readAsArrayBuffer(file);

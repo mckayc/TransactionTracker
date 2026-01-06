@@ -20,7 +20,7 @@ interface Props {
     onSavePayees: (ps: Payee[]) => void;
     onSaveMerchant: (m: Merchant) => void;
     onSaveMerchants: (ms: Merchant[]) => void;
-    onSaveLocation: (l: Location) => void;
+    onSaveLocation: (location: Location) => void;
     onSaveLocations: (ls: Location[]) => void;
 }
 
@@ -187,8 +187,13 @@ const RuleImportVerification: React.FC<Props> = ({
                                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight">{d.ruleCategory || 'General'}</p>
                                     </td>
                                     <td className="px-4 py-3">
-                                        <div className="bg-slate-100 px-3 py-1.5 rounded-lg text-[11px] font-mono border border-slate-200">
-                                            If {d.conditions[0].field} {d.conditions[0].operator} <strong className="text-indigo-600">"{d.conditions[0].value}"</strong>
+                                        <div className="bg-slate-100 px-3 py-1.5 rounded-lg text-[11px] font-mono border border-slate-200 max-w-xs overflow-hidden">
+                                            {d.conditions.map((c, i) => (
+                                                <span key={c.id}>
+                                                    If {c.field} {c.operator} <strong className="text-indigo-600">"{c.value}"</strong>
+                                                    {i < d.conditions.length - 1 && <span className="mx-1.5 text-indigo-400 font-black uppercase text-[9px]">{c.nextLogic || 'AND'}</span>}
+                                                </span>
+                                            ))}
                                         </div>
                                     </td>
                                     <td className="px-4 py-3">
