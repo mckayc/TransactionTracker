@@ -101,7 +101,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const handleNew = () => {
-        setSelectedId(null);
+        setSelectedRuleId(null);
         setIsCreating(true);
         setRuleName('');
         setRuleScope('description');
@@ -112,7 +112,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setActionLocationId('');
         setActionUserId('');
         setActionTypeId('');
-        assignTagIds.clear();
         setAssignTagIds(new Set());
         setSkipImport(false);
     };
@@ -414,7 +413,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <div className="space-y-4">
                                   <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                                     Conditional Logic Tree 
-                                    {/* Added a span wrapper around InfoIcon to provide the title tooltip, fixing a TypeScript error since Lucide icons do not support the title prop directly. */}
                                     <span title="Drag and drop conditions to reorder or re-group.">
                                       <InfoIcon className="w-3.5 h-3.5" />
                                     </span>
