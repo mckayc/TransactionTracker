@@ -82,9 +82,14 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [aiProposedRules, setAiProposedRules] = useState<ReconciliationRule[]>([]);
 
     const filteredRules = useMemo(() => {
-        let list = rules.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        let list = rules.filter(r => 
+            r.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            r.conditions.some(c => c.value?.toString().toLowerCase().includes(searchTerm.toLowerCase()))
+        );
+        
         if (selectedDomain !== 'all') {
-            list = list.filter(r => r.ruleCategory === selectedDomain || r.conditions.some((c: RuleCondition) => c.field === selectedDomain));
+            // Strict filtering by organizational category to avoid rules showing in multiple places
+            list = list.filter(r => r.ruleCategory === selectedDomain);
         }
         return list.sort((a, b) => a.name.localeCompare(b.name));
     }, [rules, searchTerm, selectedDomain]);
@@ -145,7 +150,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
         const rulesToUpdate = rules.filter(r => selectedRuleIds.has(r.id)).map(r => ({ ...r, ruleCategory: newCategory }));
         onSaveRules(rulesToUpdate);
         setIsBulkCategoryModalOpen(false);
-        // Fix: Deleted non-existent name 'setBulkSelectedIds'. 'selectedRuleIds' is the local selection state.
         setSelectedRuleIds(new Set());
     };
 

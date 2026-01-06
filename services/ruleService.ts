@@ -99,10 +99,14 @@ export const applyRulesToTransactions = (
     return rawTransactions;
   }
 
+  // Reverse rules to ensure newest logic (like one just created via "Save & Apply") 
+  // takes precedence in a first-match scenario.
+  const prioritizedRules = [...rules].reverse();
+
   return rawTransactions.map(tx => {
     let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string; typeId?: string } = { ...tx };
     
-    for (const rule of rules) {
+    for (const rule of prioritizedRules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
         modifiedTx.appliedRuleId = rule.id;
         if (rule.skipImport) {
@@ -126,9 +130,6 @@ export const applyRulesToTransactions = (
         if (rule.setTransactionTypeId) {
           modifiedTx.typeId = rule.setTransactionTypeId;
         }
-        // Note: For now, BalanceEffect application relies on the system having a matching TransactionType 
-        // Or if we decide to store Effect directly on RawTransaction (needs broader change).
-        // The UI handles this via type selection mainly.
 
         if (rule.assignTagIds && rule.assignTagIds.length > 0) {
             const currentTags = new Set(modifiedTx.tagIds || []);

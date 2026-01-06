@@ -193,7 +193,20 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     useEffect(() => {
         if (transactions.length === 0) return;
         
-        const currentTransactionsRaw = transactions.map(t => ({ ...t }));
+        // Before re-applying, we must ensure we are applying against the most current raw data
+        // but preserving user overrides if necessary. For "Save & Apply" we want rules to take priority.
+        const currentTransactionsRaw = transactions.map(t => {
+            // Find original template from initialTransactions to ensure we aren't carrying over 
+            // values set by rules that were just deleted or changed.
+            const original = initialTransactions.find(it => it.tempId === t.tempId) || t;
+            return {
+                ...original,
+                // Preserving the current description as it might have been cleaned during extraction
+                description: t.description, 
+                appliedRuleId: undefined // Reset before re-evaluation
+            };
+        });
+
         const updatedTxs = applyRulesToTransactions(currentTransactionsRaw as any, rules, accounts);
         
         setTransactions(prev => prev.map((tx, idx) => {
@@ -250,7 +263,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                         <TableIcon className="w-6 h-6 text-indigo-600" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-black text-slate-800 tracking-tight">Verify Ingestion</h2>
+                        <h2 className="text-xl font-black text-slate-800 tracking-tight">Verify Import</h2>
                         <p className="text-sm text-slate-500">Review {transactions.length} detected records. {transactions.filter(t => t.conflictType === 'database').length} potential duplicates flagged.</p>
                     </div>
                 </div>
