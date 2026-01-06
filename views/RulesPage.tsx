@@ -163,15 +163,16 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
     // Importer Logic
     const downloadTemplate = () => {
-        const headers = ["Rule Name", "Rule Category", "Match Field", "Operator", "Match Value", "Set Category", "Set Payee", "Set Merchant", "Set Location", "Set Type", "Tags", "Skip Import"];
+        const headers = ["Rule Name", "Rule Category", "Match Field", "Operator", "Match Value", "Set Category", "Set Payee", "Set Merchant", "Set Location", "Set Type", "Set User", "Tags", "Skip Import"];
         const rows = [
-            ["Subscription - Netflix", "description", "description", "contains", "Netflix", "Entertainment", "Netflix", "Netflix", "", "Purchase", "Subscription;Stream", "FALSE"],
-            ["Local Grocery - Whole Foods", "locationId", "description", "contains", "WHOLEFD", "Groceries", "Whole Foods", "Whole Foods", "Main St Market", "Purchase", "Food", "FALSE"],
-            ["Direct Deposit - Salary", "description", "description", "contains", "PAYROLL", "Salary", "Employment Co", "", "", "Income", "Paycheck", "FALSE"],
-            ["Internal Transfer", "metadata", "description", "contains", "TRANS FROM", "Transfer", "", "", "", "Transfer", "", "FALSE"],
-            ["Noise Filter - ADVERTISEMENT", "description", "description", "contains", "ADSENSE", "", "", "", "", "", "", "TRUE"],
-            ["Utility - Power Co", "payeeId", "description", "contains", "ELEC UTIL", "Utilities", "Power Co", "Power Co", "", "Purchase", "Fixed", "FALSE"],
-            ["User - Personal Expense", "userId", "description", "contains", "LUNCH", "Dining", "", "", "", "Purchase", "Personal", "FALSE"]
+            ["Example - Category", "description", "description", "contains", "NETFLIX", "Subscriptions", "", "", "", "Purchase", "Family", "Monthly;Media", "FALSE"],
+            ["Example - Payee", "payeeId", "description", "contains", "CHEVRON", "", "Chevron Gas", "", "", "Purchase", "", "Fuel", "FALSE"],
+            ["Example - Merchant", "merchantId", "description", "contains", "AMZN MKTP", "", "Amazon", "Amazon Marketplace", "", "Purchase", "Shopping", "", "FALSE"],
+            ["Example - Location", "locationId", "description", "contains", "LEHI UT", "", "", "", "Lehi Main St", "Purchase", "", "Locality", "FALSE"],
+            ["Example - User", "userId", "description", "contains", "LUNCH WITH TEAM", "Dining", "", "", "", "Purchase", "Business Partner", "Food;Networking", "FALSE"],
+            ["Example - Type", "description", "description", "contains", "TRANSFER FROM", "Internal", "", "", "", "Transfer", "", "", "FALSE"],
+            ["Example - Tag", "tagIds", "description", "contains", "TAX PREP", "", "", "", "", "Purchase", "", "Tax Deductible", "FALSE"],
+            ["Example - Skip Import", "metadata", "description", "contains", "INTERNAL AD", "", "", "", "", "", "", "", "TRUE"]
         ];
         const csvContent = [headers.join(','), ...rows.map(r => r.map(cell => `"${cell}"`).join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
