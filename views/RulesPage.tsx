@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User, SystemSettings } from '../types';
 /* Added ExclamationTriangleIcon to imports */
@@ -92,7 +93,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
         if (selectedDomain !== 'all') {
             list = list.filter(r => r.scope === selectedDomain);
         }
-        return list.sort((a, b) => (a.priority || 0) - (b.priority || 0));
+        // Alphabetical sort by name
+        return list.sort((a, b) => a.name.localeCompare(b.name));
     }, [rules, searchTerm, selectedDomain]);
 
     const handleSelectRule = (id: string) => {
@@ -267,13 +269,14 @@ const RulesPage: React.FC<RulesPageProps> = ({
         try {
             const rawProposed = await generateRulesFromData(input, categories, payees, merchants, locations, users, aiPrompt, systemSettings);
             
-            // LOGICAL DUPLICATE FILTERING
-            const existingSignatures = new Set(rules.map(r => getRuleSignature(r)));
+            // LOGICAL DUPLICATE FILTERING (Passing context categories/payees/etc)
+            const existingSignatures = new Set(rules.map(r => getRuleSignature(r, categories, payees, merchants, locations)));
             const uniqueProposed: (ReconciliationRule & { isExcluded?: boolean })[] = [];
             let dupCount = 0;
 
             rawProposed.forEach(p => {
-                if (existingSignatures.has(getRuleSignature(p))) {
+                const sig = getRuleSignature(p, categories, payees, merchants, locations);
+                if (existingSignatures.has(sig)) {
                     dupCount++;
                 } else {
                     uniqueProposed.push({ ...p, isExcluded: false });
@@ -466,7 +469,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                         </div>
                                                     </div>
                                                     <div className="flex gap-1.5">
-                                                        <button onClick={() => toggleRuleExclusion(r.id)} className={`p-1 rounded transition-colors ${r.isExcluded ? 'text-red-600 bg-red-50' : 'text-slate-300 hover:text-red-500'}`} title={r.isExcluded ? 'Include' : 'Exclude'}><SlashIcon className="w-4 h-4"/></button>
+                                                        <button onClick={() => toggleRuleExclusion(r.id)} className={`p-1 rounded transition-colors ${r.isExcluded ? 'text-red-600 bg-red-50' : 'text-slate-300 hover:text-red-50'}`} title={r.isExcluded ? 'Include' : 'Exclude'}><SlashIcon className="w-4 h-4"/></button>
                                                         {!r.isExcluded && (
                                                             <>
                                                                 <button onClick={() => handleEditProposed(r)} className="p-1 text-indigo-600 hover:bg-indigo-50 rounded" title="Refine Logic"><EditIcon className="w-4 h-4"/></button>
