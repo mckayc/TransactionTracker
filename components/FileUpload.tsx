@@ -14,11 +14,6 @@ interface FileUploadProps {
   multiple?: boolean;
 }
 
-const EXCEL_MIME_TYPES = [
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-excel'
-];
-
 const FileUpload: React.FC<FileUploadProps> = ({ 
   onFileUpload, 
   disabled, 
@@ -35,37 +30,14 @@ const FileUpload: React.FC<FileUploadProps> = ({
   const [useAi, setUseAi] = useState(showAiToggle);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Robust Account Prediction
   useEffect(() => {
-    if (selectedFiles.length > 0 && accounts.length > 0) {
+    if (selectedFiles.length > 0 && accounts.length > 0 && !selectedAccountId) {
+      // Basic auto-matching if account ID is found in filename
       const allNames = selectedFiles.map(f => f.name.toLowerCase()).join(' ');
-      
-      const scoredAccounts = accounts.map(acc => {
-        let score = 0;
-        const name = acc.name.toLowerCase();
-        const ident = acc.identifier.toLowerCase();
-        
-        const cleanName = name.replace(/[^a-z0-9]/g, ' ');
-        const cleanIdent = ident.replace(/[^a-z0-9]/g, ' ');
-
-        if (ident.length >= 3 && allNames.includes(ident)) score += 10;
-        if (cleanIdent.length >= 3 && allNames.includes(cleanIdent)) score += 8;
-        
-        const nameWords = cleanName.split(/\s+/).filter(w => w.length > 2);
-        nameWords.forEach(word => {
-            if (allNames.includes(word)) score += 5;
-        });
-
-        if (allNames.includes(cleanName)) score += 20;
-
-        return { id: acc.id, score };
-      }).sort((a, b) => b.score - a.score);
-
-      if (scoredAccounts[0] && scoredAccounts[0].score > 0) {
-        setSelectedAccountId(scoredAccounts[0].id);
-      }
+      const match = accounts.find(acc => acc.identifier && allNames.includes(acc.identifier.toLowerCase()));
+      if (match) setSelectedAccountId(match.id);
     }
-  }, [selectedFiles, accounts]);
+  }, [selectedFiles, accounts, selectedAccountId]);
 
   const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -76,16 +48,12 @@ const FileUpload: React.FC<FileUploadProps> = ({
     e.preventDefault();
     setIsDragging(false);
     if (disabled) return;
-    
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) setSelectedFiles(files);
   }, [disabled]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
-      setSelectedFiles(files);
-    }
+    if (e.target.files) setSelectedFiles(Array.from(e.target.files));
   };
 
   const handleProcessClick = () => {
@@ -105,12 +73,12 @@ const FileUpload: React.FC<FileUploadProps> = ({
       {showAiToggle && (
           <div className="flex items-center justify-between px-1">
               <label className="flex items-center gap-2 cursor-pointer group">
-                  <div className={`p-2 rounded-lg transition-colors ${useAi ? 'bg-indigo-600 text-white shadow-indigo-100 shadow-lg' : 'bg-slate-100 text-slate-400'}`}>
+                  <div className={`p-2 rounded-lg transition-colors ${useAi ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-400'}`}>
                       <RobotIcon className="w-5 h-5" />
                   </div>
                   <div className="flex flex-col">
-                      <span className={`text-sm font-bold transition-colors ${useAi ? 'text-indigo-700' : 'text-slate-500'}`}>Use Gemini AI Processing</span>
-                      <span className="text-[10px] text-slate-400 font-medium">Better for PDFs & complex statements</span>
+                      <span className={`text-sm font-bold ${useAi ? 'text-indigo-700' : 'text-slate-500'}`}>Use Gemini AI Processing</span>
+                      <span className="text-[10px] text-slate-400 font-medium">Better for PDFs & complex layouts</span>
                   </div>
                   <input type="checkbox" className="sr-only" checked={useAi} onChange={() => setUseAi(!useAi)} />
                   <div className={`ml-4 w-10 h-5 rounded-full relative transition-colors ${useAi ? 'bg-indigo-600' : 'bg-slate-300'}`}>
@@ -133,7 +101,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
         <input ref={fileInputRef} type="file" multiple={multiple} accept={acceptedFileTypes} onChange={handleFileChange} className="hidden" disabled={disabled} />
         <UploadIcon className="w-8 h-8 mb-2 text-slate-400" />
         <p className="font-bold text-slate-700">{label}</p>
-        <p className="text-xs text-slate-400 mt-1">{acceptedFileTypes.replace(/\./g, '').toUpperCase()} formats supported</p>
+        <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">{acceptedFileTypes.replace(/\./g, '').toUpperCase()} formats supported</p>
       </div>
       
       {selectedFiles.length > 0 && (
@@ -154,7 +122,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
                         </select>
                         <button onClick={(e) => { e.stopPropagation(); onAddAccountRequested?.(); }} className="p-2 border rounded-lg hover:bg-slate-50 text-indigo-600"><AddIcon className="w-5 h-5" /></button>
                     </div>
-                    {selectedAccountId && <p className="text-[9px] text-green-600 font-black uppercase mt-1 flex items-center gap-1"><CheckCircleIcon className="w-3 h-3" /> Auto-matched</p>}
                 </div>
             )}
         </div>
@@ -162,7 +129,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
 
       {selectedFiles.length > 0 && (
           <button
-            // Fixed error: replaced handleSave with handleProcessClick
             onClick={handleProcessClick}
             className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all disabled:bg-slate-200"
           >
