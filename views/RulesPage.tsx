@@ -101,7 +101,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const handleNew = () => {
-        setSelectedRuleId(null);
+        setSelectedId(null);
         setIsCreating(true);
         setRuleName('');
         setRuleScope('description');
@@ -112,12 +112,13 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setActionLocationId('');
         setActionUserId('');
         setActionTypeId('');
+        assignTagIds.clear();
         setAssignTagIds(new Set());
         setSkipImport(false);
     };
 
     const handleEditProposed = (proposed: ReconciliationRule) => {
-        // Keep AI panel active but hide it logically to allow returning
+        // Hydrate manual form with AI draft but keep AI panel logically open behind it
         setIsCreating(true);
         setSelectedRuleId(null); // New rule drafting
         
@@ -144,10 +145,16 @@ const RulesPage: React.FC<RulesPageProps> = ({
             if (match) finalMerchantId = match.id;
         }
 
+        let finalLocationId = proposed.setLocationId || '';
+        if (!finalLocationId && proposed.suggestedLocationName) {
+            const match = locations.find(l => l.name.toLowerCase() === proposed.suggestedLocationName?.toLowerCase());
+            if (match) finalLocationId = match.id;
+        }
+
         setActionCategoryId(finalCatId);
         setActionPayeeId(finalPayeeId);
         setActionMerchantId(finalMerchantId);
-        setActionLocationId(proposed.setLocationId || '');
+        setActionLocationId(finalLocationId);
         setActionUserId(proposed.setUserId || '');
         setActionTypeId(proposed.setTransactionTypeId || '');
         setAssignTagIds(new Set(proposed.assignTagIds || []));
@@ -157,7 +164,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const handleCancelEdit = () => {
         setSelectedRuleId(null);
         setIsCreating(false);
-        // If we were editing an AI proposal, it remains in the AI list
+        // Returns to AI results list if panel was open
     };
 
     const handleSave = (e: React.FormEvent) => {
@@ -230,6 +237,16 @@ const RulesPage: React.FC<RulesPageProps> = ({
             }
         }
 
+        if (proposed.suggestedLocationName && !proposed.setLocationId) {
+            const existing = locations.find(l => l.name.toLowerCase() === proposed.suggestedLocationName?.toLowerCase());
+            if (existing) finalRule.setLocationId = existing.id;
+            else {
+                const l = { id: generateUUID(), name: proposed.suggestedLocationName };
+                onSaveLocation(l);
+                finalRule.setLocationId = l.id;
+            }
+        }
+
         onSaveRule(finalRule);
         setAiProposedRules(prev => prev.filter(p => p.id !== proposed.id));
     };
@@ -268,7 +285,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-4">
-                            <p className="text-sm text-slate-600">Gemini will detect patterns and consolidate variants. Describe specific goals (e.g. "Identify locations as City, State").</p>
+                            <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                                Describe normalization tasks. Gemini intelligently expands locations (e.g. "PLEASANT GROV" &rarr; "Pleasant Grove, UT") and identifies core merchant brands.
+                            </p>
                             {!aiRawData && (
                                 <div 
                                     onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
@@ -281,7 +300,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </div>
                             )}
                             {!aiFile && <textarea value={aiRawData} onChange={e => setAiRawData(e.target.value)} placeholder="Paste CSV rows here..." className="w-full h-32 p-3 border rounded-xl text-[10px] font-mono bg-slate-50" />}
-                            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Specific instructions (e.g. 'Standardize locations to City, State')..." className="w-full p-3 border rounded-xl text-sm min-h-[60px]" />
+                            <textarea value={aiPrompt} onChange={e => setAiPrompt(e.target.value)} placeholder="Specific instructions (e.g. 'Identify and create locations as City, State')..." className="w-full p-3 border rounded-xl text-sm min-h-[60px]" />
                             <button onClick={handleAiInspect} disabled={(!aiFile && !aiRawData) || isAiGenerating} className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-black disabled:opacity-30 flex items-center justify-center gap-2">
                                 {isAiGenerating ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-4 h-4" />}
                                 Forge Proposed Rules
@@ -298,26 +317,37 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         const needsCategory = r.suggestedCategoryName && !categories.some(c => c.name.toLowerCase() === r.suggestedCategoryName?.toLowerCase());
                                         const needsMerchant = r.suggestedMerchantName && !merchants.some(m => m.name.toLowerCase() === r.suggestedMerchantName?.toLowerCase());
                                         const needsPayee = r.suggestedPayeeName && !payees.some(p => p.name.toLowerCase() === r.suggestedPayeeName?.toLowerCase());
+                                        const needsLocation = r.suggestedLocationName && !locations.some(l => l.name.toLowerCase() === r.suggestedLocationName?.toLowerCase());
 
                                         return (
-                                            <div key={idx} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
+                                            <div key={idx} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in group/card">
                                                 <div className="flex justify-between items-start">
-                                                    <div>
-                                                        <h5 className="text-sm font-bold text-slate-800">{r.name}</h5>
-                                                        <div className="flex flex-wrap gap-1.5 mt-1">
+                                                    <div className="flex-1 min-w-0 pr-4">
+                                                        <h5 className="text-sm font-bold text-slate-800 truncate">{r.name}</h5>
+                                                        <div className="flex flex-wrap gap-1 mt-2">
                                                             {needsCategory && <span className="px-1.5 py-0.5 bg-purple-50 text-purple-600 text-[8px] font-black rounded uppercase border border-purple-100">+ New Category</span>}
                                                             {needsMerchant && <span className="px-1.5 py-0.5 bg-orange-50 text-orange-600 text-[8px] font-black rounded uppercase border border-orange-100">+ New Merchant</span>}
                                                             {needsPayee && <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black rounded uppercase border border-blue-100">+ New Payee</span>}
+                                                            {needsLocation && <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[8px] font-black rounded uppercase border border-emerald-100">+ New Location</span>}
+                                                            
+                                                            {r.suggestedCategoryName && !needsCategory && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-black rounded uppercase border border-slate-200">Category: {r.suggestedCategoryName}</span>}
+                                                            {r.suggestedMerchantName && !needsMerchant && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-black rounded uppercase border border-slate-200">Merchant: {r.suggestedMerchantName}</span>}
+                                                            {r.suggestedLocationName && !needsLocation && <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[8px] font-black rounded uppercase border border-slate-200">Location: {r.suggestedLocationName}</span>}
                                                         </div>
                                                     </div>
-                                                    <div className="flex gap-2">
-                                                        <button onClick={() => handleEditProposed(r)} className="text-[9px] font-black text-indigo-600 hover:underline uppercase">Edit & Refine</button>
-                                                        <button onClick={() => acceptAiRule(r)} className="text-[10px] font-black bg-indigo-600 text-white px-2 py-1 rounded uppercase hover:bg-indigo-700">Quick Accept</button>
+                                                    <div className="flex gap-1.5 opacity-0 group-hover/card:opacity-100 transition-opacity">
+                                                        <button onClick={() => handleEditProposed(r)} className="p-1 text-indigo-600 hover:bg-indigo-50 rounded" title="Refine Logic"><EditIcon className="w-4 h-4"/></button>
+                                                        <button onClick={() => acceptAiRule(r)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Quick Accept"><CheckCircleIcon className="w-4 h-4"/></button>
                                                     </div>
                                                 </div>
                                                 <div className="p-2 bg-slate-50 rounded font-mono text-[9px] text-slate-500">
                                                     {r.conditions.map((c, i) => (
-                                                        <div key={i}>{i > 0 && <span className="text-indigo-600 font-bold">{c.nextLogic || 'AND'} </span>}{c.field} {c.operator} "{c.value}"</div>
+                                                        <div key={i} className="flex gap-1">
+                                                            {i > 0 && <span className="text-indigo-600 font-bold">{c.nextLogic || 'AND'}</span>}
+                                                            <span className="text-slate-400">{c.field}</span>
+                                                            <span className="text-indigo-700">{c.operator}</span>
+                                                            <span className="text-slate-800 font-bold truncate">"{c.value}"</span>
+                                                        </div>
                                                     ))}
                                                 </div>
                                             </div>
@@ -346,7 +376,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 {/* MIDDLE: LIST */}
                 <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 flex-shrink-0">
                     <div className="p-3 border-b border-slate-100">
-                        <div className="relative"><input type="text" placeholder="Search rules..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border rounded-xl text-xs font-medium" /></div>
+                        <div className="relative"><input type="text" placeholder="Search rules..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border rounded-xl text-xs font-medium focus:ring-0 focus:border-indigo-500" /></div>
                     </div>
                     <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                         {filteredRules.map(r => (
@@ -362,58 +392,57 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             </div>
                         ))}
                     </div>
-                    <div className="p-3 border-t bg-slate-50 rounded-b-2xl"><button onClick={handleNew} className="w-full py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs shadow-md">New Rule</button></div>
+                    <div className="p-3 border-t bg-slate-50 rounded-b-2xl"><button onClick={handleNew} className="w-full py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs shadow-md active:scale-95 transition-transform">New Rule</button></div>
                 </div>
 
                 {/* RIGHT: EDITOR */}
-                <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
+                <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden">
                     {(selectedRuleId || isCreating) ? (
-                        <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
+                        <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0 animate-fade-in">
                             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-                                <div><h3 className="text-xl font-black text-slate-800">Rule Architect</h3><p className="text-xs text-slate-500 font-bold uppercase">Manual Enrichment Logic</p></div>
-                                <div className="flex gap-2"><button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg uppercase text-[10px]">Commit Rule</button><button type="button" onClick={handleCancelEdit} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400" /></button></div>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
-                                <div className="grid grid-cols-3 gap-6">
-                                    <div className="col-span-2 space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rule Name</label><input type="text" value={ruleName} onChange={e => setRuleName(e.target.value)} className="w-full p-4 border rounded-2xl font-bold" required /></div>
-                                    <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logic Scope</label><select value={ruleScope} onChange={e => setRuleScope(e.target.value)} className="w-full p-4 border rounded-2xl font-bold">{RULE_DOMAINS.filter(d => d.id !== 'all').map(d => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
+                                <div><h3 className="text-xl font-black text-slate-800">Rule Architect</h3><p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Normalization Engine</p></div>
+                                <div className="flex gap-2">
+                                    <button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg uppercase text-[10px] active:scale-95 transition-transform">Commit Rule</button>
+                                    <button type="button" onClick={handleCancelEdit} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                                 </div>
-                                <div className="space-y-4"><h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Conditional Logic Tree</h4><div className="p-6 bg-slate-50 rounded-3xl border"><RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} /></div></div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar bg-white">
+                                <div className="grid grid-cols-3 gap-6">
+                                    <div className="col-span-2 space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rule Name</label><input type="text" value={ruleName} onChange={e => setRuleName(e.target.value)} className="w-full p-4 border rounded-2xl font-bold focus:ring-0 focus:border-indigo-500 bg-slate-50/50" required /></div>
+                                    <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logic Scope</label><select value={ruleScope} onChange={e => setRuleScope(e.target.value)} className="w-full p-4 border rounded-2xl font-bold bg-slate-50/50">{RULE_DOMAINS.filter(d => d.id !== 'all').map(d => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
+                                </div>
+                                <div className="space-y-4">
+                                  <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                    Conditional Logic Tree 
+                                    {/* Added a span wrapper around InfoIcon to provide the title tooltip, fixing a TypeScript error since Lucide icons do not support the title prop directly. */}
+                                    <span title="Drag and drop conditions to reorder or re-group.">
+                                      <InfoIcon className="w-3.5 h-3.5" />
+                                    </span>
+                                  </h4>
+                                  <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 shadow-inner"><RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} /></div>
+                                </div>
                                 <div className="space-y-6">
                                     <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Atomic Transformations</h4>
-                                    <div className="grid grid-cols-3 gap-4">
-                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Map Category</label><select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Assign Payee</label><select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Assign Merchant</label><select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
-                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase">Assign User</label><select value={actionUserId} onChange={e => setActionUserId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
-                                        <div className="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-100"><input type="checkbox" checked={skipImport} onChange={e => setSkipImport(e.target.checked)} className="w-5 h-5 rounded text-red-600" /><div><label className="text-xs font-black text-red-800 uppercase block">Suppress Record</label><p className="text-[10px] text-red-600">Auto-ignore matching imports.</p></div></div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label><select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Payee</label><select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Merchant</label><select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label><select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select></div>
+                                        <div className="space-y-1"><label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label><select value={actionUserId} onChange={e => setActionUserId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold bg-white text-xs"><option value="">-- No Change --</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+                                        <div className="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-100 self-end"><input type="checkbox" checked={skipImport} onChange={e => setSkipImport(e.target.checked)} className="w-5 h-5 rounded text-red-600 focus:ring-red-500" /><div><label className="text-xs font-black text-red-800 uppercase block">Suppress Record</label><p className="text-[10px] text-red-600">Auto-ignore matching imports.</p></div></div>
                                     </div>
                                 </div>
                             </div>
                         </form>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
-                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border mb-8 animate-bounce-subtle"><ShieldCheckIcon className="w-12 h-12 text-indigo-200" /></div>
+                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle"><ShieldCheckIcon className="w-12 h-12 text-indigo-200" /></div>
                             <h3 className="text-2xl font-black text-slate-800">Master Rule Engine</h3>
-                            <p className="text-slate-500 max-w-sm mt-4">Select a rule to refine, or use the AI Rule Creator to automatically detect merchant patterns from your statements.</p>
+                            <p className="text-slate-500 max-w-sm mt-4 leading-relaxed font-medium">Select a rule to refine, or use the AI Rule Creator to automatically detect patterns like Merchant snippets or City/State locations from your statements.</p>
                         </div>
                     )}
                 </div>
             </div>
-
-            {previewRule && (
-                <RulePreviewModal
-                    isOpen={!!previewRule}
-                    onClose={() => setPreviewRule(null)}
-                    onApply={handleApplyPreview}
-                    rule={previewRule}
-                    transactions={transactions}
-                    accounts={accounts}
-                    transactionTypes={transactionTypes}
-                    categories={categories}
-                    payees={payees}
-                />
-            )}
         </div>
     );
 };

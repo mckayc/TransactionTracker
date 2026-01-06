@@ -106,17 +106,27 @@ export const generateRulesFromData = async (
     const slimCategories = categories.slice(0, 100).map(c => ({ id: c.id, name: c.name }));
     const slimPayees = payees.slice(0, 100).map(p => ({ id: p.id, name: p.name }));
 
-    const systemInstruction = `You are a Senior Financial Architect. Generate classification rules in JSON.
+    const systemInstruction = `You are a Senior Financial Architect & Data Normalizer.
+    
+    TASK: Generate classification rules in JSON based on the provided sample and user context.
+    
+    CORE NORMALIZATION LOGIC:
+    1. SNIPPET VS ENTITY: You must distinguish between the "Matching Snippet" (exact raw text in the description) and the "Clean Entity Name" (human-readable).
+       Example: Description "PHO NO 1 PLEASANT GROV UT"
+       - If user asks for Merchant: Condition value "PHO NO 1" -> suggestedMerchantName "Pho No 1"
+       - If user asks for Location: Condition value "PLEASANT GROV UT" -> suggestedLocationName "Pleasant Grove, UT"
+    
+    2. KEYWORD EXTRACTION: Find the MINIMAL unique identifying keyword. Ignore branch IDs, dates, or terminal numbers.
+    
+    3. LOCATION EXPANSION: If a location is detected, expand abbreviations to a standard "City, ST" format.
+       Examples: "SLC" -> "Salt Lake City, UT", "NY NY" -> "New York, NY", "PLEASANT GROV" -> "Pleasant Grove".
+    
+    4. CONSOLIDATION & LOGIC: If multiple text variants represent the same entity, create ONE rule with OR logic between conditions.
+       CRITICAL: In an OR group, every condition (including the first) should have its 'nextLogic' set to 'OR'.
+
     CONTEXT: ${promptContext || 'Identify recurring patterns and merchants.'}
     CATEGORIES: ${JSON.stringify(slimCategories)}
-    PAYEES: ${JSON.stringify(slimPayees)}
-    
-    CRITICAL LOGIC & EXTRACTION RULES:
-    1. KEYWORD EXTRACTION: Instead of using full description strings, extract the minimal unique identifying keyword for a merchant (e.g., use 'Walmart' instead of 'WAL-MART #1234').
-    2. LOCATION DETECTION: If requested to find locations, extract them in "City, State" format specifically.
-    3. VARIANT CONSOLIDATION: If multiple naming variants exist for one entity (e.g. 'WM Super' and 'Walmart'), create ONE rule.
-    4. OR LOGIC: When grouping variants, ensure the logic field correctly groups them using 'OR'.
-    5. ENTITY CREATION: If a merchant or category doesn't exist, suggest a clean name for it.`;
+    PAYEES: ${JSON.stringify(slimPayees)}`;
 
     const schema = {
         type: Type.OBJECT,
@@ -136,7 +146,7 @@ export const generateRulesFromData = async (
                                     field: { type: Type.STRING },
                                     operator: { type: Type.STRING },
                                     value: { type: Type.STRING },
-                                    nextLogic: { type: Type.STRING }
+                                    nextLogic: { type: Type.STRING, description: "Set to 'OR' to group merchant variants." }
                                 }
                             }
                         },
@@ -145,7 +155,9 @@ export const generateRulesFromData = async (
                         setPayeeId: { type: Type.STRING },
                         suggestedPayeeName: { type: Type.STRING },
                         setMerchantId: { type: Type.STRING },
-                        suggestedMerchantName: { type: Type.STRING }
+                        suggestedMerchantName: { type: Type.STRING },
+                        setLocationId: { type: Type.STRING },
+                        suggestedLocationName: { type: Type.STRING }
                     },
                     required: ['name', 'conditions']
                 }
