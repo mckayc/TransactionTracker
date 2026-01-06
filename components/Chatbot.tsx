@@ -39,29 +39,42 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
 
         const userMessage: Message = { role: 'user', content: input };
         setMessages(prev => [...prev, userMessage]);
+        const currentInput = input;
         setInput('');
         setIsLoading(true);
 
         try {
-            const stream = await getAiFinancialAnalysis(input, contextData);
+            const stream = await getAiFinancialAnalysis(currentInput, contextData);
             
             let fullResponse = '';
             setMessages(prev => [...prev, { role: 'ai', content: '' }]);
 
             for await (const chunk of stream) {
                 const chunkText = chunk.text;
-                fullResponse += chunkText;
-                setMessages(prev => {
-                    const newMessages = [...prev];
-                    newMessages[newMessages.length - 1] = { role: 'ai', content: fullResponse };
-                    return newMessages;
-                });
+                if (chunkText) {
+                    fullResponse += chunkText;
+                    setMessages(prev => {
+                        const newMessages = [...prev];
+                        newMessages[newMessages.length - 1] = { role: 'ai', content: fullResponse };
+                        return newMessages;
+                    });
+                }
             }
-        } catch (error) {
-            console.error("Chatbot error:", error);
+        } catch (error: any) {
+            console.error("Chatbot Analysis Error Detail:", error);
+            
+            let errorMsg = "I'm having trouble analyzing your data.";
+            if (error.message?.includes("413") || error.message?.includes("Payload Too Large")) {
+                errorMsg = "Your transaction history is too large to send in a single request. Try narrowing your search or asking about recent activity.";
+            } else if (error.message?.includes("403") || error.message?.includes("API key")) {
+                errorMsg = "Your API Key appears to be invalid or restricted. Please check your settings.";
+            } else if (error.message?.includes("500")) {
+                errorMsg = "Google's AI servers encountered an error. Please try again in a few moments.";
+            }
+
             const errorMessage: Message = { 
                 role: 'ai', 
-                content: "I'm having trouble analyzing your data. This often happens if the transaction history is too large for a single request, or if the API Key is invalid.", 
+                content: errorMsg, 
                 isError: true 
             };
             setMessages(prev => [...prev, errorMessage]);
@@ -84,7 +97,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
                 </button>
             </header>
 
-            <main className="flex-1 overflow-y-auto p-4 space-y-4">
+            <main className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
                 {messages.map((msg, index) => (
                     <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                         {msg.isError ? (
@@ -94,7 +107,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
                             </div>
                         ) : (
                             <div className={`max-w-[85%] p-3 rounded-2xl ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-lg' : 'bg-slate-100 text-slate-800 rounded-bl-lg'}`}>
-                                <div className="prose prose-sm" dangerouslySetInnerHTML={{__html: msg.content.replace(/\n/g, '<br/>')}}/>
+                                <div className="prose prose-sm break-words" dangerouslySetInnerHTML={{__html: msg.content.replace(/\n/g, '<br/>')}}/>
                             </div>
                         )}
                     </div>

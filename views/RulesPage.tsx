@@ -4,7 +4,7 @@ import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, 
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon, ChevronDownIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, CloudArrowUpIcon, InfoIcon, ShieldCheckIcon, TagIcon, WrenchIcon, UsersIcon, UserGroupIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from '../components/RuleBuilder';
-import { generateRulesFromData } from '../services/geminiService';
+import { generateRulesFromData, hasApiKey } from '../services/geminiService';
 
 interface RulesPageProps {
     rules: ReconciliationRule[];
@@ -145,14 +145,23 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
     const handleAiInspect = async () => {
         const input = aiFile || aiRawData;
-        if (!input) return;
+        if (!input) {
+            alert("Please provide a data sample (file or text).");
+            return;
+        }
+
+        if (!hasApiKey()) {
+            alert("API Key is missing or invalid. Check your environment configuration.");
+            return;
+        }
+
         setIsAiGenerating(true);
         try {
             const proposed = await generateRulesFromData(input, categories, payees, merchants, locations, users, aiPrompt);
             setAiProposedRules(proposed);
-        } catch (e) {
-            console.error(e);
-            alert("AI Pattern Analysis failed. Ensure data sample is legible and API key is active.");
+        } catch (e: any) {
+            console.error("AI Analysis Error:", e);
+            alert(`AI Pattern Analysis failed: ${e.message || "Unknown error"}. Check if your API Key is active.`);
         } finally {
             setIsAiGenerating(false);
         }
