@@ -29,20 +29,29 @@ app.get('/api/health', (req, res) => res.status(200).json({ status: 'live', time
 // Runtime Environment Injection for Frontend
 app.get('/env.js', (req, res) => {
     const key = process.env.API_KEY || '';
-    console.log(`[SYS] Frontend requested /env.js. API_KEY status: ${key ? 'PRESENT (Masked: ' + key.substring(0, 4) + '...)' : 'MISSING'}`);
+    
+    // Enhanced Diagnostic Logging
+    console.log("---------------------------------------------------------");
+    console.log(`[SYS] Client requested Environment Shim (/env.js)`);
+    console.log(`[SYS] Source: ${req.ip}`);
+    if (key) {
+        console.log(`[SYS] API_KEY found in process.env (Length: ${key.length}, Masked: ${key.substring(0, 4)}...)`);
+    } else {
+        console.warn(`[SYS] WARNING: No API_KEY found in process.env! AI features will fail.`);
+    }
+    console.log("---------------------------------------------------------");
     
     res.type('application/javascript');
-    // We use a custom object name to avoid Vite's build-time string replacement
     res.send(`
         (function() {
             window.__FINPARSER_CONFIG__ = {
                 API_KEY: "${key.replace(/"/g, '\\"')}"
             };
-            // Also keep process.env shim for compatibility
+            // Define process.env shim immediately
             window.process = window.process || {};
             window.process.env = window.process.env || {};
             window.process.env.API_KEY = "${key.replace(/"/g, '\\"')}";
-            console.log("[SYS] Runtime Config Injected. Keys detected:", Object.keys(window.__FINPARSER_CONFIG__));
+            console.log("[FINPARSER] Runtime environment injected successfully.");
         })();
     `);
 });

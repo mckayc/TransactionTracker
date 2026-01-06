@@ -3,20 +3,36 @@ import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Merchant, Location, User, Payee, ReconciliationRule } from '../types';
 
 /**
+ * Robust API Key Retrieval
+ * In this self-hosted environment, the key is shimmed onto process.env at runtime by server.js
+ */
+const getApiKey = (): string => {
+    // Check local process.env shim
+    const key = (globalThis as any).process?.env?.API_KEY;
+    if (key && key !== 'undefined' && key.trim() !== '') return key;
+    
+    // Fallback to custom runtime config if available
+    const configKey = (globalThis as any).__FINPARSER_CONFIG__?.API_KEY;
+    if (configKey && configKey !== 'undefined' && configKey.trim() !== '') return configKey;
+    
+    return '';
+};
+
+/**
  * Returns true if the API_KEY is present and non-empty.
  */
 export const hasApiKey = (): boolean => {
-    const key = process.env.API_KEY;
-    return typeof key === 'string' && key.trim().length > 0;
+    return getApiKey().length > 0;
 };
 
 /**
  * Connectivity Test: Performs a minimal call to verify the key is actually valid.
  */
 export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, message: string }> => {
-    if (!hasApiKey()) return { success: false, message: "No API Key found in environment variables." };
+    const key = getApiKey();
+    if (!key) return { success: false, message: "No API Key found. Check your environment/server configuration." };
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: key });
     
     try {
         const response = await ai.models.generateContent({
@@ -39,7 +55,7 @@ export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, 
         console.error("Gemini Connectivity Test Error:", e);
         return { 
             success: false, 
-            message: `API Error: ${e.message || "Unknown error"}.` 
+            message: `API Error: ${e.message || "Unknown error"}. Check billing, quota, or network.` 
         };
     }
 };
@@ -59,7 +75,6 @@ const fileToGenerativePart = async (file: File) => {
 
 /**
  * AI Logic Engine for Rule Generation
- * Using 'gemini-3-pro-preview' for complex reasoning.
  */
 export const generateRulesFromData = async (
     data: string | File, 
@@ -70,9 +85,10 @@ export const generateRulesFromData = async (
     users: User[],
     promptContext?: string
 ): Promise<ReconciliationRule[]> => {
-    if (!hasApiKey()) throw new Error("API Key is missing. Please configure your environment.");
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing. Please configure your environment.");
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: key });
     
     let sampleParts: any[] = [];
     if (typeof data === 'string') {
@@ -159,8 +175,10 @@ export const generateRulesFromData = async (
  * Optimized: Truncates context to prevent token overflow.
  */
 export const getAiFinancialAnalysis = async (query: string, contextData: any) => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     
     const optimizedContext = {
         ...contextData,
@@ -176,9 +194,7 @@ export const getAiFinancialAnalysis = async (query: string, contextData: any) =>
 
     const systemInstruction = `You are FinParser AI, a world-class financial analyst. 
     You have access to the user's recent 100 transactions and financial profiles.
-    Use Markdown for formatting tables or bullet points.
-    Be concise but thorough. 
-    If you don't have enough data to answer specifically, explain what's missing.`;
+    Use Markdown for formatting. Be concise.`;
 
     const stream = await ai.models.generateContentStream({
         model: 'gemini-3-flash-preview',
@@ -198,8 +214,10 @@ export const extractTransactionsFromFiles = async (
     categories: Category[], 
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     onProgress("AI is analyzing files...");
     const fileParts = await Promise.all(files.map(fileToGenerativePart));
     
@@ -249,8 +267,10 @@ export const extractTransactionsFromText = async (
     categories: Category[], 
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     onProgress("AI is parsing text...");
     const schema = {
         type: Type.OBJECT,
@@ -291,8 +311,10 @@ export const extractTransactionsFromText = async (
 };
 
 export const healDataSnippet = async (text: string): Promise<any> => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Repair this malformed JSON snippet: ${text}. Return ONLY the repaired JSON object.`,
@@ -305,8 +327,10 @@ export const healDataSnippet = async (text: string): Promise<any> => {
 };
 
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
-    if (!hasApiKey()) return "AI Configuration required.";
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) return "AI Configuration required.";
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
@@ -316,8 +340,10 @@ export const askAiAdvisor = async (prompt: string): Promise<string> => {
 };
 
 export const getIndustryDeductions = async (industry: string): Promise<string[]> => {
-    if (!hasApiKey()) return [];
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) return [];
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     const schema = {
         type: Type.OBJECT,
         properties: {
@@ -335,8 +361,10 @@ export const getIndustryDeductions = async (industry: string): Promise<string[]>
 };
 
 export const streamTaxAdvice = async (messages: ChatMessage[], profile: BusinessProfile) => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     const contents = messages.map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
@@ -359,8 +387,10 @@ export const auditTransactions = async (
     auditType: string,
     examples?: Transaction[][]
 ): Promise<AuditFinding[]> => {
-    if (!hasApiKey()) return [];
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) return [];
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     const schema = {
         type: Type.OBJECT,
         properties: {
@@ -398,8 +428,10 @@ export const auditTransactions = async (
 };
 
 export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<any> => {
-    if (!hasApiKey()) return {};
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) return {};
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     onProgress("AI is reading document...");
     const part = await fileToGenerativePart(file);
     const schema = {
@@ -425,8 +457,10 @@ export const generateFinancialStrategy = async (
     categories: Category[],
     profile: BusinessProfile
 ): Promise<any> => {
-    if (!hasApiKey()) return { strategy: "API Key required." };
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) return { strategy: "API Key required." };
+    
+    const ai = new GoogleGenAI({ apiKey: key });
     const schema = {
         type: Type.OBJECT,
         properties: {
