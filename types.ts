@@ -256,6 +256,7 @@ export interface BackupConfig {
 
 export interface SystemSettings {
     backupConfig?: BackupConfig;
+    aiModel?: string; // e.g. 'gemini-3-flash-preview'
 }
 
 export type ReportGroupBy = 'category' | 'payee' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User } from '../types';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User, SystemSettings } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon, ChevronDownIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, CloudArrowUpIcon, InfoIcon, ShieldCheckIcon, TagIcon, WrenchIcon, UsersIcon, UserGroupIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from '../components/RuleBuilder';
@@ -26,6 +26,7 @@ interface RulesPageProps {
     onSaveLocation: (location: Location) => void;
     onSaveTag: (tag: Tag) => void;
     onAddTransactionType: (type: TransactionType) => void;
+    systemSettings?: SystemSettings;
 }
 
 const RULE_DOMAINS = [
@@ -40,7 +41,7 @@ const RULE_DOMAINS = [
 ];
 
 const RulesPage: React.FC<RulesPageProps> = ({ 
-    rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onSaveMerchant, onSaveLocation, onSaveTag, onAddTransactionType 
+    rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onSaveMerchant, onSaveLocation, onSaveTag, onAddTransactionType, systemSettings 
 }) => {
     const [selectedDomain, setSelectedDomain] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -172,7 +173,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         if (!input) return;
         setIsAiGenerating(true);
         try {
-            const proposed = await generateRulesFromData(input, categories, payees, merchants, locations, users, aiPrompt);
+            const proposed = await generateRulesFromData(input, categories, payees, merchants, locations, users, aiPrompt, systemSettings);
             setAiProposedRules(proposed);
         } catch (e: any) {
             alert(e.message || "AI Analysis failed.");

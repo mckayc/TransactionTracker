@@ -1,6 +1,6 @@
-
 import React, { useState, useRef } from 'react';
-import type { BusinessDocument, DocumentFolder } from '../types';
+/* Added SystemSettings to imports */
+import type { BusinessDocument, DocumentFolder, SystemSettings } from '../types';
 import { DocumentIcon, CloudArrowUpIcon, DeleteIcon, DownloadIcon, AddIcon, ExclamationTriangleIcon, FolderIcon } from '../components/Icons';
 import { analyzeBusinessDocument, hasApiKey } from '../services/geminiService';
 import { saveFile, deleteFile, getFile } from '../services/storageService';
@@ -13,9 +13,11 @@ interface DocumentsPageProps {
     onRemoveDocument: (id: string) => void;
     onCreateFolder: (folder: DocumentFolder) => void;
     onDeleteFolder: (id: string) => void;
+    /* Added systemSettings prop */
+    systemSettings?: SystemSettings;
 }
 
-const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAddDocument, onRemoveDocument, onCreateFolder, onDeleteFolder }) => {
+const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAddDocument, onRemoveDocument, onCreateFolder, onDeleteFolder, systemSettings }) => {
     const [currentFolderId, setCurrentFolderId] = useState<string | undefined>(undefined);
     const [isUploading, setIsUploading] = useState(false);
     const [isCreatingFolder, setIsCreatingFolder] = useState(false);
@@ -67,7 +69,8 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
             // 2. Analyze with AI only if API key is present AND it's not a JSON backup
             if (apiKeyAvailable && file.type !== 'application/json') {
                 try {
-                    analysis = await analyzeBusinessDocument(file, (msg) => console.log(msg));
+                    /* Passed systemSettings to analyzeBusinessDocument */
+                    analysis = await analyzeBusinessDocument(file, (msg) => console.log(msg), systemSettings);
                 } catch (aiError) {
                     console.warn("AI analysis failed, saving document without insights.", aiError);
                 }

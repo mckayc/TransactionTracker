@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location, SystemSettings } from '../types';
 // Fixed: Imports for AI extraction functions are now expected to be available in geminiService.ts
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
@@ -42,6 +42,7 @@ interface DashboardProps {
   onAddTransactionType: (type: TransactionType) => void;
   onUpdateTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
+  systemSettings?: SystemSettings;
 }
 
 const SummaryWidget: React.FC<{title: string, value: string, helpText: string, icon?: React.ReactNode, className?: string}> = ({title, value, helpText, icon, className}) => (
@@ -58,7 +59,7 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, i
 );
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
+    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule, systemSettings 
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -116,7 +117,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     setProgressMessage(aiMode ? 'AI Thinking (Analyzing Statements)...' : 'Parsing local files...');
     try {
       const raw = aiMode 
-        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage) 
+        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage, systemSettings) 
         : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
       
       if (!raw || raw.length === 0) {
@@ -129,7 +130,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
       setAppState('error');
     }
-  }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging]);
+  }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging, systemSettings]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
       const { added } = mergeTransactions(recentGlobalTransactions, verified);
@@ -220,7 +221,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             onClick={async () => {
                                                 setAppState('processing');
                                                 try {
-                                                    const raw = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
+                                                    const raw = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage, systemSettings) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
                                                     applyRulesAndSetStaging(raw, users[0]?.id || 'default', rules);
                                                     setAppState('verifying_import');
                                                 } catch(e) { setAppState('error'); setError("Parsing failed. Ensure columns align."); }

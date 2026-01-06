@@ -217,6 +217,7 @@ const App: React.FC = () => {
                             onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction}
                             onAddDocument={(d) => updateData('businessDocuments', [...businessDocuments, d], setBusinessDocuments)}
                             onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
+                            systemSettings={systemSettings}
                         />
                     )}
                     {currentView === 'transactions' && (
@@ -259,6 +260,7 @@ const App: React.FC = () => {
                             onSaveLocation={(l) => updateData('locations', locations.some(x => x.id === l.id) ? locations.map(x => x.id === l.id ? l : x) : [...locations, l], setLocations)}
                             onSaveTag={(t) => updateData('tags', tags.some(x => x.id === t.id) ? tags.map(x => x.id === t.id ? t : x) : [...tags, t], setTags)}
                             onAddTransactionType={(t) => updateData('transactionTypes', [...transactionTypes, t], setTransactionTypes)}
+                            systemSettings={systemSettings}
                         />
                     )}
                     {currentView === 'management' && (
@@ -334,15 +336,17 @@ const App: React.FC = () => {
                             notes={businessNotes} onUpdateNotes={(n) => updateData('businessNotes', n, setBusinessNotes)}
                             chatSessions={chatSessions} onUpdateChatSessions={(s) => updateData('chatSessions', s, setChatSessions)}
                             transactions={transactions} accounts={accounts} categories={categories}
+                            systemSettings={systemSettings}
                         />
                     )}
                     {currentView === 'documents' && (
                         <DocumentsPage 
                             documents={businessDocuments} folders={documentFolders} 
-                            onAddDocument={(d) => updateData('businessDocuments', [...businessDocuments, d], setBusinessDocuments)}
+                            onAddDocument={(doc) => updateData('businessDocuments', [...businessDocuments, doc], setBusinessDocuments)}
                             onRemoveDocument={(id) => updateData('businessDocuments', businessDocuments.filter(d => d.id !== id), setBusinessDocuments)}
                             onCreateFolder={(f) => updateData('documentFolders', [...documentFolders, f], setDocumentFolders)}
                             onDeleteFolder={(id) => updateData('documentFolders', documentFolders.filter(f => f.id !== id), setDocumentFolders)}
+                            systemSettings={systemSettings}
                         />
                     )}
                     {currentView === 'plan' && (
@@ -351,6 +355,7 @@ const App: React.FC = () => {
                             onSaveGoals={(g) => updateData('financialGoals', g, setFinancialGoals)}
                             plan={financialPlan} onSavePlan={(p) => updateData('financialPlan', p, setFinancialPlan)}
                             categories={categories} businessProfile={businessProfile}
+                            systemSettings={systemSettings}
                         />
                     )}
                     {currentView === 'integrations' && <IntegrationsPage onNavigate={setCurrentView} />}
@@ -378,7 +383,7 @@ const App: React.FC = () => {
                     )}
                 </div>
             </main>
-            <Chatbot contextData={currentContext} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+            <Chatbot contextData={currentContext} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} systemSettings={systemSettings} />
         </div>
     );
 };

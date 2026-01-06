@@ -2,11 +2,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getAiFinancialAnalysis } from '../services/geminiService';
 import { ChatBubbleIcon, CloseIcon, SendIcon, ExclamationTriangleIcon } from './Icons';
+import type { SystemSettings } from '../types';
 
 interface ChatbotProps {
     contextData: object;
     isOpen: boolean;
     onClose: () => void;
+    systemSettings?: SystemSettings;
 }
 
 interface Message {
@@ -15,7 +17,7 @@ interface Message {
     isError?: boolean;
 }
 
-const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
+const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose, systemSettings }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -44,7 +46,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
         setIsLoading(true);
 
         try {
-            const stream = await getAiFinancialAnalysis(currentInput, contextData);
+            const stream = await getAiFinancialAnalysis(currentInput, contextData, systemSettings);
             
             let fullResponse = '';
             setMessages(prev => [...prev, { role: 'ai', content: '' }]);
@@ -65,7 +67,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
             
             let errorMsg = "I'm having trouble connecting to the AI brain.";
             if (error.message?.includes("429")) {
-                errorMsg = "The AI is currently at its limit (Quota exceeded). Please wait a minute and try again.";
+                errorMsg = "AI quota reached. Please wait 60s or switch models in Settings.";
             } else if (error.message?.includes("403")) {
                 errorMsg = "Invalid API Key. Please verify your environment setup.";
             }

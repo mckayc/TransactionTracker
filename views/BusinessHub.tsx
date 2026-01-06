@@ -1,6 +1,6 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote } from '../types';
+/* Added SystemSettings to imports */
+import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote, SystemSettings } from '../types';
 import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon, ChevronRightIcon, LightBulbIcon, ChecklistIcon, BoxIcon, RepeatIcon } from '../components/Icons';
 import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
 import { generateUUID } from '../utils';
@@ -15,6 +15,8 @@ interface BusinessHubProps {
     transactions: Transaction[];
     accounts: Account[];
     categories: Category[];
+    /* Added systemSettings prop */
+    systemSettings?: SystemSettings;
 }
 
 // Internal Sub-component for Journaling
@@ -395,7 +397,9 @@ const TaxAdvisorTab: React.FC<{
     transactions: Transaction[];
     accounts: Account[];
     categories: Category[];
-}> = ({ profile, sessions, onUpdateSessions, transactions, accounts, categories }) => {
+    /* Added systemSettings to TaxAdvisorTab props */
+    systemSettings?: SystemSettings;
+}> = ({ profile, sessions, onUpdateSessions, transactions, accounts, categories, systemSettings }) => {
     const sortedSessions = [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
     const [input, setInput] = useState('');
@@ -432,7 +436,8 @@ const TaxAdvisorTab: React.FC<{
             const aiMsgPlaceholder: ChatMessage = { id: generateUUID(), role: 'ai', content: '', timestamp: new Date().toISOString() };
             const sessionWithAi = { ...updatedSess, messages: [...updatedSess.messages, aiMsgPlaceholder] };
             onUpdateSessions([...otherSessions, sessionWithAi]);
-            const stream = await streamTaxAdvice(sessionWithAi.messages, profile);
+            /* Passed systemSettings to streamTaxAdvice */
+            const stream = await streamTaxAdvice(sessionWithAi.messages, profile, systemSettings);
             let fullContent = '';
             for await (const chunk of stream) {
                 fullContent += chunk.text;
@@ -473,7 +478,8 @@ const TaxAdvisorTab: React.FC<{
             <div className="space-y-6">
                 <div className="bg-white p-6 rounded-xl border">
                     <h3 className="font-bold mb-4 flex items-center gap-2"><SparklesIcon className="w-5 h-5 text-yellow-500" /> Deduction Scout</h3>
-                    <button onClick={async () => { setLoadingDeductions(true); try { setDeductions(await getIndustryDeductions(profile.info.industry || 'General')); } catch(e){} finally { setLoadingDeductions(false); }}} className="w-full py-2 bg-slate-50 border rounded-lg text-sm font-bold">{loadingDeductions ? 'Scouting...' : 'Find Deductions'}</button>
+                    {/* Passed systemSettings to getIndustryDeductions */}
+                    <button onClick={async () => { setLoadingDeductions(true); try { setDeductions(await getIndustryDeductions(profile.info.industry || 'General', systemSettings)); } catch(e){} finally { setLoadingDeductions(false); }}} className="w-full py-2 bg-slate-50 border rounded-lg text-sm font-bold">{loadingDeductions ? 'Scouting...' : 'Find Deductions'}</button>
                     {deductions.length > 0 && <ul className="mt-4 space-y-2">{deductions.map((d, i) => <li key={i} className="text-xs bg-green-50 p-2 rounded border border-green-100 flex gap-2"><CheckCircleIcon className="w-4 h-4 text-green-600" />{d}</li>)}</ul>}
                 </div>
             </div>
@@ -504,7 +510,7 @@ const CalendarTab: React.FC<{ profile: BusinessProfile }> = ({ profile }) => {
 };
 
 // MAIN BusinessHub Component
-const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, notes, onUpdateNotes, chatSessions, onUpdateChatSessions, transactions, accounts, categories }) => {
+const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, notes, onUpdateNotes, chatSessions, onUpdateChatSessions, transactions, accounts, categories, systemSettings }) => {
     const [activeTab, setActiveTab] = useState<'guide' | 'calendar' | 'advisor' | 'journal'>('guide');
 
     return (
@@ -522,7 +528,8 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
             </div>
             <div className="min-h-[400px]">
                 {activeTab === 'guide' && <SetupGuideTab profile={profile} onUpdateProfile={onUpdateProfile} />}
-                {activeTab === 'advisor' && <TaxAdvisorTab profile={profile} sessions={chatSessions} onUpdateSessions={onUpdateChatSessions} transactions={transactions} accounts={accounts} categories={categories} />}
+                {/* Passed systemSettings to TaxAdvisorTab */}
+                {activeTab === 'advisor' && <TaxAdvisorTab profile={profile} sessions={chatSessions} onUpdateSessions={onUpdateChatSessions} transactions={transactions} accounts={accounts} categories={categories} systemSettings={systemSettings} />}
                 {activeTab === 'journal' && <JournalTab notes={notes} onUpdateNotes={onUpdateNotes} />}
                 {activeTab === 'calendar' && <CalendarTab profile={profile} />}
             </div>
