@@ -161,7 +161,11 @@ const RulesPage: React.FC<RulesPageProps> = ({
             setAiProposedRules(proposed);
         } catch (e: any) {
             console.error("AI Analysis Error:", e);
-            alert(`AI Pattern Analysis failed: ${e.message || "Unknown error"}. Check if your API Key is active.`);
+            if (e.message?.includes("429") || e.message?.includes("Rate limit")) {
+                alert("The AI is currently processing too many requests (Error 429). Please wait about 60 seconds and try again. This is common with free API keys.");
+            } else {
+                alert(`AI Pattern Analysis failed: ${e.message || "Unknown error"}. Check if your API Key is active.`);
+            }
         } finally {
             setIsAiGenerating(false);
         }
