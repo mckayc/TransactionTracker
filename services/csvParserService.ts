@@ -7,6 +7,7 @@ declare const pdfjsLib: any;
 
 /**
  * Parses Rule Manifests for bulk ingestion
+ * Updated with robust regex to handle quoted commas correctly
  */
 export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     const rules: ReconciliationRule[] = [];
@@ -33,7 +34,12 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        const parts = line.split(delimiter).map(p => p.trim().replace(/^"|"$/g, ''));
+        
+        // Use regex for CSV to handle quoted strings containing delimiters
+        const parts = delimiter === '\t' 
+            ? line.split('\t').map(p => p.trim().replace(/^"|"$/g, ''))
+            : line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(p => p.trim().replace(/^"|"$/g, ''));
+
         if (parts.length < 4) continue;
 
         const rule: ReconciliationRule = {
@@ -77,7 +83,7 @@ export const parseRulesFromFile = async (file: File): Promise<ReconciliationRule
             reader.readAsArrayBuffer(file);
         });
         const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const firstSheet = workbook.Sheets[workbook.Sheets[workbook.SheetNames[0]] ? workbook.SheetNames[0] : workbook.SheetNames[0]];
         const csv = XLSX.utils.sheet_to_csv(firstSheet);
         return parseRulesFromLines(csv.split('\n'));
     }
