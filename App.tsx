@@ -1,4 +1,5 @@
 
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Merchant, Location } from './types';
 import Sidebar from './components/Sidebar';
@@ -281,6 +282,8 @@ const App: React.FC = () => {
                             onSaveLocations={(ls) => bulkUpdateData('locations', ls, setLocations)}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
                             onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
+                            /* Added missing onSaveUser prop to resolve Type Error */
+                            onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
                         />
                     )}
                     {currentView === 'management' && (

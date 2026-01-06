@@ -33,6 +33,7 @@ interface RulesPageProps {
     onSaveLocations: (locations: Location[]) => void;
     onSaveTag: (tag: Tag) => void;
     onAddTransactionType: (type: TransactionType) => void;
+    onSaveUser: (user: User) => void;
 }
 
 const RULE_DOMAINS = [
@@ -47,7 +48,7 @@ const RULE_DOMAINS = [
 ];
 
 const RulesPage: React.FC<RulesPageProps> = ({ 
-    rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSavePayee, onSavePayees, onSaveMerchant, onSaveMerchants, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType 
+    rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSavePayee, onSavePayees, onSaveMerchant, onSaveMerchants, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser 
 }) => {
     const [selectedDomain, setSelectedDomain] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -71,7 +72,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
     // Form State
     const [ruleName, setRuleName] = useState('');
-    const [ruleCategory, setRuleCategory] = useState('General');
+    const [ruleCategory, setRuleCategory] = useState('description');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
     
     const [actionCategoryId, setActionCategoryId] = useState('');
@@ -97,7 +98,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleId(id);
         setIsCreating(false);
         setRuleName(r.name);
-        setRuleCategory(r.ruleCategory || 'General');
+        setRuleCategory(r.ruleCategory || 'description');
         setConditions(r.conditions);
         setActionCategoryId(r.setCategoryId || '');
         setActionPayeeId(r.setPayeeId || '');
@@ -113,7 +114,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleId(null);
         setIsCreating(true);
         setRuleName('');
-        setRuleCategory('General');
+        setRuleCategory('description');
         setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
         setActionCategoryId('');
         setActionPayeeId('');
@@ -163,13 +164,21 @@ const RulesPage: React.FC<RulesPageProps> = ({
     // Importer Logic
     const downloadTemplate = () => {
         const headers = ["Rule Name", "Rule Category", "Match Field", "Operator", "Match Value", "Set Category", "Set Payee", "Set Merchant", "Set Location", "Set Type", "Tags", "Skip Import"];
-        const example = ["Example Rule", "General", "description", "contains", "Starbucks", "Dining", "Starbucks", "Starbucks", "Main St", "Purchase", "Food;Coffee", "FALSE"];
-        const csvContent = [headers.join(','), example.join(',')].join('\n');
+        const rows = [
+            ["Subscription - Netflix", "description", "description", "contains", "Netflix", "Entertainment", "Netflix", "Netflix", "", "Purchase", "Subscription;Stream", "FALSE"],
+            ["Local Grocery - Whole Foods", "locationId", "description", "contains", "WHOLEFD", "Groceries", "Whole Foods", "Whole Foods", "Main St Market", "Purchase", "Food", "FALSE"],
+            ["Direct Deposit - Salary", "description", "description", "contains", "PAYROLL", "Salary", "Employment Co", "", "", "Income", "Paycheck", "FALSE"],
+            ["Internal Transfer", "metadata", "description", "contains", "TRANS FROM", "Transfer", "", "", "", "Transfer", "", "FALSE"],
+            ["Noise Filter - ADVERTISEMENT", "description", "description", "contains", "ADSENSE", "", "", "", "", "", "", "TRUE"],
+            ["Utility - Power Co", "payeeId", "description", "contains", "ELEC UTIL", "Utilities", "Power Co", "Power Co", "", "Purchase", "Fixed", "FALSE"],
+            ["User - Personal Expense", "userId", "description", "contains", "LUNCH", "Dining", "", "", "", "Purchase", "Personal", "FALSE"]
+        ];
+        const csvContent = [headers.join(','), ...rows.map(r => r.map(cell => `"${cell}"`).join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'finparser-rules-template.csv';
+        a.download = 'finparser-rules-manifest.csv';
         a.click();
     };
 
@@ -230,11 +239,29 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const handleFinalizeImport = (finalRules: ReconciliationRule[]) => {
-        // Correctly use bulk save to prevent race condition
         onSaveRules(finalRules);
         setImportDrafts([]);
         setIsImporterOpen(false);
         setImportText('');
+    };
+
+    // Quick Add Handlers
+    const quickAdd = (type: 'category' | 'payee' | 'merchant' | 'location' | 'user' | 'tag') => {
+        const name = prompt(`Enter new ${type} name:`);
+        if (!name || !name.trim()) return;
+        const id = generateUUID();
+        const label = name.trim();
+
+        if (type === 'category') { onSaveCategory({ id, name: label }); setActionCategoryId(id); }
+        else if (type === 'payee') { onSavePayee({ id, name: label }); setActionPayeeId(id); }
+        else if (type === 'merchant') { onSaveMerchant({ id, name: label }); setActionMerchantId(id); }
+        else if (type === 'location') { onSaveLocation({ id, name: label }); setActionLocationId(id); }
+        else if (type === 'user') { onSaveUser({ id, name: label }); setActionUserId(id); }
+        else if (type === 'tag') { 
+            const colors = ['bg-indigo-100 text-indigo-700', 'bg-emerald-100 text-emerald-700', 'bg-rose-100 text-rose-700', 'bg-amber-100 text-amber-700'];
+            onSaveTag({ id, name: label, color: colors[Math.floor(Math.random() * colors.length)] }); 
+            setAssignTagIds(prev => new Set(prev).add(id));
+        }
     };
 
     return (
@@ -242,7 +269,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold text-slate-800">Rule Engine</h1>
-                    <p className="text-slate-500 mt-1">Normalize data using deterministic logic and intelligent pattern matching.</p>
+                    <p className="text-slate-500 mt-1">Deterministic normalization logic & pattern matching.</p>
                 </div>
                 <div className="flex gap-3">
                     <button 
@@ -304,15 +331,15 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                 <InfoIcon className="w-5 h-5 text-indigo-600" /> Instructions
                                             </h3>
                                             <div className="prose prose-sm text-slate-600">
-                                                <p>Bulk import allows you to define dozens of rules in a single spreadsheet. Our engine will intelligently map your text to existing entities or create them automatically.</p>
+                                                <p>Define dozens of rules in one spreadsheet. Our engine maps your text to existing entities or creates them automatically based on your manifest.</p>
                                                 <ul className="space-y-2">
-                                                    <li><strong>Step 1:</strong> Download the CSV Template to see required columns.</li>
-                                                    <li><strong>Step 2:</strong> Fill in your patterns (e.g. "contains", "equals").</li>
-                                                    <li><strong>Step 3:</strong> Upload or paste the data. AI can help format messy text.</li>
+                                                    <li><strong>Step 1:</strong> Download the Manifest Template for the required structure.</li>
+                                                    <li><strong>Step 2:</strong> Use correct "Rule Category" IDs (e.g., description, payeeId).</li>
+                                                    <li><strong>Step 3:</strong> Upload or paste. AI helps repair format inconsistencies.</li>
                                                 </ul>
                                             </div>
                                             <button onClick={downloadTemplate} className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold hover:bg-black transition-all shadow-md">
-                                                <DownloadIcon className="w-4 h-4" /> Download Manifest Template
+                                                <DownloadIcon className="w-4 h-4" /> Download Logic Manifest Template
                                             </button>
                                         </div>
 
@@ -340,7 +367,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         <textarea 
                                             value={importText}
                                             onChange={e => setImportText(e.target.value)}
-                                            placeholder="Paste rows from Excel or a messy list..."
+                                            placeholder="Paste rows from Excel or a raw list..."
                                             className="flex-1 p-4 border-2 border-slate-100 rounded-3xl font-mono text-[10px] bg-slate-50 focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none"
                                         />
                                         <button 
@@ -404,7 +431,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             <textarea 
                                 value={aiPrompt} 
                                 onChange={e => setAiPrompt(e.target.value)} 
-                                placeholder="Special instructions for AI discovery..."
+                                placeholder="Instructions for AI (e.g. 'Categorize all Starbucks as Coffee')"
                                 className="w-full p-3 border rounded-xl text-sm min-h-[60px]"
                             />
                             <button 
@@ -493,7 +520,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         <span className={`text-xs font-bold truncate ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-700'}`}>{r.name}</span>
                                         <button onClick={(e) => { e.stopPropagation(); onDeleteRule(r.id); }} className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-500 transition-opacity"><DeleteIcon className="w-3.5 h-3.5" /></button>
                                     </div>
-                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{r.ruleCategory || 'Uncategorized'}</p>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{RULE_DOMAINS.find(d => d.id === r.ruleCategory)?.label || 'Description'}</p>
                                 </div>
                             ))
                         )}
@@ -542,22 +569,24 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                     </div>
                                     <div className="space-y-4">
                                         <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" /> Rule Category
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" /> Rule Category (Logic Scope)
                                         </div>
-                                        <input 
-                                            type="text"
+                                        <select 
                                             value={ruleCategory}
                                             onChange={e => setRuleCategory(e.target.value)}
                                             className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white transition-all font-bold text-sm"
-                                            placeholder="e.g. Subscriptions"
-                                        />
+                                        >
+                                            {RULE_DOMAINS.filter(d => d.id !== 'all').map(d => (
+                                                <option key={d.id} value={d.id}>{d.label}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </section>
 
                                 <section className="space-y-4">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
-                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Logic Constraints
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Match Constraints
                                         </div>
                                     </div>
                                     <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
@@ -567,35 +596,96 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
                                 <section className="space-y-6">
                                     <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Enrichments
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Deterministic Enrichments
                                     </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                         <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label>
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Map Category</label>
+                                                <button type="button" onClick={() => quickAdd('category')} className="text-[9px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                            </div>
                                             <select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold bg-white focus:border-indigo-500 text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                             </select>
                                         </div>
+                                        
                                         <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Associate Merchant</label>
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Set Payee</label>
+                                                <button type="button" onClick={() => quickAdd('payee')} className="text-[9px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                            </div>
+                                            <select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 text-xs">
+                                                <option value="">-- No Change --</option>
+                                                {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Assoc. Merchant</label>
+                                                <button type="button" onClick={() => quickAdd('merchant')} className="text-[9px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                            </div>
                                             <select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {merchants.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                                             </select>
                                         </div>
+
                                         <div className="space-y-1.5">
-                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label>
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Pin Location</label>
+                                                <button type="button" onClick={() => quickAdd('location')} className="text-[9px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                            </div>
+                                            <select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 text-xs">
+                                                <option value="">-- No Change --</option>
+                                                {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Assign User</label>
+                                                <button type="button" onClick={() => quickAdd('user')} className="text-[9px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                            </div>
                                             <select value={actionUserId} onChange={e => setActionUserId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 text-xs">
                                                 <option value="">-- No Change --</option>
                                                 {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                                             </select>
                                         </div>
-                                        <div className="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-100">
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Force Tx Type</label>
+                                            <select value={actionTypeId} onChange={e => setActionTypeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 text-xs">
+                                                <option value="">-- No Change --</option>
+                                                {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                            </select>
+                                        </div>
+
+                                        <div className="col-span-1 md:col-span-2">
+                                            <div className="flex justify-between items-center px-1 mb-2">
+                                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Append Taxonomy (Tags)</label>
+                                                <button type="button" onClick={() => quickAdd('tag')} className="text-[9px] font-bold text-indigo-600 hover:underline">+ NEW</button>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2 p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl min-h-[50px]">
+                                                {tags.map(tag => (
+                                                    <button 
+                                                        key={tag.id} 
+                                                        type="button" 
+                                                        onClick={() => setAssignTagIds(prev => { const s = new Set(prev); if(s.has(tag.id)) s.delete(tag.id); else s.add(tag.id); return s; })}
+                                                        className={`px-3 py-1 rounded-full text-[10px] font-bold border-2 transition-all ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-500 shadow-sm' : 'bg-white text-slate-500 border-slate-100'}`}
+                                                    >
+                                                        {tag.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-3 bg-red-50 p-4 rounded-2xl border border-red-100 h-max self-end">
                                             <input type="checkbox" checked={skipImport} onChange={e => setSkipImport(e.target.checked)} className="w-5 h-5 rounded text-red-600 focus:ring-red-500" />
                                             <div>
-                                                <label className="text-xs font-black text-red-800 uppercase block">Skip Import</label>
-                                                <p className="text-[10px] text-red-600 font-medium">Auto-ignore matching data.</p>
+                                                <label className="text-xs font-black text-red-800 uppercase block">Skip Record</label>
+                                                <p className="text-[9px] text-red-600 font-medium">Matching entries will be auto-ignored.</p>
                                             </div>
                                         </div>
                                     </div>
@@ -608,7 +698,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <ShieldCheckIcon className="w-12 h-12 text-indigo-200" />
                             </div>
                             <h3 className="text-2xl font-black text-slate-800">Rule Center</h3>
-                            <p className="text-slate-500 max-w-sm mt-4 font-medium">Create deterministic rules to automate your financial classification. Use the Rule Importer for bulk migration.</p>
+                            <p className="text-slate-500 max-w-sm mt-4 font-medium">Architect deterministic logic to automate your financial classification. Use the Rule Importer for bulk migration.</p>
                             <div className="flex gap-4 mt-8">
                                 <button onClick={handleNew} className="px-10 py-3 bg-slate-900 text-white font-black rounded-2xl hover:bg-black shadow-lg transition-all">New Rule</button>
                                 <button onClick={() => setIsImporterOpen(true)} className="px-10 py-3 bg-white border-2 border-indigo-600 text-indigo-600 font-black rounded-2xl hover:bg-indigo-50 transition-all">Bulk Import</button>
