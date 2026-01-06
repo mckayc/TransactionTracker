@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon, RepeatIcon, PlayIcon, ChevronDownIcon } from '../components/Icons';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon, RepeatIcon, PlayIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { hasApiKey, healDataSnippet, validateApiKeyConnectivity } from '../services/geminiService';
@@ -39,13 +39,6 @@ interface SettingsPageProps {
     financialPlan: FinancialPlan | null;
     contentLinks: ContentLink[];
 }
-
-const AVAILABLE_MODELS = [
-    { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (Preview)', desc: 'Highest intelligence, lower daily quota on free tier.' },
-    { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro (Preview)', desc: 'Maximum reasoning for complex plans.' },
-    { id: 'gemini-flash-latest', name: 'Gemini Flash (Stable)', desc: 'Fast, reliable, standard daily quota.' },
-    { id: 'gemini-flash-lite-latest', name: 'Gemini Flash Lite', desc: 'Maximum efficiency, usually higher availability on free tiers.' }
-];
 
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {
     transactions: { label: 'Transactions', icon: <TableIcon className="w-4 h-4" /> },
@@ -97,14 +90,37 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 }) => {
     const importFileRef = useRef<HTMLInputElement>(null);
     
+    // Periodically check for API Key availability as it might be shimmed late
     const [apiKeyActive, setApiKeyActive] = useState(hasApiKey());
     const [isTestingKey, setIsTestingKey] = useState(false);
     const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
     
     useEffect(() => {
+        // Diagnostic Logging
+        console.log("[SYS] Settings Page loaded. Diagnostic Check...");
+        
+        const runtimeConfig = (window as any).__FINPARSER_CONFIG__;
+        console.log("[SYS] window.__FINPARSER_CONFIG__ found:", !!runtimeConfig);
+        if (runtimeConfig) {
+            console.log("[SYS] Runtime API_KEY present:", !!runtimeConfig.API_KEY);
+            if (runtimeConfig.API_KEY) {
+                 console.log("[SYS] Runtime API_KEY Length:", runtimeConfig.API_KEY.length);
+                 console.log("[SYS] Runtime API_KEY Prefix:", runtimeConfig.API_KEY.substring(0, 4));
+            }
+        }
+
+        const processObj = (window as any).process;
+        console.log("[SYS] window.process object found:", !!processObj);
+        if (processObj?.env) {
+            console.log("[SYS] process.env.API_KEY present:", !!processObj.env.API_KEY);
+        }
+        
         const interval = setInterval(() => {
             const current = hasApiKey();
-            if (current !== apiKeyActive) setApiKeyActive(current);
+            if (current !== apiKeyActive) {
+                console.log("[SYS] hasApiKey() status changed to:", current);
+                setApiKeyActive(current);
+            }
         }, 2000);
         return () => clearInterval(interval);
     }, [apiKeyActive]);
@@ -113,7 +129,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         setIsTestingKey(true);
         setTestResult(null);
         try {
-            const result = await validateApiKeyConnectivity(systemSettings);
+            const result = await validateApiKeyConnectivity();
             setTestResult(result);
         } catch (e: any) {
             setTestResult({ success: false, message: `Unexpected error: ${e.message}` });
@@ -129,6 +145,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [restoreData, setRestoreData] = useState<any>(null);
     const [restoreSelection, setRestoreSelection] = useState<Set<string>>(new Set());
     
+    // Paste Restore State
     const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
     const [pasteText, setPasteText] = useState('');
     const [isHealing, setIsHealing] = useState(false);
@@ -167,10 +184,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         alert("Backup settings saved!");
     };
 
-    const handleModelChange = (modelId: string) => {
-        onUpdateSystemSettings({ ...systemSettings, aiModel: modelId });
-    };
-
     const togglePurgeSelection = (key: string) => {
         const newSet = new Set(purgeSelection);
         if (newSet.has(key)) newSet.delete(key);
@@ -180,6 +193,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handlePurgeAction = async () => {
         if (purgeSelection.size === 0) return;
+        
         setIsPurging(true);
         try {
             const targets = Array.from(purgeSelection) as string[];
@@ -205,7 +219,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleExportData = () => {
         if (exportSelection.size === 0) { alert("Please select items to back up."); return; }
-        const data: any = { exportDate: new Date().toISOString(), version: '0.0.53', transactionTypes, users };
+        const data: any = {
+            exportDate: new Date().toISOString(),
+            version: '0.0.53',
+            transactionTypes,
+            users
+        };
         if (exportSelection.has('transactions')) data.transactions = transactions;
         if (exportSelection.has('accounts')) data.accounts = accounts;
         if (exportSelection.has('categories')) data.categories = categories;
@@ -252,18 +271,29 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         try {
             json = JSON.parse(pasteText);
         } catch (err) {
+            console.warn("Direct JSON parse failed. Attempting AI Healing...");
             setIsHealing(true);
-            try { json = await healDataSnippet(pasteText, systemSettings); } 
-            catch (aiErr) { alert("AI could not repair the data snippet."); setIsHealing(false); return; } 
-            finally { setIsHealing(false); }
+            try {
+                json = await healDataSnippet(pasteText);
+            } catch (aiErr) {
+                alert("AI could not repair the data snippet. Please ensure it is a valid list or object.");
+                setIsHealing(false);
+                return;
+            } finally {
+                setIsHealing(false);
+            }
         }
+        
         if (json) {
             if (Array.isArray(json)) {
                 const first = json[0];
                 if (first.asin) json = { amazonMetrics: json };
                 else if (first.videoId) json = { youtubeMetrics: json };
                 else if (first.date && first.description && first.amount) json = { transactions: json };
+                else if (first.name && (first.parentId !== undefined || first.notes !== undefined)) json = { payees: json };
+                else if (first.name && first.isDefault !== undefined) json = { users: json };
             }
+
             handleLoadedRestoreData(json);
             setIsPasteModalOpen(false);
             setPasteText('');
@@ -272,7 +302,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleLoadedRestoreData = (json: any) => {
         const detectedKeys = Object.keys(ENTITY_LABELS).filter(key => json.hasOwnProperty(key) || (key === 'files_meta' && json.hasOwnProperty('businessDocuments')));
-        if (detectedKeys.length === 0) { alert("No valid data patterns detected."); return; }
+        if (detectedKeys.length === 0) {
+            alert("No valid data patterns detected in the JSON provided.");
+            return;
+        }
         setRestoreData(json);
         setRestoreSelection(new Set(detectedKeys));
         setIsRestoreModalOpen(true);
@@ -280,17 +313,38 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleConfirmRestore = async (overwrite: boolean = false) => {
         if (!restoreData || restoreSelection.size === 0) return;
-        if (!confirm(`CAUTION: This will overwrite or merge data. Proceed?`)) return;
+        
+        const modeLabel = overwrite ? "OVERWRITE AND REPLACE" : "MERGE WITH EXISTING";
+        if (!confirm(`CAUTION: This will ${modeLabel} your data for the selected categories. This cannot be undone. Proceed?`)) return;
+        
         try {
-            if (overwrite) await api.resetDatabase(Array.from(restoreSelection));
-            for (const key of Array.from(restoreSelection) as string[]) {
-                if (key === 'templates') { await api.save('templates', restoreData.templates); await api.save('scheduledEvents', restoreData.scheduledEvents || []); } 
-                else if (key === 'tasks') { await api.save('tasks', restoreData.tasks); await api.save('taskCompletions', restoreData.taskCompletions || {}); } 
-                else if (key === 'files_meta') { await api.save('businessDocuments', restoreData.businessDocuments); await api.save('documentFolders', restoreData.documentFolders || []); } 
-                else { await api.save(key, restoreData[key]); }
+            if (overwrite) {
+                await api.resetDatabase(Array.from(restoreSelection));
             }
+
+            for (const key of Array.from(restoreSelection) as string[]) {
+                if (key === 'templates') {
+                    await api.save('templates', restoreData.templates);
+                    await api.save('scheduledEvents', restoreData.scheduledEvents || []);
+                } else if (key === 'tasks') {
+                    await api.save('tasks', restoreData.tasks);
+                    await api.save('taskCompletions', restoreData.taskCompletions || {});
+                } else if (key === 'files_meta') {
+                    await api.save('businessDocuments', restoreData.businessDocuments);
+                    await api.save('documentFolders', restoreData.documentFolders || []);
+                } else { 
+                    await api.save(key, restoreData[key]); 
+                }
+            }
+            
+            if (restoreData.transactionTypes) await api.save('transactionTypes', restoreData.transactionTypes);
+            if (restoreData.users) await api.save('users', restoreData.users);
+
             window.location.reload();
-        } catch (err) { alert(`Restore failed.`); }
+        } catch (err) { 
+            console.error("Restore Failure:", err);
+            alert(`Restore failed: ${err instanceof Error ? err.message : 'Unknown internal error'}.`); 
+        }
     };
 
     return (
@@ -303,7 +357,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <div className="bg-indigo-900 text-white p-6 rounded-2xl shadow-xl flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-4">
                         <div className="w-16 h-16 rounded-full bg-white/10 flex items-center justify-center animate-pulse"><ShieldCheckIcon className="w-8 h-8 text-indigo-300" /></div>
-                        <div><h3 className="text-lg font-bold">System Integrity</h3><p className="text-sm text-indigo-200">Local Engine: Online</p></div>
+                        <div><h3 className="text-lg font-bold">System Integrity</h3><p className="text-sm text-indigo-200">Local SQLite instance status: OK</p></div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
                         <div className="text-center"><p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Records</p><p className="text-2xl font-black">{formatNumber(dataHealthSummary.recordCount)}</p></div>
@@ -315,83 +369,38 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
                 <Section title="AI Intelligence" variant="info">
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                        <div className="space-y-6">
-                            <div className={`p-6 rounded-xl border transition-all ${apiKeyActive ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
-                                <div className="flex items-start gap-4">
-                                    <div className={`p-3 rounded-full shadow-sm ${apiKeyActive ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}><RobotIcon className="w-8 h-8" /></div>
-                                    <div className="flex-grow">
-                                        <h3 className={`text-lg font-bold ${apiKeyActive ? 'text-emerald-800' : 'text-amber-800'}`}>AI Status: {apiKeyActive ? 'Enabled' : 'Disabled'}</h3>
-                                        <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Gemini brain connected." : "API_KEY missing. Check environment."}</p>
-                                        
-                                        <div className="mt-4 pt-4 border-t border-indigo-100 flex flex-col gap-3">
-                                            <button 
-                                                onClick={handleTestConnectivity} 
-                                                disabled={isTestingKey || !apiKeyActive}
-                                                className="w-full py-2 bg-indigo-600 text-white font-bold text-xs rounded-lg shadow-md hover:bg-indigo-700 disabled:opacity-30 transition-all flex items-center justify-center gap-2"
-                                            >
-                                                {isTestingKey ? <RepeatIcon className="w-4 h-4 animate-spin" /> : <PlayIcon className="w-4 h-4" />}
-                                                Test Connectivity
-                                            </button>
-                                            
-                                            {testResult && (
-                                                <div className={`p-3 rounded-lg text-xs font-bold border ${testResult.success ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-red-100 text-red-800 border-red-200'}`}>
-                                                    <div className="flex gap-2 items-start">
-                                                        {testResult.success ? <CheckCircleIcon className="w-4 h-4 shrink-0" /> : <ExclamationTriangleIcon className="w-4 h-4 shrink-0" />}
-                                                        <span>{testResult.message}</span>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-white p-6 rounded-2xl border-2 border-indigo-50 shadow-sm space-y-4">
-                                <div>
-                                    <h4 className="text-sm font-black text-slate-800 uppercase tracking-tight flex items-center gap-2 mb-1">
-                                        <WrenchIcon className="w-4 h-4 text-indigo-600" /> Global AI Model
-                                    </h4>
-                                    <p className="text-xs text-slate-500">Switching models can resolve "429 Rate Limit" or connection errors.</p>
-                                </div>
-                                <div className="space-y-2">
-                                    {AVAILABLE_MODELS.map(m => (
+                        <div className={`p-6 rounded-xl border transition-all ${apiKeyActive ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                            <div className="flex items-start gap-4">
+                                <div className={`p-3 rounded-full shadow-sm ${apiKeyActive ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}><RobotIcon className="w-8 h-8" /></div>
+                                <div className="flex-grow">
+                                    <h3 className={`text-lg font-bold ${apiKeyActive ? 'text-emerald-800' : 'text-amber-800'}`}>AI Status: {apiKeyActive ? 'Enabled' : 'Disabled'}</h3>
+                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Healthy Gemini 3 connection detected." : "Missing or invalid API_KEY in environment. Check Docker logs."}</p>
+                                    
+                                    <div className="mt-4 pt-4 border-t border-indigo-100 flex flex-col gap-3">
                                         <button 
-                                            key={m.id} 
-                                            onClick={() => handleModelChange(m.id)}
-                                            className={`w-full text-left p-3 rounded-xl border-2 transition-all flex items-center justify-between group ${
-                                                (systemSettings.aiModel || 'gemini-3-flash-preview') === m.id 
-                                                ? 'bg-indigo-50 border-indigo-600 shadow-sm' 
-                                                : 'bg-white border-slate-100 hover:border-indigo-200'
-                                            }`}
+                                            onClick={handleTestConnectivity} 
+                                            disabled={isTestingKey || !apiKeyActive}
+                                            className="w-full py-2 bg-indigo-600 text-white font-bold text-xs rounded-lg shadow-md hover:bg-indigo-700 disabled:opacity-30 transition-all flex items-center justify-center gap-2"
                                         >
-                                            <div className="min-w-0">
-                                                <p className={`text-sm font-bold ${(systemSettings.aiModel || 'gemini-3-flash-preview') === m.id ? 'text-indigo-900' : 'text-slate-700'}`}>{m.name}</p>
-                                                <p className="text-[10px] text-slate-400 group-hover:text-slate-500 truncate">{m.desc}</p>
-                                            </div>
-                                            {(systemSettings.aiModel || 'gemini-3-flash-preview') === m.id && <CheckCircleIcon className="w-5 h-5 text-indigo-600 flex-shrink-0" />}
+                                            {isTestingKey ? <RepeatIcon className="w-4 h-4 animate-spin" /> : <PlayIcon className="w-4 h-4" />}
+                                            Test API Connectivity
                                         </button>
-                                    ))}
+                                        
+                                        {testResult && (
+                                            <div className={`p-3 rounded-lg text-xs font-bold border ${testResult.success ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : 'bg-red-100 text-red-800 border-red-200'}`}>
+                                                <div className="flex gap-2 items-start">
+                                                    {testResult.success ? <CheckCircleIcon className="w-4 h-4 shrink-0" /> : <ExclamationTriangleIcon className="w-4 h-4 shrink-0" />}
+                                                    <span>{testResult.message}</span>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-
                         <div className="space-y-4">
                             <h3 className="font-bold text-slate-700 flex items-center gap-2"><SparklesIcon className="w-5 h-5 text-indigo-600" />Intelligence Features:</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {['Pattern Auditing', 'Tax Strategy', 'PDF Extraction', 'Rule Forging', 'Data Healing', 'Financial Discovery'].map((f, i) => (
-                                    <div key={i} className="p-3 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 shadow-sm flex items-center gap-2">
-                                        <CheckCircleIcon className="w-4 h-4 text-emerald-500" />
-                                        {f}
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex gap-3 mt-4">
-                                <InfoIcon className="w-5 h-5 text-indigo-500 flex-shrink-0" />
-                                <div className="text-xs text-indigo-800 leading-relaxed font-medium">
-                                    <p className="font-bold mb-1">Optimized Connectivity:</p>
-                                    <p>We've updated the aliases to use SDK-stable versions. If you encounter errors, try switching between <strong>Gemini Flash (Stable)</strong> and <strong>Gemini Flash Lite</strong>.</p>
-                                </div>
-                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{['Pattern Auditing', 'Tax Strategy', 'PDF Extraction', 'Cross-Platform ROI'].map((f, i) => (<div key={i} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700">{f}</div>))}</div>
                         </div>
                     </div>
                 </Section>
@@ -448,10 +457,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 </div>
                                 <div className="flex flex-col gap-2">
                                     <button onClick={() => setPurgeStep('confirm')} disabled={purgeSelection.size === 0} className="px-8 py-3 bg-red-600 text-white font-bold rounded-xl disabled:opacity-30">Purge Selection</button>
+                                    <div className="flex justify-center gap-3">
+                                        <button onClick={() => setPurgeSelection(new Set(Object.keys(ENTITY_LABELS)))} className="text-[9px] font-black text-red-600 hover:underline uppercase">Select All</button>
+                                        <button onClick={() => setPurgeSelection(new Set())} className="text-[9px] font-black text-slate-400 hover:underline uppercase">Clear</button>
+                                    </div>
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
-                                {Object.entries(ENTITY_LABELS).map(([key, { label, icon }]) => (
+                                {Object.entries(ENTITY_LABELS).map(([key, { label, icon, warning }]) => (
                                     <button key={key} onClick={() => togglePurgeSelection(key)} className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all relative ${purgeSelection.has(key) ? 'bg-red-100 border-red-500' : 'bg-white border-slate-200 hover:border-red-200'}`}>
                                         <div className={`p-2 rounded-lg mb-2 ${purgeSelection.has(key) ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{icon}</div>
                                         <span className={`text-[10px] font-black uppercase tracking-tighter text-center ${purgeSelection.has(key) ? 'text-red-700' : 'text-slate-600'}`}>{label}</span>
@@ -483,7 +496,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-                            <div><h3 className="font-black text-slate-800 text-xl">Confirm Restore</h3><p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">Found {restoreSelection.size} Data Categories</p></div>
+                            <div>
+                                <h3 className="font-black text-slate-800 text-xl">Confirm Restore</h3>
+                                <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">Found {restoreSelection.size} Data Categories</p>
+                            </div>
                             <button onClick={() => setIsRestoreModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
                         <div className="p-8 space-y-6">
@@ -497,6 +513,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                         </label>
                                     );
                                 })}
+                            </div>
+                            
+                            <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 flex gap-3 items-start">
+                                <InfoIcon className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-amber-800 leading-relaxed font-medium">Choose <strong>Merge</strong> to append data (safe) or <strong>Replace</strong> to wipe current categories before importing (destructive).</p>
                             </div>
                         </div>
                         <div className="p-6 border-t bg-slate-50 flex flex-col sm:flex-row justify-end gap-3">
@@ -512,17 +533,37 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-                            <div><h3 className="font-black text-slate-800 text-xl">Paste Data</h3><p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">Raw JSON Restore</p></div>
+                            <div>
+                                <h3 className="font-black text-slate-800 text-xl">Paste Backup Data</h3>
+                                <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">Raw JSON Restore</p>
+                            </div>
                             <button onClick={() => setIsPasteModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
                         <div className="p-8 space-y-4">
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Backup JSON Content</label>
-                            <textarea value={pasteText} onChange={e => setPasteText(e.target.value)} placeholder='{ "transactions": [...], "accounts": [...] }' className="w-full h-80 p-4 font-mono text-xs bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none" />
+                            <textarea 
+                                value={pasteText} 
+                                onChange={e => setPasteText(e.target.value)} 
+                                placeholder='{ "transactions": [...], "accounts": [...] }'
+                                className="w-full h-80 p-4 font-mono text-xs bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none"
+                            />
+                            <p className="text-xs text-slate-400 italic">Formatting tip: Paste content from a .json file export. If the text is malformed, AI will attempt to heal it.</p>
                         </div>
                         <div className="p-6 border-t bg-slate-50 flex justify-end gap-3 items-center">
-                            {isHealing && <div className="flex items-center gap-2 mr-auto text-indigo-600 animate-pulse"><RepeatIcon className="w-4 h-4 animate-spin" /><span className="text-xs font-black uppercase tracking-widest">AI Repairing...</span></div>}
+                            {isHealing && (
+                                <div className="flex items-center gap-2 mr-auto text-indigo-600 animate-pulse">
+                                    <RepeatIcon className="w-4 h-4 animate-spin" />
+                                    <span className="text-xs font-black uppercase tracking-widest">AI Attempting Repair...</span>
+                                </div>
+                            )}
                             <button onClick={() => setIsPasteModalOpen(false)} className="px-6 py-3 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">Cancel</button>
-                            <button onClick={handlePasteRestore} disabled={!pasteText.trim() || isHealing} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 disabled:opacity-30">Validate & Restore</button>
+                            <button 
+                                onClick={handlePasteRestore} 
+                                disabled={!pasteText.trim() || isHealing}
+                                className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 disabled:opacity-30"
+                            >
+                                Validate & Restore
+                            </button>
                         </div>
                     </div>
                 </div>

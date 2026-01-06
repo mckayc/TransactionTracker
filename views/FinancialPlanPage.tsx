@@ -1,6 +1,6 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
-/* Added SystemSettings to imports */
-import type { FinancialGoal, FinancialPlan, Transaction, Category, BusinessProfile, ChatMessage, SystemSettings } from '../types';
+import type { FinancialGoal, FinancialPlan, Transaction, Category, BusinessProfile, ChatMessage } from '../types';
 import { LightBulbIcon, SparklesIcon, CheckCircleIcon, AddIcon, DeleteIcon, EditIcon, CurrencyDollarIcon, HeartIcon, CloseIcon, TrendingUpIcon, CalendarIcon, RobotIcon, ExclamationTriangleIcon, RepeatIcon, SendIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { hasApiKey, generateFinancialStrategy, streamTaxAdvice } from '../services/geminiService';
@@ -13,11 +13,9 @@ interface FinancialPlanPageProps {
     onSavePlan: (plan: FinancialPlan | null) => void;
     categories: Category[];
     businessProfile?: BusinessProfile;
-    /* Added systemSettings prop */
-    systemSettings?: SystemSettings;
 }
 
-const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goals, onSaveGoals, plan, onSavePlan, categories, businessProfile, systemSettings }) => {
+const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goals, onSaveGoals, plan, onSavePlan, categories, businessProfile }) => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
     const [editingGoal, setEditingGoal] = useState<FinancialGoal | null>(null);
@@ -45,8 +43,7 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
         if (!apiKeyAvailable) return;
         setIsGenerating(true);
         try {
-            /* Passed systemSettings to generateFinancialStrategy */
-            const results = await generateFinancialStrategy(transactions, goals, categories, businessProfile || { info: {}, tax: {}, completedSteps: [] }, systemSettings);
+            const results = await generateFinancialStrategy(transactions, goals, categories, businessProfile || { info: {}, tax: {}, completedSteps: [] });
             onSavePlan({
                 id: generateUUID(),
                 createdAt: new Date().toISOString(),
@@ -84,8 +81,7 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
             const placeholder: ChatMessage = { id: aiMsgId, role: 'ai', content: '', timestamp: new Date().toISOString() };
             setDiscoveryChat([...newHistory, placeholder]);
             
-            /* Passed systemSettings to streamTaxAdvice */
-            const stream = await streamTaxAdvice(newHistory, businessProfile || { info: {}, tax: {}, completedSteps: [] }, systemSettings);
+            const stream = await streamTaxAdvice(newHistory, businessProfile || { info: {}, tax: {}, completedSteps: [] });
             let full = '';
             for await (const chunk of stream) {
                 full += chunk.text;
@@ -158,7 +154,7 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
                         {!plan ? (
                             <div className="space-y-6 max-w-2xl">
                                 <p className="text-slate-300 text-lg">Initiate a forensic audit of your spending and goal set to generate a multi-year strategy.</p>
-                                <button onClick={handleGenerateStrategy} disabled={isGenerating || goals.length === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-50 shadow-xl disabled:opacity-40 flex items-center gap-3">
+                                <button onClick={handleGenerateStrategy} disabled={isGenerating || goals.length === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-500 shadow-xl disabled:opacity-40 flex items-center gap-3">
                                     {isGenerating ? <div className="w-5 h-5 border-2 border-t-white rounded-full animate-spin"></div> : <SparklesIcon className="w-5 h-5" />} Generate My AI Strategy
                                 </button>
                             </div>

@@ -1,3 +1,4 @@
+
 import type { RawTransaction, TransactionType, AmazonMetric } from '../types';
 import { generateUUID } from '../utils';
 
@@ -130,20 +131,18 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
             return parseFloat(val) || 0;
         }
 
-        // Corrected property names to 'saleDate' and 'productTitle' to match AmazonMetric interface in types.ts
         const metric: AmazonMetric = {
             id: generateUUID(),
-            saleDate: dateStr,
+            date: dateStr,
             asin: values[colMap.asin],
-            productTitle: colMap.title > -1 ? values[colMap.title] : 'Unknown Product',
+            title: colMap.title > -1 ? values[colMap.title] : 'Unknown Product',
             clicks: parseNum(colMap.clicks),
             orderedItems: parseNum(colMap.ordered),
             shippedItems: parseNum(colMap.shipped),
             revenue: parseNum(colMap.revenue),
             conversionRate: parseNum(colMap.conversion),
             trackingId: colMap.tracking > -1 ? values[colMap.tracking] : 'default',
-            category: colMap.category > -1 ? values[colMap.category] : undefined,
-            reportType: 'unknown' // Default or based on logic if available
+            category: colMap.category > -1 ? values[colMap.category] : undefined
         };
 
         metrics.push(metric);

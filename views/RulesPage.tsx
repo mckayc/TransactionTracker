@@ -1,13 +1,10 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User, SystemSettings, BlueprintTemplate } from '../types';
-import { DeleteIcon, EditIcon, AddIcon, PlayIcon, CloseIcon, SparklesIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, InfoIcon, ShieldCheckIcon, TagIcon, LightBulbIcon, WrenchIcon } from '../components/Icons';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category, RuleCondition, Tag, Merchant, Location, User } from '../types';
+import { DeleteIcon, EditIcon, AddIcon, PlayIcon, SearchCircleIcon, SortIcon, CloseIcon, SparklesIcon, CheckCircleIcon, SlashIcon, ChevronDownIcon, RobotIcon, TableIcon, BoxIcon, MapPinIcon, CloudArrowUpIcon, InfoIcon, ShieldCheckIcon, TagIcon, WrenchIcon, UsersIcon, UserGroupIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from '../components/RuleBuilder';
-import RulePreviewModal from '../components/RulePreviewModal';
-import BlueprintWorkshop from '../components/BlueprintWorkshop';
-import FileUpload from '../components/FileUpload';
-import { api } from '../services/apiService';
+import { generateRulesFromData, hasApiKey } from '../services/geminiService';
 
 interface RulesPageProps {
     rules: ReconciliationRule[];
@@ -28,96 +25,92 @@ interface RulesPageProps {
     onSaveMerchant: (merchant: Merchant) => void;
     onSaveLocation: (location: Location) => void;
     onSaveTag: (tag: Tag) => void;
-    onSaveUser: (user: User) => void;
     onAddTransactionType: (type: TransactionType) => void;
-    systemSettings?: SystemSettings;
 }
 
-const DOMAINS = [
+const RULE_DOMAINS = [
     { id: 'all', label: 'All Logic Scopes', icon: <ShieldCheckIcon className="w-4 h-4" /> },
     { id: 'description', label: 'Descriptions', icon: <TableIcon className="w-4 h-4" /> },
-    { id: 'blueprints', label: 'Smart Templates', icon: <SparklesIcon className="w-4 h-4" /> },
-    { id: 'payeeId', label: 'Counterparties', icon: <BoxIcon className="w-4 h-4" /> },
+    { id: 'payeeId', label: 'Payees', icon: <BoxIcon className="w-4 h-4" /> },
+    { id: 'merchantId', label: 'Merchants', icon: <BoxIcon className="w-4 h-4" /> },
+    { id: 'locationId', label: 'Locations', icon: <MapPinIcon className="w-4 h-4" /> },
+    { id: 'userId', label: 'Users', icon: <UserGroupIcon className="w-4 h-4" /> },
     { id: 'tagIds', label: 'Taxonomy (Tags)', icon: <TagIcon className="w-4 h-4" /> },
+    { id: 'metadata', label: 'Extraction Hints', icon: <RobotIcon className="w-4 h-4" /> },
 ];
 
+const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+
 const RulesPage: React.FC<RulesPageProps> = ({ 
-    rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onSaveMerchant, onSaveLocation, onSaveTag, onSaveUser, onAddTransactionType, systemSettings 
+    rules, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, payees, merchants, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSavePayee, onSaveMerchant, onSaveLocation, onSaveTag, onAddTransactionType 
 }) => {
     const [selectedDomain, setSelectedDomain] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
-    const [selectedBlueprintId, setSelectedBlueprintId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [isAiCreatorOpen, setIsAiCreatorOpen] = useState(false);
-    
-    const [blueprints, setBlueprints] = useState<BlueprintTemplate[]>([]);
-    const [isWorkshopOpen, setIsWorkshopOpen] = useState(false);
-    const [workshopRawLines, setWorkshopRawLines] = useState<string[]>([]);
+
+    // AI Creator State
+    const [aiFile, setAiFile] = useState<File | null>(null);
+    const [aiRawData, setAiRawData] = useState('');
+    const [isDragging, setIsDragging] = useState(false);
+    const [aiPrompt, setAiPrompt] = useState('');
     const [isAiGenerating, setIsAiGenerating] = useState(false);
+    const [aiProposedRules, setAiProposedRules] = useState<ReconciliationRule[]>([]);
 
-    const [previewRule, setPreviewRule] = useState<ReconciliationRule | null>(null);
-
-    // Rule Form states
+    // Form State
     const [ruleName, setRuleName] = useState('');
     const [ruleScope, setRuleScope] = useState('description');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
+    
+    // Action Transformation State
     const [actionCategoryId, setActionCategoryId] = useState('');
     const [actionPayeeId, setActionPayeeId] = useState('');
+    const [actionMerchantId, setActionMerchantId] = useState('');
+    const [actionLocationId, setActionLocationId] = useState('');
     const [actionUserId, setActionUserId] = useState('');
+    const [actionTypeId, setActionTypeId] = useState('');
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
     const [skipImport, setSkipImport] = useState(false);
 
-    useEffect(() => {
-        const loadBlueprints = async () => {
-            try {
-                const data = await api.loadAll();
-                setBlueprints(data.blueprints || []);
-            } catch (e) {}
-        };
-        loadBlueprints();
-    }, []);
-
     const filteredRules = useMemo(() => {
         let list = rules.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        if (selectedDomain !== 'all' && selectedDomain !== 'blueprints') list = list.filter(r => r.scope === selectedDomain);
-        return list.sort((a, b) => a.name.localeCompare(b.name));
+        if (selectedDomain !== 'all') {
+            list = list.filter(r => r.scope === selectedDomain || (!r.scope && r.conditions.some(c => c.field === selectedDomain)));
+        }
+        return list.sort((a, b) => (a.priority || 0) - (b.priority || 0) || a.name.localeCompare(b.name));
     }, [rules, searchTerm, selectedDomain]);
-
-    const filteredBlueprints = useMemo(() => blueprints.filter(b => b.name.toLowerCase().includes(searchTerm.toLowerCase())), [blueprints, searchTerm]);
 
     const handleSelectRule = (id: string) => {
         const r = rules.find(x => x.id === id);
         if (!r) return;
         setSelectedRuleId(id);
-        setSelectedBlueprintId(null);
         setIsCreating(false);
         setRuleName(r.name);
         setRuleScope(r.scope || 'description');
         setConditions(r.conditions);
         setActionCategoryId(r.setCategoryId || '');
         setActionPayeeId(r.setPayeeId || '');
+        setActionMerchantId(r.setMerchantId || '');
+        setActionLocationId(r.setLocationId || '');
         setActionUserId(r.setUserId || '');
+        setActionTypeId(r.setTransactionTypeId || '');
         setAssignTagIds(new Set(r.assignTagIds || []));
         setSkipImport(!!r.skipImport);
     };
 
-    const handleSelectBlueprint = (id: string) => {
-        setSelectedBlueprintId(id);
-        setSelectedRuleId(null);
-        setIsCreating(false);
-    };
-
     const handleNew = () => {
         setSelectedRuleId(null);
-        setSelectedBlueprintId(null);
         setIsCreating(true);
         setRuleName('');
-        setRuleScope('description');
+        setRuleScope(selectedDomain !== 'all' ? selectedDomain : 'description');
         setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
         setActionCategoryId('');
         setActionPayeeId('');
+        setActionMerchantId('');
+        setActionLocationId('');
         setActionUserId('');
+        setActionTypeId('');
         setAssignTagIds(new Set());
         setSkipImport(false);
     };
@@ -131,7 +124,10 @@ const RulesPage: React.FC<RulesPageProps> = ({
             conditions,
             setCategoryId: actionCategoryId || undefined,
             setPayeeId: actionPayeeId || undefined,
+            setMerchantId: actionMerchantId || undefined,
+            setLocationId: actionLocationId || undefined,
             setUserId: actionUserId || undefined,
+            setTransactionTypeId: actionTypeId || undefined,
             assignTagIds: assignTagIds.size > 0 ? Array.from(assignTagIds) : undefined,
             skipImport
         };
@@ -140,198 +136,413 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleId(rule.id);
     };
 
-    const handleBlueprintUpload = async (files: File[]) => {
-        const file = files[0];
-        if (!file) return;
+    const validateFile = (file: File | null) => {
+        if (!file) return false;
+        const isPdf = file.type === 'application/pdf';
+        const isCsv = file.type === 'text/csv' || file.name.toLowerCase().endsWith('.csv');
+        return isPdf || isCsv;
+    };
+
+    const handleAiInspect = async () => {
+        const input = aiFile || aiRawData;
+        if (!input) {
+            alert("Please provide a data sample (file or text).");
+            return;
+        }
+
+        if (!hasApiKey()) {
+            alert("API Key is missing or invalid. Check your environment configuration.");
+            return;
+        }
+
         setIsAiGenerating(true);
         try {
-            const reader = new FileReader();
-            const text = await new Promise<string>((resolve) => {
-                reader.onload = () => resolve(reader.result as string);
-                reader.readAsText(file);
-            });
-            setWorkshopRawLines(text.split('\n').filter(l => l.trim()).slice(0, 50));
-            setIsWorkshopOpen(true);
-        } catch (e) {
-            alert("Failed to read document.");
+            const proposed = await generateRulesFromData(input, categories, payees, merchants, locations, users, aiPrompt);
+            setAiProposedRules(proposed);
+        } catch (e: any) {
+            console.error("AI Analysis Error:", e);
+            alert(`AI Pattern Analysis failed: ${e.message || "Unknown error"}. Check if your API Key is active.`);
         } finally {
             setIsAiGenerating(false);
         }
     };
 
-    const handleSaveBlueprint = async (template: BlueprintTemplate) => {
-        const updated = [...blueprints, template];
-        setBlueprints(updated);
-        await api.save('blueprints', updated);
-        handleSelectBlueprint(template.id);
+    const acceptAiRule = (proposed: ReconciliationRule) => {
+        let finalRule = { ...proposed, isAiDraft: false };
+
+        // Automatic Entity Creation Logic
+        if (proposed.suggestedCategoryName && !proposed.setCategoryId) {
+            const cat = { id: generateUUID(), name: proposed.suggestedCategoryName };
+            onSaveCategory(cat);
+            finalRule.setCategoryId = cat.id;
+        }
+
+        if (proposed.suggestedPayeeName && !proposed.setPayeeId) {
+            const p = { id: generateUUID(), name: proposed.suggestedPayeeName };
+            onSavePayee(p);
+            finalRule.setPayeeId = p.id;
+        }
+
+        if (proposed.suggestedMerchantName && !proposed.setMerchantId) {
+            const m = { id: generateUUID(), name: proposed.suggestedMerchantName };
+            onSaveMerchant(m);
+            finalRule.setMerchantId = m.id;
+        }
+
+        if (proposed.suggestedLocationName && !proposed.setLocationId) {
+            const l = { id: generateUUID(), name: proposed.suggestedLocationName };
+            onSaveLocation(l);
+            finalRule.setLocationId = l.id;
+        }
+
+        onSaveRule(finalRule);
+        setAiProposedRules(prev => prev.filter(p => p.id !== proposed.id));
     };
 
-    const handleDeleteBlueprint = async (id: string) => {
-        if (!confirm("Permanently delete this Smart Template?")) return;
-        const updated = blueprints.filter(b => b.id !== id);
-        setBlueprints(updated);
-        await api.save('blueprints', updated);
-        if (selectedBlueprintId === id) setSelectedBlueprintId(null);
+    const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
+    const onDragLeave = () => setIsDragging(false);
+    const onDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file && validateFile(file)) {
+            setAiFile(file);
+            setAiRawData('');
+        } else {
+            alert("Please upload a PDF or CSV file.");
+        }
     };
 
     return (
         <div className="h-full flex flex-col gap-6">
-            <div className="flex justify-between items-center px-1">
+            <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Rule Engine</h1>
-                    <p className="text-sm text-slate-500 font-medium">Logic mapping and data normalization architect.</p>
+                    <h1 className="text-3xl font-bold text-slate-800">Rule Engine</h1>
+                    <p className="text-slate-500 mt-1">High-performance data normalization and forensic classification logic.</p>
                 </div>
-                <button onClick={() => setIsAiCreatorOpen(!isAiCreatorOpen)} className={`flex items-center gap-2 px-6 py-3 rounded-2xl shadow-lg font-black transition-all uppercase text-[10px] tracking-widest ${isAiCreatorOpen ? 'bg-slate-800 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-100'}`}>
-                    <SparklesIcon className="w-5 h-5" /> {isAiCreatorOpen ? 'Close Factory' : 'Smart Templates'}
+                <button 
+                    onClick={() => setIsAiCreatorOpen(true)}
+                    className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 font-bold transition-all"
+                >
+                    <SparklesIcon className="w-5 h-5" /> AI Rule Creator
                 </button>
             </div>
 
-            {isAiCreatorOpen && !isCreating && (
-                <div className="bg-white border-2 border-indigo-100 rounded-3xl p-8 shadow-xl animate-fade-in space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                        <div className="space-y-4">
-                            <h3 className="text-xl font-black text-slate-800 flex items-center gap-3"><RobotIcon className="w-7 h-7 text-indigo-600" />Blueprint Workshop</h3>
-                            <p className="text-sm text-slate-600 font-medium leading-relaxed">Upload a statement to teach Gemini by example. This creates a deterministic few-shot Smart Template for that specific bank's format.</p>
-                            <FileUpload onFileUpload={handleBlueprintUpload} disabled={isAiGenerating} multiple={false} label="Click or drag files to import" />
+            {/* AI CREATOR DRAWER */}
+            {isAiCreatorOpen && (
+                <div className="bg-white border-2 border-indigo-100 rounded-3xl p-6 shadow-xl animate-fade-in space-y-6">
+                    <div className="flex justify-between items-center border-b pb-4">
+                        <div className="flex items-center gap-3">
+                            <RobotIcon className="w-6 h-6 text-indigo-600" />
+                            <h3 className="text-xl font-bold text-slate-800">AI Rule Forge</h3>
                         </div>
-                        <div className="bg-indigo-50 p-7 rounded-[2rem] border-2 border-indigo-100 space-y-4 relative overflow-hidden">
-                            <h4 className="font-black text-indigo-900 uppercase tracking-widest flex items-center gap-2 text-xs"><LightBulbIcon className="w-4 h-4"/> Instruction Manual</h4>
-                            <p className="text-xs text-indigo-800 leading-relaxed font-semibold">
-                                Smart Templates are different from rules. Instead of fuzzy regex, you provide a "Training Set" of raw lines. When you import future files from the same source, Gemini uses your Blueprint to map data with 100% format accuracy.
-                            </p>
-                            <SparklesIcon className="absolute -right-8 -bottom-8 w-32 h-32 text-indigo-200 opacity-20 pointer-events-none" />
+                        <button onClick={() => setIsAiCreatorOpen(false)} className="p-1 hover:bg-slate-100 rounded-full"><CloseIcon className="w-6 h-6" /></button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-4">
+                            <p className="text-sm text-slate-600 font-medium">Upload or paste a data sample. Gemini will extract distinct normalization rules for every merchant and pattern detected.</p>
+                            
+                            {!aiRawData && (
+                                <div 
+                                    onDragOver={onDragOver}
+                                    onDragLeave={onDragLeave}
+                                    onDrop={onDrop}
+                                    className={`border-2 border-dashed rounded-2xl p-6 flex flex-col items-center justify-center transition-all group ${isDragging ? 'border-indigo-600 bg-indigo-50 shadow-inner scale-[1.02]' : 'border-slate-200 bg-slate-50 hover:border-indigo-400'}`}
+                                >
+                                    <CloudArrowUpIcon className={`w-10 h-10 mb-2 transition-colors ${isDragging ? 'text-indigo-600' : 'text-slate-300 group-hover:text-indigo-400'}`} />
+                                    <input type="file" onChange={e => { const f = e.target.files?.[0] || null; if (f && validateFile(f)) setAiFile(f); }} className="hidden" id="ai-file" />
+                                    <label htmlFor="ai-file" className="text-xs font-bold text-indigo-600 cursor-pointer hover:underline">
+                                        {aiFile ? aiFile.name : 'Drop file here or Select PDF/CSV'}
+                                    </label>
+                                    {aiFile && <button onClick={(e) => { e.preventDefault(); setAiFile(null); }} className="mt-2 text-[10px] font-bold text-red-500">Remove</button>}
+                                </div>
+                            )}
+
+                            {!aiFile && (
+                                <div>
+                                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1 block mb-1">Paste Data Sample</label>
+                                    <textarea 
+                                        value={aiRawData} 
+                                        onChange={e => setAiRawData(e.target.value)} 
+                                        placeholder="Paste CSV rows here..."
+                                        className="w-full h-32 p-3 border rounded-xl text-[10px] font-mono bg-slate-50 focus:bg-white transition-all resize-none"
+                                    />
+                                </div>
+                            )}
+
+                            <textarea 
+                                value={aiPrompt} 
+                                onChange={e => setAiPrompt(e.target.value)} 
+                                placeholder="Optional instructions (e.g., 'Look for subscriptions and tag them as Recurring')"
+                                className="w-full p-3 border rounded-xl text-sm min-h-[60px]"
+                            />
+                            <button 
+                                onClick={handleAiInspect} 
+                                disabled={(!aiFile && !aiRawData) || isAiGenerating}
+                                className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-black disabled:opacity-30 flex items-center justify-center gap-2"
+                            >
+                                {isAiGenerating ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-4 h-4" />}
+                                Inspect & Forge Rules
+                            </button>
+                        </div>
+
+                        <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 overflow-y-auto max-h-[450px] custom-scrollbar">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Proposed Logic Bundle ({aiProposedRules.length})</h4>
+                            {aiProposedRules.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-300">
+                                    <TableIcon className="w-10 h-10 mb-2 opacity-20" />
+                                    <p className="text-sm font-bold">No suggestions yet.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {aiProposedRules.map(r => {
+                                        const catName = r.setCategoryId ? categories.find(c => c.id === r.setCategoryId)?.name : r.suggestedCategoryName;
+                                        const mercName = r.setMerchantId ? merchants.find(m => m.id === r.setMerchantId)?.name : r.suggestedMerchantName;
+                                        const payeeName = r.setPayeeId ? payees.find(p => p.id === r.setPayeeId)?.name : r.suggestedPayeeName;
+
+                                        return (
+                                            <div key={r.id} className="bg-white p-4 rounded-xl border border-indigo-100 shadow-sm space-y-3 animate-fade-in">
+                                                <div className="flex justify-between items-start">
+                                                    <h5 className="text-sm font-bold text-slate-800">{r.name}</h5>
+                                                    <button onClick={() => acceptAiRule(r)} className="text-[10px] font-black bg-indigo-600 text-white px-2 py-1 rounded uppercase hover:bg-indigo-700">Accept</button>
+                                                </div>
+                                                <div className="text-[10px] text-slate-500 space-y-1">
+                                                    <div className="p-2 bg-slate-50 rounded font-mono">
+                                                        If {r.conditions[0].field} {r.conditions[0].operator} "{r.conditions[0].value}"
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2 text-[9px] font-bold">
+                                                        {catName && <div className="text-indigo-600 truncate">&bull; Cat: {catName}</div>}
+                                                        {mercName && <div className="text-indigo-600 truncate">&bull; Merc: {mercName}</div>}
+                                                        {payeeName && <div className="text-indigo-600 truncate">&bull; Payee: {payeeName}</div>}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>
             )}
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                <div className="w-64 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col p-4 shrink-0">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-3 mb-4">Navigational Logic</p>
-                    <div className="space-y-1">
-                        {DOMAINS.map(domain => (
-                            <button key={domain.id} onClick={() => setSelectedDomain(domain.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-black transition-all uppercase tracking-wider ${selectedDomain === domain.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}>
-                                {domain.icon}<span>{domain.label}</span>
+                {/* LEFT: SCOPES */}
+                <div className="w-56 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col p-3 flex-shrink-0">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Rule Scopes</p>
+                    <div className="space-y-0.5">
+                        {RULE_DOMAINS.map(domain => (
+                            <button 
+                                key={domain.id} 
+                                onClick={() => setSelectedDomain(domain.id)}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedDomain === domain.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
+                            >
+                                {domain.icon}
+                                <span>{domain.label}</span>
                             </button>
                         ))}
                     </div>
                 </div>
 
-                <div className="w-80 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col min-h-0 shrink-0">
-                    <div className="p-4 border-b border-slate-100"><input type="text" placeholder="Search patterns..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full px-4 py-2 bg-slate-50 border-none rounded-xl text-xs font-bold" /></div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
-                        {selectedDomain === 'blueprints' ? (
-                            filteredBlueprints.map(b => (
-                                <div key={b.id} onClick={() => handleSelectBlueprint(b.id)} className={`p-4 rounded-2xl cursor-pointer border-2 transition-all flex flex-col group ${selectedBlueprintId === b.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'}`}>
-                                    <div className="flex justify-between items-center"><span className="text-xs font-black text-slate-800 uppercase truncate">{b.name}</span><SparklesIcon className="w-3.5 h-3.5 text-indigo-500" /></div>
-                                    <div className="flex justify-between items-center mt-2">
-                                        <p className="text-[9px] text-indigo-600 font-black uppercase tracking-widest bg-indigo-100/50 px-2 py-0.5 rounded">{b.examples.length} Training Rows</p>
-                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteBlueprint(b.id); }} className="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><DeleteIcon className="w-4 h-4" /></button>
-                                    </div>
-                                </div>
-                            ))
+                {/* MIDDLE: LIST */}
+                <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 flex-shrink-0">
+                    <div className="p-3 border-b border-slate-100">
+                        <div className="relative group">
+                            <input 
+                                type="text" 
+                                placeholder="Search rules..." 
+                                value={searchTerm} 
+                                onChange={e => setSearchTerm(e.target.value)} 
+                                className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:ring-1 focus:ring-indigo-500 focus:bg-white transition-all outline-none" 
+                            />
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2"><SearchCircleIcon className="w-4 h-4 text-slate-300" /></div>
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                        {filteredRules.length === 0 ? (
+                            <div className="p-10 text-center text-slate-300 flex flex-col items-center">
+                                <BoxIcon className="w-10 h-10 mb-2 opacity-10" />
+                                <p className="text-[11px] font-bold">No rules found.</p>
+                            </div>
                         ) : (
                             filteredRules.map(r => (
-                                <div key={r.id} onClick={() => handleSelectRule(r.id)} className={`p-4 rounded-2xl cursor-pointer border-2 transition-all flex flex-col group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'}`}>
-                                    <div className="flex justify-between items-center"><span className="text-xs font-black text-slate-800 uppercase truncate">{r.name}</span>{r.isAiDraft && <SparklesIcon className="w-3.5 h-3.5 text-indigo-500" />}</div>
-                                    <div className="flex justify-between items-center mt-2">
-                                        <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">{r.scope}</p>
-                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button onClick={(e) => { e.stopPropagation(); setPreviewRule(r); }} className="p-1.5 bg-emerald-50 text-emerald-600 rounded-lg"><PlayIcon className="w-4 h-4" /></button>
-                                            <button onClick={(e) => { e.stopPropagation(); onDeleteRule(r.id); }} className="p-1.5 bg-red-50 text-red-600 rounded-lg"><DeleteIcon className="w-4 h-4" /></button>
+                                <div 
+                                    key={r.id} 
+                                    onClick={() => handleSelectRule(r.id)}
+                                    className={`p-1.5 px-3 rounded-md cursor-pointer border transition-all flex flex-col gap-0.5 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-400 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}
+                                >
+                                    <div className="flex justify-between items-center">
+                                        <span className={`text-xs font-bold truncate ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-700'}`}>{r.name}</span>
+                                        {r.isAiDraft && <SparklesIcon className="w-3 h-3 text-indigo-500" />}
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-tight truncate pr-2">{r.scope || 'Unset'}</p>
+                                        <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={(e) => { e.stopPropagation(); onDeleteRule(r.id); if(selectedRuleId === r.id) setSelectedRuleId(null); }} className="text-slate-300 hover:text-red-500"><DeleteIcon className="w-3 h-3" /></button>
                                         </div>
                                     </div>
                                 </div>
                             ))
                         )}
                     </div>
-                    <div className="p-4 border-t bg-slate-50 rounded-b-[2rem]"><button onClick={handleNew} className="w-full py-3 bg-slate-800 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg">New Manual Pattern</button></div>
+                    <div className="p-3 border-t bg-slate-50 rounded-b-2xl">
+                        <button onClick={handleNew} className="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs shadow-md hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2">
+                            <AddIcon className="w-4 h-4" /> New Rule
+                        </button>
+                    </div>
                 </div>
 
-                <div className="flex-1 bg-white rounded-[2rem] border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden">
-                    {selectedBlueprintId ? (
-                        <div className="flex-1 flex flex-col min-h-0 animate-fade-in p-10 overflow-y-auto custom-scrollbar">
-                             <div className="flex justify-between items-start mb-10">
-                                <div>
-                                    <h3 className="text-3xl font-black text-slate-800 tracking-tight">{blueprints.find(b => b.id === selectedBlueprintId)?.name}</h3>
-                                    <p className="text-xs text-slate-400 uppercase font-black tracking-widest mt-1">Teaching Dataset for Gemini AI</p>
+                {/* RIGHT: EDITOR */}
+                <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
+                    {(selectedRuleId || isCreating) ? (
+                        <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
+                            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                                        <WrenchIcon className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-800">{isCreating ? 'Architect Rule' : 'Refine Rule'}</h3>
+                                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">v0.5 Omni-Transformer</p>
+                                    </div>
                                 </div>
-                                <button onClick={() => handleDeleteBlueprint(selectedBlueprintId)} className="p-4 bg-red-50 text-red-600 rounded-2xl hover:bg-red-100 transition-all"><DeleteIcon className="w-6 h-6"/></button>
+                                <div className="flex items-center gap-2">
+                                    <button type="submit" className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95 uppercase text-[10px] tracking-widest">Commit Rule</button>
+                                    <button type="button" onClick={() => { setSelectedRuleId(null); setIsCreating(false); }} className="p-2 rounded-full hover:bg-slate-200"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                                </div>
                             </div>
-                            <div className="space-y-6">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><RobotIcon className="w-4 h-4" /> Established Examples</h4>
-                                <div className="grid grid-cols-1 gap-4">
-                                    {blueprints.find(b => b.id === selectedBlueprintId)?.examples.map((ex, i) => (
-                                        <div key={i} className="p-6 bg-slate-50 border-2 border-slate-100 rounded-3xl flex items-center justify-between">
-                                            <div className="min-w-0 flex-1">
-                                                <p className="text-[11px] font-mono text-slate-500 truncate leading-relaxed select-all cursor-text">{ex.rawLine}</p>
-                                                <div className="flex items-center gap-3 mt-3">
-                                                    <div className="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-black uppercase tracking-tight shadow-sm">Category: {categories.find(c => c.id === ex.suggestedRule.setCategoryId)?.name || 'Generic'}</div>
-                                                    <div className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase tracking-tight shadow-sm">Payee: {payees.find(p => p.id === ex.suggestedRule.setPayeeId)?.name || 'Generic'}</div>
-                                                </div>
+
+                            <div className="flex-1 overflow-y-auto p-8 space-y-10 custom-scrollbar">
+                                <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="md:col-span-2 space-y-4">
+                                        <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Identity
+                                        </div>
+                                        <input 
+                                            type="text" 
+                                            value={ruleName} 
+                                            onChange={e => setRuleName(e.target.value)} 
+                                            className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white transition-all font-bold text-lg" 
+                                            placeholder="Friendly label..."
+                                            required 
+                                        />
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" /> Rule Scope
+                                        </div>
+                                        <select 
+                                            value={ruleScope} 
+                                            onChange={e => setRuleScope(e.target.value)}
+                                            className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white transition-all font-bold text-sm"
+                                        >
+                                            {RULE_DOMAINS.filter(d => d.id !== 'all').map(d => (
+                                                <option key={d.id} value={d.id}>{d.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </section>
+
+                                <section className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-indigo-600" /> Conditional Logic Tree
+                                        </div>
+                                    </div>
+                                    <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
+                                        <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
+                                    </div>
+                                </section>
+
+                                <section className="space-y-6">
+                                    <div className="flex items-center gap-2 text-slate-800 font-bold uppercase text-xs tracking-tight">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-green-500" /> Atomic Transformations
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Map Category</label>
+                                            <select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold bg-white focus:border-indigo-500 outline-none text-xs">
+                                                <option value="">-- No Change --</option>
+                                                {[...categories].sort((a,b) => a.name > b.name ? 1 : -1).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Payee</label>
+                                            <select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                                <option value="">-- No Change --</option>
+                                                {[...payees].sort((a,b) => a.name > b.name ? 1 : -1).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Associate Merchant</label>
+                                            <select value={actionMerchantId} onChange={e => setActionMerchantId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                                <option value="">-- No Change --</option>
+                                                {[...merchants].sort((a,b) => a.name.localeCompare(b.name)).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pin Location</label>
+                                            <select value={actionLocationId} onChange={e => setActionLocationId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                                <option value="">-- No Change --</option>
+                                                {[...locations].sort((a,b) => a.name.localeCompare(b.name)).map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label>
+                                            <select value={actionUserId} onChange={e => setActionUserId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                                <option value="">-- No Change --</option>
+                                                {[...users].sort((a,b) => a.name.localeCompare(b.name)).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign Type</label>
+                                            <select value={actionTypeId} onChange={e => setActionTypeId(e.target.value)} className="w-full p-2.5 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white focus:border-indigo-500 outline-none text-xs">
+                                                <option value="">-- No Change --</option>
+                                                {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-100">
+                                            <input type="checkbox" checked={skipImport} onChange={e => setSkipImport(e.target.checked)} className="w-5 h-5 rounded text-red-600 focus:ring-red-500" />
+                                            <div>
+                                                <label className="text-xs font-black text-red-800 uppercase block">Suppress Record</label>
+                                                <p className="text-[10px] text-red-600 font-medium">Auto-ignore matching imports.</p>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-                    ) : (selectedRuleId || isCreating) ? (
-                        <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0 animate-fade-in">
-                            <div className="p-8 border-b flex justify-between items-center bg-slate-50">
-                                <div><h3 className="text-2xl font-black tracking-tight text-slate-800">{isCreating ? 'Forge New Logic' : 'Refine Automation'}</h3></div>
-                                <div className="flex gap-3">
-                                    <button type="submit" className="px-8 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 uppercase text-[10px] tracking-widest">Save Pattern</button>
-                                    <button type="button" onClick={() => { setSelectedRuleId(null); setIsCreating(false); }} className="p-2.5 bg-white border border-slate-200 rounded-full hover:bg-slate-100 transition-colors shadow-sm"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
-                                </div>
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-10 space-y-12 custom-scrollbar">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                    <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pattern Identifier</label><input type="text" value={ruleName} onChange={e => setRuleName(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-800 focus:border-indigo-500 focus:ring-0" placeholder="e.g. Starbucks Mobile Pay" required /></div>
-                                    <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Logical Scope</label><select value={ruleScope} onChange={e => setRuleScope(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 bg-white focus:border-indigo-500 focus:ring-0">{DOMAINS.filter(d => d.id !== 'all' && d.id !== 'blueprints').map(d => <option key={d.id} value={d.id}>{d.label}</option>)}</select></div>
-                                </div>
-                                <div className="space-y-4"><h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-600"/> Conditions</h4><div className="p-8 bg-slate-50 rounded-[2.5rem] border-2 border-slate-100 shadow-inner"><RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} /></div></div>
-                                <div className="space-y-6">
-                                    <div className="flex justify-between items-center"><h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-600"/> Enrichments</h4><label className="flex items-center gap-3 cursor-pointer bg-red-50 px-4 py-2 rounded-xl border border-red-100"><input type="checkbox" checked={skipImport} onChange={e => setSkipImport(e.target.checked)} className="w-5 h-5 rounded border-red-300 text-red-600 focus:ring-red-500" /><span className="text-[10px] font-black text-red-700 uppercase tracking-widest">Exclude Matching Records</span></label></div>
-                                    {!skipImport && (
-                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                                            <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Primary Category</label><select value={actionCategoryId} onChange={e => setActionCategoryId(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 bg-white focus:border-indigo-500 focus:ring-0"><option value="">-- No Transformation --</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-                                            <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Involved Party</label><select value={actionPayeeId} onChange={e => setActionPayeeId(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 bg-white focus:border-indigo-500 focus:ring-0"><option value="">-- No Transformation --</option>{payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
-                                            <div className="space-y-2"><label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Responsible User</label><select value={actionUserId} onChange={e => setActionUserId(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 bg-white focus:border-indigo-500 focus:ring-0"><option value="">-- No Transformation --</option>{users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Append Taxonomy Tags</label>
+                                        <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-inner">
+                                            {tags.map(tag => (
+                                                <button 
+                                                    key={tag.id} 
+                                                    type="button" 
+                                                    onClick={() => { const s = new Set(assignTagIds); if(s.has(tag.id)) s.delete(tag.id); else s.add(tag.id); setAssignTagIds(s); }}
+                                                    className={`px-3 py-1.5 rounded-full text-[10px] font-black uppercase transition-all border-2 ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-500 shadow-md ring-4 ring-indigo-50' : 'bg-white text-slate-400 border-slate-200 grayscale opacity-60'}`}
+                                                >
+                                                    {tag.name}
+                                                </button>
+                                            ))}
                                         </div>
-                                    )}
-                                </div>
+                                    </div>
+                                </section>
                             </div>
                         </form>
                     ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-20 text-center bg-slate-50/30">
-                            <div className="p-10 bg-white rounded-full shadow-xl border border-slate-100 mb-10 animate-bounce-subtle"><LightBulbIcon className="w-20 h-20 text-indigo-400" /></div>
-                            <h3 className="text-3xl font-black text-slate-800 tracking-tight">Automation Architect</h3>
-                            <p className="text-slate-500 max-w-sm mt-4 font-medium text-lg leading-relaxed">Select an active pattern from the left to refine its logic, or create a Smart Template above to teach Gemini your data format.</p>
-                            <button onClick={handleNew} className="mt-12 px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-100 transition-transform hover:-translate-y-1 uppercase tracking-widest text-xs">Create Manual Pattern</button>
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
+                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle">
+                                <ShieldCheckIcon className="w-12 h-12 text-indigo-200" />
+                            </div>
+                            <h3 className="text-2xl font-black text-slate-800">Master Rule Engine</h3>
+                            <p className="text-slate-500 max-w-sm mt-4 font-medium">Select a rule to refine its logic, or start a new architectural pattern. Use the AI Rule Creator to automatically ingest logic from your documentation.</p>
+                            <div className="flex gap-4 mt-8">
+                                <button onClick={handleNew} className="px-10 py-3 bg-slate-900 text-white font-black rounded-2xl hover:bg-black shadow-lg shadow-slate-200 transition-all hover:-translate-y-1">Create Rule</button>
+                                <button onClick={() => setIsAiCreatorOpen(true)} className="px-10 py-3 bg-white border-2 border-indigo-600 text-indigo-600 font-black rounded-2xl hover:bg-indigo-50 transition-all">AI Forge</button>
+                            </div>
                         </div>
                     )}
                 </div>
             </div>
-
-            <BlueprintWorkshop 
-                isOpen={isWorkshopOpen} 
-                onClose={() => setIsWorkshopOpen(false)} 
-                onSave={handleSaveBlueprint} 
-                rawLines={workshopRawLines} 
-                categories={categories} 
-                payees={payees} 
-                merchants={merchants} 
-                locations={locations} 
-                users={users} 
-                types={transactionTypes} 
-                tags={tags} 
-                onSaveCategory={onSaveCategory}
-                onSavePayee={onSavePayee}
-                onSaveMerchant={onSaveMerchant}
-                onSaveLocation={onSaveLocation}
-                onSaveUser={onSaveUser}
-            />
-            {previewRule && <RulePreviewModal isOpen={!!previewRule} onClose={() => setPreviewRule(null)} onApply={onUpdateTransactions} rule={previewRule} transactions={transactions} accounts={accounts} transactionTypes={transactionTypes} categories={categories} payees={payees} />}
         </div>
     );
 };

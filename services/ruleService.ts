@@ -1,53 +1,5 @@
 
-import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account, Category, Payee, Merchant, Location } from '../types';
-
-/**
- * Generates a stable signature for a rule based on its logic and effects.
- * Optimized to compare AI drafts (which use names) against saved rules (which use IDs).
- */
-export const getRuleSignature = (
-    rule: ReconciliationRule, 
-    categories: Category[] = [], 
-    payees: Payee[] = [], 
-    merchants: Merchant[] = [], 
-    locations: Location[] = []
-): string => {
-    const conditions = (rule.conditions || [])
-        .map(c => `${c.field}:${c.operator}:${String(c.value).toLowerCase()}`)
-        .sort()
-        .join('|');
-    
-    // Resolve Category ID or Name
-    const cat = rule.setCategoryId || 
-                categories.find(c => c.name.toLowerCase() === rule.suggestedCategoryName?.toLowerCase())?.id || 
-                rule.suggestedCategoryName?.toLowerCase() || '';
-
-    // Resolve Payee ID or Name
-    const pay = rule.setPayeeId || 
-                payees.find(p => p.name.toLowerCase() === rule.suggestedPayeeName?.toLowerCase())?.id || 
-                rule.suggestedPayeeName?.toLowerCase() || '';
-
-    // Resolve Merchant ID or Name
-    const mer = rule.setMerchantId || 
-                merchants.find(m => m.name.toLowerCase() === rule.suggestedMerchantName?.toLowerCase())?.id || 
-                rule.suggestedMerchantName?.toLowerCase() || '';
-
-    // Resolve Location ID or Name
-    const loc = rule.setLocationId || 
-                locations.find(l => l.name.toLowerCase() === rule.suggestedLocationName?.toLowerCase())?.id || 
-                rule.suggestedLocationName?.toLowerCase() || '';
-
-    const actions = [
-        `cat:${cat}`,
-        `pay:${pay}`,
-        `mer:${mer}`,
-        `loc:${loc}`,
-        rule.setUserId || '',
-        rule.skipImport ? 'skip' : 'keep'
-    ].filter(Boolean).join(',');
-
-    return `${rule.scope || 'description'}@${conditions}@${actions}`;
-};
+import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
     let txValue: any;
@@ -142,7 +94,7 @@ export const applyRulesToTransactions = (
   rawTransactions: RawTransaction[],
   rules: ReconciliationRule[],
   accounts: Account[] = []
-): (RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string })[] => {
+): (RawTransaction & { categoryId?: string; isIgnored?: boolean })[] => {
   if (!rules || rules.length === 0) {
     return rawTransactions;
   }

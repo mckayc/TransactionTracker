@@ -133,25 +133,12 @@ export interface ReconciliationRule {
     skipImport?: boolean;
     isAiDraft?: boolean;
     priority?: number;
-    originalDescription?: string;
     // Fields for AI-suggested entities that don't exist yet
     suggestedCategoryName?: string;
     suggestedPayeeName?: string;
     suggestedMerchantName?: string;
     suggestedLocationName?: string;
     suggestedUserName?: string;
-}
-
-export interface BlueprintExample {
-    rawLine: string;
-    suggestedRule: Partial<ReconciliationRule>;
-}
-
-export interface BlueprintTemplate {
-    id: string;
-    name: string;
-    examples: BlueprintExample[];
-    lastUsed?: string;
 }
 
 export type TaskPriority = 'low' | 'medium' | 'high';
@@ -269,7 +256,6 @@ export interface BackupConfig {
 
 export interface SystemSettings {
     backupConfig?: BackupConfig;
-    aiModel?: string; // e.g. 'gemini-3-flash-preview'
 }
 
 export type ReportGroupBy = 'category' | 'payee' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';

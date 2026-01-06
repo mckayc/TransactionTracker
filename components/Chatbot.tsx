@@ -2,13 +2,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { getAiFinancialAnalysis } from '../services/geminiService';
 import { ChatBubbleIcon, CloseIcon, SendIcon, ExclamationTriangleIcon } from './Icons';
-import type { SystemSettings } from '../types';
 
 interface ChatbotProps {
     contextData: object;
     isOpen: boolean;
     onClose: () => void;
-    systemSettings?: SystemSettings;
 }
 
 interface Message {
@@ -17,7 +15,7 @@ interface Message {
     isError?: boolean;
 }
 
-const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose, systemSettings }) => {
+const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +30,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose, systemS
     // Initial greeting when opened
     useEffect(() => {
         if(isOpen && messages.length === 0) {
-             setMessages([{ role: 'ai', content: "Hello! I'm your financial assistant. How can I help you analyze your data today?" }]);
+             setMessages([{ role: 'ai', content: "Hello! How can I help you analyze your finances today? You can ask things like 'How much did I spend on groceries this month?' or 'What are my top 3 expense categories?'" }]);
         }
     }, [isOpen]);
 
@@ -46,7 +44,7 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose, systemS
         setIsLoading(true);
 
         try {
-            const stream = await getAiFinancialAnalysis(currentInput, contextData, systemSettings);
+            const stream = await getAiFinancialAnalysis(currentInput, contextData);
             
             let fullResponse = '';
             setMessages(prev => [...prev, { role: 'ai', content: '' }]);
@@ -63,20 +61,15 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose, systemS
                 }
             }
         } catch (error: any) {
-            console.error("Gemini API Connection Detailed Error:", error);
+            console.error("Chatbot Analysis Error Detail:", error);
             
-            let errorMsg = "I'm having trouble connecting to the AI brain.";
-            
-            if (error.message?.includes("429")) {
-                errorMsg = "AI quota reached. Please wait 60s or switch models in Settings.";
-            } else if (error.message?.includes("403")) {
-                errorMsg = "Invalid API Key. Please verify your environment setup.";
-            } else if (error.message?.includes("404")) {
-                errorMsg = "The selected model was not found in your region. Please switch to a stable model in Settings.";
-            } else if (error.message?.includes("fetch")) {
-                errorMsg = "Network error: Unable to reach Gemini servers. Check your internet connection.";
-            } else {
-                errorMsg = `Error: ${error.message || "Unknown technical failure"}`;
+            let errorMsg = "I'm having trouble analyzing your data.";
+            if (error.message?.includes("413") || error.message?.includes("Payload Too Large")) {
+                errorMsg = "Your transaction history is too large to send in a single request. Try narrowing your search or asking about recent activity.";
+            } else if (error.message?.includes("403") || error.message?.includes("API key")) {
+                errorMsg = "Your API Key appears to be invalid or restricted. Please check your settings.";
+            } else if (error.message?.includes("500")) {
+                errorMsg = "Google's AI servers encountered an error. Please try again in a few moments.";
             }
 
             const errorMessage: Message = { 
@@ -144,8 +137,9 @@ const Chatbot: React.FC<ChatbotProps> = ({ contextData, isOpen, onClose, systemS
                         className="flex-1"
                         disabled={isLoading}
                         autoFocus
+                        aria-label="Chat input"
                     />
-                    <button onClick={handleSend} disabled={isLoading || !input.trim()} className="bg-indigo-600 text-white rounded-lg p-3 disabled:bg-slate-400 hover:bg-indigo-700 transition-colors">
+                    <button onClick={handleSend} disabled={isLoading || !input.trim()} className="bg-indigo-600 text-white rounded-lg p-3 disabled:bg-slate-400 hover:bg-indigo-700 transition-colors" aria-label="Send message">
                         <SendIcon className="w-5 h-5"/>
                     </button>
                 </div>

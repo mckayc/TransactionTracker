@@ -1,6 +1,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location, SystemSettings } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location } from '../types';
+// Fixed: Imports for AI extraction functions are now expected to be available in geminiService.ts
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
@@ -41,7 +42,6 @@ interface DashboardProps {
   onAddTransactionType: (type: TransactionType) => void;
   onUpdateTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
-  systemSettings?: SystemSettings;
 }
 
 const SummaryWidget: React.FC<{title: string, value: string, helpText: string, icon?: React.ReactNode, className?: string}> = ({title, value, helpText, icon, className}) => (
@@ -58,7 +58,7 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, i
 );
 
 const Dashboard: React.FC<DashboardProps> = ({ 
-    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule, systemSettings 
+    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +74,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [importedTxIds, setImportedTxIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const fetchCore = async () => {
+    const fetchSummary = async () => {
         const now = new Date();
         let startDate = '';
         if (dashboardRange === 'year') startDate = `${now.getFullYear()}-01-01`;
@@ -84,12 +84,12 @@ const Dashboard: React.FC<DashboardProps> = ({
             setSummaryTotals(result);
         } catch (e) {}
     };
-    fetchCore();
+    fetchSummary();
   }, [dashboardRange, recentGlobalTransactions]);
 
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
     if (!rawTransactions || rawTransactions.length === 0) {
-        setError("No transactions were found. Check file format or enable AI mode.");
+        setError("No transactions were found in the provided data. Please check the file format or try AI mode.");
         setAppState('error');
         return;
     }
@@ -113,20 +113,23 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleFileUpload = useCallback(async (files: File[], accountId: string, aiMode: boolean) => {
     setError(null);
     setAppState('processing');
-    setProgressMessage(aiMode ? 'Synthesizing Statement Data...' : 'Parsing local files...');
-    
+    setProgressMessage(aiMode ? 'AI Thinking (Analyzing Statements)...' : 'Parsing local files...');
     try {
       const raw = aiMode 
-        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage, systemSettings) 
+        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage) 
         : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
       
+      if (!raw || raw.length === 0) {
+          throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
+      }
+
       applyRulesAndSetStaging(raw, users.find(u => u.isDefault)?.id || users[0]?.id || '', rules);
       setAppState('verifying_import');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Extraction failed.');
+      setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
       setAppState('error');
     }
-  }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging, systemSettings]);
+  }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
       const { added } = mergeTransactions(recentGlobalTransactions, verified);
@@ -137,12 +140,15 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
+  // Determine if the top import card should be visible
+  const isImportFormVisible = appState === 'idle' || appState === 'processing' || appState === 'error';
+
   return (
     <div className="space-y-6 h-full flex flex-col">
       <div className="flex justify-between items-center flex-shrink-0 px-1">
         <div>
             <h1 className="text-3xl font-black text-slate-800 tracking-tight">Ledger Command</h1>
-            <p className="text-sm text-slate-500">Inbound ingestion and performance overview.</p>
+            <p className="text-sm text-slate-500">Intelligent ingestion and performance overview.</p>
         </div>
         <div className="flex bg-white rounded-xl p-1 shadow-sm border border-slate-200">
             {(['all', 'year', 'month'] as const).map(range => (
@@ -165,7 +171,8 @@ const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col gap-6 overflow-hidden">
-        {(appState === 'idle' || appState === 'processing' || appState === 'error') && (
+        {/* Top: Quick Import Section (Full Width, only visible when not verifying) */}
+        {isImportFormVisible && (
             <div className="w-full flex flex-col shrink-0 animate-fade-in">
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
                     {appState === 'idle' ? (
@@ -180,7 +187,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                             <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
                                 {importMethod === 'upload' ? (
-                                    <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} showAiToggle={true} />
+                                    <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} />
                                 ) : (
                                     <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -188,6 +195,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                 <option value="">Select Account...</option>
                                                 {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                                             </select>
+                                            
                                             <label className="flex items-center justify-between gap-2 cursor-pointer bg-slate-100 px-4 py-3 rounded-2xl group border border-transparent hover:border-indigo-200 transition-all">
                                                 <div className="flex items-center gap-3">
                                                     <RobotIcon className={`w-5 h-5 ${useAi ? 'text-indigo-600' : 'text-slate-400'}`} />
@@ -201,15 +209,27 @@ const Dashboard: React.FC<DashboardProps> = ({
                                                 </div>
                                             </label>
                                         </div>
-                                        <textarea value={textInput} onChange={e => setTextInput(e.target.value)} placeholder="Paste data here..." className="w-full h-32 p-3 font-mono text-[10px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white resize-none" />
-                                        <button onClick={async () => {
-                                            setAppState('processing');
-                                            try {
-                                                const raw = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage, systemSettings) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
-                                                applyRulesAndSetStaging(raw, users[0]?.id || 'default', rules);
-                                                setAppState('verifying_import');
-                                            } catch(e) { setAppState('error'); setError("Parsing failed."); }
-                                        }} disabled={!textInput.trim() || !pasteAccountId} className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 disabled:opacity-50">Process Text</button>
+
+                                        <textarea 
+                                            value={textInput} 
+                                            onChange={e => setTextInput(e.target.value)} 
+                                            placeholder="Paste CSV rows..." 
+                                            className="w-full h-32 p-3 font-mono text-[10px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white resize-none" 
+                                        />
+                                        <button 
+                                            onClick={async () => {
+                                                setAppState('processing');
+                                                try {
+                                                    const raw = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
+                                                    applyRulesAndSetStaging(raw, users[0]?.id || 'default', rules);
+                                                    setAppState('verifying_import');
+                                                } catch(e) { setAppState('error'); setError("Parsing failed. Ensure columns align."); }
+                                            }} 
+                                            disabled={!textInput.trim() || !pasteAccountId} 
+                                            className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 disabled:opacity-50"
+                                        >
+                                            Process Text
+                                        </button>
                                     </div>
                                 )}
                             </div>
@@ -218,6 +238,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                             <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
                             <p className="font-black text-slate-800 text-lg">{progressMessage}</p>
+                            <p className="text-xs text-slate-400 mt-2">Gemini is synthesizing patterns and categorizing based on your preferences...</p>
                         </div>
                     ) : (
                         <ResultsDisplay appState={appState as any} error={error} progressMessage={progressMessage} transactions={[]} duplicatesIgnored={0} duplicatesImported={0} onClear={() => setAppState('idle')} />
@@ -226,9 +247,11 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
         )}
 
+        {/* Bottom: Ledger Activity or Verification View (Full Width) */}
         <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             {appState === 'verifying_import' ? (
                 <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
+                    {/* Fixed: Pass missing merchants and locations props */}
                     <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} merchants={merchants} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
                 </div>
             ) : appState === 'post_import_edit' ? (
