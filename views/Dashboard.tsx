@@ -1,8 +1,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location, SystemSettings } from '../types';
-// Fixed: Imports for AI extraction functions are now expected to be available in geminiService.ts
-import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location, SystemSettings, BlueprintTemplate } from '../types';
+import { extractTransactionsFromFiles, extractTransactionsFromText, generateRulesFromData } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
@@ -10,7 +9,7 @@ import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import ImportVerification from '../components/ImportVerification';
-import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon } from '../components/Icons';
+import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, WrenchIcon, ChevronDownIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 
@@ -71,11 +70,14 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [pasteAccountId, setPasteAccountId] = useState<string>('');
   const [useAi, setUseAi] = useState(true);
 
+  const [blueprints, setBlueprints] = useState<BlueprintTemplate[]>([]);
+  const [selectedBlueprintId, setSelectedBlueprintId] = useState<string>('');
+
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
   const [importedTxIds, setImportedTxIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    const fetchSummary = async () => {
+    const fetchCore = async () => {
         const now = new Date();
         let startDate = '';
         if (dashboardRange === 'year') startDate = `${now.getFullYear()}-01-01`;
@@ -83,9 +85,11 @@ const Dashboard: React.FC<DashboardProps> = ({
         try {
             const result = await api.getSummary({ startDate });
             setSummaryTotals(result);
+            const allData = await api.loadAll();
+            setBlueprints(allData.blueprints || []);
         } catch (e) {}
     };
-    fetchSummary();
+    fetchCore();
   }, [dashboardRange, recentGlobalTransactions]);
 
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
@@ -114,23 +118,44 @@ const Dashboard: React.FC<DashboardProps> = ({
   const handleFileUpload = useCallback(async (files: File[], accountId: string, aiMode: boolean) => {
     setError(null);
     setAppState('processing');
-    setProgressMessage(aiMode ? 'AI Thinking (Analyzing Statements)...' : 'Parsing local files...');
+    setProgressMessage(aiMode ? 'Synthesizing Statement Data...' : 'Parsing local files...');
+    
     try {
-      const raw = aiMode 
-        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage, systemSettings) 
-        : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
+      const blueprint = blueprints.find(b => b.id === selectedBlueprintId);
       
-      if (!raw || raw.length === 0) {
-          throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
-      }
+      if (aiMode && blueprint) {
+          setProgressMessage(`Applying Smart Template: ${blueprint.name}...`);
+          const reader = new FileReader();
+          const content = await new Promise<string>((resolve) => {
+              reader.onload = () => resolve(reader.result as string);
+              reader.readAsText(files[0]);
+          });
+          const lines = content.split('\n').filter(l => l.trim()).slice(0, 100).join('\n');
+          
+          const blueprintRules = await generateRulesFromData(
+              lines, categories, payees, merchants, locations, users, 
+              `EXTREMELY IMPORTANT: Follow the few-shot examples provided in the blueprint for mapping style.`,
+              systemSettings, rules, blueprint.examples
+          );
 
-      applyRulesAndSetStaging(raw, users.find(u => u.isDefault)?.id || users[0]?.id || '', rules);
+          blueprintRules.forEach(br => onSaveRule({ ...br, isAiDraft: true }));
+          const combinedRules = [...blueprintRules, ...rules];
+          
+          const raw = await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage, systemSettings);
+          applyRulesAndSetStaging(raw, users[0]?.id || 'default', combinedRules);
+      } else {
+          const raw = aiMode 
+            ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage, systemSettings) 
+            : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
+          
+          applyRulesAndSetStaging(raw, users.find(u => u.isDefault)?.id || users[0]?.id || '', rules);
+      }
       setAppState('verifying_import');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
       setAppState('error');
     }
-  }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging, systemSettings]);
+  }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging, systemSettings, blueprints, selectedBlueprintId, onSaveRule]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
       const { added } = mergeTransactions(recentGlobalTransactions, verified);
@@ -141,7 +166,6 @@ const Dashboard: React.FC<DashboardProps> = ({
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
-  // Determine if the top import card should be visible
   const isImportFormVisible = appState === 'idle' || appState === 'processing' || appState === 'error';
 
   return (
@@ -172,14 +196,28 @@ const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col gap-6 overflow-hidden">
-        {/* Top: Quick Import Section (Full Width, only visible when not verifying) */}
         {isImportFormVisible && (
             <div className="w-full flex flex-col shrink-0 animate-fade-in">
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
                     {appState === 'idle' ? (
                         <div className="flex flex-col h-full overflow-hidden">
                             <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">Quick Import</h2>
+                                <div className="flex items-center gap-4">
+                                    <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">Quick Import</h2>
+                                    {useAi && blueprints.length > 0 && (
+                                        <div className="flex items-center gap-2 px-3 py-1 bg-indigo-50 rounded-lg border border-indigo-100 animate-fade-in">
+                                            <WrenchIcon className="w-3.5 h-3.5 text-indigo-500" />
+                                            <select 
+                                                value={selectedBlueprintId} 
+                                                onChange={e => setSelectedBlueprintId(e.target.value)}
+                                                className="text-[10px] font-black text-indigo-700 bg-transparent border-none p-0 focus:ring-0 cursor-pointer uppercase tracking-wider"
+                                            >
+                                                <option value="">Generic AI Mode</option>
+                                                {blueprints.map(b => <option key={b.id} value={b.id}>Blueprint: {b.name}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
                                 <div className="flex p-1 bg-slate-100 rounded-xl">
                                     <button onClick={() => setImportMethod('upload')} className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${importMethod === 'upload' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>FILE</button>
                                     <button onClick={() => setImportMethod('paste')} className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${importMethod === 'paste' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>TEXT</button>
@@ -188,7 +226,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                             <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
                                 {importMethod === 'upload' ? (
-                                    <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} />
+                                    <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} showAiToggle={true} />
                                 ) : (
                                     <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -214,7 +252,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         <textarea 
                                             value={textInput} 
                                             onChange={e => setTextInput(e.target.value)} 
-                                            placeholder="Paste CSV rows..." 
+                                            placeholder="Paste CSV rows here..." 
                                             className="w-full h-32 p-3 font-mono text-[10px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white resize-none" 
                                         />
                                         <button 
@@ -239,7 +277,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                             <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
                             <p className="font-black text-slate-800 text-lg">{progressMessage}</p>
-                            <p className="text-xs text-slate-400 mt-2">Gemini is synthesizing patterns and categorizing based on your preferences...</p>
                         </div>
                     ) : (
                         <ResultsDisplay appState={appState as any} error={error} progressMessage={progressMessage} transactions={[]} duplicatesIgnored={0} duplicatesImported={0} onClear={() => setAppState('idle')} />
@@ -248,11 +285,9 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
         )}
 
-        {/* Bottom: Ledger Activity or Verification View (Full Width) */}
         <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             {appState === 'verifying_import' ? (
                 <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                    {/* Fixed: Pass missing merchants and locations props */}
                     <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} merchants={merchants} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
                 </div>
             ) : appState === 'post_import_edit' ? (

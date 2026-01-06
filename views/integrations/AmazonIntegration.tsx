@@ -4,6 +4,7 @@ import type { AmazonMetric, AmazonReportType, AmazonVideo, AmazonCCType } from '
 import { CloudArrowUpIcon, BarChartIcon, TableIcon, BoxIcon, DeleteIcon, CheckCircleIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, SearchCircleIcon, ExternalLinkIcon, SparklesIcon, TrendingUpIcon, LightBulbIcon, InfoIcon, HeartIcon, CalendarIcon, WrenchIcon, AddIcon, VideoIcon, ShieldCheckIcon } from '../../components/Icons';
 import { parseAmazonReport, parseAmazonVideos } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
+import FileUpload from '../../components/FileUpload';
 
 interface AmazonIntegrationProps {
     metrics: AmazonMetric[];
@@ -68,7 +69,6 @@ const InfoBubble: React.FC<{ title: string; content: string }> = ({ title, conte
     </div>
 );
 
-// Helper for multi-title hierarchy and hover
 const MultiTitleDisplay: React.FC<{ metric: AmazonMetric }> = ({ metric }) => {
     const titles = useMemo(() => {
         const list: { type: string, value: string }[] = [];
@@ -83,7 +83,6 @@ const MultiTitleDisplay: React.FC<{ metric: AmazonMetric }> = ({ metric }) => {
             if (metric.ccTitle) list.push({ type: 'CC Campaign', value: metric.ccTitle });
         }
         
-        // Ensure unique values
         const seen = new Set<string>();
         return list.filter(item => {
             const val = item.value.trim();
@@ -136,25 +135,21 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [activeTab, setActiveTab] = useState<'dashboard' | 'insights' | 'data' | 'tools' | 'upload'>('dashboard');
     const [isUploading, setIsUploading] = useState(false);
     const [previewMetrics, setPreviewMetrics] = useState<AmazonMetric[]>([]);
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [uploadYear, setUploadYear] = useState<string>('');
     const [uploadType, setUploadType] = useState<AmazonReportType>('unknown');
     const [uploadCCType, setUploadCCType] = useState<AmazonCCType | 'unknown'>('unknown');
 
-    // Filtering & Sorting State
     const [searchTerm, setSearchTerm] = useState('');
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const [filterType, setFilterType] = useState<string>('');
     
-    // Insights & Dashboard Stats State
     const [insightsReportYear, setInsightsReportYear] = useState<string>('all');
     const [insightsCreatedYear, setInsightsCreatedYear] = useState<string>('all');
     const [insightsLimit, setInsightsLimit] = useState<number>(50);
     const [insightsSortKey, setInsightsSortKey] = useState<keyof AmazonMetric>('revenue');
     const [insightsSortDir, setInsightsSortDir] = useState<'asc' | 'desc'>('desc');
 
-    // Data Tab State
     const [dataSortKey, setDataSortKey] = useState<keyof AmazonMetric>('saleDate');
     const [dataSortDir, setDataSortDir] = useState<'asc' | 'desc'>('desc');
     const [dataCreatedYearFilter, setDataCreatedYearFilter] = useState<string>('all');
@@ -162,14 +157,11 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
     const [currentPage, setCurrentPage] = useState(1);
     const [rowsPerPage, setRowsPerPage] = useState(100);
 
-    // Tools Tab State
     const [isUploadingVideos, setIsUploadingVideos] = useState(false);
-    const videoInputRef = useRef<HTMLInputElement>(null);
     const [matchingMatches, setMatchingMatches] = useState<MatchResult[]>([]);
     const [isScanningMatches, setIsScanningMatches] = useState(false);
     const [isMatchModalOpen, setIsMatchModalOpen] = useState(false);
     
-    // Video Linker Specific State
     const [videoMatches, setVideoMatches] = useState<VideoMatchResult[]>([]);
     const [isScanningVideos, setIsScanningVideos] = useState(false);
     const [videoScanProgress, setVideoScanProgress] = useState<{ current: number; total: number } | null>(null);
@@ -177,7 +169,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     const [mergeProgress, setMergeProgress] = useState<{ current: number; total: number } | null>(null);
 
-    // Helper for complex type filtering
     const matchesReportType = (metric: AmazonMetric, selectedFilter: string) => {
         if (!selectedFilter) return true;
         if (selectedFilter === 'creator_connections_onsite') return metric.reportType === 'creator_connections' && metric.creatorConnectionsType === 'onsite';
@@ -201,7 +192,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         };
     }, [metrics]);
 
-    // Aggregate metrics for Dashboard and Insights
     const productAggregateMap = useMemo(() => {
         const map = new Map<string, AmazonMetric>();
         
@@ -312,18 +302,16 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
 
     useEffect(() => { setCurrentPage(1); }, [filterType, dataCreatedYearFilter, rowsPerPage, isMergedAsins]);
 
-    // Upload Handlers
-    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
+    const processReportFiles = async (files: File[]) => {
         setIsUploading(true);
+        const file = files[0];
+        if (!file) return;
         try {
             const newMetrics = await parseAmazonReport(file, (msg) => console.log(msg));
             if (newMetrics.length > 0) {
                 setPreviewMetrics(newMetrics);
                 const fileName = file.name.toLowerCase();
                 
-                // --- IMPROVED YEAR DETECTION FROM FILENAME ---
                 const rangeMatch = fileName.match(/(20\d{2})[-_](20\d{2})/);
                 let detectedYear = '';
                 
@@ -367,7 +355,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             alert("Failed to parse report."); 
         } finally { 
             setIsUploading(false); 
-            if (fileInputRef.current) fileInputRef.current.value = ''; 
         }
     };
 
@@ -404,8 +391,8 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         }
     };
 
-    const handleVideoImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+    const handleVideoImport = async (files: File[]) => {
+        const file = files[0];
         if (!file) return;
         setIsScanningVideos(true);
         try {
@@ -477,8 +464,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
             alert("Failed to parse videos. " + (error instanceof Error ? error.message : ""));
             setIsScanningVideos(false);
             setVideoScanProgress(null);
-        } finally {
-            if (videoInputRef.current) videoInputRef.current.value = '';
         }
     };
 
@@ -556,7 +541,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         else { setDataSortKey(key); setDataSortDir('desc'); }
     };
 
-    // Fixed: Added string cast to key to resolve assignment mismatch
     const getSortIcon = (key: keyof AmazonMetric, current: string, dir: string) => {
         if (String(current) !== String(key)) return <SortIcon className="w-3 h-3 text-slate-300 opacity-50" />;
         return dir === 'asc' ? <SortIcon className="w-3 h-3 text-indigo-600 transform rotate-180" /> : <SortIcon className="w-3 h-3 text-indigo-600" />;
@@ -688,19 +672,15 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <tr>
                                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product / Video Information</th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('clicks')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('orderedItems')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Ordered {getSortIcon('orderedItems', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('conversionRate')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Conv. % {getSortIcon('conversionRate', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('revenue')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Earnings {getSortIcon('revenue', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                         </tr>
@@ -811,20 +791,16 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('saleDate')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center gap-1">Date {getSortIcon('saleDate', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Type</th>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('productTitle')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center gap-1">Product / Video {getSortIcon('productTitle', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('clicks')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('revenue')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('revenue', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                         </tr>
@@ -921,7 +897,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 {activeTab === 'tools' && (
                     <div className="space-y-6 pb-20">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                            {/* CC Linker */}
                             <div className="bg-white p-8 rounded-3xl border-2 border-slate-200 space-y-6 shadow-sm">
                                 <div className="flex items-center gap-3">
                                     <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600"><BoxIcon className="w-6 h-6" /></div>
@@ -953,7 +928,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 </button>
                             </div>
 
-                            {/* Video Linker */}
                             <div className="bg-white p-8 rounded-3xl border-2 border-slate-200 space-y-6 shadow-sm">
                                 <div className="flex items-center gap-3">
                                     <div className="p-3 bg-red-50 rounded-2xl text-red-600"><VideoIcon className="w-6 h-6" /></div>
@@ -965,23 +939,13 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 <p className="text-sm text-slate-600 leading-relaxed">
                                     Imports video reports to associate Video Titles, Durations, and Upload Dates with <strong className="text-slate-800">Onsite sales records ONLY</strong>. Matches by ASIN or normalized title.
                                 </p>
-                                <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-300 rounded-2xl p-8 bg-slate-50 group hover:border-red-400 transition-colors">
-                                    <CloudArrowUpIcon className="w-12 h-12 text-slate-300 group-hover:text-red-400 mb-4 transition-colors" />
-                                    <input type="file" ref={videoInputRef} accept=".csv" onChange={handleVideoImport} className="hidden" />
-                                    <button onClick={() => videoInputRef.current?.click()} disabled={isScanningVideos} className="px-8 py-3 bg-slate-900 text-white font-black rounded-xl hover:bg-black flex items-center gap-2 shadow-lg">
-                                        {isScanningVideos ? (
-                                            <>
-                                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                Scanning...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <SearchCircleIcon className="w-5 h-5" />
-                                                Select Video CSV
-                                            </>
-                                        )}
-                                    </button>
-                                </div>
+                                <FileUpload 
+                                    onFileUpload={handleVideoImport} 
+                                    disabled={isScanningVideos} 
+                                    label="Click or drag files to import"
+                                    multiple={false}
+                                    acceptedFileTypes=".csv"
+                                />
                             </div>
                         </div>
                     </div>
@@ -1012,18 +976,18 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                 </div>
                             </div>
                         ) : (
-                            <div className="bg-white p-8 rounded-[2rem] border-2 border-dashed border-slate-300 flex flex-col items-center justify-center text-center space-y-6">
-                                <div className="p-6 bg-orange-50 rounded-full text-orange-500"><CloudArrowUpIcon className="w-12 h-12" /></div>
-                                <h3 className="text-2xl font-black text-slate-800">Import Earnings</h3>
-                                <input type="file" ref={fileInputRef} accept=".csv,.tsv,.xlsx,.xls" onChange={handleFileUpload} className="hidden" />
-                                <button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="px-10 py-4 bg-orange-600 text-white font-black rounded-2xl hover:bg-orange-700 shadow-xl">{isUploading ? 'Analyzing...' : 'Choose File'}</button>
-                            </div>
+                            <FileUpload 
+                                onFileUpload={processReportFiles} 
+                                disabled={isUploading} 
+                                label="Click or drag files to import"
+                                multiple={false}
+                                acceptedFileTypes=".csv"
+                            />
                         )}
                     </div>
                 )}
             </div>
 
-            {/* CC MATCH CONFIRMATION MODAL */}
             {isMatchModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -1080,7 +1044,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 </div>
             )}
 
-            {/* VIDEO SCAN PROGRESS OVERLAY */}
             {isScanningVideos && videoScanProgress && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center space-y-6">
@@ -1100,7 +1063,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 </div>
             )}
 
-            {/* VIDEO MATCH CONFIRMATION MODAL */}
             {isVideoMatchModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -1157,7 +1119,6 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                 </div>
             )}
 
-            {/* MERGE PROGRESS OVERLAY */}
             {mergeProgress && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center space-y-6">

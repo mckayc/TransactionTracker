@@ -1,31 +1,24 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
-import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Merchant, Location, User, Payee, ReconciliationRule, SystemSettings } from '../types';
+import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Merchant, Location, User, Payee, ReconciliationRule, SystemSettings, BlueprintExample } from '../types';
 
 const DEFAULT_MODEL = 'gemini-3-flash-preview';
 
 /**
- * Robust API Key Retrieval.
+ * Generates the model name based on system settings.
  */
-const getApiKey = (): string => {
-    const key = (globalThis as any).process?.env?.API_KEY || (window as any).__FINPARSER_CONFIG__?.API_KEY || '';
-    return key.trim();
-};
-
 const getModel = (settings?: SystemSettings): string => {
     return settings?.aiModel || DEFAULT_MODEL;
 };
 
 /**
  * Generates configuration based on the model type.
- * Flash/Lite models get thinking budget disabled to save quota.
+ * Pro models allow thinking tokens; others disable them to save quota.
  */
 const getModelConfig = (model: string, systemInstruction?: string) => {
     const config: any = {
         systemInstruction,
     };
 
-    // Pro models (Gemini 3 Pro) allow thinking, others (Flash/Lite) should have it disabled to save quota
     if (!model.includes('pro')) {
         config.thinkingConfig = { thinkingBudget: 0 };
     }
@@ -33,18 +26,20 @@ const getModelConfig = (model: string, systemInstruction?: string) => {
     return config;
 };
 
+/**
+ * Checks if the API Key is present in the environment.
+ */
 export const hasApiKey = (): boolean => {
-    return getApiKey().length > 0;
+    return !!process.env.API_KEY;
 };
 
 /**
- * Connectivity Test
+ * Connectivity Test for API Key and model accessibility.
  */
 export const validateApiKeyConnectivity = async (settings?: SystemSettings): Promise<{ success: boolean, message: string }> => {
-    const key = getApiKey();
-    if (!key) return { success: false, message: "No API Key found in environment." };
+    if (!process.env.API_KEY) return { success: false, message: "No API Key found in environment." };
     
-    const ai = new GoogleGenAI({ apiKey: key });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
     
     try {
@@ -63,6 +58,9 @@ export const validateApiKeyConnectivity = async (settings?: SystemSettings): Pro
     }
 };
 
+/**
+ * Converts a browser File object to a GenAI inlineData part.
+ */
 const fileToGenerativePart = async (file: File) => {
     return new Promise<{ inlineData: { data: string, mimeType: string } }>((resolve, reject) => {
         const reader = new FileReader();
@@ -77,6 +75,87 @@ const fileToGenerativePart = async (file: File) => {
 };
 
 /**
+ * Shared schema for transaction extraction.
+ */
+const extractSchema = {
+    type: Type.OBJECT,
+    properties: {
+        transactions: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    date: { type: Type.STRING, description: 'ISO 8601 date string YYYY-MM-DD' },
+                    description: { type: Type.STRING, description: 'Cleaned transaction description' },
+                    amount: { type: Type.NUMBER, description: 'Absolute amount value' },
+                    category: { type: Type.STRING, description: 'Suggested category name' }
+                },
+                required: ['date', 'description', 'amount']
+            }
+        }
+    }
+};
+
+/* Added extractTransactionsFromFiles to handle PDF and image statement extraction */
+export const extractTransactionsFromFiles = async (
+    files: File[], 
+    accountId: string, 
+    transactionTypes: TransactionType[], 
+    categories: Category[], 
+    onProgress: (msg: string) => void,
+    settings?: SystemSettings
+): Promise<RawTransaction[]> => {
+    onProgress("Scanning statement contents...");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const model = getModel(settings);
+    
+    const parts = await Promise.all(files.map(f => fileToGenerativePart(f)));
+    const systemInstruction = "You are a precision financial data extractor. Extract every transaction from the provided files exactly as they appear.";
+    
+    const response = await ai.models.generateContent({
+        model,
+        contents: { parts: [...parts, { text: "Extract transactions in JSON format." }] },
+        config: {
+            ...getModelConfig(model, systemInstruction),
+            responseMimeType: 'application/json',
+            responseSchema: extractSchema
+        }
+    });
+    
+    const parsed = JSON.parse(response.text || '{"transactions":[]}');
+    return parsed.transactions.map((tx: any) => ({ ...tx, accountId }));
+};
+
+/* Added extractTransactionsFromText to handle pasted text statement extraction */
+export const extractTransactionsFromText = async (
+    text: string, 
+    accountId: string, 
+    transactionTypes: TransactionType[], 
+    categories: Category[], 
+    onProgress: (msg: string) => void,
+    settings?: SystemSettings
+): Promise<RawTransaction[]> => {
+    onProgress("Parsing text input...");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const model = getModel(settings);
+    
+    const systemInstruction = "You are a financial data extractor. Extract all transactions from the provided text into a structured JSON list.";
+    
+    const response = await ai.models.generateContent({
+        model,
+        contents: text,
+        config: {
+            ...getModelConfig(model, systemInstruction),
+            responseMimeType: 'application/json',
+            responseSchema: extractSchema
+        }
+    });
+    
+    const parsed = JSON.parse(response.text || '{"transactions":[]}');
+    return parsed.transactions.map((tx: any) => ({ ...tx, accountId }));
+};
+
+/**
  * AI Logic Engine for Rule Generation.
  */
 export const generateRulesFromData = async (
@@ -88,12 +167,10 @@ export const generateRulesFromData = async (
     users: User[],
     promptContext?: string,
     settings?: SystemSettings,
-    existingRules: ReconciliationRule[] = []
+    existingRules: ReconciliationRule[] = [],
+    blueprintExamples: BlueprintExample[] = []
 ): Promise<ReconciliationRule[]> => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    
-    const ai = new GoogleGenAI({ apiKey: key });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
     
     let sampleParts: any[] = [];
@@ -108,30 +185,20 @@ export const generateRulesFromData = async (
     const slimPayees = payees.slice(0, 100).map(p => ({ id: p.id, name: p.name }));
     const slimRules = existingRules.slice(0, 50).map(r => ({ name: r.name, conditions: r.conditions.map(c => `${c.field} ${c.operator} ${c.value}`) }));
 
+    const blueprintInstruction = blueprintExamples.length > 0 
+        ? `STRICT BLUEPRINT REQUIREMENT: Use these examples as your logic template for classification style and naming:\n${JSON.stringify(blueprintExamples)}`
+        : '';
+
     const systemInstruction = `You are a Senior Financial Architect & Data Normalizer.
     
     TASK: Generate classification rules in JSON.
     
+    ${blueprintInstruction}
+
     CRITICAL: DUPLICATE PREVENTION
     - I have provided a list of EXISTING_RULES. 
     - DO NOT suggest a rule if the logic (Description Contains X) is already covered.
-    - If a rule already handles "OREM UT", do not suggest another one for "OREM UT".
     
-    VERBATIM REQUIREMENT:
-    - The 'originalDescription' field MUST be the EXACT verbatim line from the input data.
-    - DO NOT truncate the original line. If the line is "RED RIBBON TUKWILA TUKWILA WA", the originalDescription must be "RED RIBBON TUKWILA TUKWILA WA".
-    
-    INTENT-DRIVEN RULES:
-    - If user mentions "Location": Generate rules with scope "locationId" and suggestedLocationName.
-    - If user mentions "Merchant": Generate rules with scope "merchantId" and suggestedMerchantName.
-    - VERIFY logic: Ensure the Location you suggest actually matches the text in the condition. (e.g. Do not map "OREM UT" text to "Tukwila" location).
-    
-    NORMALIZATION LOGIC:
-    1. SNIPPET VS ENTITY: Snippet is raw text, Entity is human-readable.
-    2. KEYWORD EXTRACTION: Minimal unique identifying keyword.
-    3. LOCATION EXPANSION: Abbreviations to "City, ST".
-    4. SCOPE ASSIGNMENT: 'description', 'payeeId', 'merchantId', 'locationId'.
-
     CONTEXT: ${promptContext || 'Identify recurring patterns and merchants.'}
     CATEGORIES: ${JSON.stringify(slimCategories)}
     PAYEES: ${JSON.stringify(slimPayees)}
@@ -167,7 +234,7 @@ export const generateRulesFromData = async (
                         suggestedMerchantName: { type: Type.STRING },
                         setLocationId: { type: Type.STRING },
                         suggestedLocationName: { type: Type.STRING },
-                        originalDescription: { type: Type.STRING, description: "The EXACT VERBATIM line from the input data (no cleaning)." }
+                        originalDescription: { type: Type.STRING }
                     },
                     required: ['name', 'conditions', 'scope', 'originalDescription']
                 }
@@ -199,182 +266,46 @@ export const generateRulesFromData = async (
             }))
         }));
     } catch (e: any) {
-        console.error("Rule Forge Error:", e);
-        if (e.message?.includes("429")) throw new Error(`AI Rate limit reached for ${model}. Wait 60s or switch models in Settings.`);
         throw new Error(e.message || "AI Analysis failed.");
     }
 };
 
-/**
- * AI Transaction Extraction from Documents.
- */
-export const extractTransactionsFromFiles = async (
-    files: File[], 
-    accountId: string, 
-    transactionTypes: TransactionType[], 
-    categories: Category[], 
-    onProgress: (msg: string) => void,
+/* Added getAiFinancialAnalysis to stream chatbot responses with financial context */
+export const getAiFinancialAnalysis = async (
+    prompt: string, 
+    contextData: object, 
     settings?: SystemSettings
-): Promise<RawTransaction[]> => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+) => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
-    
-    onProgress("AI is performing forensic analysis of documents...");
-    const fileParts = await Promise.all(files.map(fileToGenerativePart));
-    
-    const categoryNames = categories.map(c => c.name).join(', ');
-    const systemInstruction = `You are a Forensic Accountant. 
-    TASK: Please look over the document and based on the data assign an appropriate description, merchant or payee and category.
-    AVAILABLE CATEGORIES: ${categoryNames}.
-    FORMAT: Date (YYYY-MM-DD), cleaned Description, exact Amount, Type (income/expense).
-    PRECISION: Match amounts exactly. Return 'originalDescription' as the verbatim line from the doc.`;
-
-    const schema = {
-        type: Type.OBJECT,
-        properties: {
-            transactions: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        date: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        originalDescription: { type: Type.STRING },
-                        amount: { type: Type.NUMBER },
-                        category: { type: Type.STRING },
-                        type: { type: Type.STRING, description: "income or expense" }
-                    },
-                    required: ["date", "description", "amount", "type", "originalDescription"]
-                }
-            }
-        },
-        required: ["transactions"]
-    };
-
-    const response = await ai.models.generateContent({
+    const chat = ai.chats.create({
         model,
-        contents: { parts: [...fileParts, { text: "Extract all financial records from these documents." }] },
         config: {
-            ...getModelConfig(model, systemInstruction),
-            responseMimeType: "application/json",
-            responseSchema: schema
-        }
-    });
-
-    const result = JSON.parse(response.text || '{"transactions": []}');
-    return result.transactions.map((tx: any) => ({
-        ...tx,
-        accountId,
-        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'income')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'expense')?.id || 'expense')
-    }));
-};
-
-/**
- * AI Transaction Extraction from Text.
- */
-export const extractTransactionsFromText = async (
-    text: string, 
-    accountId: string, 
-    transactionTypes: TransactionType[], 
-    categories: Category[], 
-    onProgress: (msg: string) => void,
-    settings?: SystemSettings
-): Promise<RawTransaction[]> => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
-    const model = getModel(settings);
-    onProgress("AI is parsing text records...");
-    
-    const categoryNames = categories.map(c => c.name).join(', ');
-    const systemInstruction = `You are an Expert Accountant. 
-    TASK: Please look over the text and based on the data assign an appropriate description, merchant or payee and category.
-    AVAILABLE CATEGORIES: ${categoryNames}. Return 'originalDescription' as verbatim line.`;
-
-    const schema = {
-        type: Type.OBJECT,
-        properties: {
-            transactions: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        date: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        originalDescription: { type: Type.STRING },
-                        amount: { type: Type.NUMBER },
-                        category: { type: Type.STRING },
-                        type: { type: Type.STRING }
-                    },
-                    required: ["date", "description", "amount", "type", "originalDescription"]
-                }
-            }
+            systemInstruction: `You are a helpful financial analytics assistant. Use the provided context data to answer the user's questions about their budget and performance. CONTEXT: ${JSON.stringify(contextData)}`,
+            ...getModelConfig(model)
         },
-        required: ["transactions"]
-    };
-
-    const response = await ai.models.generateContent({
-        model,
-        contents: `Analyze and extract from: ${text}`,
-        config: {
-            ...getModelConfig(model, systemInstruction),
-            responseMimeType: "application/json",
-            responseSchema: schema
-        }
     });
-    
-    const result = JSON.parse(response.text || '{"transactions": []}');
-    return result.transactions.map((tx: any) => ({
-        ...tx,
-        accountId,
-        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'income')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'expense')?.id || 'expense')
-    }));
+    return await chat.sendMessageStream({ message: prompt });
 };
 
-export const getAiFinancialAnalysis = async (query: string, contextData: any, settings?: SystemSettings) => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
-    const model = getModel(settings);
-    
-    const optimizedContext = {
-        transactions: (contextData.transactions || []).slice(0, 50).map((t: any) => ({
-            date: t.date,
-            desc: t.description,
-            amt: t.amount,
-            cat: t.categoryId
-        }))
-    };
-
-    const systemInstruction = "You are FinParser AI. Analyze the user data and provide helpful financial guidance. Use Markdown.";
-
-    const stream = await ai.models.generateContentStream({
-        model,
-        contents: `CONTEXT:\n${JSON.stringify(optimizedContext)}\n\nUSER QUERY: ${query}`,
-        config: getModelConfig(model, systemInstruction)
-    });
-    return stream;
-};
-
+/* Added healDataSnippet to repair corrupted backup JSON via AI */
 export const healDataSnippet = async (text: string, settings?: SystemSettings): Promise<any> => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
     const response = await ai.models.generateContent({
         model,
-        contents: `Repair this malformed JSON snippet or extract valid JSON from it: ${text}`,
-        config: { ...getModelConfig(model), responseMimeType: 'application/json' }
+        contents: `The following content is meant to be a valid backup of my accounting app. It is currently corrupted or unstructured. Repair it into a valid JSON object matching the app's structure.\n\nCONTENT:\n${text}`,
+        config: {
+            ...getModelConfig(model),
+            responseMimeType: 'application/json'
+        }
     });
     return JSON.parse(response.text || '{}');
 };
 
+/* Added askAiAdvisor for general step-by-step business guidance */
 export const askAiAdvisor = async (prompt: string, settings?: SystemSettings): Promise<string> => {
-    const key = getApiKey();
-    if (!key) return "API Key required.";
-    const ai = new GoogleGenAI({ apiKey: key });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
     const response = await ai.models.generateContent({
         model,
@@ -384,172 +315,169 @@ export const askAiAdvisor = async (prompt: string, settings?: SystemSettings): P
     return response.text || '';
 };
 
+/* Added getIndustryDeductions to generate tax deduction lists for specific industries */
 export const getIndustryDeductions = async (industry: string, settings?: SystemSettings): Promise<string[]> => {
-    const key = getApiKey();
-    if (!key) return [];
-    const ai = new GoogleGenAI({ apiKey: key });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
-    const schema = {
-        type: Type.OBJECT,
-        properties: { deductions: { type: Type.ARRAY, items: { type: Type.STRING } } },
-        required: ["deductions"]
-    };
     const response = await ai.models.generateContent({
         model,
-        contents: `List tax deductions for the ${industry} industry.`,
-        config: { ...getModelConfig(model), responseMimeType: 'application/json', responseSchema: schema }
+        contents: `What are common business tax deductions for someone in the ${industry} industry? Provide a concise list.`,
+        config: {
+            ...getModelConfig(model, "You are a professional business tax consultant."),
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    deductions: { type: Type.ARRAY, items: { type: Type.STRING } }
+                }
+            }
+        }
     });
     const parsed = JSON.parse(response.text || '{"deductions": []}');
     return parsed.deductions;
 };
 
-export const streamTaxAdvice = async (messages: ChatMessage[], profile: BusinessProfile, settings?: SystemSettings) => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+/* Added streamTaxAdvice to handle multi-turn tax consultation chats */
+export const streamTaxAdvice = async (
+    messages: ChatMessage[], 
+    profile: BusinessProfile, 
+    settings?: SystemSettings
+) => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
-    
-    const systemInstruction = `You are a tax advisor for a ${profile.info.businessType || 'business'}. Use the context provided. Use Markdown.`;
-
-    const stream = await ai.models.generateContentStream({
+    const chat = ai.chats.create({
         model,
-        contents: messages.map(m => ({ role: m.role === 'user' ? 'user' : 'model', parts: [{ text: m.content }] })),
-        config: getModelConfig(model, systemInstruction)
+        config: {
+            systemInstruction: `You are a specialized tax advisor for business owners. Business profile: ${JSON.stringify(profile)}`,
+            ...getModelConfig(model)
+        },
     });
-    return stream;
+    
+    const lastMsg = messages[messages.length - 1].content;
+    return await chat.sendMessageStream({ message: lastMsg });
 };
 
+/* Added auditTransactions to scan ledger for discrepancies or missing links */
 export const auditTransactions = async (
     transactions: Transaction[], 
-    transactionTypes: TransactionType[], 
+    types: TransactionType[], 
     categories: Category[], 
-    auditType: string,
+    auditType: string, 
     examples?: Transaction[][],
     settings?: SystemSettings
 ): Promise<AuditFinding[]> => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
     
-    const slimTxs = transactions.slice(0, 100).map(t => ({
-        id: t.id,
-        date: t.date,
-        desc: t.description,
-        amt: t.amount,
-        cat: categories.find(c => c.id === t.categoryId)?.name || 'Other'
-    }));
-
-    const schema = {
-        type: Type.OBJECT,
-        properties: {
-            findings: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        id: { type: Type.STRING },
-                        title: { type: Type.STRING },
-                        reason: { type: Type.STRING },
-                        affectedTransactionIds: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        suggestedChanges: {
+    const slimTxs = transactions.slice(0, 150).map(t => ({ id: t.id, date: t.date, desc: t.description, amt: t.amount }));
+    
+    const prompt = `Task: Perform a ${auditType} audit on these transactions. Look for patterns, missing links, or errors. ${examples ? `Refer to these example groups for training your linking logic: ${JSON.stringify(examples)}` : ''}\n\nDATA:\n${JSON.stringify(slimTxs)}`;
+    
+    const response = await ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+            ...getModelConfig(model, "You are a meticulous financial auditor with an eye for patterns."),
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    findings: {
+                        type: Type.ARRAY,
+                        items: {
                             type: Type.OBJECT,
                             properties: {
-                                categoryId: { type: Type.STRING },
-                                typeId: { type: Type.STRING }
+                                id: { type: Type.STRING },
+                                title: { type: Type.STRING },
+                                reason: { type: Type.STRING },
+                                affectedTransactionIds: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                suggestedChanges: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        categoryId: { type: Type.STRING },
+                                        typeId: { type: Type.STRING }
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
-        },
-        required: ["findings"]
-    };
-
-    const response = await ai.models.generateContent({
-        model,
-        contents: `Audit these transactions for ${auditType}: ${JSON.stringify(slimTxs)}`,
-        config: {
-            ...getModelConfig(model, "You are a forensic auditor. Find duplicates, errors, or linked payments."),
-            responseMimeType: "application/json",
-            responseSchema: schema
         }
     });
-
-    const parsed = JSON.parse(response.text || '{"findings": []}');
+    
+    const parsed = JSON.parse(response.text || '{"findings":[]}');
     return parsed.findings;
 };
 
-export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void, settings?: SystemSettings) => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+/* Added analyzeBusinessDocument to summarize and extract key info from PDF/Image documents */
+export const analyzeBusinessDocument = async (
+    file: File, 
+    onProgress: (msg: string) => void, 
+    settings?: SystemSettings
+) => {
+    onProgress("Extracting document semantic data...");
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
+    const filePart = await fileToGenerativePart(file);
     
-    onProgress("AI is reading document...");
-    const part = await fileToGenerativePart(file);
-    
-    const schema = {
-        type: Type.OBJECT,
-        properties: {
-            documentType: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            keyDates: { type: Type.ARRAY, items: { type: Type.STRING } }
-        },
-        required: ["documentType", "summary"]
-    };
-
     const response = await ai.models.generateContent({
         model,
-        contents: { parts: [part, { text: "Analyze document purposes." }] },
+        contents: { parts: [filePart, { text: "Analyze this business document, summarize it, and find important dates." }] },
         config: {
-            ...getModelConfig(model),
-            responseMimeType: "application/json",
-            responseSchema: schema
+            ...getModelConfig(model, "You are an intelligent business document processor."),
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    documentType: { type: Type.STRING },
+                    summary: { type: Type.STRING },
+                    keyDates: { type: Type.ARRAY, items: { type: Type.STRING } }
+                }
+            }
         }
     });
-
+    
     return JSON.parse(response.text || '{}');
 };
 
+/* Added generateFinancialStrategy to build custom roadmap based on goals and ledger data */
 export const generateFinancialStrategy = async (
     transactions: Transaction[], 
     goals: FinancialGoal[], 
     categories: Category[], 
-    profile: BusinessProfile,
+    profile: BusinessProfile, 
     settings?: SystemSettings
 ) => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const model = getModel(settings);
     
-    const context = { spending: transactions.slice(0, 40).map(t => ({ d: t.date, a: t.amount, c: t.categoryId })), goals, profile };
-
-    const schema = {
-        type: Type.OBJECT,
-        properties: {
-            strategy: { type: Type.STRING },
-            suggestedBudgets: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: { categoryId: { type: Type.STRING }, limit: { type: Type.NUMBER } }
-                }
-            }
-        },
-        required: ["strategy", "suggestedBudgets"]
-    };
-
+    const prompt = `Develop a strategy for these goals: ${JSON.stringify(goals)}. Base it on this transaction history sample: ${JSON.stringify(transactions.slice(0, 75))}. Business profile: ${JSON.stringify(profile)}`;
+    
     const response = await ai.models.generateContent({
         model,
-        contents: `Generate strategy for: ${JSON.stringify(context)}`,
+        contents: prompt,
         config: {
-            ...getModelConfig(model, "You are a high-level CFO."),
-            responseMimeType: "application/json",
-            responseSchema: schema
+            ...getModelConfig(model, "You are a world-class financial architect and strategy planner."),
+            responseMimeType: 'application/json',
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    strategy: { type: Type.STRING },
+                    suggestedBudgets: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                categoryId: { type: Type.STRING },
+                                limit: { type: Type.NUMBER }
+                            }
+                        }
+                    }
+                }
+            }
         }
     });
-
+    
     return JSON.parse(response.text || '{}');
 };

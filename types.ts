@@ -142,6 +142,18 @@ export interface ReconciliationRule {
     suggestedUserName?: string;
 }
 
+export interface BlueprintExample {
+    rawLine: string;
+    suggestedRule: Partial<ReconciliationRule>;
+}
+
+export interface BlueprintTemplate {
+    id: string;
+    name: string;
+    examples: BlueprintExample[];
+    lastUsed?: string;
+}
+
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface SubTask {
