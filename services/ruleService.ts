@@ -3,7 +3,7 @@ import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Ac
 
 /**
  * Generates a stable signature for a rule based on its logic and effects.
- * Used to detect duplicate rules.
+ * Used to detect duplicate rules regardless of name or ID.
  */
 export const getRuleSignature = (rule: ReconciliationRule): string => {
     const conditions = (rule.conditions || [])
