@@ -14,7 +14,8 @@ type VerifiableTransaction = RawTransaction & {
 };
 
 interface ImportVerificationProps {
-    initialTransactions: VerifiableTransaction[];
+    // rawTransactions should be the pure output from the parser
+    rawTransactions: RawTransaction[];
     onComplete: (verifiedTransactions: (RawTransaction & { categoryId: string })[]) => void;
     onCancel: () => void;
     accounts: Account[];
@@ -152,7 +153,7 @@ const RuleInspectorDrawer: React.FC<{
 };
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
-    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, merchants, locations, users, tags, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, existingTransactions, rules
+    rawTransactions, onComplete, onCancel, accounts, categories, transactionTypes, payees, merchants, locations, users, tags, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, existingTransactions, rules
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [sortKey, setSortKey] = useState<SortKey>('date');
@@ -161,6 +162,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const [inspectedRule, setInspectedRule] = useState<ReconciliationRule | null>(null);
     const [ruleContextTx, setRuleContextTx] = useState<VerifiableTransaction | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [userManualOverrides, setUserManualOverrides] = useState<Record<string, Partial<VerifiableTransaction>>>({});
 
     // Inline Rule Creator State
     const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
@@ -169,65 +171,60 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
     const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
     const tagMap = useMemo(() => new Map(tags.map(t => [t.id, t])), [tags]);
+    const categoryNameToIdMap = useMemo(() => new Map(categories.map(c => [c.name.toLowerCase(), c.id])), [categories]);
+    const otherCategoryId = useMemo(() => categoryNameToIdMap.get('other') || categories[0]?.id || '', [categoryNameToIdMap, categories]);
 
-    // Initial Process
+    // Reactive Rule Application:
+    // This is the core logic that makes "Save & Apply" work.
+    // It runs from the truly raw data every time the rules or overrides change.
     useEffect(() => {
+        if (!rawTransactions || rawTransactions.length === 0) return;
+
         const dbSigs = new Set(existingTransactions.map(t => getTransactionSignature(t)));
-        const processed = initialTransactions.filter(t => Math.abs(t.amount) > 0.001).map(tx => {
-            const sig = getTransactionSignature(tx);
+        const defaultUserId = users.find(u => u.isDefault)?.id || users[0]?.id || 'user_primary';
+
+        // 1. Prepare raw base with consistent IDs and conflict detection
+        const baseTransactions = rawTransactions.map((raw, idx) => {
+            const sig = getTransactionSignature(raw);
             const conflict = dbSigs.has(sig) ? 'database' : null;
             
-            let finalPayeeId = tx.payeeId;
-            if (tx.payeeId?.startsWith('guess_')) {
-                const guessedName = tx.payeeId.replace('guess_', '');
-                const match = payees.find(p => p.name.toLowerCase() === guessedName.toLowerCase());
-                finalPayeeId = match ? match.id : undefined;
-            }
+            // Initial categorization from data if possible
+            const aiCategoryName = (raw.category || '').toLowerCase();
+            const initialCatId = categoryNameToIdMap.get(aiCategoryName) || otherCategoryId;
 
-            return { ...tx, payeeId: finalPayeeId, conflictType: conflict as any, isIgnored: tx.isIgnored || !!conflict };
-        });
-        setTransactions(processed);
-    }, [initialTransactions, existingTransactions, payees]);
-
-    // Re-apply rules when the global rules prop changes (e.g. after "Save and Run")
-    useEffect(() => {
-        if (transactions.length === 0) return;
-        
-        // Before re-applying, we must ensure we are applying against the most current raw data
-        // but preserving user overrides if necessary. For "Save & Apply" we want rules to take priority.
-        const currentTransactionsRaw = transactions.map(t => {
-            // Find original template from initialTransactions to ensure we aren't carrying over 
-            // values set by rules that were just deleted or changed.
-            const original = initialTransactions.find(it => it.tempId === t.tempId) || t;
-            return {
-                ...original,
-                // Preserving the current description as it might have been cleaned during extraction
-                description: t.description, 
-                appliedRuleId: undefined // Reset before re-evaluation
+            return { 
+                ...raw, 
+                userId: raw.userId || defaultUserId,
+                tempId: `import_${idx}`, // Stable ID based on position in raw set
+                conflictType: conflict as any, 
+                isIgnored: !!conflict,
+                categoryId: initialCatId
             };
         });
 
-        const updatedTxs = applyRulesToTransactions(currentTransactionsRaw as any, rules, accounts);
-        
-        setTransactions(prev => prev.map((tx, idx) => {
-            const updated = updatedTxs[idx];
+        // 2. Apply Rule Engine to the clean base
+        const ruleApplied = applyRulesToTransactions(baseTransactions as any, rules, accounts);
+
+        // 3. Merge with user manual overrides (Manual changes in the table win over rules)
+        const finalSet = ruleApplied.map((applied: any) => {
+            const override = userManualOverrides[applied.tempId];
             return {
-                ...tx,
-                appliedRuleId: (updated as any).appliedRuleId,
-                categoryId: (updated as any).categoryId || tx.categoryId,
-                payeeId: (updated as any).payeeId || tx.payeeId,
-                merchantId: (updated as any).merchantId || tx.merchantId,
-                locationId: (updated as any).locationId || tx.locationId,
-                userId: (updated as any).userId || tx.userId,
-                typeId: (updated as any).typeId || tx.typeId,
-                tagIds: (updated as any).tagIds || tx.tagIds,
-                isIgnored: (updated as any).isIgnored !== undefined ? (updated as any).isIgnored : tx.isIgnored
+                ...applied,
+                ...override, // Overwrite rule results with user manual choices
             };
-        }));
-    }, [rules]);
+        });
+
+        setTransactions(finalSet);
+    }, [rawTransactions, rules, userManualOverrides, existingTransactions, accounts, categoryNameToIdMap, otherCategoryId, users]);
 
     const handleUpdate = (txId: string, field: keyof VerifiableTransaction, value: any) => {
-        setTransactions(prev => prev.map(tx => tx.tempId === txId ? { ...tx, [field]: value } : tx));
+        setUserManualOverrides(prev => ({
+            ...prev,
+            [txId]: {
+                ...(prev[txId] || {}),
+                [field]: value
+            }
+        }));
     };
 
     const requestSort = (key: SortKey) => {
