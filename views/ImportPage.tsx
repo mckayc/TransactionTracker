@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
@@ -80,7 +79,9 @@ const ImportPage: React.FC<ImportPageProps> = ({
         try {
             const result = await api.getSummary({ startDate });
             setSummaryTotals(result);
-        } catch (e) {}
+        } catch (e: any) {
+            console.error("[IMPORT] Summary fetch failed:", e);
+        }
     };
     fetchSummary();
   }, [dashboardRange, recentGlobalTransactions]);
@@ -94,7 +95,11 @@ const ImportPage: React.FC<ImportPageProps> = ({
             return;
         }
 
-        const safeRaw = (rawTransactions || []).filter(Boolean);
+        const safeRaw = (rawTransactions || []).filter(tx => tx && typeof tx === 'object');
+        if (safeRaw.length === 0) {
+            throw new Error("Input dataset contained no valid objects.");
+        }
+
         const rawWithUser = safeRaw.map(tx => ({ ...tx, userId: userId || 'user_primary' }));
         const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
         const validCategories = (categories || []).filter(Boolean);
@@ -112,9 +117,9 @@ const ImportPage: React.FC<ImportPageProps> = ({
         
         console.log("[IMPORT] Staging complete. Ready for verification.");
         setRawTransactionsToVerify(processedTransactions);
-    } catch (e) {
+    } catch (e: any) {
         console.error("[IMPORT] Transformation error:", e);
-        setError(`Transformation error: ${e.message}`);
+        setError(`Transformation error: ${e.message || 'Internal logic error'}`);
         setAppState('error');
     }
   }, [categories, accounts]);
@@ -129,8 +134,8 @@ const ImportPage: React.FC<ImportPageProps> = ({
         ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage) 
         : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
       
-      const safeRaw = (raw || []).filter(Boolean);
-      console.log(`[IMPORT] Parser returned ${safeRaw.length} results.`);
+      const safeRaw = (raw || []).filter(tx => tx && typeof tx === 'object');
+      console.log(`[IMPORT] Parser returned ${safeRaw.length} valid results.`);
       
       if (safeRaw.length === 0) {
           throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
@@ -140,7 +145,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
       const defaultUser = validUsers.length > 0 ? (validUsers.find(u => u.isDefault) || validUsers[0]) : null;
       applyRulesAndSetStaging(safeRaw, defaultUser?.id || 'user_primary', rules);
       setAppState('verifying_import');
-    } catch (err) {
+    } catch (err: any) {
       console.error("[IMPORT] Critical extraction failure:", err);
       setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
       setAppState('error');
@@ -155,8 +160,6 @@ const ImportPage: React.FC<ImportPageProps> = ({
       setImportedTxIds(new Set(added.map(tx => tx.id)));
       setAppState('post_import_edit');
   };
-
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
 
   const isImportFormVisible = appState === 'idle' || appState === 'processing' || appState === 'error';
 
@@ -223,15 +226,15 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                         ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) 
                                                         : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
                                                     
-                                                    const safeRaw = (raw || []).filter(Boolean);
+                                                    const safeRaw = (raw || []).filter(tx => tx && typeof tx === 'object');
                                                     const validUsers = Array.isArray(users) ? users.filter(Boolean) : [];
                                                     const defaultUser = validUsers.length > 0 ? (validUsers.find(u => u.isDefault) || validUsers[0]) : null;
                                                     applyRulesAndSetStaging(safeRaw, defaultUser?.id || 'user_primary', rules);
                                                     setAppState('verifying_import');
-                                                } catch(e) { 
+                                                } catch(e: any) { 
                                                     console.error("[IMPORT] Text parse failure:", e);
                                                     setAppState('error'); 
-                                                    setError(`Parsing failed: ${e.message}. Ensure columns align.`); 
+                                                    setError(`Parsing failed: ${e.message || 'Unknown error'}. Ensure columns align.`); 
                                                 }
                                             }} 
                                             disabled={!textInput.trim() || !pasteAccountId} 
