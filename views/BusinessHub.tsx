@@ -91,14 +91,11 @@ const BlockEditor: React.FC<{
     onChange: (blocks: ContentBlock[]) => void;
     noteId: string;
 }> = ({ initialBlocks, onChange, noteId }) => {
-    // We use internal state to make typing snappy. 
-    // We only notify the parent (which triggers global state + API) after a debounce.
     const [internalBlocks, setInternalBlocks] = useState<ContentBlock[]>(initialBlocks);
     const [focusedId, setFocusedId] = useState<string | null>(null);
     const debounceTimer = useRef<NodeJS.Timeout | null>(null);
     const lastNoteId = useRef<string>(noteId);
 
-    // Sync internal state when a DIFFERENT note is selected
     useEffect(() => {
         if (noteId !== lastNoteId.current) {
             setInternalBlocks(initialBlocks);
@@ -106,14 +103,12 @@ const BlockEditor: React.FC<{
         }
     }, [noteId, initialBlocks]);
 
-    // Handle Debounced Save
     const triggerChange = (updatedBlocks: ContentBlock[]) => {
         setInternalBlocks(updatedBlocks);
-        
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
         debounceTimer.current = setTimeout(() => {
             onChange(updatedBlocks);
-        }, 500); // 500ms delay before global sync
+        }, 500);
     };
 
     const updateBlock = (id: string, updates: Partial<ContentBlock>) => {
@@ -145,17 +140,36 @@ const BlockEditor: React.FC<{
     const sortCheckedToBottom = () => {
         const next: ContentBlock[] = [];
         let i = 0;
+        
         while (i < internalBlocks.length) {
+            // Find a contiguous block of todos
             if (internalBlocks[i].type === 'todo') {
-                const group: ContentBlock[] = [];
-                const baseIndent = internalBlocks[i].indent;
-                while (i < internalBlocks.length && (internalBlocks[i].type === 'todo' || internalBlocks[i].indent > baseIndent)) {
-                    group.push(internalBlocks[i]);
+                const todoGroup: { block: ContentBlock; subItems: ContentBlock[] }[] = [];
+                
+                // Group each top-level todo in this block with its indented children
+                while (i < internalBlocks.length && internalBlocks[i].type === 'todo') {
+                    const currentTodo = internalBlocks[i];
+                    const subItems: ContentBlock[] = [];
                     i++;
+                    
+                    // Collect any subsequent blocks that are indented further (children)
+                    while (i < internalBlocks.length && internalBlocks[i].indent > currentTodo.indent) {
+                        subItems.push(internalBlocks[i]);
+                        i++;
+                    }
+                    
+                    todoGroup.push({ block: currentTodo, subItems });
                 }
-                const unchecked = group.filter(b => !b.checked);
-                const checked = group.filter(b => b.checked);
-                next.push(...unchecked, ...checked);
+                
+                // Sort the groups: unchecked first, then checked
+                const unchecked = todoGroup.filter(g => !g.block.checked);
+                const checked = todoGroup.filter(g => g.block.checked);
+                
+                // Flatten back into the list
+                [...unchecked, ...checked].forEach(group => {
+                    next.push(group.block);
+                    next.push(...group.subItems);
+                });
             } else {
                 next.push(internalBlocks[i]);
                 i++;
@@ -180,13 +194,20 @@ const BlockEditor: React.FC<{
 
     return (
         <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="flex items-center gap-1 p-2 bg-slate-50 border-b border-slate-100 sticky top-0 z-20">
-                <div className="flex bg-white rounded-xl border border-slate-200 p-0.5 shadow-sm mr-2">
+            <div className="flex items-center justify-between p-2 bg-slate-50 border-b border-slate-100 sticky top-0 z-20">
+                <div className="flex bg-white rounded-xl border border-slate-200 p-0.5 shadow-sm">
                     <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all" title="Checkbox"><ChecklistIcon className="w-4 h-4" /></button>
                     <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all" title="Bullet"><ListIcon className="w-4 h-4" /></button>
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'h1' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all font-black text-xs px-2">H1</button>
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'h1' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all font-black text-xs px-2" title="Heading">H1</button>
                 </div>
-                <button type="button" onClick={sortCheckedToBottom} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-sm">Organize Checklist</button>
+                <button 
+                    type="button" 
+                    onClick={sortCheckedToBottom} 
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md active:scale-95"
+                >
+                    <ArrowDownIcon className="w-3 h-3" />
+                    Sink Checked
+                </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-1 custom-scrollbar">
@@ -268,7 +289,9 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
         return notes
             .filter(n => n.title.toLowerCase().includes(searchTerm.toLowerCase()) || n.content.toLowerCase().includes(searchTerm.toLowerCase()))
             .sort((a, b) => {
+                // Completed (resolved) items always sink to the bottom
                 if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+                // Then sort by most recently updated
                 return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
             });
     }, [notes, searchTerm]);

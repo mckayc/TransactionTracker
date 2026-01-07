@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft } from '../types';
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, PlayIcon, CloseIcon } from '../components/Icons';
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, PlayIcon, CloseIcon, FileCodeIcon, UploadIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
-import { generateRulesFromData } from '../services/geminiService';
+import RuleImportVerification from '../components/RuleImportVerification';
+import { parseRulesFromFile, parseRulesFromLines } from '../services/csvParserService';
+import { generateUUID } from '../utils';
 
 interface RulesPageProps {
     rules: ReconciliationRule[];
@@ -47,6 +49,14 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [isCreating, setIsCreating] = useState(false);
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
 
+    // Import Flow State
+    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [importMethod, setImportMethod] = useState<'upload' | 'paste'>('upload');
+    const [pastedRules, setPastedRules] = useState('');
+    const [importDrafts, setImportDrafts] = useState<RuleImportDraft[]>([]);
+    const [isVerifyingImport, setIsVerifyingImport] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
     const filteredRules = useMemo(() => {
         let list = rules.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
         if (selectedDomain !== 'all') {
@@ -65,6 +75,76 @@ const RulesPage: React.FC<RulesPageProps> = ({
         }
     };
 
+    // --- Import Logic ---
+
+    const processDrafts = (rawRules: ReconciliationRule[]) => {
+        const drafts: RuleImportDraft[] = rawRules.map(r => {
+            const catMatch = categories.find(c => c.name.toLowerCase() === r.suggestedCategoryName?.toLowerCase());
+            const cpMatch = counterparties.find(cp => cp.name.toLowerCase() === r.suggestedCounterpartyName?.toLowerCase());
+            const locMatch = locations.find(l => l.name.toLowerCase() === r.suggestedLocationName?.toLowerCase());
+            const typeMatch = transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase());
+
+            return {
+                ...r,
+                isSelected: true,
+                mappingStatus: {
+                    category: catMatch ? 'match' : (r.suggestedCategoryName ? 'create' : 'none'),
+                    counterparty: cpMatch ? 'match' : (r.suggestedCounterpartyName ? 'create' : 'none'),
+                    location: locMatch ? 'match' : (r.suggestedLocationName ? 'create' : 'none'),
+                    type: typeMatch ? 'match' : (r.suggestedTypeName ? 'create' : 'none')
+                }
+            } as RuleImportDraft;
+        });
+        setImportDrafts(drafts);
+        setIsVerifyingImport(true);
+        setIsImportModalOpen(false);
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const imported = await parseRulesFromFile(file);
+            processDrafts(imported);
+        } catch (err) {
+            alert("Failed to parse file. Ensure it is a valid Rule CSV.");
+        }
+    };
+
+    const handlePasteSubmit = () => {
+        if (!pastedRules.trim()) return;
+        const lines = pastedRules.split('\n');
+        const imported = parseRulesFromLines(lines);
+        processDrafts(imported);
+        setPastedRules('');
+    };
+
+    if (isVerifyingImport) {
+        return (
+            <div className="h-full animate-fade-in">
+                <RuleImportVerification 
+                    drafts={importDrafts}
+                    onCancel={() => setIsVerifyingImport(false)}
+                    onFinalize={(finalRules) => {
+                        onSaveRules(finalRules);
+                        setIsVerifyingImport(false);
+                    }}
+                    categories={categories}
+                    payees={counterparties}
+                    locations={locations}
+                    users={users}
+                    transactionTypes={transactionTypes}
+                    onSaveCategory={onSaveCategory}
+                    onSaveCategories={onSaveCategories}
+                    onSaveCounterparty={onSaveCounterparty}
+                    onSaveCounterparties={onSaveCounterparties}
+                    onSaveLocation={onSaveLocation}
+                    onSaveLocations={onSaveLocations}
+                />
+            </div>
+        );
+    }
+
     return (
         <div className="h-full flex flex-col gap-6">
             <div className="flex justify-between items-center">
@@ -73,6 +153,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     <p className="text-sm text-slate-500">Programmatic ingestion rules for the system ledger.</p>
                 </div>
                 <div className="flex gap-3">
+                    <button onClick={() => setIsImportModalOpen(true)} className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl shadow-sm hover:bg-slate-50 font-bold transition-all transform active:scale-95">
+                        <CloudArrowUpIcon className="w-5 h-5 text-indigo-500" /> Import Logic
+                    </button>
                     <button onClick={() => setIsCreating(true)} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 font-black transition-all transform active:scale-95">
                         <AddIcon className="w-5 h-5" /> New Rule
                     </button>
@@ -186,6 +269,62 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     )}
                 </div>
             </div>
+
+            {/* IMPORT LOGIC MODAL */}
+            {isImportModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex justify-center items-center p-4" onClick={() => setIsImportModalOpen(false)}>
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800">Import System Logic</h3>
+                                <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-0.5">Bulk Rule Ingestion</p>
+                            </div>
+                            <button onClick={() => setIsImportModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            <div className="flex bg-slate-100 p-1 rounded-xl">
+                                <button onClick={() => setImportMethod('upload')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${importMethod === 'upload' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                    <UploadIcon className="w-4 h-4" /> CSV Upload
+                                </button>
+                                <button onClick={() => setImportMethod('paste')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${importMethod === 'paste' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                    <FileCodeIcon className="w-4 h-4" /> Paste Text
+                                </button>
+                            </div>
+
+                            {importMethod === 'upload' ? (
+                                <div className="space-y-4">
+                                    <div 
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="border-2 border-dashed border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center text-center group hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer"
+                                    >
+                                        <CloudArrowUpIcon className="w-12 h-12 text-slate-300 group-hover:text-indigo-500 mb-4 transition-colors" />
+                                        <p className="text-sm font-bold text-slate-600">Click to select a Rule Manifest CSV</p>
+                                        <p className="text-[10px] text-slate-400 mt-1 uppercase font-black">Columns: Rule Name, Match Field, Operator, Match Value, Set Category, Set Counterparty</p>
+                                    </div>
+                                    <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
+                                </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <textarea 
+                                        value={pastedRules}
+                                        onChange={e => setPastedRules(e.target.value)}
+                                        placeholder="Paste CSV rows here..."
+                                        className="w-full h-64 p-4 font-mono text-[11px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none"
+                                    />
+                                    <button 
+                                        onClick={handlePasteSubmit}
+                                        disabled={!pastedRules.trim()}
+                                        className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl disabled:opacity-30"
+                                    >
+                                        Process logic block
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
