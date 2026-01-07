@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { BusinessNote, Transaction, Account, Category, BusinessProfile, BusinessInfo, TaxInfo } from '../types';
 import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, UsersIcon, BoxIcon, InfoIcon, RobotIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
@@ -87,55 +87,81 @@ const serializeBlocksToMarkdown = (blocks: ContentBlock[]): string => {
 };
 
 const BlockEditor: React.FC<{
-    blocks: ContentBlock[];
+    initialBlocks: ContentBlock[];
     onChange: (blocks: ContentBlock[]) => void;
-}> = ({ blocks, onChange }) => {
+    noteId: string;
+}> = ({ initialBlocks, onChange, noteId }) => {
+    // We use internal state to make typing snappy. 
+    // We only notify the parent (which triggers global state + API) after a debounce.
+    const [internalBlocks, setInternalBlocks] = useState<ContentBlock[]>(initialBlocks);
     const [focusedId, setFocusedId] = useState<string | null>(null);
+    const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+    const lastNoteId = useRef<string>(noteId);
+
+    // Sync internal state when a DIFFERENT note is selected
+    useEffect(() => {
+        if (noteId !== lastNoteId.current) {
+            setInternalBlocks(initialBlocks);
+            lastNoteId.current = noteId;
+        }
+    }, [noteId, initialBlocks]);
+
+    // Handle Debounced Save
+    const triggerChange = (updatedBlocks: ContentBlock[]) => {
+        setInternalBlocks(updatedBlocks);
+        
+        if (debounceTimer.current) clearTimeout(debounceTimer.current);
+        debounceTimer.current = setTimeout(() => {
+            onChange(updatedBlocks);
+        }, 500); // 500ms delay before global sync
+    };
 
     const updateBlock = (id: string, updates: Partial<ContentBlock>) => {
-        onChange(blocks.map(b => b.id === id ? { ...b, ...updates } : b));
+        const next = internalBlocks.map(b => b.id === id ? { ...b, ...updates } : b);
+        triggerChange(next);
     };
 
     const addBlock = (afterId: string, type: BlockType = 'paragraph', indent: number = 0) => {
-        const index = blocks.findIndex(b => b.id === afterId);
+        const index = internalBlocks.findIndex(b => b.id === afterId);
         const newBlock = { id: generateUUID(), type, text: '', checked: false, indent };
-        const newBlocks = [...blocks];
-        newBlocks.splice(index + 1, 0, newBlock);
-        onChange(newBlocks);
+        const next = [...internalBlocks];
+        next.splice(index + 1, 0, newBlock);
+        triggerChange(next);
         setTimeout(() => document.getElementById(`block-${newBlock.id}`)?.focus(), 10);
     };
 
     const deleteBlock = (id: string) => {
-        if (blocks.length <= 1) {
+        if (internalBlocks.length <= 1) {
             updateBlock(id, { type: 'paragraph', text: '', checked: false, indent: 0 });
             return;
         }
-        const index = blocks.findIndex(b => b.id === id);
-        const prevBlock = blocks[index - 1];
-        onChange(blocks.filter(b => b.id !== id));
+        const index = internalBlocks.findIndex(b => b.id === id);
+        const prevBlock = internalBlocks[index - 1];
+        const next = internalBlocks.filter(b => b.id !== id);
+        triggerChange(next);
         if (prevBlock) setTimeout(() => document.getElementById(`block-${prevBlock.id}`)?.focus(), 10);
     };
 
     const sortCheckedToBottom = () => {
-        const newBlocks: ContentBlock[] = [];
+        const next: ContentBlock[] = [];
         let i = 0;
-        while (i < blocks.length) {
-            if (blocks[i].type === 'todo') {
+        while (i < internalBlocks.length) {
+            if (internalBlocks[i].type === 'todo') {
                 const group: ContentBlock[] = [];
-                const baseIndent = blocks[i].indent;
-                while (i < blocks.length && (blocks[i].type === 'todo' || blocks[i].indent > baseIndent)) {
-                    group.push(blocks[i]);
+                const baseIndent = internalBlocks[i].indent;
+                while (i < internalBlocks.length && (internalBlocks[i].type === 'todo' || internalBlocks[i].indent > baseIndent)) {
+                    group.push(internalBlocks[i]);
                     i++;
                 }
                 const unchecked = group.filter(b => !b.checked);
                 const checked = group.filter(b => b.checked);
-                newBlocks.push(...unchecked, ...checked);
+                next.push(...unchecked, ...checked);
             } else {
-                newBlocks.push(blocks[i]);
+                next.push(internalBlocks[i]);
                 i++;
             }
         }
-        onChange(newBlocks);
+        triggerChange(next);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent, b: ContentBlock) => {
@@ -156,15 +182,15 @@ const BlockEditor: React.FC<{
         <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="flex items-center gap-1 p-2 bg-slate-50 border-b border-slate-100 sticky top-0 z-20">
                 <div className="flex bg-white rounded-xl border border-slate-200 p-0.5 shadow-sm mr-2">
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all"><ChecklistIcon className="w-4 h-4" /></button>
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all"><ListIcon className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all" title="Checkbox"><ChecklistIcon className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all" title="Bullet"><ListIcon className="w-4 h-4" /></button>
                     <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'h1' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all font-black text-xs px-2">H1</button>
                 </div>
-                <button type="button" onClick={sortCheckedToBottom} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-sm">Sink Completed</button>
+                <button type="button" onClick={sortCheckedToBottom} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-sm">Organize Checklist</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-1 custom-scrollbar">
-                {blocks.map((b) => (
+                {internalBlocks.map((b) => (
                     <div 
                         key={b.id} 
                         className={`group flex items-start gap-3 py-0.5 relative rounded-lg transition-colors ${focusedId === b.id ? 'bg-indigo-50/30' : 'hover:bg-slate-50/50'}`}
@@ -474,7 +500,8 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
 
                                     <div className="flex-1 overflow-hidden p-6 flex flex-col min-h-0 bg-slate-50/30">
                                         <BlockEditor 
-                                            blocks={blocks} 
+                                            noteId={selectedNoteId}
+                                            initialBlocks={blocks} 
                                             onChange={(newBlocks) => handleUpdateActiveNote({ content: serializeBlocksToMarkdown(newBlocks) })} 
                                         />
                                     </div>
