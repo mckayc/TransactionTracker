@@ -40,7 +40,6 @@ export const UsersIcon = Users;
 export const UserGroupIcon = UsersRound;
 export const TagIcon = Tag;
 export const DuplicateIcon = Copy;
-// Added CopyIcon alias to fix import error in AllTransactions.tsx
 export const CopyIcon = Copy;
 export const CheckBadgeIcon = BadgeCheck;
 export const PlayIcon = Play;
@@ -76,12 +75,10 @@ export const SlashIcon = Slash;
 export const BugIcon = Bug;
 export const DatabaseIcon = Database;
 export const FileCodeIcon = FileCode;
-/* Added MapPinIcon export to resolve missing member error */
 export const MapPinIcon = MapPin;
 export const TrashIcon = Trash;
 export const ListIcon = List;
 export const TypeIcon = Type;
 export const ArrowUpIcon = ArrowUp;
 export const ArrowDownIcon = ArrowDown;
-/* Specifically export DollarSign as requested by Reports.tsx */
 export { DollarSign };

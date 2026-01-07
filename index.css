@@ -4,31 +4,31 @@
 
 /* Fix flashing dropdown issue by ensuring backgrounds are consistent and transitions are clean */
 select, input[type='text'], input[type='date'], input[type='number'], textarea {
-appearance: none;
-background-color: #ffffff; /* Explicit white background */
-border: 1px solid #cbd5e1; /* slate-300 */
-border-radius: 0.5rem; /* rounded-lg */
-padding: 0.5rem 0.75rem;
-font-size: 0.875rem;
-line-height: 1.25rem;
-color: #1e293b; /* slate-800 */
-width: 100%;
-transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  appearance: none;
+  background-color: #ffffff; /* Explicit white background */
+  border: 1px solid #cbd5e1; /* slate-300 */
+  border-radius: 0.5rem; /* rounded-lg */
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #1e293b; /* slate-800 */
+  width: 100%;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
 /* Remove default highlight/flash on some browsers */
 select:focus, input:focus, textarea:focus {
-outline: none;
-border-color: #4f46e5; /* indigo-600 */
-box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+  outline: none;
+  border-color: #4f46e5; /* indigo-600 */
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
 }
 
 select {
-background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-background-position: right 0.5rem center;
-background-repeat: no-repeat;
-background-size: 1.5em 1.5em;
-padding-right: 2.5rem;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
 }
 
 .custom-scrollbar::-webkit-scrollbar {

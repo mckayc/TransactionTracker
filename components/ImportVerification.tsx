@@ -2,7 +2,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Payee, User, Transaction, ReconciliationRule, Tag, Merchant, Location } from '../types';
 import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
-/* Added missing import for applyRulesToTransactions */
 import { applyRulesToTransactions } from '../services/ruleService';
 import RuleModal from './RuleModal';
 
@@ -115,6 +114,14 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setIsRuleModalOpen(true);
     };
 
+    const handleOpenExistingRule = (ruleId: string) => {
+        const rule = ruleMap.get(ruleId);
+        if (rule) {
+            setRuleTransactionContext({ ...rule, id: 'temp-context', description: rule.conditions[0]?.value || '' } as any);
+            setIsRuleModalOpen(true);
+        }
+    };
+
     return (
         <div className="space-y-3 flex flex-col h-full w-full min-h-0 overflow-hidden">
             <div className="p-4 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-3 flex-shrink-0 shadow-sm">
@@ -165,7 +172,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                             {sortedTransactions.map(tx => {
                                 const matchedRule = tx.appliedRuleId ? ruleMap.get(tx.appliedRuleId) : null;
                                 const type = typeMap.get(tx.typeId);
-                                /* Renamed flowImpact usage to balanceEffect logic if needed, but here it matches the type extension */
                                 const amountColor = type?.balanceEffect === 'income' ? 'text-green-600' : type?.balanceEffect === 'neutral' ? 'text-slate-400' : 'text-red-600';
 
                                 return (
@@ -179,7 +185,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         <td className="px-2 py-2 border-b border-slate-100"><select value={tx.typeId} onChange={e => handleUpdate(tx.tempId, 'typeId', e.target.value)} className="p-1 text-[10px] border border-slate-200 rounded-md w-full font-black uppercase tracking-tighter text-slate-700 focus:border-indigo-500 focus:ring-0 bg-slate-50 shadow-none transition-none">{transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></td>
                                         <td className="px-2 py-2 border-b border-slate-100"><select value={tx.categoryId} onChange={e => handleUpdate(tx.tempId, 'categoryId', e.target.value)} className="p-1 text-[10px] border border-slate-200 rounded-md w-full font-bold text-slate-700 focus:border-indigo-500 focus:ring-0 bg-white shadow-none transition-none">{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></td>
                                         <td className={`px-2 py-2 text-right text-xs font-black font-mono border-b border-slate-100 ${amountColor}`}>{type?.balanceEffect === 'income' ? '+' : type?.balanceEffect === 'neutral' ? '' : '-'}{formatCurrency(tx.amount)}</td>
-                                        <td className="px-2 py-2 text-center border-b border-slate-100">{matchedRule ? (<button className="p-1 text-green-600 hover:scale-110 transition-transform"><SparklesIcon className="w-3.5 h-3.5" /></button>) : (<button onClick={() => handleOpenRuleCreator(tx)} className="p-1 text-slate-300 hover:text-indigo-600 transition-colors"><WrenchIcon className="w-3.5 h-3.5" /></button>)}</td>
+                                        <td className="px-2 py-2 text-center border-b border-slate-100">{matchedRule ? (<button onClick={() => handleOpenExistingRule(matchedRule.id)} className="p-1 text-green-600 hover:scale-110 transition-transform"><SparklesIcon className="w-3.5 h-3.5" /></button>) : (<button onClick={() => handleOpenRuleCreator(tx)} className="p-1 text-slate-300 hover:text-indigo-600 transition-colors"><WrenchIcon className="w-3.5 h-3.5" /></button>)}</td>
                                         <td className="px-2 py-2 text-center border-b border-slate-100"><button onClick={() => setInspectedTx(tx)} className="p-1 text-slate-300 hover:text-indigo-600"><TableIcon className="w-3.5 h-3.5"/></button></td>
                                     </tr>
                                 );
