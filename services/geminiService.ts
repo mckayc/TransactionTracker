@@ -1,8 +1,23 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
-import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule } from '../types';
+import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig } from '../types';
+
+let currentAiConfig: AiConfig = {
+    textModel: 'gemini-3-flash-preview',
+    complexModel: 'gemini-3-pro-preview',
+    thinkingBudget: 0
+};
+
+export const updateGeminiConfig = (config: AiConfig) => {
+    if (config.textModel) currentAiConfig.textModel = config.textModel;
+    if (config.complexModel) currentAiConfig.complexModel = config.complexModel;
+    if (config.thinkingBudget !== undefined) currentAiConfig.thinkingBudget = config.thinkingBudget;
+    console.log("[GEMINI] Configuration updated:", currentAiConfig);
+};
+
+export const getActiveModels = () => ({ ...currentAiConfig });
 
 // Guideline: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-// Assume this variable is pre-configured, valid, and accessible.
 export const hasApiKey = (): boolean => {
     const key = process.env.API_KEY;
     return !!key && key !== 'undefined' && key.trim() !== '';
@@ -11,26 +26,25 @@ export const hasApiKey = (): boolean => {
 export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, message: string }> => {
     if (!hasApiKey()) return { success: false, message: "No API Key found. Check your environment/server configuration." };
     
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const model = currentAiConfig.textModel || 'gemini-3-flash-preview';
+    
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
+            model: model,
             contents: "Respond with exactly the word 'Pong'.",
             config: { 
                 maxOutputTokens: 10,
-                // Guideline: Use thinkingBudget: 0 to disable thinking for low latency.
                 thinkingConfig: { thinkingBudget: 0 }
             }
         });
-        // Guideline: The GenerateContentResponse object features a text property (not a method).
         if (response && response.text) {
-            return { success: true, message: `Connection successful! Model replied: "${response.text.trim()}"` };
+            return { success: true, message: `Connected to ${model}! Replied: "${response.text.trim()}"` };
         }
-        return { success: true, message: "Connection successful! Key is authorized." };
+        return { success: true, message: `Connected to ${model}. Key is authorized.` };
     } catch (e: any) {
         console.error("Gemini Connectivity Test Error:", e);
-        return { success: false, message: `API Error: ${e.message || "Unknown error"}. Check billing, quota, or network.` };
+        return { success: false, message: `API Error: ${e.message || "Unknown error"}. Check model availability and billing.` };
     }
 };
 
@@ -57,7 +71,6 @@ export const generateRulesFromData = async (
 ): Promise<ReconciliationRule[]> => {
     if (!hasApiKey()) throw new Error("API Key is missing. Please configure your environment.");
     
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     let sampleParts: any[] = [];
     if (typeof data === 'string') {
@@ -109,17 +122,16 @@ export const generateRulesFromData = async (
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-3-pro-preview',
+            model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
             contents: { parts: sampleParts },
             config: { 
                 systemInstruction,
                 responseMimeType: 'application/json',
                 responseSchema: schema,
-                thinkingConfig: { thinkingBudget: 2000 }
+                thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 2000 }
             }
         });
 
-        // Guideline: The GenerateContentResponse object features a text property (not a method).
         const parsed = JSON.parse(response.text || '{"rules": []}');
         return (parsed.rules || []).filter(Boolean).map((r: any) => ({
             ...r,
@@ -140,7 +152,6 @@ export const generateRulesFromData = async (
 
 export const getAiFinancialAnalysis = async (query: string, contextData: any) => {
     if (!hasApiKey()) throw new Error("API Key is missing.");
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const optimizedContext = {
         ...contextData,
@@ -159,7 +170,7 @@ export const getAiFinancialAnalysis = async (query: string, contextData: any) =>
     Use Markdown for formatting. Be concise.`;
 
     const stream = await ai.models.generateContentStream({
-        model: 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
         contents: `CONTEXT:\n${JSON.stringify(optimizedContext)}\n\nUSER QUERY: ${query}`,
         config: {
             systemInstruction,
@@ -177,7 +188,6 @@ export const extractTransactionsFromFiles = async (
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
     if (!hasApiKey()) throw new Error("API Key is missing.");
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     if (!transactionTypes || transactionTypes.length === 0) {
@@ -207,7 +217,7 @@ export const extractTransactionsFromFiles = async (
         required: ["transactions"]
     };
     const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
         contents: { parts: [...fileParts, { text: "Extract all financial transactions from these files." }] },
         config: {
             responseMimeType: "application/json",
@@ -215,7 +225,6 @@ export const extractTransactionsFromFiles = async (
             thinkingConfig: { thinkingBudget: 0 }
         }
     });
-    // Guideline: The GenerateContentResponse object features a text property (not a method).
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
     
@@ -238,7 +247,6 @@ export const extractTransactionsFromText = async (
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
     if (!hasApiKey()) throw new Error("API Key is missing.");
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     if (!transactionTypes || transactionTypes.length === 0) {
@@ -266,7 +274,7 @@ export const extractTransactionsFromText = async (
         required: ["transactions"]
     };
     const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
         contents: `Extract transactions from this text: ${text}`,
         config: {
             responseMimeType: "application/json",
@@ -274,7 +282,6 @@ export const extractTransactionsFromText = async (
             thinkingConfig: { thinkingBudget: 0 }
         }
     });
-    // Guideline: The GenerateContentResponse object features a text property (not a method).
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
 
@@ -289,64 +296,26 @@ export const extractTransactionsFromText = async (
     }));
 };
 
-export const healDataSnippet = async (text: string): Promise<any> => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Repair this malformed JSON snippet: ${text}. Return ONLY the repaired JSON object.`,
-        config: { 
-            responseMimeType: "application/json",
-            thinkingConfig: { thinkingBudget: 0 }
-        }
-    });
-    // Guideline: The GenerateContentResponse object features a text property (not a method).
-    return JSON.parse(response.text || 'null');
-};
-
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
     if (!hasApiKey()) return "AI Configuration required.";
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
         contents: prompt,
-        config: { thinkingConfig: { thinkingBudget: 0 } }
+        config: { thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 0 } }
     });
-    // Guideline: The GenerateContentResponse object features a text property (not a method).
     return response.text || "No response.";
-};
-
-export const getIndustryDeductions = async (industry: string): Promise<string[]> => {
-    if (!hasApiKey()) return [];
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const schema = {
-        type: Type.OBJECT,
-        properties: { deductions: { type: Type.ARRAY, items: { type: Type.STRING } } },
-        required: ["deductions"]
-    };
-    const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `List common tax deductions for the ${industry} industry.`,
-        config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
-    });
-    // Guideline: The GenerateContentResponse object features a text property (not a method).
-    const parsed = JSON.parse(response.text || '{"deductions": []}');
-    return parsed.deductions;
 };
 
 export const streamTaxAdvice = async (messages: ChatMessage[], profile: BusinessProfile) => {
     if (!hasApiKey()) throw new Error("API Key is missing.");
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const contents = messages.filter(Boolean).map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
     }));
     const stream = await ai.models.generateContentStream({
-        model: 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
         contents,
         config: {
             systemInstruction: `You are an expert Tax Advisor for a ${profile.info.businessType || 'business'}.`,
@@ -364,7 +333,6 @@ export const auditTransactions = async (
     examples?: Transaction[][]
 ): Promise<AuditFinding[]> => {
     if (!hasApiKey()) return [];
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const schema = {
         type: Type.OBJECT,
@@ -392,18 +360,16 @@ export const auditTransactions = async (
         required: ["findings"]
     };
     const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
         contents: `Audit type ${auditType}: ${JSON.stringify(transactions.filter(Boolean).slice(0, 100))}. Training Examples: ${JSON.stringify((examples || []).filter(Boolean))}`,
         config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
     });
-    // Guideline: The GenerateContentResponse object features a text property (not a method).
     const result = JSON.parse(response.text || '{"findings": []}');
     return (result.findings || []).filter(Boolean);
 };
 
 export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<any> => {
     if (!hasApiKey()) return {};
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     onProgress("AI is reading document...");
     const part = await fileToGenerativePart(file);
@@ -417,11 +383,10 @@ export const analyzeBusinessDocument = async (file: File, onProgress: (msg: stri
         required: ["documentType", "summary"]
     };
     const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
         contents: { parts: [part, { text: "Analyze this document and provide a summary with key dates." }] },
         config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
     });
-    // Guideline: The GenerateContentResponse object features a text property (not a method).
     return JSON.parse(response.text || '{}');
 };
 
@@ -432,7 +397,6 @@ export const generateFinancialStrategy = async (
     profile: BusinessProfile
 ): Promise<any> => {
     if (!hasApiKey()) return { strategy: "API Key required." };
-    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const schema = {
         type: Type.OBJECT,
@@ -452,14 +416,13 @@ export const generateFinancialStrategy = async (
         required: ["strategy"]
     };
     const response = await ai.models.generateContent({
-        model: 'gemini-3-pro-preview',
+        model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
         contents: `Strategy for profile: ${JSON.stringify(profile)} with goals: ${JSON.stringify(goals.filter(Boolean))} and tx sample: ${JSON.stringify(transactions.filter(Boolean).slice(0, 50))}`,
         config: { 
             responseMimeType: "application/json", 
             responseSchema: schema,
-            thinkingConfig: { thinkingBudget: 4000 }
+            thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 4000 }
         }
     });
-    // Guideline: The GenerateContentResponse object features a text property (not a method).
     return JSON.parse(response.text || '{"strategy": "No strategy found."}');
 };

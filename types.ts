@@ -209,7 +209,7 @@ export interface TaxInfo {
 export interface BusinessProfile {
     info: BusinessInfo;
     tax: TaxInfo;
-    completedSteps: string[];
+    completedSteps: [] | string[];
 }
 
 export interface BusinessNote {
@@ -258,9 +258,16 @@ export interface DashboardWidget {
     title?: string;
 }
 
+export interface AiConfig {
+    textModel?: string;
+    complexModel?: string;
+    thinkingBudget?: number;
+}
+
 export interface SystemSettings {
     backupConfig?: BackupConfig;
     dashboardWidgets?: DashboardWidget[];
+    aiConfig?: AiConfig;
 }
 
 export type ReportGroupBy = 'category' | 'counterparty' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';

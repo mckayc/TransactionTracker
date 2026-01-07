@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, BusinessNote, Location, AccountType } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, BugIcon, RepeatIcon, PlayIcon, MapPinIcon, UsersIcon, StethoscopeIcon, TrashIcon, CopyIcon, DatabaseIcon } from '../components/Icons';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, BusinessNote, Location, AccountType, AiConfig } from '../types';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, BugIcon, RepeatIcon, PlayIcon, MapPinIcon, UsersIcon, StethoscopeIcon, TrashIcon, CopyIcon, DatabaseIcon, ChevronDownIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
-import { hasApiKey, validateApiKeyConnectivity } from '../services/geminiService';
+import { hasApiKey, validateApiKeyConnectivity, updateGeminiConfig, getActiveModels } from '../services/geminiService';
 
 interface SettingsPageProps {
     transactions: Transaction[];
@@ -40,6 +40,12 @@ interface SettingsPageProps {
     locations: Location[];
     accountTypes: AccountType[];
 }
+
+const MODEL_OPTIONS = [
+    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', tier: 'Performant', desc: 'Optimal for text processing and categorization.' },
+    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro', tier: 'Genius', desc: 'Superior reasoning for strategy and analysis.' },
+    { id: 'gemini-2.5-flash-lite-latest', label: 'Gemini 2.5 Flash Lite', tier: 'Efficient', desc: 'Low latency, good for simple tasks.' }
+];
 
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {
     transactions: { label: 'Transactions', icon: <TableIcon className="w-4 h-4" /> },
@@ -100,6 +106,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     // Diagnostics state
     const [diagnostics, setDiagnostics] = useState<any>(null);
     const [isDiagnosing, setIsDiagnosing] = useState(false);
+    const [copyState, setCopyState] = useState<'idle' | 'success' | 'error'>('idle');
 
     const runDiagnostics = async () => {
         setIsDiagnosing(true);
@@ -117,16 +124,60 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         runDiagnostics();
     }, []);
 
-    const copySupportManifesto = () => {
-        if (!diagnostics) return;
+    const copyToClipboard = (text: string) => {
+        return new Promise<void>((resolve, reject) => {
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(resolve).catch(reject);
+            } else {
+                // Fallback for non-secure contexts (e.g. self-hosting over IP without SSL)
+                try {
+                    const textArea = document.createElement("textarea");
+                    textArea.value = text;
+                    textArea.style.position = "fixed";
+                    textArea.style.left = "-9999px";
+                    textArea.style.top = "0";
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    const successful = document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    if (successful) resolve();
+                    else reject(new Error("ExecCommand failed"));
+                } catch (err) {
+                    reject(err);
+                }
+            }
+        });
+    };
+
+    const copySupportManifesto = async () => {
+        if (!diagnostics) {
+            // Try fetching one last time if diagnostics is missing
+            await runDiagnostics();
+            if (!diagnostics) {
+                setCopyState('error');
+                setTimeout(() => setCopyState('idle'), 2000);
+                return;
+            }
+        }
+
         const report = `FINPARSER SYSTEM MANIFESTO\n` +
             `Timestamp: ${diagnostics.timestamp}\n` +
             `Database Size: ${(diagnostics.databaseSize / 1024).toFixed(2)} KB\n\n` +
-            diagnostics.tables.map((t: any) => 
+            (diagnostics.tables || []).map((t: any) => 
                 `TABLE: ${t.table} (${t.rowCount} rows)\nSCHEMA: ${t.schema}\n`
             ).join('\n');
         
-        navigator.clipboard.writeText(report).then(() => alert("AI Support Manifesto copied to clipboard. Paste this into the chat."));
+        try {
+            await copyToClipboard(report);
+            setCopyState('success');
+            setTimeout(() => setCopyState('idle'), 3000);
+        } catch (err) {
+            console.error("Copy failed", err);
+            setCopyState('error');
+            setTimeout(() => setCopyState('idle'), 2000);
+            alert("Clipboard access denied. Please manually select the diagnostic text if available.");
+        }
     };
     
     useEffect(() => {
@@ -168,6 +219,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         }
     };
 
+    const handleUpdateAiConfig = (key: keyof AiConfig, value: any) => {
+        const next = { ...aiConfig, [key]: value };
+        setAiConfig(next);
+        updateGeminiConfig(next);
+        onUpdateSystemSettings({ ...systemSettings, aiConfig: next });
+    };
+
     const [exportSelection, setExportSelection] = useState<Set<string>>(new Set(Object.keys(ENTITY_LABELS)));
     const [purgeSelection, setPurgeSelection] = useState<Set<string>>(new Set());
 
@@ -196,33 +254,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             ruleCount: rules.length
         };
     }, [transactions, accounts, amazonMetrics, youtubeMetrics, businessDocuments, rules]);
-
-    const handleSaveBackupSettings = () => {
-        const newConfig = {
-            frequency: backupFreq,
-            retentionCount: retentionCount > 0 ? retentionCount : 1,
-            lastBackupDate: systemSettings.backupConfig?.lastBackupDate
-        };
-        onUpdateSystemSettings({ ...systemSettings, backupConfig: newConfig });
-        alert("Backup settings saved!");
-    };
-
-    const handlePurgeAction = async () => {
-        if (purgeSelection.size === 0) return;
-        if (!confirm(`Permanently delete ${purgeSelection.size} selected entities? This cannot be undone.`)) return;
-        
-        setIsPurging(true);
-        try {
-            const targets = Array.from(purgeSelection) as string[];
-            const isFullReset = targets.length === Object.keys(ENTITY_LABELS).length;
-            const success = await api.resetDatabase(isFullReset ? ['all'] : targets);
-            if (success) window.location.reload();
-            else throw new Error("Purge failed.");
-        } catch (err) {
-            alert("An error occurred during deletion.");
-            setIsPurging(false);
-        }
-    };
 
     const handleExportData = () => {
         if (exportSelection.size === 0) { alert("Please select items to back up."); return; }
@@ -288,6 +319,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         window.location.reload();
     };
 
+    const handlePurgeAction = async () => {
+        if (purgeSelection.size === 0) return;
+        if (!confirm(`Permanently delete ${purgeSelection.size} selected entities? This cannot be undone.`)) return;
+        
+        setIsPurging(true);
+        try {
+            const targets = Array.from(purgeSelection) as string[];
+            const isFullReset = targets.length === Object.keys(ENTITY_LABELS).length;
+            const success = await api.resetDatabase(isFullReset ? ['all'] : targets);
+            if (success) window.location.reload();
+            else throw new Error("Purge failed.");
+        } catch (err) {
+            alert("An error occurred during deletion.");
+            setIsPurging(false);
+        }
+    };
+
+    // AI Neural State
+    const [aiConfig, setAiConfig] = useState<AiConfig>(systemSettings.aiConfig || getActiveModels());
+
     return (
         <div className="max-w-5xl mx-auto space-y-10 pb-20">
             <header>
@@ -319,36 +370,76 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             </div>
 
             <Section title="AI Connectivity Engine">
-                <div className="flex flex-col md:flex-row items-center gap-8 p-8 bg-slate-900 rounded-[2rem] text-white overflow-hidden relative">
-                    <div className="relative z-10">
-                        <div className="flex items-center gap-3 mb-4">
-                            <RobotIcon className={`w-8 h-8 ${apiKeyActive ? 'text-emerald-400' : 'text-slate-500'}`} />
-                            <h3 className="text-2xl font-black">Google Gemini 3 Preview</h3>
-                        </div>
-                        <p className="text-slate-400 max-w-lg mb-6 leading-relaxed">
-                            The system is currently using the <strong>{apiKeyActive ? 'Active' : 'Missing'}</strong> API key from your environment. 
-                            This enables automated categorization, document analysis, and wealth strategy synthesis.
-                        </p>
-                        <div className="flex flex-wrap gap-3">
-                            <button 
-                                onClick={handleTestConnectivity}
-                                disabled={isTestingKey || !apiKeyActive}
-                                className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 disabled:opacity-30 transition-all active:scale-95"
-                            >
-                                {isTestingKey ? 'Negotiating...' : 'Test Connection'}
-                            </button>
-                            <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="px-8 py-3 bg-slate-800 text-white font-black rounded-xl hover:bg-slate-700 transition-all flex items-center gap-2">
-                                <InfoIcon className="w-4 h-4" /> Manage Keys
-                            </a>
-                        </div>
-                        {testResult && (
-                            <div className={`mt-6 p-4 rounded-2xl border flex items-center gap-3 animate-slide-up ${testResult.success ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
-                                {testResult.success ? <CheckCircleIcon className="w-5 h-5" /> : <ExclamationTriangleIcon className="w-5 h-5" />}
-                                <p className="text-sm font-bold">{testResult.message}</p>
+                <div className="space-y-6">
+                    <div className="flex flex-col md:flex-row items-center gap-8 p-8 bg-slate-900 rounded-[2rem] text-white overflow-hidden relative">
+                        <div className="relative z-10 flex-1">
+                            <div className="flex items-center gap-3 mb-4">
+                                <RobotIcon className={`w-8 h-8 ${apiKeyActive ? 'text-emerald-400' : 'text-slate-500'}`} />
+                                <h3 className="text-2xl font-black">Google Gemini Neural Core</h3>
                             </div>
-                        )}
+                            <p className="text-slate-400 max-w-lg mb-6 leading-relaxed">
+                                The system is currently using the <strong>{apiKeyActive ? 'Active' : 'Missing'}</strong> API key from your environment. 
+                                This enables automated categorization, document analysis, and wealth strategy synthesis.
+                            </p>
+                            <div className="flex flex-wrap gap-3">
+                                <button 
+                                    onClick={handleTestConnectivity}
+                                    disabled={isTestingKey || !apiKeyActive}
+                                    className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 disabled:opacity-30 transition-all active:scale-95"
+                                >
+                                    {isTestingKey ? 'Negotiating...' : 'Test Connection'}
+                                </button>
+                                <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="px-8 py-3 bg-slate-800 text-white font-black rounded-xl hover:bg-slate-700 transition-all flex items-center gap-2">
+                                    <InfoIcon className="w-4 h-4" /> Manage Keys
+                                </a>
+                            </div>
+                            {testResult && (
+                                <div className={`mt-6 p-4 rounded-2xl border flex items-center gap-3 animate-slide-up ${testResult.success ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-red-500/10 border-red-500/30 text-red-400'}`}>
+                                    {testResult.success ? <CheckCircleIcon className="w-5 h-5" /> : <ExclamationTriangleIcon className="w-5 h-5" />}
+                                    <p className="text-sm font-bold">{testResult.message}</p>
+                                </div>
+                            )}
+                        </div>
+                        <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-5 pointer-events-none" />
                     </div>
-                    <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-5 pointer-events-none" />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <TableIcon className="w-5 h-5 text-indigo-500" />
+                                <h4 className="font-bold text-slate-800 uppercase text-xs tracking-widest">Primary Logic Engine</h4>
+                            </div>
+                            <p className="text-xs text-slate-500">Used for transaction extraction and categorization.</p>
+                            <select 
+                                value={aiConfig.textModel} 
+                                onChange={e => handleUpdateAiConfig('textModel', e.target.value)}
+                                className="w-full font-bold text-sm"
+                            >
+                                {MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                            </select>
+                            <div className="p-3 bg-slate-50 rounded-xl">
+                                <p className="text-[10px] text-slate-400 leading-relaxed italic">{MODEL_OPTIONS.find(o => o.id === aiConfig.textModel)?.desc}</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <SparklesIcon className="w-5 h-5 text-indigo-500" />
+                                <h4 className="font-bold text-slate-800 uppercase text-xs tracking-widest">Strategic Reasoning Engine</h4>
+                            </div>
+                            <p className="text-xs text-slate-500">Used for financial planning and deep data analysis.</p>
+                            <select 
+                                value={aiConfig.complexModel} 
+                                onChange={e => handleUpdateAiConfig('complexModel', e.target.value)}
+                                className="w-full font-bold text-sm"
+                            >
+                                {MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                            </select>
+                            <div className="p-3 bg-slate-50 rounded-xl">
+                                <p className="text-[10px] text-slate-400 leading-relaxed italic">{MODEL_OPTIONS.find(o => o.id === aiConfig.complexModel)?.desc}</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </Section>
 
@@ -365,7 +456,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             </p>
                             
                             <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
-                                {diagnostics?.tables.map((t: any) => (
+                                {diagnostics?.tables?.map((t: any) => (
                                     <div key={t.table} className={`p-3 rounded-xl border flex flex-col gap-1 ${t.rowCount > 0 ? 'bg-white border-indigo-200' : 'bg-red-50 border-red-200 animate-pulse'}`}>
                                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{t.table}</p>
                                         <p className={`text-lg font-black ${t.rowCount > 0 ? 'text-indigo-600' : 'text-red-600'}`}>{t.rowCount}</p>
@@ -385,9 +476,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             </button>
                             <button 
                                 onClick={copySupportManifesto}
-                                className="w-full px-8 py-3 bg-white border border-indigo-200 text-indigo-700 font-black rounded-xl hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 shadow-sm"
+                                disabled={isDiagnosing}
+                                className={`w-full px-8 py-3 font-black rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm border ${
+                                    copyState === 'success' ? 'bg-emerald-500 border-emerald-600 text-white' : 
+                                    copyState === 'error' ? 'bg-red-500 border-red-600 text-white' :
+                                    'bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50'
+                                }`}
                             >
-                                <CopyIcon className="w-4 h-4" /> Copy Manifesto
+                                {copyState === 'success' ? <CheckCircleIcon className="w-4 h-4" /> : 
+                                 copyState === 'error' ? <ExclamationTriangleIcon className="w-4 h-4" /> :
+                                 <CopyIcon className="w-4 h-4" />}
+                                {copyState === 'success' ? 'Copied!' : copyState === 'error' ? 'Failed' : 'Copy Manifesto'}
                             </button>
                         </div>
                     </div>
