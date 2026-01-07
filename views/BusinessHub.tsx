@@ -461,13 +461,43 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
     };
 
     const copyToClipboard = async (text: string, isAi: boolean = false) => {
-        try {
-            await navigator.clipboard.writeText(text);
+        const success = () => {
             setCopyStatus(isAi ? 'ai_success' : 'success');
             setTimeout(() => setCopyStatus('idle'), 3000);
-        } catch (err) {
+        };
+        const failure = () => {
             setCopyStatus('error');
             setTimeout(() => setCopyStatus('idle'), 3000);
+        };
+
+        // Standard modern API (Requires secure context)
+        if (navigator.clipboard && (window as any).isSecureContext) {
+            try {
+                await navigator.clipboard.writeText(text);
+                success();
+                return;
+            } catch (err) {
+                console.warn("Clipboard API failed, falling back", err);
+            }
+        }
+
+        // Fallback for non-secure contexts (e.g. self-hosted on HTTP)
+        try {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            if (successful) success();
+            else failure();
+        } catch (err) {
+            console.error("Fallback copy failed", err);
+            failure();
         }
     };
 
@@ -532,7 +562,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                     <div className="pt-2 mt-2 border-t border-slate-200/50">
                         <button onClick={() => { setActiveClassification('resolved'); setSelectedNoteId(null); setIsCreating(false); }} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeClassification === 'resolved' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
                             <div className="flex items-center gap-2"><CheckCircleIcon className="w-3 h-3" /><span>Archive</span></div>
-                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === 'resolved' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{classificationStats.resolved}</span>
+                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === 'resolved' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'}`}>{classificationStats.resolved}</span>
                         </button>
                     </div>
                 </div>
