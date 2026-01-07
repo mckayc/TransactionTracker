@@ -26,21 +26,39 @@ interface ContentBlock {
     indent: number;
 }
 
-// --- Clipboard Utility (Workaround for Insecure/Self-Hosted Environments) ---
-const copyToClipboard = (text: string) => {
+// --- Custom Notification Component ---
+const Toast: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 3000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] animate-slide-up">
+            <div className="bg-slate-900/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3">
+                <div className="bg-indigo-500 rounded-full p-1">
+                    <CheckCircleIcon className="w-4 h-4 text-white" />
+                </div>
+                <span className="text-sm font-bold tracking-tight">{message}</span>
+            </div>
+        </div>
+    );
+};
+
+// --- Clipboard Utility ---
+const copyToClipboard = (text: string, onDone: (msg: string) => void) => {
     if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(text)
-            .then(() => alert("Copied to clipboard!"))
-            .catch(() => fallbackCopy(text));
+            .then(() => onDone("Copied to clipboard"))
+            .catch(() => fallbackCopy(text, onDone));
     } else {
-        fallbackCopy(text);
+        fallbackCopy(text, onDone);
     }
 };
 
-const fallbackCopy = (text: string) => {
+const fallbackCopy = (text: string, onDone: (msg: string) => void) => {
     const textArea = document.createElement("textarea");
     textArea.value = text;
-    // Ensure it's not visible but part of the DOM for selection
     textArea.style.position = "fixed";
     textArea.style.left = "-9999px";
     textArea.style.top = "0";
@@ -49,8 +67,8 @@ const fallbackCopy = (text: string) => {
     textArea.select();
     try {
         const successful = document.execCommand('copy');
-        if (successful) alert("Copied to clipboard (fallback mode)!");
-        else alert("Failed to copy. Please check browser permissions.");
+        if (successful) onDone("Copied to clipboard (fallback)");
+        else console.error('Copy failed');
     } catch (err) {
         console.error('Fallback copy failed', err);
     }
@@ -301,6 +319,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedTypeFilter, setSelectedTypeFilter] = useState<string | null>(null);
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
     
     // AI Advisor State
     const [aiQuery, setAiQuery] = useState('');
@@ -323,9 +342,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                 return matchesSearch && matchesType;
             })
             .sort((a, b) => {
-                // Completed (resolved) items always sink to the bottom
                 if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
-                // Then sort by most recently updated
                 return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
             });
     }, [notes, searchTerm, selectedTypeFilter]);
@@ -356,8 +373,15 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
 
     const handleCopyForAi = () => {
         if (!activeNote) return;
-        const aiPrompt = `PROMPT FOR AI ANALYSIS:\n\nAnalyze the following log entry from my business operations journal. Identify any underlying patterns, potential efficiency gains, or technical debt risks mentioned in the text.\n\nTITLE: ${activeNote.title}\nTYPE: ${activeNote.type}\n\nCONTENT:\n${activeNote.content}`;
-        copyToClipboard(aiPrompt);
+        
+        // Filter out completed tasks from the content
+        const filteredContent = activeNote.content.split('\n').filter(line => {
+            const t = line.trim();
+            return !(t.startsWith('- [x]') || t.startsWith('- [X]'));
+        }).join('\n');
+
+        const aiPrompt = `PROMPT FOR AI ANALYSIS:\n\nAnalyze the following log entry from my business operations journal. Identify any underlying patterns, potential efficiency gains, or technical debt risks mentioned in the text.\n\nTITLE: ${activeNote.title}\nTYPE: ${activeNote.type}\n\nCONTENT (Filtered for active tasks):\n${filteredContent}`;
+        copyToClipboard(aiPrompt, (msg) => setToastMessage(msg));
     };
 
     const handleAskAi = async () => {
@@ -375,7 +399,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
     };
 
     return (
-        <div className="h-full flex flex-col gap-6">
+        <div className="h-full flex flex-col gap-6 relative">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight">Business Hub</h1>
@@ -390,14 +414,12 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
             <div className="flex-1 min-h-0 overflow-hidden pb-10">
                 {activeTab === 'identity' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-                        {/* PROFILE EDITOR */}
                         <div className="lg:col-span-2 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
                             <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8">
                                 <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
                                     <ShieldCheckIcon className="w-6 h-6 text-indigo-600" />
                                     <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Legal Entity Information</h2>
                                 </div>
-                                
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Entity Registered Name</label>
@@ -424,13 +446,11 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                     </div>
                                 </div>
                             </div>
-
                             <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8">
                                 <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
                                     <BoxIcon className="w-6 h-6 text-emerald-600" />
                                     <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Tax & Compliance Registry</h2>
                                 </div>
-                                
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">IRS Filing Status</label>
@@ -453,15 +473,12 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                 </div>
                             </div>
                         </div>
-
-                        {/* AI SIDEBAR */}
                         <div className="bg-slate-900 rounded-3xl p-6 text-white flex flex-col gap-6 shadow-2xl relative overflow-hidden">
                             <div className="relative z-10 flex flex-col h-full">
                                 <div className="flex items-center gap-2 mb-4">
                                     <RobotIcon className="w-6 h-6 text-indigo-400" />
                                     <h3 className="font-black uppercase tracking-tight">Structure Advisor</h3>
                                 </div>
-                                
                                 <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 mb-4 text-sm leading-relaxed text-slate-300 bg-black/20 p-4 rounded-2xl border border-white/5 shadow-inner">
                                     {aiResponse ? (
                                         <div dangerouslySetInnerHTML={{ __html: aiResponse.replace(/\n/g, '<br/>') }} />
@@ -469,7 +486,6 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                         <p className="italic text-slate-500">Ask about tax strategy, entity benefits, or nexus requirements based on your saved profile.</p>
                                     )}
                                 </div>
-
                                 <div className="space-y-3">
                                     <textarea 
                                         value={aiQuery} 
@@ -494,7 +510,6 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
 
                 {activeTab === 'journal' && (
                     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm flex h-full overflow-hidden">
-                        {/* COLUMN 1: CATEGORIES (Taxonomy) */}
                         <div className="w-48 border-r border-slate-100 bg-slate-50/30 flex flex-col p-4 flex-shrink-0">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 ml-1">Taxonomy</p>
                             <div className="space-y-1">
@@ -516,8 +531,6 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                 ))}
                             </div>
                         </div>
-
-                        {/* COLUMN 2: ENTRIES (Capture Stream) */}
                         <div className="w-80 border-r border-slate-100 flex flex-col min-h-0 flex-shrink-0">
                             <div className="p-4 border-b flex justify-between items-center bg-white">
                                 <h3 className="font-black text-slate-800 uppercase tracking-tighter text-sm">Stream</h3>
@@ -545,8 +558,6 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                 )}
                             </div>
                         </div>
-
-                        {/* COLUMN 3: EDITOR (Workbench) */}
                         <div className="flex-1 flex flex-col min-h-0 bg-white relative">
                             {selectedNoteId && activeNote ? (
                                 <div className="flex flex-col h-full animate-fade-in">
@@ -582,12 +593,11 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <button onClick={() => copyToClipboard(activeNote.content)} className="p-2.5 text-slate-400 hover:text-indigo-600 rounded-xl hover:bg-indigo-50 transition-all" title="Copy Content"><CopyIcon className="w-5 h-5"/></button>
+                                            <button onClick={() => copyToClipboard(activeNote.content, (msg) => setToastMessage(msg))} className="p-2.5 text-slate-400 hover:text-indigo-600 rounded-xl hover:bg-indigo-50 transition-all" title="Copy Content"><CopyIcon className="w-5 h-5"/></button>
                                             <button onClick={handleCopyForAi} className="p-2.5 text-slate-400 hover:text-indigo-600 rounded-xl hover:bg-indigo-50 transition-all" title="Copy for AI Prompt"><RobotIcon className="w-5 h-5"/></button>
                                             <button onClick={() => { if(confirm("Discard permanently?")) { onUpdateNotes(notes.filter(n => n.id !== selectedNoteId)); setSelectedNoteId(null); } }} className="p-2.5 text-slate-300 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all" title="Delete Entry"><TrashIcon className="w-5 h-5"/></button>
                                         </div>
                                     </div>
-
                                     <div className="flex-1 overflow-hidden p-6 flex flex-col min-h-0 bg-slate-50/20">
                                         <BlockEditor 
                                             noteId={selectedNoteId}
@@ -610,6 +620,11 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                     </div>
                 )}
             </div>
+
+            {/* Custom Toast Notification */}
+            {toastMessage && (
+                <Toast message={toastMessage} onClose={() => setToastMessage(null)} />
+            )}
         </div>
     );
 };
