@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, Transaction, AccountType, Account, Location } from '../types';
-import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, CloseIcon, BoxIcon, MapPinIcon, TrashIcon, CreditCardIcon } from '../components/Icons';
+import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, CloseIcon, BoxIcon, MapPinIcon, TrashIcon, CreditCardIcon, SearchCircleIcon } from '../components/Icons';
 import EntityEditor, { EntityType } from '../components/EntityEditor';
 
 interface ManagementHubProps {
@@ -43,9 +43,22 @@ const TreeNode: React.FC<{
     onToggleExpand: (id: string) => void;
     isBulkSelected: boolean;
     onToggleBulk: (id: string) => void;
-}> = ({ item, all, level, selectedId, onSelect, usageMap, expandedIds, onToggleExpand, isBulkSelected, onToggleBulk }) => {
+    searchFilter: string;
+}> = ({ item, all, level, selectedId, onSelect, usageMap, expandedIds, onToggleExpand, isBulkSelected, onToggleBulk, searchFilter }) => {
     const children = all.filter(x => x.parentId === item.id).sort((a,b) => a.name.localeCompare(b.name));
-    const isExpanded = expandedIds.has(item.id);
+    
+    // If searching, we check if the item or any of its descendants match the filter
+    const matchesSearch = item.name.toLowerCase().includes(searchFilter.toLowerCase());
+    
+    const hasVisibleChild = (node: any): boolean => {
+        if (node.name.toLowerCase().includes(searchFilter.toLowerCase())) return true;
+        const sub = all.filter(x => x.parentId === node.id);
+        return sub.some(s => hasVisibleChild(s));
+    };
+
+    if (searchFilter && !hasVisibleChild(item)) return null;
+
+    const isExpanded = expandedIds.has(item.id) || !!searchFilter;
     const count = usageMap.get(item.id) || 0;
     
     return (
@@ -73,7 +86,7 @@ const TreeNode: React.FC<{
                     ) : (
                         <div className="w-5" />
                     )}
-                    <span className={`text-sm font-bold truncate ${selectedId === item.id ? 'text-indigo-900' : 'text-slate-700'}`}>{item.name}</span>
+                    <span className={`text-sm font-bold truncate ${selectedId === item.id ? 'text-indigo-900' : 'text-slate-700'} ${matchesSearch && searchFilter ? 'bg-yellow-100 ring-2 ring-yellow-100 rounded' : ''}`}>{item.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <span className="text-[9px] font-black bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full">{count}</span>
@@ -92,6 +105,7 @@ const TreeNode: React.FC<{
                     onToggleExpand={onToggleExpand}
                     isBulkSelected={isBulkSelected}
                     onToggleBulk={onToggleBulk}
+                    searchFilter={searchFilter}
                 />
             ))}
         </div>
@@ -112,6 +126,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
     const [isCreating, setIsCreating] = useState(false);
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+    const [searchFilter, setSearchFilter] = useState('');
 
     const usageCounts = useMemo(() => {
         const counts = {
@@ -253,7 +268,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                 ].map(tab => (
                     <button 
                         key={tab.id}
-                        onClick={() => { setActiveTab(tab.id as EntityType); setSelectedId(null); setIsCreating(false); setBulkSelectedIds(new Set()); }}
+                        onClick={() => { setActiveTab(tab.id as EntityType); setSelectedId(null); setIsCreating(false); setBulkSelectedIds(new Set()); setSearchFilter(''); }}
                         className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}
                     >
                         {tab.icon} {tab.label}
@@ -264,19 +279,32 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
                 {/* COLUMN 1: STREAM */}
                 <div className="w-96 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden">
-                    <div className="p-4 border-b flex justify-between items-center bg-slate-50">
-                        <div className="flex items-center gap-3">
-                            <input 
-                                type="checkbox" 
-                                checked={bulkSelectedIds.size === currentList.length && currentList.length > 0} 
-                                onChange={() => setBulkSelectedIds(bulkSelectedIds.size === currentList.length ? new Set() : new Set(currentList.map(x => x.id)))} 
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50"
-                            />
-                            <h3 className="font-black text-slate-700 capitalize tracking-tight">{activeTab}</h3>
+                    <div className="p-4 border-b space-y-4 bg-slate-50">
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    checked={bulkSelectedIds.size === currentList.length && currentList.length > 0} 
+                                    onChange={() => setBulkSelectedIds(bulkSelectedIds.size === currentList.length ? new Set() : new Set(currentList.map(x => x.id)))} 
+                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50"
+                                />
+                                <h3 className="font-black text-slate-700 capitalize tracking-tight">{activeTab}</h3>
+                            </div>
+                            <button onClick={handleNew} className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all shadow-md active:scale-95">
+                                <AddIcon className="w-4 h-4" />
+                            </button>
                         </div>
-                        <button onClick={handleNew} className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all shadow-md active:scale-95">
-                            <AddIcon className="w-4 h-4" />
-                        </button>
+                        <div className="relative group">
+                            <input 
+                                type="text" 
+                                placeholder={`Search ${activeTab}...`} 
+                                value={searchFilter} 
+                                onChange={e => setSearchFilter(e.target.value)} 
+                                className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-bold" 
+                            />
+                            <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
+                            {searchFilter && <button onClick={() => setSearchFilter('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><CloseIcon className="w-3.5 h-3.5"/></button>}
+                        </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-1">
                         {rootItems.length === 0 ? (
@@ -298,6 +326,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                                     onToggleExpand={(id) => { const n = new Set(expandedIds); if(n.has(id)) n.delete(id); else n.add(id); setExpandedIds(n); }}
                                     isBulkSelected={bulkSelectedIds.has(item.id)}
                                     onToggleBulk={handleBulkToggle}
+                                    searchFilter={searchFilter}
                                 />
                             ))
                         )}

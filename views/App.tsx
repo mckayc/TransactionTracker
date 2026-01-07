@@ -1,5 +1,5 @@
+
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-/* Fix: Import path should point to parent directory as types.ts is at root */
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Location } from '../types';
 import Sidebar from '../components/Sidebar';
 import Dashboard from './Dashboard';
@@ -19,6 +19,7 @@ import AmazonIntegration from './integrations/AmazonIntegration';
 import YouTubeIntegration from './integrations/YouTubeIntegration';
 import ContentHub from './integrations/ContentHub';
 import Chatbot from '../components/Chatbot';
+import OmniSearch from '../components/OmniSearch';
 import { MenuIcon, RepeatIcon, SparklesIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { api } from '../services/apiService';
 import { generateUUID } from '../utils';
@@ -35,6 +36,7 @@ const App: React.FC = () => {
     const [currentView, setCurrentView] = useState<View>('dashboard');
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
+    const [isOmniSearchOpen, setIsOmniSearchOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -122,7 +124,19 @@ const App: React.FC = () => {
         loadCoreData();
         const handleSync = (event: MessageEvent) => { if (event.data === 'REFRESH_REQUIRED') loadCoreData(false); };
         if (syncChannel) syncChannel.addEventListener('message', handleSync);
-        return () => { if (syncChannel) syncChannel.removeEventListener('message', handleSync); };
+
+        const handleGlobalKey = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+                e.preventDefault();
+                setIsOmniSearchOpen(true);
+            }
+        };
+        window.addEventListener('keydown', handleGlobalKey);
+
+        return () => { 
+            if (syncChannel) syncChannel.removeEventListener('message', handleSync); 
+            window.removeEventListener('keydown', handleGlobalKey);
+        };
     }, []);
 
     const updateData = async (key: string, value: any, setter: Function) => {
@@ -174,7 +188,6 @@ const App: React.FC = () => {
                     <ExclamationTriangleIcon className="w-10 h-10" />
                 </div>
                 <div>
-                    {/* Fix: Added missing opening bracket for h1 tag to resolve parser confusion and resulting scope errors */}
                     <h1 className="text-2xl font-black text-slate-800">Boot Error</h1>
                     <p className="text-slate-500 mt-2 font-medium">{loadError}</p>
                 </div>
@@ -198,7 +211,15 @@ const App: React.FC = () => {
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
-            <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onChatToggle={() => setIsChatOpen(!isChatOpen)} />
+            <Sidebar 
+                currentView={currentView} 
+                onNavigate={setCurrentView} 
+                transactions={transactions} 
+                isCollapsed={isSidebarCollapsed} 
+                onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
+                onChatToggle={() => setIsChatOpen(!isChatOpen)} 
+                onSearchToggle={() => setIsOmniSearchOpen(true)}
+            />
             <main className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
                 <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 z-30">
                     <div className="flex items-center gap-4">
@@ -404,6 +425,14 @@ const App: React.FC = () => {
                 </div>
             </main>
             <Chatbot contextData={currentContext} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+            <OmniSearch 
+                isOpen={isOmniSearchOpen} 
+                onClose={() => setIsOmniSearchOpen(false)} 
+                transactions={transactions} 
+                categories={categories} 
+                counterparties={counterparties} 
+                onNavigate={(v) => setCurrentView(v)}
+            />
         </div>
     );
 };

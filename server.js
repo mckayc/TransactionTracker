@@ -57,11 +57,28 @@ const ensureSeedData = () => {
                 insertType.run('type_transfer', 'Transfer', 'transfer');
                 insertType.run('type_tax', 'Tax Payment', 'tax');
                 insertType.run('type_investment', 'Investment', 'investment');
+                insertType.run('type_donation', 'Donation', 'donation');
             })();
         }
+        
         const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
         if (userCount === 0) {
             db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
+        }
+
+        const categoryCount = db.prepare("SELECT COUNT(*) as count FROM categories").get().count;
+        if (categoryCount === 0) {
+            db.prepare("INSERT INTO categories (id, name) VALUES (?, ?)").run('cat_other', 'Other');
+        }
+
+        const accountTypeCount = db.prepare("SELECT COUNT(*) as count FROM account_types").get().count;
+        if (accountTypeCount === 0) {
+            const insertAT = db.prepare("INSERT INTO account_types (id, name, is_default) VALUES (?, ?, ?)");
+            db.transaction(() => {
+                insertAT.run('at_checking', 'Checking', 1);
+                insertAT.run('at_savings', 'Savings', 0);
+                insertAT.run('at_credit', 'Credit Card', 0);
+            })();
         }
     } catch (err) {
         console.error("[DB] Seeder warning:", err.message);
@@ -114,31 +131,6 @@ const initDb = () => {
               PRIMARY KEY (transaction_id, tag_id)
           );
         `);
-
-        // Migration to move data from payees/merchants if they exist
-        try {
-            const hasPayees = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='payees'").get();
-            if (hasPayees) {
-                console.log("[DB] Migrating Payees and Merchants to Counterparties...");
-                db.exec(`
-                    INSERT OR REPLACE INTO counterparties (id, name, parent_id, notes, user_id)
-                    SELECT id, name, parent_id, notes, user_id FROM payees;
-                `);
-                const hasMerchants = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='merchants'").get();
-                if (hasMerchants) {
-                    db.exec(`
-                        INSERT OR REPLACE INTO counterparties (id, name, parent_id, notes)
-                        SELECT id, name, payee_id, notes FROM merchants;
-                    `);
-                }
-                // Update transaction column if it was payee_id or merchant_id
-                db.exec(`
-                    UPDATE transactions SET counterparty_id = COALESCE(payee_id, merchant_id) WHERE counterparty_id IS NULL;
-                `);
-            }
-        } catch (e) {
-            console.warn("[DB] Migration warning:", e.message);
-        }
 
         ensureSeedData();
     } catch (dbErr) {

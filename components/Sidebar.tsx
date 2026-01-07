@@ -1,18 +1,20 @@
+
 import React from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction, View } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, WizardIcon, DocumentIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, WizardIcon, DocumentIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon, SearchCircleIcon } from './Icons';
 
 interface SidebarProps {
   currentView: View;
   onNavigate: (view: View) => void;
   transactions: Transaction[];
   onChatToggle?: () => void;
+  onSearchToggle?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions, onChatToggle, isCollapsed = false, onToggleCollapse }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions, onChatToggle, onSearchToggle, isCollapsed = false, onToggleCollapse }) => {
 
   const mainNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
@@ -34,13 +36,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
 
   const sidebarWidthClass = isCollapsed ? 'w-20' : 'w-64';
 
+  const isActive = (id: string) => {
+      if (currentView === id) return true;
+      if (id === 'integrations' && currentView.startsWith('integration-')) return true;
+      return false;
+  };
+
   return (
     <aside className={`bg-slate-800 text-slate-300 ${sidebarWidthClass} transition-all duration-300 flex flex-col fixed inset-y-0 h-full overflow-y-auto overflow-x-hidden z-40 border-r border-slate-700`}>
       <div>
         <div className={`flex items-center h-16 ${isCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
             <div className="flex items-center gap-3 overflow-hidden">
                 <span className="text-2xl filter drop-shadow-sm">💰</span>
-                {!isCollapsed && <h1 className="text-sm font-bold text-slate-100 uppercase tracking-widest truncate font-mono">FinParser<br/>Engine</h1>}
+                {!isCollapsed && <h1 className="text-sm font-bold text-slate-100 uppercase tracking-widest truncate font-mono leading-tight">FinParser<br/>Engine</h1>}
             </div>
             {onToggleCollapse && !isCollapsed && (
                 <button onClick={onToggleCollapse} className="text-slate-500 hover:text-white p-1 rounded-md hover:bg-slate-700 transition-colors">
@@ -57,19 +65,29 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             </div>
         )}
 
+        <div className="px-2 mb-4">
+             <button 
+                onClick={onSearchToggle}
+                className={`w-full flex items-center ${isCollapsed ? 'justify-center py-2' : 'gap-3 px-3 py-2.5'} bg-slate-900/50 border border-slate-700 rounded-xl text-slate-400 hover:text-white hover:border-indigo-500 transition-all group`}
+             >
+                <SearchCircleIcon className="w-4 h-4 group-hover:text-indigo-400" />
+                {!isCollapsed && <div className="flex-1 flex justify-between items-center"><span className="text-xs font-bold">Search...</span><span className="text-[9px] font-black opacity-40">⌘K</span></div>}
+             </button>
+        </div>
+
         <nav className="px-2 space-y-1 mt-2">
             {mainNavItems.map(item => (
               <button
                 key={item.id}
                 onClick={() => onNavigate(item.id as View)}
                 title={isCollapsed ? item.label : ''}
-                className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'space-x-3 px-3 py-2'} rounded-md text-sm font-medium transition-colors ${
-                  currentView === item.id || (item.id === 'integrations' && currentView.startsWith('integration-'))
-                    ? 'bg-slate-900 text-white'
-                    : 'hover:bg-slate-700'
+                className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'space-x-3 px-3 py-2'} rounded-md text-sm font-medium transition-all ${
+                  isActive(item.id)
+                    ? 'bg-slate-900 text-white shadow-inner'
+                    : 'hover:bg-slate-700 hover:text-white'
                 }`}
               >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive(item.id) ? 'text-indigo-400' : ''}`} />
                 {!isCollapsed && <span>{item.label}</span>}
               </button>
             ))}
@@ -81,13 +99,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
                         key={item.id}
                         onClick={() => onNavigate(item.id as View)}
                         title={isCollapsed ? item.label : ''}
-                        className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'space-x-3 px-3 py-2'} rounded-md text-sm font-medium transition-colors ${
-                            currentView === item.id
-                            ? 'bg-slate-900 text-white'
-                            : 'hover:bg-slate-700'
+                        className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'space-x-3 px-3 py-2'} rounded-md text-sm font-medium transition-all ${
+                            isActive(item.id)
+                            ? 'bg-slate-900 text-white shadow-inner'
+                            : 'hover:bg-slate-700 hover:text-white'
                         }`}
                     >
-                        <item.icon className="w-5 h-5 flex-shrink-0" />
+                        <item.icon className={`w-5 h-5 flex-shrink-0 ${isActive(item.id) ? 'text-indigo-400' : ''}`} />
                         {!isCollapsed && <span>{item.label}</span>}
                     </button>
                 ))}
@@ -97,13 +115,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
                <button
                   onClick={() => onNavigate('settings')}
                   title={isCollapsed ? 'Settings' : ''}
-                  className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'space-x-3 px-3 py-2'} rounded-md text-sm font-medium transition-colors ${
+                  className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'space-x-3 px-3 py-2'} rounded-md text-sm font-medium transition-all ${
                     currentView === 'settings'
-                      ? 'bg-slate-900 text-white'
-                      : 'hover:bg-slate-700'
+                      ? 'bg-slate-900 text-white shadow-inner'
+                      : 'hover:bg-slate-700 hover:text-white'
                   }`}
                 >
-                  <SettingsIcon className="w-5 h-5 flex-shrink-0" />
+                  <SettingsIcon className={`w-5 h-5 flex-shrink-0 ${currentView === 'settings' ? 'text-indigo-400' : ''}`} />
                   {!isCollapsed && <span>Settings</span>}
                 </button>
             </div>
@@ -115,7 +133,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
               <button 
                 onClick={onChatToggle}
                 title={isCollapsed ? 'AI Assistant' : ''}
-                className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'gap-3 px-5 py-3'} text-sm font-medium text-indigo-300 hover:text-white hover:bg-slate-700 transition-colors rounded-md`}
+                className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'gap-3 px-5 py-3'} text-sm font-bold text-indigo-300 hover:text-white hover:bg-indigo-600 transition-all rounded-xl shadow-lg shadow-indigo-900/20`}
               >
                   <ChatBubbleIcon className={`${isCollapsed ? 'w-6 h-6' : 'w-5 h-5'} flex-shrink-0`} />
                   {!isCollapsed && <span>AI Assistant</span>}
@@ -125,7 +143,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             <>
               <CalendarView transactions={transactions} />
               <div className="text-center pb-2">
-                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.5.49</span>
+                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.6.0</span>
               </div>
             </>
           )}
