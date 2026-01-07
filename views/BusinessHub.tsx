@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote } from '../types';
-import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon, ChevronRightIcon, LightBulbIcon, ChecklistIcon, BoxIcon, RepeatIcon, ListIcon, TypeIcon, DragHandleIcon, TrashIcon, CalendarIcon } from '../components/Icons';
+import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon, ChevronRightIcon, LightBulbIcon, ChecklistIcon, BoxIcon, RepeatIcon, ListIcon, TypeIcon, DragHandleIcon, TrashIcon, CalendarIcon, ArrowUpIcon, ArrowDownIcon } from '../components/Icons';
 import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -78,10 +78,11 @@ const serializeBlocksToMarkdown = (blocks: ContentBlock[]): string => {
     return blocks.map(b => {
         const prefix = '  '.repeat(b.indent);
         let marker = '';
-        if (b.type === 'h1') marker = '# ';
-        else if (b.type === 'todo') marker = `- [${b.checked ? 'x' : ' '}] `;
-        else if (b.type === 'bullet') marker = '- ';
-        else if (b.type === 'number') marker = '1. ';
+        const blockType = b.type as string;
+        if (blockType === 'h1') marker = '# ';
+        else if (blockType === 'todo') marker = `- [${b.checked ? 'x' : ' '}] `;
+        else if (blockType === 'bullet') marker = '- ';
+        else if (blockType === 'number') marker = '1. ';
         return prefix + marker + b.text;
     }).join('\n');
 };
@@ -118,17 +119,55 @@ const BlockEditor: React.FC<{
         if (prevBlock) setTimeout(() => document.getElementById(`block-${prevBlock.id}`)?.focus(), 10);
     };
 
+    const moveBlock = (id: string, direction: 'up' | 'down') => {
+        const index = blocks.findIndex(b => b.id === id);
+        if (direction === 'up' && index > 0) {
+            const newBlocks = [...blocks];
+            [newBlocks[index - 1], newBlocks[index]] = [newBlocks[index], newBlocks[index - 1]];
+            onChange(newBlocks);
+        } else if (direction === 'down' && index < blocks.length - 1) {
+            const newBlocks = [...blocks];
+            [newBlocks[index + 1], newBlocks[index]] = [newBlocks[index], newBlocks[index + 1]];
+            onChange(newBlocks);
+        }
+    };
+
+    const sortCheckedToBottom = () => {
+        // Logic: Group todo items and sink checked ones within their contiguous group
+        const newBlocks: ContentBlock[] = [];
+        let i = 0;
+        while (i < blocks.length) {
+            if ((blocks[i].type as string) === 'todo') {
+                const group: ContentBlock[] = [];
+                while (i < blocks.length && (blocks[i].type as string) === 'todo') {
+                    group.push(blocks[i]);
+                    i++;
+                }
+                // Sort this group: unchecked first, then checked
+                group.sort((a, b) => {
+                    if (a.checked === b.checked) return 0;
+                    return a.checked ? 1 : -1;
+                });
+                newBlocks.push(...group);
+            } else {
+                newBlocks.push(blocks[i]);
+                i++;
+            }
+        }
+        onChange(newBlocks);
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent, b: ContentBlock) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            if (b.text === '' && b.type !== 'paragraph') {
+            if (b.text === '' && (b.type as string) !== 'paragraph') {
                 updateBlock(b.id, { type: 'paragraph', indent: 0 });
             } else {
                 addBlock(b.id, b.type, b.indent);
             }
         } else if (e.key === 'Backspace' && b.text === '') {
             e.preventDefault();
-            if (b.type !== 'paragraph' || b.indent > 0) {
+            if ((b.type as string) !== 'paragraph' || b.indent > 0) {
                 updateBlock(b.id, { type: 'paragraph', indent: 0 });
             } else {
                 deleteBlock(b.id);
@@ -169,9 +208,12 @@ const BlockEditor: React.FC<{
                     <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all" title="Bullet List"><ListIcon className="w-3 h-3" /></button>
                     <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'number' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all font-bold text-[9px]" title="Numbered List">1.</button>
                 </div>
-                <div className="flex bg-white rounded border border-slate-200 p-0.5 shadow-sm">
+                <div className="flex bg-white rounded border border-slate-200 p-0.5 shadow-sm mr-2">
                     <button type="button" onClick={() => setSelectionFormatting('**', '**')} className="px-2 py-1 hover:bg-indigo-50 rounded text-slate-600 font-black text-[9px]" title="Bold">B</button>
                     <button type="button" onClick={() => setSelectionFormatting('~~', '~~')} className="px-2 py-1 hover:bg-indigo-50 rounded text-slate-600 font-medium text-[9px] line-through" title="Strikethrough">S</button>
+                </div>
+                <div className="flex bg-white rounded border border-slate-200 p-0.5 shadow-sm">
+                    <button type="button" onClick={sortCheckedToBottom} className="px-2 py-1 hover:bg-indigo-50 rounded text-indigo-600 font-black text-[8px] uppercase tracking-tighter" title="Sink Completed Tasks">Organize</button>
                 </div>
                 <div className="ml-auto flex items-center gap-2 pr-2">
                     <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Nano Editor</span>
@@ -216,7 +258,7 @@ const BlockEditor: React.FC<{
                                     const val = e.target.value;
                                     let type = b.type;
                                     let text = val;
-                                    if (b.type === 'paragraph') {
+                                    if ((b.type as string) === 'paragraph') {
                                         if (val === '- ') { type = 'bullet'; text = ''; }
                                         else if (val === '[] ') { type = 'todo'; text = ''; }
                                         else if (val === '1. ') { type = 'number'; text = ''; }
@@ -225,10 +267,10 @@ const BlockEditor: React.FC<{
                                     updateBlock(b.id, { text, type });
                                 }}
                                 onKeyDown={(e) => handleKeyDown(e, b)}
-                                placeholder={b.type === 'paragraph' ? "Log..." : "Item..."}
+                                placeholder={(b.type as string) === 'paragraph' ? "Log..." : "Item..."}
                                 rows={1}
                                 className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] transition-all duration-200 ${
-                                    b.type === 'h1' ? 'text-sm font-black text-slate-800' : 'text-[12px] font-medium'
+                                    (b.type as string) === 'h1' ? 'text-sm font-black text-slate-800' : 'text-[12px] font-medium'
                                 } ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
                                 onInput={(e) => {
                                     const target = e.target as HTMLTextAreaElement;
@@ -238,7 +280,9 @@ const BlockEditor: React.FC<{
                                 style={{ height: 'auto' }}
                             />
 
-                            <div className="opacity-0 group-hover:opacity-100 flex items-center transition-opacity flex-shrink-0">
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity flex-shrink-0">
+                                <button type="button" onClick={() => moveBlock(b.id, 'up')} className="p-0.5 text-slate-300 hover:text-indigo-600 rounded transition-colors" title="Move Up"><ArrowUpIcon className="w-3 h-3"/></button>
+                                <button type="button" onClick={() => moveBlock(b.id, 'down')} className="p-0.5 text-slate-300 hover:text-indigo-600 rounded transition-colors" title="Move Down"><ArrowDownIcon className="w-3 h-3"/></button>
                                 <button type="button" onClick={() => deleteBlock(b.id)} className="p-0.5 text-slate-300 hover:text-red-500 rounded"><TrashIcon className="w-3 h-3"/></button>
                             </div>
                         </div>
@@ -286,9 +330,9 @@ const NoteContentRenderer: React.FC<{
         <div className="space-y-1 font-sans text-[12px] leading-relaxed text-slate-700">
             {blocks.map((b, idx) => {
                 const style = { paddingLeft: `${b.indent * 16}px` };
-                if ((b.type as any) === 'number') numberIndex++; else if ((b.type as any) !== 'number' && b.type !== 'paragraph') numberIndex = 0;
+                if ((b.type as string) === 'number') numberIndex++; else if ((b.type as string) !== 'number' && (b.type as string) !== 'paragraph') numberIndex = 0;
 
-                if (b.type === 'todo') {
+                if ((b.type as string) === 'todo') {
                     return (
                         <div key={idx} style={style} className="flex items-start gap-2 py-0.5 group">
                             <button 
@@ -306,7 +350,7 @@ const NoteContentRenderer: React.FC<{
                     );
                 }
 
-                if (b.type === 'bullet') {
+                if ((b.type as string) === 'bullet') {
                     return (
                         <div key={idx} style={style} className="flex items-start gap-2 py-0.5">
                             <span className="text-slate-400 mt-1.5 w-1 h-1 rounded-full bg-slate-300 flex-shrink-0" />
@@ -315,7 +359,7 @@ const NoteContentRenderer: React.FC<{
                     );
                 }
 
-                if ((b.type as any) === 'number') {
+                if ((b.type as string) === 'number') {
                     return (
                         <div key={idx} style={style} className="flex items-start gap-2 py-0.5">
                             <span className="text-[9px] font-black text-slate-400 mt-0.5 min-w-[0.7rem] font-mono">{numberIndex}.</span>
@@ -324,7 +368,7 @@ const NoteContentRenderer: React.FC<{
                     );
                 }
 
-                if (b.type === 'h1') {
+                if ((b.type as string) === 'h1') {
                     return <h1 key={idx} style={style} className="text-base font-black text-slate-900 pt-2 pb-1">{parseInlineMarkdown(b.text)}</h1>;
                 }
 
@@ -345,7 +389,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
     const [activeClassification, setActiveClassification] = useState<string>('bug');
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
-    const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error' | 'ai_success'>('idle');
 
     const [title, setTitle] = useState('');
     const [blocks, setBlocks] = useState<ContentBlock[]>([]);
@@ -416,15 +460,42 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
         }
     };
 
-    const copyToClipboard = async (text: string) => {
+    const copyToClipboard = async (text: string, isAi: boolean = false) => {
         try {
             await navigator.clipboard.writeText(text);
-            setCopyStatus('success');
+            setCopyStatus(isAi ? 'ai_success' : 'success');
             setTimeout(() => setCopyStatus('idle'), 3000);
         } catch (err) {
             setCopyStatus('error');
             setTimeout(() => setCopyStatus('idle'), 3000);
         }
+    };
+
+    const handleCopyContent = (note: BusinessNote, excludeCompleted: boolean) => {
+        const noteBlocks = parseMarkdownToBlocks(note.content);
+        let numberIndex = 0;
+        
+        const filteredBlocks = excludeCompleted 
+            ? noteBlocks.filter(b => !b.checked)
+            : noteBlocks;
+
+        const plainText = filteredBlocks.map(b => {
+            const prefix = '  '.repeat(b.indent);
+            let marker = '';
+            if (b.type === 'h1') marker = '# ';
+            else if (b.type === 'todo') marker = excludeCompleted ? '• ' : `[${b.checked ? 'x' : ' '}] `;
+            else if (b.type === 'bullet') marker = '• ';
+            else if ((b.type as string) === 'number') {
+                numberIndex++;
+                marker = `${numberIndex}. `;
+            } else {
+                numberIndex = 0;
+            }
+            return prefix + marker + b.text;
+        }).join('\n');
+
+        const finalOutput = `TITLE: ${note.title}\nTYPE: ${note.type.toUpperCase()}\nDATE: ${new Date(note.updatedAt).toLocaleDateString()}\n\nCONTENT:\n${plainText}`;
+        copyToClipboard(finalOutput, excludeCompleted);
     };
 
     const classificationStats = useMemo(() => ({
@@ -461,7 +532,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                     <div className="pt-2 mt-2 border-t border-slate-200/50">
                         <button onClick={() => { setActiveClassification('resolved'); setSelectedNoteId(null); setIsCreating(false); }} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeClassification === 'resolved' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
                             <div className="flex items-center gap-2"><CheckCircleIcon className="w-3 h-3" /><span>Archive</span></div>
-                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === 'resolved' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'}`}>{classificationStats.resolved}</span>
+                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === 'resolved' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{classificationStats.resolved}</span>
                         </button>
                     </div>
                 </div>
@@ -526,7 +597,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                             </div>
                         </div>
 
-                        <div className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar">
+                        <div className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar bg-white">
                             <div className="max-w-2xl mx-auto space-y-3 h-full flex flex-col">
                                 <input 
                                     type="text" 
@@ -577,14 +648,24 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                             </div>
                         </div>
 
-                        <div className="p-3 bg-slate-50/50 border-t border-slate-50 flex justify-between items-center">
-                            <button onClick={() => toggleComplete(activeNote.id)} className={`px-4 py-1.5 rounded-lg font-black uppercase text-[9px] transition-all flex items-center gap-1.5 tracking-widest shadow-sm ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
-                                {activeNote.isCompleted ? <RepeatIcon className="w-3.5 h-3.5"/> : <CheckCircleIcon className="w-3.5 h-3.5"/>}
-                                {activeNote.isCompleted ? 'Re-open' : 'Archive Record'}
-                            </button>
-                            <button onClick={() => copyToClipboard(activeNote.content)} className="flex items-center gap-1 text-indigo-600 font-black text-[8px] uppercase hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-all tracking-widest">
-                                <CopyIcon className="w-3 h-3"/> Export
-                            </button>
+                        <div className="p-3 bg-slate-50/50 border-t border-slate-50 flex flex-wrap justify-between items-center gap-3">
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => toggleComplete(activeNote.id)} className={`px-4 py-1.5 rounded-lg font-black uppercase text-[9px] transition-all flex items-center gap-1.5 tracking-widest shadow-sm ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
+                                    {activeNote.isCompleted ? <RepeatIcon className="w-3.5 h-3.5"/> : <CheckCircleIcon className="w-3.5 h-3.5"/>}
+                                    {activeNote.isCompleted ? 'Re-open' : 'Archive Record'}
+                                </button>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => handleCopyContent(activeNote, false)} className="flex items-center gap-1 text-slate-600 font-black text-[8px] uppercase hover:bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg transition-all tracking-widest shadow-sm">
+                                    <CopyIcon className="w-3 h-3"/> Copy Text
+                                </button>
+                                <button onClick={() => handleCopyContent(activeNote, true)} className="flex items-center gap-1 text-indigo-600 font-black text-[8px] uppercase hover:bg-indigo-50 border border-indigo-100 px-2.5 py-1.5 rounded-lg transition-all tracking-widest shadow-sm">
+                                    <SparklesIcon className="w-3 h-3"/> Copy Text for AI
+                                </button>
+                                <button onClick={() => copyToClipboard(activeNote.content)} className="flex items-center gap-1 text-slate-400 font-black text-[8px] uppercase hover:bg-slate-100 px-2 py-1.5 rounded-lg transition-all tracking-widest" title="Export as Raw Markdown">
+                                    Raw Data
+                                </button>
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -600,9 +681,13 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
             </div>
 
             {copyStatus !== 'idle' && (
-                <div className="fixed bottom-6 right-6 z-[200] px-3 py-1.5 bg-slate-900 text-white rounded-lg shadow-2xl border border-white/10 animate-slide-in-right flex items-center gap-2">
-                    <div className={`w-1 h-1 rounded-full ${copyStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                    <span className="text-[9px] font-black uppercase tracking-widest">{copyStatus === 'success' ? 'Copied' : 'Failed'}</span>
+                <div className="fixed bottom-6 right-6 z-[200] px-3 py-2 bg-slate-900 text-white rounded-lg shadow-2xl border border-white/10 animate-slide-in-right flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full ${copyStatus === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`} />
+                    <span className="text-[9px] font-black uppercase tracking-widest">
+                        {copyStatus === 'success' ? 'Copied to Clipboard' : 
+                         copyStatus === 'ai_success' ? 'Active Content Copied (AI Ready)' : 
+                         'Copy Failed'}
+                    </span>
                 </div>
             )}
         </div>
