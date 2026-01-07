@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Category, Tag, Payee, User, TransactionType, Transaction, AccountType, Account, BalanceEffect, Merchant, Location } from '../types';
 import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, DeleteIcon, EditIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon, CloseIcon, SparklesIcon, TableIcon, LightBulbIcon, BoxIcon, MapPinIcon, ExclamationTriangleIcon, TrashIcon } from '../components/Icons';
@@ -60,6 +59,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const [city, setCity] = useState('');
     const [state, setState] = useState('');
     const [country, setCountry] = useState('');
+    /* Renamed flowImpact state to balanceEffect for consistency */
     const [balanceEffect, setBalanceEffect] = useState<BalanceEffect>('expense');
 
     // Reset selection when tab changes
@@ -136,7 +136,8 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
             if (u) { setName(u.name); }
         } else if (activeTab === 'transactionTypes') {
             const t = transactionTypes.find(x => x.id === id);
-            if (t) { setName(t.name); setBalanceEffect(t.balanceEffect); }
+            /* Updated to use balanceEffect property name */
+            if (t) { setName(t.name); setBalanceEffect(t.balanceEffect); setColor(t.color || 'text-slate-600'); }
         } else if (activeTab === 'accountTypes') {
             const t = accountTypes.find(x => x.id === id);
             if (t) { setName(t.name); }
@@ -155,7 +156,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
         setNotes('');
         setUserId(users.find(u => u.isDefault)?.id || users[0]?.id || '');
         setBalanceEffect('expense');
-        setColor('bg-slate-100 text-slate-800');
+        setColor(activeTab === 'transactionTypes' ? 'text-rose-600' : 'bg-slate-100 text-slate-800');
     };
 
     const handleSave = (e: React.FormEvent) => {
@@ -170,14 +171,14 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
             case 'merchants': onSaveMerchant({ ...payload, payeeId: payeeId || undefined, notes: notes || undefined }); break;
             case 'locations': onSaveLocation({ ...payload, city, state, country }); break;
             case 'users': onSaveUser(payload); break;
-            case 'transactionTypes': onSaveTransactionType({ ...payload, balanceEffect }); break;
+            /* Updated to use balanceEffect property name */
+            case 'transactionTypes': onSaveTransactionType({ ...payload, balanceEffect, color }); break;
             case 'accountTypes': onSaveAccountType(payload); break;
         }
         setIsCreating(false);
         setSelectedId(id);
     };
 
-    // Single item delete (No verification per prompt)
     const handleIndividualDelete = (id: string) => {
         if (activeTab === 'users') {
             const user = users.find(u => u.id === id);
@@ -196,7 +197,6 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
         if (selectedId === id) setSelectedId(null);
     };
 
-    // Batch management
     const toggleBulkSelection = (id: string) => {
         const next = new Set(bulkSelectedIds);
         if (next.has(id)) next.delete(id);
@@ -227,8 +227,6 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
 
     const handleConfirmBulkDelete = () => {
         const selected = Array.from(bulkSelectedIds);
-        
-        // Final sanity check for usage before executing bulk delete
         const validToDelete: string[] = [];
         const inUse: string[] = [];
 
@@ -285,7 +283,6 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
             </div>
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* LIST PANEL */}
                 <div className="w-1/3 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
                     <div className="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
                         <div className="flex items-center gap-3">
@@ -364,14 +361,13 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                     </div>
                 </div>
 
-                {/* EDITOR PANEL */}
                 <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col min-h-0">
                     {(selectedId || isCreating) ? (
                         <form onSubmit={handleSave} className="flex-1 flex flex-col min-h-0">
                             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-800">{isCreating ? 'Architect New Entry' : 'Edit Entry Properties'}</h3>
-                                    <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-0.5">Entity Controller v1.0</p>
+                                    <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-0.5">Entity Controller v1.1</p>
                                 </div>
                                 <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="p-2 rounded-full hover:bg-slate-200"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                             </div>
@@ -426,6 +422,43 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                         </div>
                                     )}
 
+                                    {activeTab === 'transactionTypes' && (
+                                        <div className="space-y-6">
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Impact Flow</label>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {(['income', 'expense', 'neutral'] as const).map(impact => (
+                                                        <button 
+                                                            key={impact} 
+                                                            type="button"
+                                                            onClick={() => setBalanceEffect(impact)}
+                                                            className={`p-3 rounded-xl border-2 text-[10px] font-black uppercase tracking-wider transition-all ${balanceEffect === impact ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-100'}`}
+                                                        >
+                                                            {impact}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Label Color</label>
+                                                <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                                    {[
+                                                        'text-emerald-600', 'text-rose-600', 'text-slate-600', 'text-orange-600', 'text-sky-600', 'text-indigo-600', 'text-purple-600'
+                                                    ].map(c => (
+                                                        <button 
+                                                            key={c} 
+                                                            type="button" 
+                                                            onClick={() => setColor(c)}
+                                                            className={`w-10 h-10 rounded-xl border-2 transition-all bg-white font-bold flex items-center justify-center ${color === c ? 'border-indigo-600 scale-110 shadow-lg' : 'border-slate-100'} ${c}`}
+                                                        >
+                                                            $
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {activeTab === 'payees' && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
@@ -459,7 +492,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                             </div>
                                             <div className="col-span-2">
                                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Merchant Details</label>
-                                                <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium min-h-[100px]" placeholder="Store number, specialized branch info..." />
+                                                <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium min-h-[120px]" placeholder="Store number, specialized branch info..." />
                                             </div>
                                         </div>
                                     )}
@@ -478,27 +511,6 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Nation / Country</label>
                                                 <input type="text" value={country} onChange={e => setCountry(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-slate-700 bg-white" placeholder="e.g. USA" />
                                             </div>
-                                        </div>
-                                    )}
-
-                                    {activeTab === 'transactionTypes' && (
-                                        <div>
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Financial Impact Direction</label>
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                                {(['income', 'expense', 'transfer', 'investment', 'donation', 'tax', 'savings', 'debt'] as const).map(effect => (
-                                                    <button 
-                                                        key={effect} 
-                                                        type="button"
-                                                        onClick={() => setBalanceEffect(effect)}
-                                                        className={`p-3 rounded-xl border-2 text-[10px] font-black uppercase tracking-wider transition-all ${balanceEffect === effect ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-100 text-slate-400 hover:border-indigo-100'}`}
-                                                    >
-                                                        {effect}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <p className="text-[10px] text-slate-400 font-medium mt-4 leading-relaxed">
-                                                Classification here affects AI normalization and reporting logic. Ensure you match the real-world flow of funds.
-                                            </p>
                                         </div>
                                     )}
                                 </div>
@@ -538,7 +550,6 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                 </div>
             </div>
 
-            {/* BULK DELETE VERIFICATION MODAL */}
             {isBulkDeleteModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>

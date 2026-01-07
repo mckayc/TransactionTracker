@@ -1,8 +1,7 @@
-
 import React from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction, View } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon } from './Icons';
 
 interface SidebarProps {
   currentView: View;
@@ -17,6 +16,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
 
   const mainNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
+    { id: 'import', label: 'Import', icon: CloudArrowUpIcon },
     { id: 'transactions', label: 'Transactions', icon: TableIcon },
     { id: 'documents', label: 'Documents', icon: DocumentIcon },
     { id: 'plan', label: 'Financial Plan', icon: LightBulbIcon },
@@ -126,7 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             <>
               <CalendarView transactions={transactions} />
               <div className="text-center pb-2">
-                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.4.0</span>
+                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.5.0</span>
               </div>
             </>
           )}

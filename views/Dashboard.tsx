@@ -1,291 +1,189 @@
-
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location } from '../types';
-// Fixed: Imports for AI extraction functions are now expected to be available in geminiService.ts
-import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
-import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
-import { mergeTransactions } from '../services/transactionService';
-import { applyRulesToTransactions } from '../services/ruleService';
-import FileUpload from '../components/FileUpload';
-import { ResultsDisplay } from '../components/ResultsDisplay';
-import TransactionTable from '../components/TransactionTable';
-import ImportVerification from '../components/ImportVerification';
-import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon } from '../components/Icons';
+import React, { useState, useMemo } from 'react';
+import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget } from '../types';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon } from '../components/Icons';
+import ReportColumn from '../components/ReportColumn';
 import { generateUUID } from '../utils';
-import { api } from '../services/apiService';
-
-type AppState = 'idle' | 'processing' | 'verifying_import' | 'post_import_edit' | 'success' | 'error';
-type ImportMethod = 'upload' | 'paste';
 
 interface DashboardProps {
-  onTransactionsAdded: (newTransactions: Transaction[], newCategories: Category[]) => void;
-  transactions: Transaction[]; 
-  accounts: Account[];
-  onAddAccount: (account: Account) => void;
-  onAddAccountType: (type: AccountType) => void;
-  accountTypes: AccountType[];
-  categories: Category[];
-  tags: Tag[];
-  transactionTypes: TransactionType[];
-  rules: ReconciliationRule[];
-  payees: Payee[];
-  merchants: Merchant[];
-  locations: Location[];
-  users: User[];
-  onAddDocument: (doc: BusinessDocument) => void;
-  documentFolders: DocumentFolder[];
-  onCreateFolder: (folder: DocumentFolder) => void;
-  onSaveRule: (rule: ReconciliationRule) => void;
-  onSaveCategory: (category: Category) => void;
-  onSavePayee: (payee: Payee) => void;
-  onSaveTag: (tag: Tag) => void;
-  onAddTransactionType: (type: TransactionType) => void;
-  onUpdateTransaction: (transaction: Transaction) => void;
-  onDeleteTransaction: (transactionId: string) => void;
+    transactions: Transaction[];
+    savedReports: SavedReport[];
+    tasks: TaskItem[];
+    goals: FinancialGoal[];
+    systemSettings: SystemSettings;
+    onUpdateSystemSettings: (s: SystemSettings) => void;
 }
 
-const SummaryWidget: React.FC<{title: string, value: string, helpText: string, icon?: React.ReactNode, className?: string}> = ({title, value, helpText, icon, className}) => (
-    <div className={`bg-white p-4 rounded-xl shadow-sm border border-slate-200 ${className}`}>
-        <div className="flex justify-between items-start">
-            <div>
-                <h3 className="text-sm font-medium text-slate-500">{title}</h3>
-                <p className="text-2xl font-bold text-slate-800 mt-1">{value}</p>
-            </div>
-            {icon && <div className="p-2 bg-slate-50 rounded-lg">{icon}</div>}
-        </div>
-        <p className="text-xs text-slate-400 mt-1">{helpText}</p>
-    </div>
-);
-
-const Dashboard: React.FC<DashboardProps> = ({ 
-    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
-}) => {
-  const [appState, setAppState] = useState<AppState>('idle');
-  const [error, setError] = useState<string | null>(null);
-  const [progressMessage, setProgressMessage] = useState('');
-  const [dashboardRange, setDashboardRange] = useState<'all' | 'year' | 'month'>('year');
-  const [summaryTotals, setSummaryTotals] = useState<Record<string, number>>({});
-  const [importMethod, setImportMethod] = useState<ImportMethod>('upload');
-  const [textInput, setTextInput] = useState('');
-  const [pasteAccountId, setPasteAccountId] = useState<string>('');
-  const [useAi, setUseAi] = useState(true);
-
-  const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
-  const [importedTxIds, setImportedTxIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const fetchSummary = async () => {
-        const now = new Date();
-        let startDate = '';
-        if (dashboardRange === 'year') startDate = `${now.getFullYear()}-01-01`;
-        if (dashboardRange === 'month') startDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-        try {
-            const result = await api.getSummary({ startDate });
-            setSummaryTotals(result);
-        } catch (e) {}
-    };
-    fetchSummary();
-  }, [dashboardRange, recentGlobalTransactions]);
-
-  const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
-    if (!rawTransactions || rawTransactions.length === 0) {
-        setError("No transactions were found in the provided data. Please check the file format or try AI mode.");
-        setAppState('error');
-        return;
-    }
-
-    const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
-    const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
-    const categoryNameToIdMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
-    const otherCategoryId = categoryNameToIdMap.get('other') || categories[0]?.id || '';
-
-    const processedTransactions = transactionsWithRules.map(tx => {
-        let finalCategoryId = tx.categoryId;
-        if (!finalCategoryId) {
-            const aiCategoryName = (tx.category || '').toLowerCase();
-            finalCategoryId = categoryNameToIdMap.get(aiCategoryName) || otherCategoryId;
+const WidgetSlot: React.FC<{
+    widget: DashboardWidget;
+    onRemove: () => void;
+    onConfigure: () => void;
+    savedReports: SavedReport[];
+    transactions: Transaction[];
+    tasks: TaskItem[];
+    goals: FinancialGoal[];
+}> = ({ widget, onRemove, onConfigure, savedReports, transactions, tasks, goals }) => {
+    
+    const renderContent = () => {
+        if (widget.type === 'report' && widget.config) {
+            const report = savedReports.find(r => r.id === widget.config);
+            if (!report) return <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center"><p className="text-sm">Report not found.</p></div>;
+            
+            return (
+                <div className="h-[400px]">
+                   {/* Simplified Report View for Dashboard */}
+                   <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
+                        <h4 className="font-bold text-slate-700 truncate">{report.name}</h4>
+                   </div>
+                   <div className="p-4 flex flex-col items-center justify-center h-[340px]">
+                        <ChartPieIcon className="w-12 h-12 text-indigo-100 mb-2" />
+                        <p className="text-xs text-slate-400">Preview of report data goes here.</p>
+                   </div>
+                </div>
+            );
         }
-        return { ...tx, categoryId: finalCategoryId, tempId: generateUUID() };
-    });
-    setRawTransactionsToVerify(processedTransactions);
-  }, [categories, accounts]);
 
-  const handleFileUpload = useCallback(async (files: File[], accountId: string, aiMode: boolean) => {
-    setError(null);
-    setAppState('processing');
-    setProgressMessage(aiMode ? 'AI Thinking (Analyzing Statements)...' : 'Parsing local files...');
-    try {
-      const raw = aiMode 
-        ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage) 
-        : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
-      
-      if (!raw || raw.length === 0) {
-          throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
-      }
-
-      applyRulesAndSetStaging(raw, users.find(u => u.isDefault)?.id || users[0]?.id || '', rules);
-      setAppState('verifying_import');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
-      setAppState('error');
-    }
-  }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging]);
-
-  const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
-      const { added } = mergeTransactions(recentGlobalTransactions, verified);
-      onTransactionsAdded(added, []);
-      setImportedTxIds(new Set(added.map(tx => tx.id)));
-      setAppState('post_import_edit');
-  };
-
-  const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val || 0);
-
-  // Determine if the top import card should be visible
-  const isImportFormVisible = appState === 'idle' || appState === 'processing' || appState === 'error';
-
-  return (
-    <div className="space-y-6 h-full flex flex-col">
-      <div className="flex justify-between items-center flex-shrink-0 px-1">
-        <div>
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Ledger Command</h1>
-            <p className="text-sm text-slate-500">Intelligent ingestion and performance overview.</p>
-        </div>
-        <div className="flex bg-white rounded-xl p-1 shadow-sm border border-slate-200">
-            {(['all', 'year', 'month'] as const).map(range => (
-                <button key={range} onClick={() => setDashboardRange(range)} className={`px-4 py-2 text-xs font-bold rounded-lg transition-all uppercase tracking-widest ${dashboardRange === range ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                    {range}
-                </button>
-            ))}
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 flex-shrink-0">
-        <SummaryWidget title="Income" value={formatCurrency(summaryTotals.income)} helpText={dashboardRange} className="border-emerald-100" />
-        <SummaryWidget title="Expenses" value={formatCurrency(summaryTotals.expense)} helpText={dashboardRange} className="border-rose-100" />
-        <SummaryWidget title="Taxes" value={formatCurrency(summaryTotals.tax)} helpText={dashboardRange} className="border-amber-100 bg-amber-50/30" />
-        <SummaryWidget title="Debt" value={formatCurrency(summaryTotals.debt)} helpText={dashboardRange} className="border-slate-100 bg-slate-50" />
-        <SummaryWidget title="Invest" value={formatCurrency(summaryTotals.investment)} helpText={dashboardRange} className="border-purple-100" />
-        <SummaryWidget title="Donations" value={formatCurrency(summaryTotals.donation)} helpText={dashboardRange} className="border-blue-100" />
-        <SummaryWidget title="Savings" value={formatCurrency(summaryTotals.savings)} helpText={dashboardRange} className="border-indigo-100" />
-        <SummaryWidget title="Calendar" value="..." helpText="Next Deadline" icon={<CalendarIcon className="w-5 h-5 text-indigo-600"/>} className="border-indigo-200 bg-indigo-50" />
-      </div>
-
-      <div className="flex-1 min-h-0 flex flex-col gap-6 overflow-hidden">
-        {/* Top: Quick Import Section (Full Width, only visible when not verifying) */}
-        {isImportFormVisible && (
-            <div className="w-full flex flex-col shrink-0 animate-fade-in">
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
-                    {appState === 'idle' ? (
-                        <div className="flex flex-col h-full overflow-hidden">
-                            <div className="flex justify-between items-center mb-4">
-                                <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">Quick Import</h2>
-                                <div className="flex p-1 bg-slate-100 rounded-xl">
-                                    <button onClick={() => setImportMethod('upload')} className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${importMethod === 'upload' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>FILE</button>
-                                    <button onClick={() => setImportMethod('paste')} className={`px-3 py-1.5 text-[10px] font-black rounded-lg transition-all ${importMethod === 'paste' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>TEXT</button>
-                                </div>
+        if (widget.type === 'tasks') {
+            const active = tasks.filter(t => !t.isCompleted).slice(0, 5);
+            return (
+                <div className="p-6 space-y-4">
+                    <h4 className="font-bold text-slate-800 flex items-center gap-2"><ChecklistIcon className="w-5 h-5 text-indigo-500" /> Pending Tasks</h4>
+                    <div className="space-y-2">
+                        {active.map(t => (
+                            <div key={t.id} className="text-sm p-2 bg-slate-50 rounded border border-slate-100 flex justify-between items-center">
+                                <span className="truncate flex-1">{t.title}</span>
+                                <span className={`text-[10px] font-black uppercase px-1.5 py-0.5 rounded ml-2 ${t.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-600'}`}>{t.priority}</span>
                             </div>
-
-                            <div className="flex-1 overflow-y-auto custom-scrollbar pr-1">
-                                {importMethod === 'upload' ? (
-                                    <FileUpload onFileUpload={handleFileUpload} disabled={false} accounts={accounts} />
-                                ) : (
-                                    <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full font-bold text-slate-700">
-                                                <option value="">Select Account...</option>
-                                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-                                            </select>
-                                            
-                                            <label className="flex items-center justify-between gap-2 cursor-pointer bg-slate-100 px-4 py-3 rounded-2xl group border border-transparent hover:border-indigo-200 transition-all">
-                                                <div className="flex items-center gap-3">
-                                                    <RobotIcon className={`w-5 h-5 ${useAi ? 'text-indigo-600' : 'text-slate-400'}`} />
-                                                    <span className="text-xs font-black text-slate-500 uppercase tracking-tight">AI Reasoning</span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <input type="checkbox" className="sr-only" checked={useAi} onChange={() => setUseAi(!useAi)} />
-                                                    <div className={`w-10 h-5 rounded-full relative transition-colors ${useAi ? 'bg-indigo-600' : 'bg-slate-300'}`}>
-                                                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${useAi ? 'left-6' : 'left-1'}`} />
-                                                    </div>
-                                                </div>
-                                            </label>
-                                        </div>
-
-                                        <textarea 
-                                            value={textInput} 
-                                            onChange={e => setTextInput(e.target.value)} 
-                                            placeholder="Paste CSV rows..." 
-                                            className="w-full h-32 p-3 font-mono text-[10px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white resize-none" 
-                                        />
-                                        <button 
-                                            onClick={async () => {
-                                                setAppState('processing');
-                                                try {
-                                                    const raw = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
-                                                    applyRulesAndSetStaging(raw, users[0]?.id || 'default', rules);
-                                                    setAppState('verifying_import');
-                                                } catch(e) { setAppState('error'); setError("Parsing failed. Ensure columns align."); }
-                                            }} 
-                                            disabled={!textInput.trim() || !pasteAccountId} 
-                                            className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 disabled:opacity-50"
-                                        >
-                                            Process Text
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ) : appState === 'processing' ? (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-                            <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
-                            <p className="font-black text-slate-800 text-lg">{progressMessage}</p>
-                            <p className="text-xs text-slate-400 mt-2">Gemini is synthesizing patterns and categorizing based on your preferences...</p>
-                        </div>
-                    ) : (
-                        <ResultsDisplay appState={appState as any} error={error} progressMessage={progressMessage} transactions={[]} duplicatesIgnored={0} duplicatesImported={0} onClear={() => setAppState('idle')} />
-                    )}
+                        ))}
+                    </div>
                 </div>
+            );
+        }
+
+        return (
+            <div className="flex flex-col items-center justify-center h-[200px] text-slate-400 p-8 text-center">
+                <SettingsIcon className="w-8 h-8 mb-2 opacity-20" />
+                <p className="text-sm font-medium">Empty Slot</p>
+                <button onClick={onConfigure} className="mt-3 text-xs font-bold text-indigo-600 uppercase hover:underline">Configure</button>
             </div>
-        )}
+        );
+    };
 
-        {/* Bottom: Ledger Activity or Verification View (Full Width) */}
-        <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-            {appState === 'verifying_import' ? (
-                <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                    {/* Fixed: Pass missing merchants and locations props */}
-                    <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} merchants={merchants} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
+    return (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden group relative">
+            <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                <button onClick={onConfigure} className="p-1.5 bg-white/80 backdrop-blur border rounded-lg text-slate-500 hover:text-indigo-600 shadow-sm"><SettingsIcon className="w-3.5 h-3.5"/></button>
+                <button onClick={onRemove} className="p-1.5 bg-white/80 backdrop-blur border rounded-lg text-slate-500 hover:text-red-600 shadow-sm"><CloseIcon className="w-3.5 h-3.5"/></button>
+            </div>
+            {renderContent()}
+        </div>
+    );
+};
+
+const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings }) => {
+    const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
+
+    const widgets = systemSettings.dashboardWidgets || [];
+
+    const addWidget = () => {
+        const newWidget: DashboardWidget = { id: generateUUID(), type: 'metric' };
+        onUpdateSystemSettings({ ...systemSettings, dashboardWidgets: [...widgets, newWidget] });
+    };
+
+    const removeWidget = (id: string) => {
+        onUpdateSystemSettings({ ...systemSettings, dashboardWidgets: widgets.filter(w => w.id !== id) });
+    };
+
+    const configureWidget = (id: string, type: DashboardWidget['type'], config?: any) => {
+        onUpdateSystemSettings({
+            ...systemSettings,
+            dashboardWidgets: widgets.map(w => w.id === id ? { ...w, type, config } : w)
+        });
+        setIsConfiguring(null);
+    };
+
+    return (
+        <div className="space-y-8 pb-20">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Personal Command</h1>
+                    <p className="text-sm text-slate-500">Your financial universe at a glance.</p>
                 </div>
-            ) : appState === 'post_import_edit' ? (
-                <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-0 h-full">
-                    <div className="flex justify-between items-center mb-6 bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm">
-                        <div>
-                            <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> Final Polish</h2>
-                            <p className="text-sm text-slate-500">Review {importedTxIds.size} ingested transactions.</p>
-                        </div>
-                        <button onClick={() => setAppState('idle')} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Finish</button>
+                <button onClick={addWidget} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">
+                    <AddIcon className="w-5 h-5" /> Add Module
+                </button>
+            </div>
+
+            {widgets.length === 0 ? (
+                <div className="bg-white p-20 rounded-[2.5rem] border-2 border-dashed border-slate-200 text-center space-y-4">
+                    <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <TrendingUpIcon className="w-10 h-10 text-slate-200" />
                     </div>
-                    <div className="flex-1 overflow-hidden border border-slate-200 rounded-2xl relative shadow-inner">
-                        <TransactionTable transactions={recentGlobalTransactions.filter(tx => importedTxIds.has(tx.id))} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
-                    </div>
+                    <h3 className="text-xl font-bold text-slate-800">Your Dashboard is Blank</h3>
+                    <p className="text-slate-500 max-w-sm mx-auto">Add modules to track your spending, goals, or upcoming tasks.</p>
+                    <button onClick={addWidget} className="px-8 py-3 bg-indigo-600 text-white font-bold rounded-xl">Build My View</button>
                 </div>
             ) : (
-                <div className="flex-1 flex flex-col overflow-hidden h-full min-h-0">
-                    <div className="flex justify-between items-center mb-4">
-                        <h2 className="text-xl font-black text-slate-800">Recent Ledger Activity</h2>
-                        <div className="flex gap-2">
-                             <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-100 rounded-lg text-[10px] font-bold text-slate-500">
-                                <TableIcon className="w-3 h-3" /> LIST VIEW
-                             </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {widgets.map(w => (
+                        <WidgetSlot 
+                            key={w.id} 
+                            widget={w} 
+                            onRemove={() => removeWidget(w.id)} 
+                            onConfigure={() => setIsConfiguring(w.id)}
+                            savedReports={savedReports}
+                            transactions={transactions}
+                            tasks={tasks}
+                            goals={goals}
+                        />
+                    ))}
+                </div>
+            )}
+
+            {isConfiguring && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg p-8 flex flex-col gap-6 animate-slide-up">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-xl font-bold">Configure Module</h3>
+                            <button onClick={() => setIsConfiguring(null)} className="p-1 hover:bg-slate-100 rounded-full"><CloseIcon className="w-6 h-6"/></button>
                         </div>
-                    </div>
-                    <div className="flex-1 overflow-hidden relative border rounded-2xl shadow-inner bg-slate-50/30 min-h-0 h-full">
-                        <TransactionTable transactions={recentGlobalTransactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} visibleColumns={new Set(['date', 'description', 'amount', 'category'])} />
+                        
+                        <div className="space-y-4">
+                            <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Select Module Type</label>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button onClick={() => configureWidget(isConfiguring, 'tasks')} className="p-4 border-2 rounded-2xl hover:border-indigo-600 text-left transition-all group">
+                                    <ChecklistIcon className="w-6 h-6 text-indigo-500 mb-2" />
+                                    <p className="font-bold">Pending Tasks</p>
+                                    <p className="text-[10px] text-slate-400">Next 5 actions</p>
+                                </button>
+                                <button onClick={() => configureWidget(isConfiguring, 'calendar')} className="p-4 border-2 rounded-2xl hover:border-indigo-600 text-left transition-all">
+                                    <TrendingUpIcon className="w-6 h-6 text-emerald-500 mb-2" />
+                                    <p className="font-bold">Net Worth</p>
+                                    <p className="text-[10px] text-slate-400">Balance across accounts</p>
+                                </button>
+                            </div>
+
+                            {savedReports.length > 0 && (
+                                <div className="space-y-3 pt-4 border-t">
+                                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest">Embed Saved Report</label>
+                                    <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                                        {savedReports.map(r => (
+                                            <button 
+                                                key={r.id} 
+                                                onClick={() => configureWidget(isConfiguring, 'report', r.id)}
+                                                className="p-3 bg-slate-50 border rounded-xl hover:border-indigo-500 text-left font-bold text-sm text-slate-700"
+                                            >
+                                                {r.name}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default Dashboard;

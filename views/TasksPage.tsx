@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo } from 'react';
-import type { Template, Task, ScheduledEvent, TaskItem, TaskPriority } from '../types';
-import { AddIcon, DeleteIcon, EditIcon, CheckCircleIcon, CalendarIcon, RepeatIcon, ChecklistIcon } from '../components/Icons';
+import type { Template, Task, ScheduledEvent, TaskItem, TaskPriority, Category } from '../types';
+import { AddIcon, DeleteIcon, EditIcon, CheckCircleIcon, CalendarIcon, RepeatIcon, ChecklistIcon, BoxIcon, SearchCircleIcon, TagIcon, ChevronRightIcon, ChevronDownIcon } from '../components/Icons';
 import TaskModal from './TaskModal';
 import { formatDate } from '../dateUtils';
 
@@ -10,295 +9,164 @@ interface TasksPageProps {
     onSaveTask: (task: TaskItem) => void;
     onDeleteTask: (taskId: string) => void;
     onToggleTask: (taskId: string) => void;
-    
     templates: Template[];
     scheduledEvents: ScheduledEvent[];
     onSaveTemplate: (template: Template) => void;
     onRemoveTemplate: (templateId: string) => void;
+    categories: Category[];
 }
 
-// --- Sub-Component: Template Editor (Legacy) ---
-const TemplateEditor: React.FC<{
-    selectedTemplate: Template | null;
-    onSave: (template: Template) => void;
-    onCancel: () => void;
-}> = ({ selectedTemplate, onSave, onCancel }) => {
-    const [name, setName] = useState(selectedTemplate?.name || '');
-    const [instructions, setInstructions] = useState(selectedTemplate?.instructions || '');
-    const [tasks, setTasks] = useState<Task[]>(selectedTemplate?.tasks || []);
-    const [newTaskText, setNewTaskText] = useState('');
+const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, onToggleTask, templates, scheduledEvents, onSaveTemplate, onRemoveTemplate, categories }) => {
+    const [selectedCategoryId, setSelectedCategoryId] = useState<string | 'all' | 'none'>('all');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+    const [isCreating, setIsCreating] = useState(false);
+    const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed'>('active');
 
-    const handleAddTask = () => {
-        if (newTaskText.trim()) {
-            setTasks([...tasks, { id: crypto.randomUUID(), text: newTaskText.trim() }]);
-            setNewTaskText('');
-        }
-    };
-
-    const handleRemoveTask = (taskId: string) => {
-        setTasks(tasks.filter(task => task.id !== taskId));
-    };
-    
-    const handleSave = () => {
-        if (!name.trim()) {
-            alert('Template name is required.');
-            return;
-        }
-        onSave({
-            id: selectedTemplate?.id || crypto.randomUUID(),
-            name: name.trim(),
-            instructions: instructions.trim(),
-            tasks
-        });
-    };
-    
-    return (
-         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4">
-            <h2 className="text-xl font-bold text-slate-700">{selectedTemplate ? 'Edit Template' : 'Create New Template'}</h2>
-            <div>
-                <label className="block text-sm font-medium text-slate-700">Template Name</label>
-                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Monthly Bill Payments" required />
-            </div>
-             <div>
-                <label className="block text-sm font-medium text-slate-700">Instructions (Optional)</label>
-                <textarea value={instructions} onChange={e => setInstructions(e.target.value)} placeholder="Add details or notes here." rows={3}></textarea>
-            </div>
-            <div>
-                <h3 className="text-lg font-semibold text-slate-700 mb-2">Tasks</h3>
-                <ul className="space-y-2 mb-2">
-                    {tasks.map(task => (
-                        <li key={task.id} className="flex items-center gap-2 p-2 bg-slate-50 rounded-md">
-                            <span className="flex-grow text-sm">{task.text}</span>
-                            <button onClick={() => handleRemoveTask(task.id)} className="text-red-500 hover:text-red-700"><DeleteIcon className="w-4 h-4" /></button>
-                        </li>
-                    ))}
-                </ul>
-                <div className="flex gap-2">
-                    <input type="text" value={newTaskText} onChange={e => setNewTaskText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddTask())} placeholder="Add a new task" className="flex-grow" />
-                    <button onClick={handleAddTask} className="px-4 py-2 font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"><AddIcon className="w-5 h-5"/></button>
-                </div>
-            </div>
-            <div className="flex justify-end gap-3 pt-4">
-                <button onClick={onCancel} className="px-4 py-2 font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200">Cancel</button>
-                <button onClick={handleSave} className="px-6 py-2 font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">Save Template</button>
-            </div>
-         </div>
-    );
-};
-
-// --- Sub-Component: Task Item Row ---
-const TaskItemRow: React.FC<{ task: TaskItem; onToggle: () => void; onDelete: () => void; onEdit: () => void; }> = ({ task, onToggle, onDelete, onEdit }) => {
-    const priorityColors = {
-        low: 'bg-blue-100 text-blue-700',
-        medium: 'bg-amber-100 text-amber-700',
-        high: 'bg-red-100 text-red-700',
-    };
-
-    const completedSubtasks = task.subtasks?.filter(s => s.isCompleted).length || 0;
-    const totalSubtasks = task.subtasks?.length || 0;
-
-    return (
-        <div className={`flex items-start gap-3 p-4 bg-white border rounded-lg shadow-sm transition-all ${task.isCompleted ? 'opacity-60' : 'hover:shadow-md'}`}>
-             <button onClick={onToggle} className={`flex-shrink-0 mt-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-colors ${task.isCompleted ? 'bg-green-500 border-green-500' : 'border-slate-300 hover:border-indigo-500'}`}>
-                {task.isCompleted && <CheckCircleIcon className="w-5 h-5 text-white" />}
-             </button>
-             
-             <div className="flex-grow cursor-pointer" onClick={onEdit}>
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <h3 className={`font-medium ${task.isCompleted ? 'line-through text-slate-500' : 'text-slate-800'}`}>{task.title}</h3>
-                    <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${priorityColors[task.priority]}`}>{task.priority}</span>
-                    {task.recurrence && <span className="text-xs text-indigo-600 flex items-center gap-1 bg-indigo-50 px-2 py-0.5 rounded-full"><RepeatIcon className="w-3 h-3"/> {task.recurrence.frequency}</span>}
-                </div>
-                
-                <div className="flex items-center gap-4 text-xs text-slate-500">
-                    {task.description && <span className="truncate max-w-xs">{task.description}</span>}
-                    
-                    {task.dueDate && (
-                        <span className={`flex items-center gap-1 ${!task.isCompleted && new Date(task.dueDate) < new Date() ? 'text-red-600 font-bold' : ''}`}>
-                            <CalendarIcon className="w-3 h-3" />
-                            {formatDate(task.dueDate)}
-                        </span>
-                    )}
-
-                    {totalSubtasks > 0 && (
-                        <span className="flex items-center gap-1 text-slate-600 font-medium">
-                            <ChecklistIcon className="w-3 h-3" />
-                            {completedSubtasks}/{totalSubtasks}
-                        </span>
-                    )}
-                </div>
-             </div>
-
-             <div className="flex gap-1">
-                 <button onClick={onEdit} className="text-slate-400 hover:text-indigo-600 p-2 rounded-full hover:bg-slate-100">
-                     <EditIcon className="w-5 h-5" />
-                 </button>
-                 <button onClick={onDelete} className="text-slate-400 hover:text-red-500 p-2 rounded-full hover:bg-slate-100">
-                     <DeleteIcon className="w-5 h-5" />
-                 </button>
-             </div>
-        </div>
-    );
-};
-
-const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, onToggleTask, templates, scheduledEvents, onSaveTemplate, onRemoveTemplate }) => {
-    const [activeTab, setActiveTab] = useState<'mytasks' | 'templates'>('mytasks');
-    const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('active');
-    const [sortBy, setSortBy] = useState<'date' | 'priority'>('date');
-    const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-    const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
-
-    // --- Templates State ---
-    const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-    const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
-    const usedTemplateIds = new Set(scheduledEvents.map(e => e.templateId));
-
-    // --- Tasks Logic ---
     const filteredTasks = useMemo(() => {
-        let result = tasks;
-        if (filter === 'active') result = result.filter(t => !t.isCompleted);
-        if (filter === 'completed') result = result.filter(t => t.isCompleted);
-        
-        return result.sort((a, b) => {
-            if (sortBy === 'priority') {
-                const pMap = { high: 3, medium: 2, low: 1 };
-                return pMap[b.priority] - pMap[a.priority];
-            } else {
-                // Sort by Due Date (earliest first), then Created Date
-                if (a.dueDate && b.dueDate) return a.dueDate.localeCompare(b.dueDate);
-                if (a.dueDate) return -1;
-                if (b.dueDate) return 1;
-                return b.createdAt.localeCompare(a.createdAt);
+        return tasks.filter(t => {
+            const matchesSearch = t.title.toLowerCase().includes(searchTerm.toLowerCase()) || (t.description || '').toLowerCase().includes(searchTerm.toLowerCase());
+            const matchesCategory = selectedCategoryId === 'all' || (selectedCategoryId === 'none' ? !t.categoryId : t.categoryId === selectedCategoryId);
+            const matchesStatus = filterStatus === 'all' || (filterStatus === 'active' ? !t.isCompleted : t.isCompleted);
+            return matchesSearch && matchesCategory && matchesStatus;
+        }).sort((a, b) => {
+            if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+            if (a.priority !== b.priority) {
+                const p = { high: 3, medium: 2, low: 1 };
+                return p[b.priority] - p[a.priority];
             }
+            return new Date(a.dueDate || '9999').getTime() - new Date(b.dueDate || '9999').getTime();
         });
-    }, [tasks, filter, sortBy]);
+    }, [tasks, searchTerm, selectedCategoryId, filterStatus]);
 
-    // --- Task Handlers ---
-    const handleAddTask = () => {
-        setEditingTask(null);
-        setIsTaskModalOpen(true);
-    };
-
-    const handleEditTask = (task: TaskItem) => {
-        setEditingTask(task);
-        setIsTaskModalOpen(true);
-    };
-
-    // --- Template Handlers ---
-    const handleSelectTemplate = (template: Template) => {
-        setSelectedTemplate(template);
-        setIsCreatingTemplate(false);
-    };
-    const handleAddNewTemplate = () => {
-        setSelectedTemplate(null);
-        setIsCreatingTemplate(true);
-    };
-    const handleSaveTemplateWrapper = (template: Template) => {
-        onSaveTemplate(template);
-        setSelectedTemplate(template);
-        setIsCreatingTemplate(false);
-    };
-    const handleCancelTemplate = () => {
-        setSelectedTemplate(null);
-        setIsCreatingTemplate(false);
-    };
+    const activeTask = useMemo(() => tasks.find(t => t.id === selectedTaskId), [tasks, selectedTaskId]);
 
     return (
-        <div className="space-y-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="h-full flex flex-col gap-6">
+            <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold text-slate-800">Tasks</h1>
-                    <p className="text-slate-500 mt-1">Manage your to-do list and recurring checklists.</p>
+                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Financial Tasks</h1>
+                    <p className="text-sm text-slate-500">Operation health and deadline compliance.</p>
                 </div>
-                <div className="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200">
-                    <button onClick={() => setActiveTab('mytasks')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'mytasks' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>My Tasks</button>
-                    <button onClick={() => setActiveTab('templates')} className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${activeTab === 'templates' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>Recurring Lists</button>
-                </div>
+                <button onClick={() => { setIsCreating(true); setSelectedTaskId(null); }} className="px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2">
+                    <AddIcon className="w-5 h-5" /> New Task
+                </button>
             </div>
 
-            {activeTab === 'mytasks' && (
-                <div className="space-y-6 max-w-3xl mx-auto">
-                    <button onClick={handleAddTask} className="w-full py-4 border-2 border-dashed border-slate-300 rounded-xl flex flex-col items-center justify-center text-slate-500 hover:text-indigo-600 hover:border-indigo-400 hover:bg-indigo-50 transition-all">
-                        <AddIcon className="w-8 h-8 mb-2" />
-                        <span className="font-medium">Create New Task</span>
-                    </button>
-
-                    <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                        <div className="flex gap-4">
-                            <button onClick={() => setFilter('active')} className={`text-sm font-medium ${filter === 'active' ? 'text-indigo-600 border-b-2 border-indigo-600 -mb-2.5 pb-2' : 'text-slate-500'}`}>Active</button>
-                            <button onClick={() => setFilter('completed')} className={`text-sm font-medium ${filter === 'completed' ? 'text-indigo-600 border-b-2 border-indigo-600 -mb-2.5 pb-2' : 'text-slate-500'}`}>Completed</button>
-                            <button onClick={() => setFilter('all')} className={`text-sm font-medium ${filter === 'all' ? 'text-indigo-600 border-b-2 border-indigo-600 -mb-2.5 pb-2' : 'text-slate-500'}`}>All</button>
-                        </div>
-                        <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)} className="text-xs border-none bg-transparent text-slate-500 font-medium focus:ring-0 cursor-pointer">
-                            <option value="date">Sort by Due Date</option>
-                            <option value="priority">Sort by Priority</option>
-                        </select>
+            <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
+                {/* LEFT: FILTERS */}
+                <div className="w-64 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col p-4 flex-shrink-0">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Status</p>
+                    <div className="space-y-1 mb-8">
+                        {['active', 'completed', 'all'].map(s => (
+                            <button key={s} onClick={() => setFilterStatus(s as any)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold capitalize transition-all ${filterStatus === s ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                {s}
+                            </button>
+                        ))}
                     </div>
 
-                    <div className="space-y-3">
-                        {filteredTasks.length > 0 ? (
-                            filteredTasks.map(task => (
-                                <TaskItemRow key={task.id} task={task} onToggle={() => onToggleTask(task.id)} onDelete={() => onDeleteTask(task.id)} onEdit={() => handleEditTask(task)} />
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Workspaces</p>
+                    <div className="space-y-1 overflow-y-auto custom-scrollbar">
+                        <button onClick={() => setSelectedCategoryId('all')} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedCategoryId === 'all' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>All Workspaces</button>
+                        {categories.filter(c => !c.parentId).map(c => (
+                            <button key={c.id} onClick={() => setSelectedCategoryId(c.id)} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedCategoryId === c.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>
+                                {c.name}
+                            </button>
+                        ))}
+                        <button onClick={() => setSelectedCategoryId('none')} className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedCategoryId === 'none' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}>Uncategorized</button>
+                    </div>
+                </div>
+
+                {/* MIDDLE: LIST */}
+                <div className="w-96 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
+                    <div className="p-3 border-b">
+                        <div className="relative">
+                            <input type="text" placeholder="Search tasks..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border rounded-xl text-xs focus:bg-white outline-none" />
+                            <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                        {filteredTasks.length === 0 ? (
+                            <div className="p-10 text-center text-slate-300 flex flex-col items-center">
+                                <BoxIcon className="w-10 h-10 mb-2 opacity-10" />
+                                <p className="text-[11px] font-bold">No tasks found.</p>
+                            </div>
+                        ) : (
+                            filteredTasks.map(t => (
+                                <div key={t.id} onClick={() => { setSelectedTaskId(t.id); setIsCreating(false); }} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-2 ${selectedTaskId === t.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+                                    <div className="flex justify-between items-start">
+                                        <h4 className={`text-sm font-bold truncate pr-2 ${t.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{t.title}</h4>
+                                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${t.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>{t.priority}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-tight">
+                                        {t.dueDate && <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3" /> {formatDate(t.dueDate)}</span>}
+                                        {t.subtasks && t.subtasks.length > 0 && <span className="flex items-center gap-1"><ChecklistIcon className="w-3 h-3" /> {t.subtasks.filter(s => s.isCompleted).length}/{t.subtasks.length}</span>}
+                                    </div>
+                                </div>
                             ))
-                        ) : (
-                            <div className="text-center py-12">
-                                <p className="text-slate-400">No tasks found.</p>
-                            </div>
                         )}
                     </div>
                 </div>
-            )}
 
-            {activeTab === 'templates' && (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-start">
-                    <div className="md:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-xl font-bold text-slate-700">Checklist Templates</h2>
-                            <button onClick={handleAddNewTemplate} className="p-2 text-white bg-indigo-600 rounded-full hover:bg-indigo-700"><AddIcon className="w-5 h-5"/></button>
-                        </div>
-                        <p className="text-xs text-slate-500 mb-4">Create reusable lists for recurring events (like "Monthly Closing"). Schedule these in the Calendar.</p>
-                        {templates.length > 0 ? (
-                             <ul className="space-y-2">
-                                {templates.map(template => {
-                                    const isUsed = usedTemplateIds.has(template.id);
-                                    return (
-                                        <li key={template.id} className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedTemplate?.id === template.id ? 'bg-indigo-50 border-indigo-500' : 'hover:bg-slate-50'}`} onClick={() => handleSelectTemplate(template)}>
-                                            <div className="flex justify-between items-center">
-                                                <span className="font-semibold">{template.name}</span>
-                                                <div className="flex items-center gap-2">
-                                                     <button onClick={(e) => { e.stopPropagation(); handleSelectTemplate(template); }} className="text-slate-500 hover:text-indigo-600"><EditIcon className="w-4 h-4"/></button>
-                                                    <button onClick={(e) => { e.stopPropagation(); onRemoveTemplate(template.id); }} disabled={isUsed} className="text-slate-500 hover:text-red-500 disabled:text-slate-300 disabled:cursor-not-allowed" title={isUsed ? "Cannot delete a template that is scheduled." : "Delete template"}><DeleteIcon className="w-4 h-4"/></button>
+                {/* RIGHT: DETAIL */}
+                <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 relative">
+                    {selectedTaskId && activeTask ? (
+                        <div className="flex flex-col h-full animate-fade-in">
+                            <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
+                                <div className="flex items-center gap-4">
+                                    <button onClick={() => onToggleTask(activeTask.id)} className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all ${activeTask.isCompleted ? 'bg-green-500 border-green-500 text-white' : 'border-slate-300 hover:border-indigo-500 text-transparent'}`}>
+                                        <CheckCircleIcon className="w-5 h-5" />
+                                    </button>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-800">{activeTask.title}</h3>
+                                        <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">{activeTask.priority} priority • {activeTask.isCompleted ? 'Resolved' : 'Active'}</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setIsCreating(true)} className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg border hover:bg-white"><EditIcon className="w-5 h-5"/></button>
+                                    <button onClick={() => { onDeleteTask(activeTask.id); setSelectedTaskId(null); }} className="p-2 text-slate-400 hover:text-red-600 rounded-lg border hover:bg-white"><DeleteIcon className="w-5 h-5"/></button>
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+                                {activeTask.description && (
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Context</label>
+                                        <p className="text-sm text-slate-600 leading-relaxed font-medium">{activeTask.description}</p>
+                                    </div>
+                                )}
+                                
+                                {activeTask.subtasks && activeTask.subtasks.length > 0 && (
+                                    <div>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">Operational Checklist</label>
+                                        <div className="space-y-2">
+                                            {activeTask.subtasks.map(s => (
+                                                <div key={s.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                                    <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${s.isCompleted ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300'}`}>
+                                                        {s.isCompleted && <CheckCircleIcon className="w-3 h-3" />}
+                                                    </div>
+                                                    <span className={`text-sm font-bold ${s.isCompleted ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{s.text}</span>
                                                 </div>
-                                            </div>
-                                            <p className="text-xs text-slate-500">{template.tasks.length} items</p>
-                                        </li>
-                                    );
-                                })}
-                            </ul>
-                        ) : (
-                            <p className="text-center text-slate-500 py-8">No templates yet.</p>
-                        )}
-                    </div>
-
-                    <div className="md:col-span-2">
-                        {(selectedTemplate || isCreatingTemplate) ? (
-                            <TemplateEditor selectedTemplate={selectedTemplate} onSave={handleSaveTemplateWrapper} onCancel={handleCancelTemplate} />
-                        ) : (
-                            <div className="text-center bg-white p-12 rounded-xl shadow-sm border border-slate-200">
-                                <h3 className="text-lg font-semibold text-slate-600">Select a template to edit, or create a new one.</h3>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    ) : isCreating ? (
+                         <div className="p-8 h-full">
+                            <TaskModal isOpen={isCreating} onClose={() => setIsCreating(false)} onSave={(t) => { onSaveTask(t); setIsCreating(false); setSelectedTaskId(t.id); }} task={activeTask || null} />
+                         </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
+                            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-6">
+                                <ChecklistIcon className="w-10 h-10 text-indigo-200" />
+                            </div>
+                            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Operational Center</h3>
+                            <p className="text-slate-400 text-sm mt-3 font-medium max-w-xs">Select a task to review dependencies or track progress.</p>
+                        </div>
+                    )}
                 </div>
-            )}
-            
-            <TaskModal 
-                isOpen={isTaskModalOpen} 
-                onClose={() => setIsTaskModalOpen(false)} 
-                onSave={onSaveTask} 
-                task={editingTask} 
-                initialMode="edit"
-            />
+            </div>
         </div>
     );
 };

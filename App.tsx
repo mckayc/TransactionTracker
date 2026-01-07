@@ -1,9 +1,8 @@
-
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Merchant, Location } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
+import ImportPage from './views/ImportPage';
 import AllTransactions from './views/AllTransactions';
 import CalendarPage from './views/CalendarPage';
 import AccountsPage from './views/AccountsPage';
@@ -25,7 +24,6 @@ import { MenuIcon, CloseIcon, SparklesIcon, ExclamationTriangleIcon, RepeatIcon 
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
 
-// Global sync channel with safe check
 const getSyncChannel = () => {
     try {
         if (typeof BroadcastChannel !== 'undefined') return new BroadcastChannel('finparser_sync');
@@ -110,7 +108,7 @@ const App: React.FC = () => {
             setSystemSettings(data.systemSettings || {});
             
             try {
-                const txResponse = await api.getTransactions({ limit: 200 });
+                const txResponse = await api.getTransactions({ limit: 1000 });
                 if (txResponse && txResponse.data) setTransactions(txResponse.data);
             } catch (txErr) {}
         } catch (err) {
@@ -119,7 +117,6 @@ const App: React.FC = () => {
         } finally {
             if (showLoader) setIsLoading(false);
             setIsSyncing(false);
-            // Eagerly remove splash screen
             document.body.classList.add('loaded');
         }
     };
@@ -137,7 +134,6 @@ const App: React.FC = () => {
         if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
     };
 
-    // Bulk Atomic Update Helper
     const bulkUpdateData = async (key: string, newItems: any[], setter: Function) => {
         setter((prev: any[]) => {
             const next = [...prev];
@@ -220,6 +216,16 @@ const App: React.FC = () => {
                 <div className="flex-1 overflow-y-auto p-4 md:p-8 relative custom-scrollbar bg-slate-50/50">
                     {currentView === 'dashboard' && (
                         <Dashboard 
+                            transactions={transactions} 
+                            savedReports={savedReports} 
+                            tasks={tasks}
+                            goals={financialGoals}
+                            systemSettings={systemSettings}
+                            onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)}
+                        />
+                    )}
+                    {currentView === 'import' && (
+                        <ImportPage 
                             transactions={transactions} accounts={accounts} accountTypes={accountTypes}
                             categories={categories} tags={tags} transactionTypes={transactionTypes}
                             rules={rules} payees={payees} merchants={merchants} locations={locations} users={users}
@@ -258,7 +264,7 @@ const App: React.FC = () => {
                             onAddEvent={(e) => bulkUpdateData('scheduledEvents', [e], setScheduledEvents)}
                             onUpdateTransaction={handleUpdateTransaction} onAddTransaction={(tx) => handleTransactionsAdded([tx])}
                             onToggleTaskCompletion={async (d, eid, tid) => { const next = {...taskCompletions, [`${d}_${eid}_${tid}`]: !taskCompletions[`${d}_${eid}_${tid}`]}; updateData('taskCompletions', next, setTaskCompletions); }}
-                            onToggleTask={(id) => setTaskCompletions(prev => ({...prev, [id]: !prev[id]}))} // Simplified
+                            onToggleTask={(id) => setTaskCompletions(prev => ({...prev, [id]: !prev[id]}))} 
                             onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks)}
                             transactionTypes={transactionTypes}
                         />
@@ -282,7 +288,6 @@ const App: React.FC = () => {
                             onSaveLocations={(ls) => bulkUpdateData('locations', ls, setLocations)}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
                             onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
-                            /* Added missing onSaveUser prop to resolve Type Error */
                             onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
                         />
                     )}
@@ -332,6 +337,7 @@ const App: React.FC = () => {
                                 updateData('savedDateRanges', newVal, setSavedDateRanges);
                             }}
                             amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics}
+                            onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports)}
                         />
                     )}
                     {currentView === 'settings' && (
@@ -357,6 +363,7 @@ const App: React.FC = () => {
                             templates={templates} scheduledEvents={scheduledEvents}
                             onSaveTemplate={(t) => bulkUpdateData('templates', [t], setTemplates)}
                             onRemoveTemplate={(id) => setTemplates(prev => { const next = prev.filter(t => t.id !== id); api.save('templates', next); return next; })}
+                            categories={categories}
                         />
                     )}
                     {currentView === 'hub' && (

@@ -1,10 +1,11 @@
-
-export type BalanceEffect = 'income' | 'expense' | 'transfer' | 'investment' | 'donation' | 'tax' | 'savings' | 'debt';
+export type BalanceEffect = 'income' | 'expense' | 'neutral' | 'transfer' | 'tax' | 'investment' | 'donation';
 
 export interface TransactionType {
     id: string;
     name: string;
+    /* Property renamed from flowImpact to match service expectations */
     balanceEffect: BalanceEffect;
+    color?: string; // Tailwind class like 'text-emerald-600'
     isDefault?: boolean;
 }
 
@@ -79,7 +80,6 @@ export interface RawTransaction {
     tagIds?: string[];
     notes?: string;
     appliedRuleId?: string;
-    // Fix: Added metadata to RawTransaction to store pattern-specific data
     metadata?: Record<string, any>;
 }
 
@@ -123,9 +123,7 @@ export interface ReconciliationRule {
     skipImport?: boolean;
     isAiDraft?: boolean;
     priority?: number;
-    // Fix: Added scope to ReconciliationRule to track logical application domain
     scope?: string;
-    // Fields for Import/AI-suggested entities that don't exist yet
     suggestedCategoryName?: string;
     suggestedPayeeName?: string;
     suggestedMerchantName?: string;
@@ -146,7 +144,6 @@ export interface RuleImportDraft extends ReconciliationRule {
     };
 }
 
-// Fix: Added TaskPriority export for components that handle task criticality
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface TaskItem {
@@ -160,6 +157,7 @@ export interface TaskItem {
     createdAt: string;
     subtasks?: SubTask[];
     recurrence?: RecurrenceRule;
+    categoryId?: string;
 }
 
 export interface SubTask {
@@ -179,7 +177,6 @@ export interface RecurrenceRule {
     endDate?: string;
 }
 
-// Fix: Added Task interface for checklist template structures
 export interface Task {
     id: string;
     text: string;
@@ -201,7 +198,6 @@ export interface ScheduledEvent {
 
 export type TaskCompletions = Record<string, boolean>;
 
-// Fix: Exported BusinessInfo and TaxInfo to resolve missing imports in BusinessWizard and Hub
 export interface BusinessInfo {
     llcName?: string;
     businessType?: string;
@@ -256,15 +252,22 @@ export interface DocumentFolder {
     createdAt: string;
 }
 
-// Fix: Added BackupConfig export for SystemSettings management
 export interface BackupConfig {
     frequency: 'daily' | 'weekly' | 'monthly' | 'never';
     retentionCount: number;
     lastBackupDate?: string;
 }
 
+export interface DashboardWidget {
+    id: string;
+    type: 'report' | 'metric' | 'tasks' | 'calendar';
+    config?: any; // Saved Report ID or Metric Key
+    title?: string;
+}
+
 export interface SystemSettings {
     backupConfig?: BackupConfig;
+    dashboardWidgets?: DashboardWidget[];
 }
 
 export type ReportGroupBy = 'category' | 'payee' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';
@@ -295,11 +298,12 @@ export interface ReportConfig {
         userIds?: string[];
         categoryIds?: string[];
         typeIds?: string[];
-        balanceEffects?: BalanceEffect[];
         tagIds?: string[];
         payeeIds?: string[];
         amazonSources?: AmazonReportType[];
         amazonTrackingIds?: string[];
+        /* Added balanceEffects to match report logic expectations */
+        balanceEffects?: BalanceEffect[];
     };
     hiddenCategoryIds?: string[];
     hiddenIds?: string[];
@@ -416,10 +420,9 @@ export interface AuditFinding {
     };
 }
 
-// Fix: Added DuplicatePair interface for duplicate transaction handling
 export interface DuplicatePair {
     newTx: Transaction;
     existingTx: Transaction;
 }
 
-export type View = 'dashboard' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';
+export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'accounts' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';

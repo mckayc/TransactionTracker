@@ -1,7 +1,5 @@
-
 import React, { useState } from 'react';
 import type { RuleCondition, Account, RuleLogic } from '../types';
-/* Added ShieldCheckIcon to imports to fix missing component errors */
 import { DeleteIcon, AddIcon, DragHandleIcon, InfoIcon, TableIcon, BoxIcon, MapPinIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon } from './Icons';
 import { generateUUID } from '../utils';
 
@@ -13,8 +11,6 @@ interface RuleBuilderProps {
 }
 
 const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, depth = 0 }) => {
-    const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-
     const handleUpdateCondition = (index: number, field: keyof RuleCondition, value: any) => {
         const newConditions = [...items];
         newConditions[index] = { ...newConditions[index], [field]: value };
@@ -56,7 +52,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                         <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 shadow-inner">
                             <div className="flex justify-between items-center mb-3">
                                 <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                                    <ShieldCheckIcon className="w-3 h-3" /> Logic Group {depth + 1}
+                                    <ShieldCheckIcon className="w-3 h-3" /> Logic Group
                                 </span>
                                 <button type="button" onClick={() => handleDeleteCondition(index)} className="text-slate-300 hover:text-red-500 p-1"><DeleteIcon className="w-4 h-4" /></button>
                             </div>
@@ -71,7 +67,6 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                         <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
                             <div className="xl:col-span-1 flex items-center gap-2">
                                 <div className="text-slate-300"><DragHandleIcon className="w-4 h-4" /></div>
-                                <div className="flex items-center justify-center w-5 h-5 rounded-full bg-slate-100 text-[9px] font-black text-slate-500">{index + 1}</div>
                             </div>
                             
                             <div className="xl:col-span-2">
@@ -113,19 +108,30 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                         <><option value="equals">Equals</option><option value="greater_than">Greater Than</option><option value="less_than">Less Than</option></>
                                     )}
                                     {condition.field === 'accountId' && (
-                                        <><option value="equals">Is Exact</option><option value="contains">Name Contains</option></>
+                                        <><option value="equals">Is Exactly</option><option value="contains">Name Contains</option></>
                                     )}
                                 </select>
                             </div>
 
                             <div className={`${condition.field === 'metadata' ? 'xl:col-span-3' : 'xl:col-span-5'}`}>
-                                <input 
-                                    type={condition.field === 'amount' ? 'number' : 'text'} 
-                                    value={condition.value} 
-                                    onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                    placeholder="Comparison value..."
-                                    className="w-full p-2 text-xs border rounded-lg focus:border-indigo-500 outline-none"
-                                />
+                                {condition.field === 'accountId' && condition.operator === 'equals' ? (
+                                    <select 
+                                        value={condition.value} 
+                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                        className="w-full p-2 text-xs border rounded-lg focus:border-indigo-500 outline-none"
+                                    >
+                                        <option value="">Select Account...</option>
+                                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                    </select>
+                                ) : (
+                                    <input 
+                                        type={condition.field === 'amount' ? 'number' : 'text'} 
+                                        value={condition.value} 
+                                        onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
+                                        placeholder="Comparison value..."
+                                        className="w-full p-2 text-xs border rounded-lg focus:border-indigo-500 outline-none"
+                                    />
+                                )}
                             </div>
 
                             <div className="xl:col-span-1 flex justify-end">

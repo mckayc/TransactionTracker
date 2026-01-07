@@ -1,26 +1,28 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Improving form element styles for better readability and UX */
+/* Fix flashing dropdown issue by ensuring backgrounds are consistent and transitions are clean */
 select, input[type='text'], input[type='date'], input[type='number'], textarea {
 appearance: none;
-background-color: #fff;
+background-color: #ffffff; /* Explicit white background */
 border: 1px solid #cbd5e1; /* slate-300 */
 border-radius: 0.5rem; /* rounded-lg */
-padding: 0.5rem 0.75rem; /* Compact padding */
+padding: 0.5rem 0.75rem;
 font-size: 0.875rem;
 line-height: 1.25rem;
 color: #1e293b; /* slate-800 */
 width: 100%;
 transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
+
+/* Remove default highlight/flash on some browsers */
 select:focus, input:focus, textarea:focus {
 outline: none;
 border-color: #4f46e5; /* indigo-600 */
-box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.3);
+box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
 }
+
 select {
 background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
 background-position: right 0.5rem center;
@@ -29,69 +31,21 @@ background-size: 1.5em 1.5em;
 padding-right: 2.5rem;
 }
 
-/* Webkit Scrollbar Styling for consistent look and visibility */
-.overflow-x-auto::-webkit-scrollbar, .overflow-auto::-webkit-scrollbar, .custom-scrollbar::-webkit-scrollbar {
+.custom-scrollbar::-webkit-scrollbar {
   height: 6px;
   width: 6px;
   background-color: transparent;
 }
 
-.overflow-x-auto::-webkit-scrollbar-thumb, .overflow-auto::-webkit-scrollbar-thumb, .custom-scrollbar::-webkit-scrollbar-thumb {
+.custom-scrollbar::-webkit-scrollbar-thumb {
   background-color: #cbd5e1;
   border-radius: 4px;
 }
 
-.overflow-x-auto::-webkit-scrollbar-thumb:hover, .overflow-auto::-webkit-scrollbar-thumb:hover, .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: #94a3b8;
 }
 
-/* Sticky Table Column Utilities */
-th.sticky-col-left, td.sticky-col-left {
-  position: sticky;
-  left: 0;
-  z-index: 20;
-}
-
-th.sticky-col-right, td.sticky-col-right {
-  position: sticky;
-  right: 0;
-  z-index: 20;
-}
-
-/* Shadows for sticky columns to indicate scrolling depth */
-.sticky-col-left::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 4px;
-  transform: translateX(100%);
-  background: linear-gradient(to right, rgba(0,0,0,0.05), transparent);
-  pointer-events: none;
-}
-
-.sticky-col-right::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 4px;
-  transform: translateX(-100%);
-  background: linear-gradient(to left, rgba(0,0,0,0.05), transparent);
-  pointer-events: none;
-}
-
-/* Ensure z-index context for headers so they stay above body sticky cols */
-thead tr th {
-    z-index: 30; /* Higher than body sticky cols (20) */
-}
-thead tr th.sticky-col-left, thead tr th.sticky-col-right {
-    z-index: 40; /* Highest for corner headers */
-}
-
-/* Custom Animations */
 @keyframes progress-indeterminate {
   0% { left: -35%; right: 100%; }
   60% { left: 100%; right: -90%; }
@@ -124,4 +78,12 @@ thead tr th.sticky-col-left, thead tr th.sticky-col-right {
 }
 .animate-fade-in {
   animation: fade-in 0.4s ease-out forwards;
+}
+
+@keyframes slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-slide-up {
+  animation: slide-up 0.4s cubic-bezier(0, 0, 0.2, 1) forwards;
 }

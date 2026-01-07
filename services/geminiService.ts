@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Merchant, Location, User, Payee, ReconciliationRule } from '../types';
 
@@ -256,6 +255,7 @@ export const extractTransactionsFromFiles = async (
     return result.transactions.map((tx: any) => ({
         ...tx,
         accountId,
+        /* Updated property name balanceEffect from flowImpact */
         typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'income')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'expense')?.id || 'expense')
     }));
 };
@@ -306,6 +306,7 @@ export const extractTransactionsFromText = async (
     return result.transactions.map((tx: any) => ({
         ...tx,
         accountId,
+        /* Updated property name balanceEffect from flowImpact */
         typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'income')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'expense')?.id || 'expense')
     }));
 };

@@ -1,4 +1,3 @@
-
 import { 
     Upload, Download, Save, CheckCircle, AlertTriangle, LayoutDashboard, 
     Table, Calendar, CreditCard, Settings, ListTodo, ClipboardList, Repeat, 
@@ -80,3 +79,5 @@ export const FileCodeIcon = FileCode;
 /* Added MapPinIcon export to resolve missing member error */
 export const MapPinIcon = MapPin;
 export const TrashIcon = Trash;
+/* Specifically export DollarSign as requested by Reports.tsx */
+export { DollarSign };
