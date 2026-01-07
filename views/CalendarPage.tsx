@@ -1,10 +1,14 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { Transaction, Template, ScheduledEvent, TaskCompletions, TransactionType, Account, Category, Payee, User, TaskItem, Tag } from '../types';
+import type { Transaction, Template, ScheduledEvent, TaskCompletions, TransactionType, Account, Category, Counterparty, User, TaskItem, Tag } from '../types';
 import ScheduleEventModal from '../components/ScheduleEventModal';
 import TransactionModal from './TransactionModal';
 import TaskModal from './TaskModal';
 import { CheckCircleIcon, ChecklistIcon, RepeatIcon, LinkIcon, UsersIcon, ExternalLinkIcon, HeartIcon, ChevronLeftIcon, ChevronRightIcon, AddIcon, CalendarIcon, CloseIcon, TableIcon, TasksIcon } from '../components/Icons';
 import { formatDate, parseISOLocal } from '../dateUtils';
+
+// Define the missing ViewMode type
+type ViewMode = 'month' | 'week' | 'day';
 
 interface CalendarPageProps {
   transactions: Transaction[];
@@ -15,7 +19,7 @@ interface CalendarPageProps {
   accounts: Account[];
   categories: Category[];
   tags: Tag[];
-  payees: Payee[];
+  counterparties: Counterparty[];
   users: User[];
   onAddEvent: (event: ScheduledEvent) => void;
   onUpdateTransaction: (transaction: Transaction) => void;
@@ -27,8 +31,6 @@ interface CalendarPageProps {
   initialTaskId?: string;
 }
 
-type ViewMode = 'month' | 'week' | 'day';
-
 const SummaryWidget: React.FC<{title: string, value: string, helpText: string, colorClass?: string, isFocus?: boolean}> = ({title, value, helpText, colorClass = "text-slate-800", isFocus}) => (
     <div className={`bg-white p-3 rounded-xl shadow-sm border transition-all duration-300 ${isFocus ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'}`}>
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{title}</h3>
@@ -37,7 +39,7 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, c
     </div>
 );
 
-const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, onSaveTask, transactionTypes, onUpdateTransaction, onAddTransaction, accounts, categories, tags, payees, users, initialTaskId }) => {
+const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, onSaveTask, transactionTypes, onUpdateTransaction, onAddTransaction, accounts, categories, tags, counterparties, users, initialTaskId }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [currentDate, setCurrentDate] = useState(() => {
       const now = new Date();
@@ -425,9 +427,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                                   <p className="text-indigo-100 text-xs font-bold uppercase tracking-wider">{formatDate(selectedDate)}</p>
                               </div>
                           </div>
-                          <button onClick={() => setSelectedDate(null)} className="p-2 hover:bg-white/20 rounded-full transition-colors">
-                              <CloseIcon className="w-6 h-6" />
-                          </button>
+                          <button onClick={() => setSelectedDate(null)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
                       </div>
 
                       <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
@@ -549,7 +549,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
               categories={categories}
               tags={tags}
               transactionTypes={transactionTypes}
-              payees={payees}
+              counterparties={counterparties}
               users={users}
           />
 

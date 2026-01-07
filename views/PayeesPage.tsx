@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Payee, Transaction, User } from '../types';
+import type { Counterparty as Payee, Transaction, User } from '../types';
 import { DeleteIcon, EditIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon, UserGroupIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
@@ -156,7 +156,7 @@ const PayeeNode: React.FC<{
                         onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
                         className={`p-1 rounded hover:bg-slate-200 text-slate-400 ${hasChildren ? 'visible' : 'invisible'}`}
                     >
-                        {isExpanded ? <ChevronDownIcon className="w-3 h-3"/> : <ChevronRightIcon className="w-3 h-3"/>}
+                        {isExpanded ? <ChevronDownIcon className="w-3.5 h-3.5"/> : <ChevronRightIcon className="w-3.5 h-3.5"/>}
                     </button>
                     <span className={`text-sm truncate ${isSelected ? 'font-bold text-indigo-700' : 'text-slate-700'}`}>
                         {payee.name}
@@ -212,7 +212,8 @@ const PayeesPage: React.FC<PayeesPageProps> = ({ payees, onSavePayee, onDeletePa
     const usedPayeeIds = useMemo(() => {
         const ids = new Set<string>();
         transactions.forEach(t => {
-            if (t.payeeId) ids.add(t.payeeId);
+            // Fixed: Use counterpartyId instead of payeeId
+            if (t.counterpartyId) ids.add(t.counterpartyId);
         });
         return ids;
     }, [transactions]);

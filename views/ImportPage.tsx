@@ -1,5 +1,6 @@
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Payee, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Merchant, Location } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
@@ -8,7 +9,6 @@ import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import ImportVerification from '../components/ImportVerification';
-/* Added CloudArrowUpIcon import */
 import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, CloudArrowUpIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
@@ -27,8 +27,7 @@ interface ImportPageProps {
   tags: Tag[];
   transactionTypes: TransactionType[];
   rules: ReconciliationRule[];
-  payees: Payee[];
-  merchants: Merchant[];
+  counterparties: Counterparty[];
   locations: Location[];
   users: User[];
   onAddDocument: (doc: BusinessDocument) => void;
@@ -36,7 +35,7 @@ interface ImportPageProps {
   onCreateFolder: (folder: DocumentFolder) => void;
   onSaveRule: (rule: ReconciliationRule) => void;
   onSaveCategory: (category: Category) => void;
-  onSavePayee: (payee: Payee) => void;
+  onSaveCounterparty: (p: Counterparty) => void;
   onSaveTag: (tag: Tag) => void;
   onAddTransactionType: (type: TransactionType) => void;
   onUpdateTransaction: (transaction: Transaction) => void;
@@ -57,7 +56,7 @@ const SummaryWidget: React.FC<{title: string, value: string, helpText: string, i
 );
 
 const ImportPage: React.FC<ImportPageProps> = ({ 
-    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, payees, merchants, locations, users, transactionTypes, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
+    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, counterparties, locations, users, transactionTypes, onSaveCategory, onSaveCounterparty, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -199,7 +198,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                             onClick={async () => {
                                                 setAppState('processing');
                                                 try {
-                                                    /* Removed 'categories' as it is not an argument for parseTransactionsFromText */
+                                                    // Fixed: Removed 'categories' as it is not an argument for parsing or extraction calls
                                                     const raw = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
                                                     applyRulesAndSetStaging(raw, users[0]?.id || 'default', rules);
                                                     setAppState('verifying_import');
@@ -230,7 +229,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
         <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
             {appState === 'verifying_import' ? (
                 <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                    <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} payees={payees} merchants={merchants} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSavePayee={onSavePayee} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
+                    <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} counterparties={counterparties} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
                 </div>
             ) : appState === 'post_import_edit' ? (
                 <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-0 h-full">
@@ -242,7 +241,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                         <button onClick={() => setAppState('idle')} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Finish</button>
                     </div>
                     <div className="flex-1 overflow-hidden border border-slate-200 rounded-2xl relative shadow-inner">
-                        <TransactionTable transactions={recentGlobalTransactions.filter(tx => importedTxIds.has(tx.id))} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} payees={payees} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
+                        <TransactionTable transactions={recentGlobalTransactions.filter(tx => importedTxIds.has(tx.id))} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
                     </div>
                 </div>
             ) : (

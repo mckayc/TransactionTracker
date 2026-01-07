@@ -1,7 +1,7 @@
 import React from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction, View } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, UsersIcon, TagIcon, UserGroupIcon, WizardIcon, DocumentIcon, WrenchIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon, BugIcon } from './Icons';
 
 interface SidebarProps {
   currentView: View;
@@ -23,7 +23,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
     { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
     { id: 'tasks', label: 'Tasks', icon: TasksIcon },
     { id: 'reports', label: 'Reports', icon: ChartPieIcon },
-    { id: 'hub', label: 'Business Hub', icon: WizardIcon },
+    { id: 'hub', label: 'Journal & Bugs', icon: BugIcon },
     { id: 'integrations', label: 'Integrations', icon: PuzzleIcon },
   ];
 
@@ -41,7 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
         <div className={`flex items-center h-16 ${isCollapsed ? 'justify-center' : 'justify-between px-4'}`}>
             <div className="flex items-center gap-3 overflow-hidden">
                 <span className="text-2xl filter drop-shadow-sm">💰</span>
-                {!isCollapsed && <h1 className="text-sm font-bold text-slate-100 uppercase tracking-widest truncate font-mono">Transaction<br/>Tracker</h1>}
+                {!isCollapsed && <h1 className="text-sm font-bold text-slate-100 uppercase tracking-widest truncate font-mono">FinParser<br/>Engine</h1>}
             </div>
             {onToggleCollapse && !isCollapsed && (
                 <button onClick={onToggleCollapse} className="text-slate-500 hover:text-white p-1 rounded-md hover:bg-slate-700 transition-colors">
@@ -76,7 +76,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             ))}
             
             <div className="pt-6 pb-1">
-                {!isCollapsed && <p className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">System Control</p>}
+                {!isCollapsed && <p className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">System Management</p>}
                 {managementNavItems.map(item => (
                     <button
                         key={item.id}
@@ -126,7 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             <>
               <CalendarView transactions={transactions} />
               <div className="text-center pb-2">
-                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.5.0</span>
+                <span className="text-[10px] text-slate-500 font-mono opacity-70">v0.5.48</span>
               </div>
             </>
           )}

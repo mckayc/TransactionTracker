@@ -1,9 +1,9 @@
+
 export type BalanceEffect = 'income' | 'expense' | 'neutral' | 'transfer' | 'tax' | 'investment' | 'donation';
 
 export interface TransactionType {
     id: string;
     name: string;
-    /* Property renamed from flowImpact to match service expectations */
     balanceEffect: BalanceEffect;
     color?: string; // Tailwind class like 'text-emerald-600'
     isDefault?: boolean;
@@ -27,20 +27,17 @@ export interface User {
     isDefault?: boolean;
 }
 
-export interface Payee {
+export interface Counterparty {
     id: string;
     name: string;
     parentId?: string;
     notes?: string;
-    userId?: string;
+    userId?: string; // Optional default user for this entity
 }
 
-export interface Merchant {
-    id: string;
-    name: string;
-    payeeId?: string;
-    notes?: string;
-}
+// Aliases for backward compatibility in components
+export type Payee = Counterparty;
+export type Merchant = Counterparty;
 
 export interface Location {
     id: string;
@@ -73,8 +70,7 @@ export interface RawTransaction {
     location?: string;
     sourceFilename?: string;
     originalDescription?: string;
-    payeeId?: string;
-    merchantId?: string;
+    counterpartyId?: string;
     locationId?: string;
     userId?: string;
     tagIds?: string[];
@@ -94,7 +90,7 @@ export interface Transaction extends RawTransaction {
 }
 
 export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'exists' | 'regex_match';
-export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata' | 'payeeId' | 'merchantId' | 'locationId';
+export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata' | 'counterpartyId' | 'locationId';
 export type RuleLogic = 'AND' | 'OR';
 
 export interface RuleCondition {
@@ -114,8 +110,7 @@ export interface ReconciliationRule {
     ruleCategory?: string; 
     conditions: RuleCondition[];
     setCategoryId?: string;
-    setPayeeId?: string;
-    setMerchantId?: string;
+    setCounterpartyId?: string;
     setLocationId?: string;
     setUserId?: string;
     setTransactionTypeId?: string;
@@ -125,8 +120,7 @@ export interface ReconciliationRule {
     priority?: number;
     scope?: string;
     suggestedCategoryName?: string;
-    suggestedPayeeName?: string;
-    suggestedMerchantName?: string;
+    suggestedCounterpartyName?: string;
     suggestedLocationName?: string;
     suggestedUserName?: string;
     suggestedTypeName?: string;
@@ -137,8 +131,7 @@ export interface RuleImportDraft extends ReconciliationRule {
     isSelected: boolean;
     mappingStatus: {
         category: 'match' | 'create' | 'none';
-        payee: 'match' | 'create' | 'none';
-        merchant: 'match' | 'create' | 'none';
+        counterparty: 'match' | 'create' | 'none';
         location: 'match' | 'create' | 'none';
         type: 'match' | 'create' | 'none';
     };
@@ -270,7 +263,7 @@ export interface SystemSettings {
     dashboardWidgets?: DashboardWidget[];
 }
 
-export type ReportGroupBy = 'category' | 'payee' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';
+export type ReportGroupBy = 'category' | 'counterparty' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';
 export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime' | 'custom' | 'specificMonth' | 'relativeMonth' | 'last3Months' | 'last6Months' | 'last12Months';
 export type DateRangeType = 'rolling_window' | 'fixed_period';
 export type DateRangeUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
@@ -299,10 +292,9 @@ export interface ReportConfig {
         categoryIds?: string[];
         typeIds?: string[];
         tagIds?: string[];
-        payeeIds?: string[];
-        amazonSources?: AmazonReportType[];
+        counterpartyIds?: string[];
+        amazonSources?: string[];
         amazonTrackingIds?: string[];
-        /* Added balanceEffects to match report logic expectations */
         balanceEffects?: BalanceEffect[];
     };
     hiddenCategoryIds?: string[];

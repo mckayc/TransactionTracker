@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import type { ReconciliationRule, Category, Payee, Merchant, Location, User, TransactionType, RuleImportDraft } from '../types';
+import type { ReconciliationRule, Category, Counterparty, Location, User, TransactionType, RuleImportDraft } from '../types';
 import { CheckCircleIcon, SlashIcon, ExclamationTriangleIcon, AddIcon, BoxIcon, TagIcon, MapPinIcon, UsersIcon, ShieldCheckIcon, CloseIcon } from './Icons';
 import { generateUUID } from '../utils';
 
@@ -9,24 +9,21 @@ interface Props {
     onCancel: () => void;
     onFinalize: (rules: ReconciliationRule[]) => void;
     categories: Category[];
-    payees: Payee[];
-    merchants: Merchant[];
+    payees: Counterparty[];
     locations: Location[];
     users: User[];
     transactionTypes: TransactionType[];
     onSaveCategory: (c: Category) => void;
     onSaveCategories: (cs: Category[]) => void;
-    onSavePayee: (p: Payee) => void;
-    onSavePayees: (ps: Payee[]) => void;
-    onSaveMerchant: (m: Merchant) => void;
-    onSaveMerchants: (ms: Merchant[]) => void;
+    onSaveCounterparty: (p: Counterparty) => void;
+    onSaveCounterparties: (ps: Counterparty[]) => void;
     onSaveLocation: (location: Location) => void;
     onSaveLocations: (ls: Location[]) => void;
 }
 
 const RuleImportVerification: React.FC<Props> = ({ 
-    drafts: initialDrafts, onCancel, onFinalize, categories, payees, merchants, locations, users, transactionTypes, 
-    onSaveCategory, onSaveCategories, onSavePayee, onSavePayees, onSaveMerchant, onSaveMerchants, onSaveLocation, onSaveLocations 
+    drafts: initialDrafts, onCancel, onFinalize, categories, payees, locations, users, transactionTypes, 
+    onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations 
 }) => {
     const [drafts, setDrafts] = useState<RuleImportDraft[]>(initialDrafts);
 
@@ -42,14 +39,12 @@ const RuleImportVerification: React.FC<Props> = ({
         
         // Accumulators for bulk atomic updates
         const newCategories: Category[] = [];
-        const newPayees: Payee[] = [];
-        const newMerchants: Merchant[] = [];
+        const newCounterparties: Counterparty[] = [];
         const newLocations: Location[] = [];
 
         // Temporary maps to prevent duplicate creations within the same batch
         const createdCats = new Map<string, string>();
-        const createdPayees = new Map<string, string>();
-        const createdMerchants = new Map<string, string>();
+        const createdCounterparties = new Map<string, string>();
         const createdLocs = new Map<string, string>();
 
         for (const draft of selectedDrafts) {
@@ -68,33 +63,20 @@ const RuleImportVerification: React.FC<Props> = ({
                 finalRule.setCategoryId = catId;
             }
 
-            // 2. Resolve Payee
-            if (draft.mappingStatus.payee === 'create' && draft.suggestedPayeeName) {
-                const normName = draft.suggestedPayeeName.toLowerCase().trim();
-                let payeeId = createdPayees.get(normName);
-                if (!payeeId) {
-                    payeeId = generateUUID();
-                    const newPayee: Payee = { id: payeeId, name: draft.suggestedPayeeName.trim() };
-                    newPayees.push(newPayee);
-                    createdPayees.set(normName, payeeId);
+            // 2. Resolve Counterparty (Consolidated Payee/Merchant)
+            if (draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
+                const normName = draft.suggestedCounterpartyName.toLowerCase().trim();
+                let cpId = createdCounterparties.get(normName);
+                if (!cpId) {
+                    cpId = generateUUID();
+                    const newCp: Counterparty = { id: cpId, name: draft.suggestedCounterpartyName.trim() };
+                    newCounterparties.push(newCp);
+                    createdCounterparties.set(normName, cpId);
                 }
-                finalRule.setPayeeId = payeeId;
+                finalRule.setCounterpartyId = cpId;
             }
 
-            // 3. Resolve Merchant
-            if (draft.mappingStatus.merchant === 'create' && draft.suggestedMerchantName) {
-                const normName = draft.suggestedMerchantName.toLowerCase().trim();
-                let merchId = createdMerchants.get(normName);
-                if (!merchId) {
-                    merchId = generateUUID();
-                    const newMerchant: Merchant = { id: merchId, name: draft.suggestedMerchantName.trim() };
-                    newMerchants.push(newMerchant);
-                    createdMerchants.set(normName, merchId);
-                }
-                finalRule.setMerchantId = merchId;
-            }
-
-            // 4. Resolve Location
+            // 3. Resolve Location
             if (draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
                 const normName = draft.suggestedLocationName.toLowerCase().trim();
                 let locId = createdLocs.get(normName);
@@ -107,21 +89,21 @@ const RuleImportVerification: React.FC<Props> = ({
                 finalRule.setLocationId = locId;
             }
 
-            // 5. Resolve Type
+            // 4. Resolve Type
             if (draft.mappingStatus.type === 'create' && draft.suggestedTypeName) {
                 const matchedType = transactionTypes.find(t => t.name.toLowerCase() === draft.suggestedTypeName?.toLowerCase());
                 if (matchedType) finalRule.setTransactionTypeId = matchedType.id;
             }
 
             // Clean internal draft fields before saving
-            const { isSelected, mappingStatus, suggestedCategoryName, suggestedPayeeName, suggestedMerchantName, suggestedLocationName, suggestedTypeName, suggestedTags, ...cleanRule } = finalRule as any;
+            // Use suggestedCounterpartyName to match properties in ReconciliationRule from types.ts
+            const { isSelected, mappingStatus, suggestedCategoryName, suggestedCounterpartyName, suggestedLocationName, suggestedTypeName, suggestedTags, ...cleanRule } = finalRule as any;
             finalizedRules.push(cleanRule);
         }
 
         // Perform bulk updates before finalizing rules
         if (newCategories.length > 0) onSaveCategories(newCategories);
-        if (newPayees.length > 0) onSavePayees(newPayees);
-        if (newMerchants.length > 0) onSaveMerchants(newMerchants);
+        if (newCounterparties.length > 0) onSaveCounterparties(newCounterparties);
         if (newLocations.length > 0) onSaveLocations(newLocations);
 
         onFinalize(finalizedRules);
@@ -135,8 +117,7 @@ const RuleImportVerification: React.FC<Props> = ({
             newEntities: sel.reduce((acc, d) => {
                 let count = 0;
                 if (d.mappingStatus.category === 'create') count++;
-                if (d.mappingStatus.payee === 'create') count++;
-                if (d.mappingStatus.merchant === 'create') count++;
+                if (d.mappingStatus.counterparty === 'create') count++;
                 if (d.mappingStatus.location === 'create') count++;
                 return acc + count;
             }, 0)
@@ -203,9 +184,9 @@ const RuleImportVerification: React.FC<Props> = ({
                                                     <TagIcon className="w-3 h-3" /> Cat: {d.suggestedCategoryName} {d.mappingStatus.category === 'match' ? '(Matched)' : '(New)'}
                                                 </span>
                                             )}
-                                            {d.suggestedMerchantName && (
-                                                <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 border ${d.mappingStatus.merchant === 'match' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
-                                                    <BoxIcon className="w-3 h-3" /> Merc: {d.suggestedMerchantName} {d.mappingStatus.merchant === 'match' ? '(Matched)' : '(New)'}
+                                            {d.suggestedCounterpartyName && (
+                                                <span className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 border ${d.mappingStatus.counterparty === 'match' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
+                                                    <BoxIcon className="w-3 h-3" /> Entity: {d.suggestedCounterpartyName} {d.mappingStatus.counterparty === 'match' ? '(Matched)' : '(New)'}
                                                 </span>
                                             )}
                                             {d.suggestedLocationName && (

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Payee, Category } from '../types';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty as Payee, Category } from '../types';
 import { findMatchingTransactions } from '../services/ruleService';
 import { CloseIcon } from './Icons';
 
@@ -94,7 +94,7 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
                                             <th className="px-4 py-2">
                                                 <input
                                                     type="checkbox"
-                                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50"
                                                     checked={selectedIds.size === matchingPairs.length}
                                                     onChange={handleToggleSelectAll}
                                                 />
@@ -110,7 +110,7 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
                                                 <td className="px-4 py-2">
                                                     <input
                                                         type="checkbox"
-                                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50"
                                                         checked={selectedIds.has(pair.original.id)}
                                                         onChange={() => handleToggleSelection(pair.original.id)}
                                                     />
@@ -119,7 +119,8 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
                                                 <td className="px-4 py-2 text-sm text-slate-800 max-w-xs truncate" title={pair.original.description}>{pair.original.description}</td>
                                                 <td className="px-4 py-2">
                                                     {renderChange('Category', pair.original.categoryId, pair.updated.categoryId, categoryMap)}
-                                                    {renderChange('Payee', pair.original.payeeId, pair.updated.payeeId, payeeMap)}
+                                                    {/* Fixed: Use counterpartyId instead of payeeId */}
+                                                    {renderChange('Payee', pair.original.counterpartyId, pair.updated.counterpartyId, payeeMap)}
                                                     {renderChange('Type', pair.original.typeId, pair.updated.typeId, typeMap)}
                                                 </td>
                                             </tr>
@@ -143,16 +144,4 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
                         <button
                             type="button"
                             onClick={handleApply}
-                            disabled={selectedIds.size === 0}
-                            className="px-6 py-2 font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-slate-400"
-                        >
-                            Apply Changes
-                        </button>
-                    </div>
-                </footer>
-            </div>
-        </div>
-    );
-};
-
-export default RulePreviewModal;
+                            disabled={selectedIds.size ===

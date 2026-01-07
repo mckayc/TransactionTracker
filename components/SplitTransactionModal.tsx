@@ -102,7 +102,8 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                 category: catName,
                 typeId: s.typeId,
                 accountId: transaction.accountId,
-                payeeId: transaction.payeeId,
+                // Use counterpartyId instead of payeeId to match types.ts
+                counterpartyId: transaction.counterpartyId,
                 userId: transaction.userId,
                 location: transaction.location,
                 sourceFilename: transaction.sourceFilename,

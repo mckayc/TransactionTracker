@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Transaction, Payee, TransactionType, Account, Category } from '../types';
+import type { Transaction, Counterparty as Payee, TransactionType, Account, Category } from '../types';
 import { CloseIcon, HeartIcon, AddIcon, DeleteIcon } from './Icons';
 import { generateUUID } from '../utils';
 import { getTodayDate } from '../dateUtils';
@@ -122,7 +122,8 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
                     amount: item.amount,
                     description: item.description || 'Donation',
                     accountId,
-                    payeeId: item.payeeId || undefined,
+                    // Use counterpartyId instead of payeeId to match types.ts
+                    counterpartyId: item.payeeId || undefined,
                     typeId: donationType.id,
                     categoryId: donationCategory.id,
                     category: donationCategory.name,

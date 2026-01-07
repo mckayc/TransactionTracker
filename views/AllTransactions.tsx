@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import type { Transaction, Account, TransactionType, ReconciliationRule, Payee, Category, User, Tag, SavedReport } from '../types';
+import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, User, Tag, SavedReport } from '../types';
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import { AddIcon, DeleteIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, DownloadIcon, SparklesIcon, CheckCircleIcon } from '../components/Icons';
@@ -12,7 +12,7 @@ const AllTransactions: React.FC<{
   categories: Category[];
   tags: Tag[];
   transactionTypes: TransactionType[];
-  payees: Payee[];
+  counterparties: Counterparty[];
   users: User[];
   onUpdateTransaction: (transaction: Transaction) => void;
   onAddTransaction: (transaction: Transaction) => void;
@@ -20,11 +20,11 @@ const AllTransactions: React.FC<{
   onDeleteTransactions: (transactionIds: string[]) => void;
   onSaveRule: (rule: ReconciliationRule) => void;
   onSaveCategory: (category: Category) => void;
-  onSavePayee: (payee: Payee) => void;
+  onSaveCounterparty: (p: Counterparty) => void;
   onSaveTag: (tag: Tag) => void;
   onAddTransactionType: (type: TransactionType) => void;
   onSaveReport: (report: SavedReport) => void;
-}> = ({ accounts, categories, tags, transactionTypes, payees, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSavePayee, onSaveTag, onAddTransactionType, onSaveReport }) => {
+}> = ({ accounts, categories, tags, transactionTypes, counterparties, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onAddTransactionType, onSaveReport }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -92,7 +92,7 @@ const AllTransactions: React.FC<{
                 categories={categories}
                 tags={tags}
                 transactionTypes={transactionTypes}
-                payees={payees}
+                counterparties={counterparties}
                 users={users}
                 onUpdateTransaction={onUpdateTransaction} 
                 onDeleteTransaction={onDeleteTransaction} 
@@ -126,8 +126,10 @@ const AllTransactions: React.FC<{
             categories={categories}
             tags={tags}
             transactionTypes={transactionTypes}
-            payees={payees}
+            counterparties={counterparties}
             users={users}
+            onSaveCounterparty={onSaveCounterparty}
+            onSaveCategory={onSaveCategory}
         />
       )}
     </div>

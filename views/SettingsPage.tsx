@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Payee, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote } from '../types';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote } from '../types';
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon, RepeatIcon, PlayIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
@@ -16,7 +16,7 @@ interface SettingsPageProps {
     accounts: Account[];
     categories: Category[];
     tags: Tag[];
-    payees: Payee[];
+    counterparties: Counterparty[];
     rules: ReconciliationRule[];
     templates: Template[];
     scheduledEvents: ScheduledEvent[];
@@ -45,7 +45,7 @@ const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warn
     accounts: { label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" /> },
     categories: { label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
     tags: { label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
-    payees: { label: 'Payees', icon: <DocumentIcon className="w-4 h-4" /> },
+    counterparties: { label: 'Counterparties', icon: <DocumentIcon className="w-4 h-4" /> },
     reconciliationRules: { label: 'Automation Rules', icon: <SettingsIcon className="w-4 h-4" /> },
     templates: { label: 'Checklist Templates', icon: <TasksIcon className="w-4 h-4" /> },
     tasks: { label: 'Task Instances', icon: <ChecklistIcon className="w-4 h-4" /> },
@@ -85,7 +85,7 @@ const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation:
 
 const SettingsPage: React.FC<SettingsPageProps> = ({ 
     transactions, transactionTypes, onAddTransactionType, onRemoveTransactionType, systemSettings, onUpdateSystemSettings,
-    accounts, categories, tags, payees, rules, templates, scheduledEvents, tasks, taskCompletions, users, businessProfile, businessNotes, documentFolders, businessDocuments, onAddDocument, onCreateFolder,
+    accounts, categories, tags, counterparties, rules, templates, scheduledEvents, tasks, taskCompletions, users, businessProfile, businessNotes, documentFolders, businessDocuments, onAddDocument, onCreateFolder,
     savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks
 }) => {
     const importFileRef = useRef<HTMLInputElement>(null);
@@ -229,7 +229,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         if (exportSelection.has('accounts')) data.accounts = accounts;
         if (exportSelection.has('categories')) data.categories = categories;
         if (exportSelection.has('tags')) data.tags = tags;
-        if (exportSelection.has('payees')) data.payees = payees;
+        if (exportSelection.has('counterparties')) data.counterparties = counterparties;
         if (exportSelection.has('reconciliationRules')) data.reconciliationRules = rules;
         if (exportSelection.has('businessProfile')) data.businessProfile = businessProfile;
         if (exportSelection.has('businessNotes')) data.businessNotes = businessNotes;
@@ -290,7 +290,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 if (first.asin) json = { amazonMetrics: json };
                 else if (first.videoId) json = { youtubeMetrics: json };
                 else if (first.date && first.description && first.amount) json = { transactions: json };
-                else if (first.name && (first.parentId !== undefined || first.notes !== undefined)) json = { payees: json };
+                else if (first.name && (first.parentId !== undefined || first.notes !== undefined)) json = { counterparties: json };
                 else if (first.name && first.isDefault !== undefined) json = { users: json };
             }
 

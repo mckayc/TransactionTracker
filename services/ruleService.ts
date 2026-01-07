@@ -1,3 +1,4 @@
+
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
@@ -51,7 +52,7 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
             return txAccountId === String(condition.value);
         } else {
             const account = accounts.find(a => a.id === txAccountId);
-            // Fix: remove non-existent property 'account' from tx object (use accountId instead or rely on joined account metadata)
+            // Use accountId instead or rely on joined account metadata
             const accountName = (account?.name || '').toLowerCase();
             const condValue = String(condition.value || '').toLowerCase();
             
@@ -111,11 +112,9 @@ export const applyRulesToTransactions = (
         if (rule.setCategoryId) {
           modifiedTx.categoryId = rule.setCategoryId;
         }
-        if (rule.setPayeeId) {
-          modifiedTx.payeeId = rule.setPayeeId;
-        }
-        if (rule.setMerchantId) {
-          modifiedTx.merchantId = rule.setMerchantId;
+        // Fixed: Use setCounterpartyId instead of setPayeeId
+        if (rule.setCounterpartyId) {
+          modifiedTx.counterpartyId = rule.setCounterpartyId;
         }
         if (rule.setLocationId) {
           modifiedTx.locationId = rule.setLocationId;
@@ -155,12 +154,9 @@ export const findMatchingTransactions = (
         updatedTx.categoryId = rule.setCategoryId;
         changed = true;
       }
-      if (rule.setPayeeId && updatedTx.payeeId !== rule.setPayeeId) {
-        updatedTx.payeeId = rule.setPayeeId;
-        changed = true;
-      }
-      if (rule.setMerchantId && updatedTx.merchantId !== rule.setMerchantId) {
-        updatedTx.merchantId = rule.setMerchantId;
+      // Fixed: Use setCounterpartyId instead of setPayeeId
+      if (rule.setCounterpartyId && updatedTx.counterpartyId !== rule.setCounterpartyId) {
+        updatedTx.counterpartyId = rule.setCounterpartyId;
         changed = true;
       }
       if (rule.setLocationId && updatedTx.locationId !== rule.setLocationId) {

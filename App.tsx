@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Payee, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Merchant, Location } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Location } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import ImportPage from './views/ImportPage';
@@ -47,8 +47,7 @@ const App: React.FC = () => {
     const [tags, setTags] = useState<Tag[]>([]);
     const [transactionTypes, setTransactionTypes] = useState<TransactionType[]>([]);
     const [rules, setRules] = useState<ReconciliationRule[]>([]);
-    const [payees, setPayees] = useState<Payee[]>([]);
-    const [merchants, setMerchants] = useState<Merchant[]>([]);
+    const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
     const [locations, setLocations] = useState<Location[]>([]);
     const [users, setUsers] = useState<User[]>([]);
     const [businessProfile, setBusinessProfile] = useState<BusinessProfile>({ info: {}, tax: {}, completedSteps: [] });
@@ -83,8 +82,7 @@ const App: React.FC = () => {
             setTags(data.tags || []);
             setTransactionTypes(data.transactionTypes || []);
             setRules(data.reconciliationRules || []);
-            setPayees(data.payees || []);
-            setMerchants(data.merchants || []);
+            setCounterparties(data.counterparties || []);
             setLocations(data.locations || []);
             setUsers(data.users && data.users.length > 0 ? data.users : [{ id: 'user_primary', name: 'Primary User', isDefault: true }]);
             setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
@@ -196,7 +194,7 @@ const App: React.FC = () => {
         </div>
     );
 
-    const currentContext = { transactions, accounts, categories, tags, payees, merchants, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile };
+    const currentContext = { transactions, accounts, categories, tags, counterparties, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile };
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
@@ -228,13 +226,13 @@ const App: React.FC = () => {
                         <ImportPage 
                             transactions={transactions} accounts={accounts} accountTypes={accountTypes}
                             categories={categories} tags={tags} transactionTypes={transactionTypes}
-                            rules={rules} payees={payees} merchants={merchants} locations={locations} users={users}
+                            rules={rules} counterparties={counterparties} locations={locations} users={users}
                             documentFolders={documentFolders} onTransactionsAdded={handleTransactionsAdded}
                             onAddAccount={(a) => bulkUpdateData('accounts', [a], setAccounts)}
                             onAddAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes)}
                             onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules)}
                             onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
-                            onSavePayee={(p) => bulkUpdateData('payees', [p], setPayees)}
+                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
                             onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
                             onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction}
@@ -245,13 +243,13 @@ const App: React.FC = () => {
                     {currentView === 'transactions' && (
                         <AllTransactions 
                             accounts={accounts} categories={categories} tags={tags} 
-                            transactionTypes={transactionTypes} payees={payees} users={users}
+                            transactionTypes={transactionTypes} counterparties={counterparties} users={users}
                             onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction}
                             onDeleteTransactions={async (ids) => { setTransactions(prev => prev.filter(t => !ids.includes(t.id))); for(const id of ids) await api.deleteTransaction(id); }}
                             onAddTransaction={(tx) => handleTransactionsAdded([tx])}
                             onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules)}
                             onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
-                            onSavePayee={(p) => bulkUpdateData('payees', [p], setPayees)}
+                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
                             onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
                             onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports)}
@@ -260,7 +258,7 @@ const App: React.FC = () => {
                     {currentView === 'calendar' && (
                         <CalendarPage 
                             transactions={transactions} tasks={tasks} templates={templates} scheduledEvents={scheduledEvents}
-                            taskCompletions={taskCompletions} accounts={accounts} categories={categories} tags={tags} payees={payees} users={users}
+                            taskCompletions={taskCompletions} accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} users={users}
                             onAddEvent={(e) => bulkUpdateData('scheduledEvents', [e], setScheduledEvents)}
                             onUpdateTransaction={handleUpdateTransaction} onAddTransaction={(tx) => handleTransactionsAdded([tx])}
                             onToggleTaskCompletion={async (d, eid, tid) => { const next = {...taskCompletions, [`${d}_${eid}_${tid}`]: !taskCompletions[`${d}_${eid}_${tid}`]}; updateData('taskCompletions', next, setTaskCompletions); }}
@@ -275,15 +273,13 @@ const App: React.FC = () => {
                             onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules)}
                             onSaveRules={(rs) => bulkUpdateData('reconciliationRules', rs, setRules)}
                             onDeleteRule={(id) => setRules(prev => { const next = prev.filter(r => r.id !== id); api.save('reconciliationRules', next); return next; })}
-                            accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} payees={payees} 
-                            merchants={merchants} locations={locations} users={users} transactions={transactions}
+                            accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} counterparties={counterparties} 
+                            locations={locations} users={users} transactions={transactions}
                             onUpdateTransactions={(txs) => handleTransactionsAdded(txs)}
                             onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
                             onSaveCategories={(cs) => bulkUpdateData('categories', cs, setCategories)}
-                            onSavePayee={(p) => bulkUpdateData('payees', [p], setPayees)}
-                            onSavePayees={(ps) => bulkUpdateData('payees', ps, setPayees)}
-                            onSaveMerchant={(m) => bulkUpdateData('merchants', [m], setMerchants)}
-                            onSaveMerchants={(ms) => bulkUpdateData('merchants', ms, setMerchants)}
+                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
+                            onSaveCounterparties={(ps) => bulkUpdateData('counterparties', ps, setCounterparties)}
                             onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations)}
                             onSaveLocations={(ls) => bulkUpdateData('locations', ls, setLocations)}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
@@ -293,16 +289,14 @@ const App: React.FC = () => {
                     )}
                     {currentView === 'management' && (
                         <ManagementHub 
-                            transactions={transactions} accounts={accounts} categories={categories} tags={tags} payees={payees} 
-                            merchants={merchants} locations={locations} users={users} transactionTypes={transactionTypes} accountTypes={accountTypes}
+                            transactions={transactions} accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} 
+                            locations={locations} users={users} transactionTypes={transactionTypes} accountTypes={accountTypes}
                             onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
                             onDeleteCategory={(id) => setCategories(prev => { const next = prev.filter(c => c.id !== id); api.save('categories', next); return next; })}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
                             onDeleteTag={(id) => setTags(prev => { const next = prev.filter(t => t.id !== id); api.save('tags', next); return next; })}
-                            onSavePayee={(p) => bulkUpdateData('payees', [p], setPayees)}
-                            onDeletePayee={(id) => setPayees(prev => { const next = prev.filter(p => p.id !== id); api.save('payees', next); return next; })}
-                            onSaveMerchant={(m) => bulkUpdateData('merchants', [m], setMerchants)}
-                            onDeleteMerchant={(id) => setMerchants(prev => { const next = prev.filter(m => m.id !== id); api.save('merchants', next); return next; })}
+                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
+                            onDeleteCounterparty={(id) => setCounterparties(prev => { const next = prev.filter(p => p.id !== id); api.save('counterparties', next); return next; })}
                             onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations)}
                             onDeleteLocation={(id) => setLocations(prev => { const next = prev.filter(l => l.id !== id); api.save('locations', next); return next; })}
                             onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
@@ -326,7 +320,7 @@ const App: React.FC = () => {
                     {currentView === 'reports' && (
                         <Reports 
                             transactions={transactions} transactionTypes={transactionTypes} categories={categories} 
-                            payees={payees} users={users} tags={tags} accounts={accounts} savedReports={savedReports} 
+                            counterparties={counterparties} users={users} tags={tags} accounts={accounts} savedReports={savedReports} 
                             setSavedReports={(val) => {
                                 const newVal = typeof val === 'function' ? val(savedReports) : val;
                                 updateData('savedReports', newVal, setSavedReports);
@@ -345,7 +339,7 @@ const App: React.FC = () => {
                             transactions={transactions} transactionTypes={transactionTypes} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
                             onRemoveTransactionType={(id) => setTransactionTypes(prev => { const next = prev.filter(x => x.id !== id); api.save('transactionTypes', next); return next; })}
                             systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)}
-                            accounts={accounts} categories={categories} tags={tags} payees={payees} rules={rules}
+                            accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} rules={rules}
                             templates={templates} scheduledEvents={scheduledEvents} tasks={tasks} taskCompletions={taskCompletions}
                             users={users} businessProfile={businessProfile} businessNotes={businessNotes} documentFolders={documentFolders}
                             businessDocuments={businessDocuments} onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)}

@@ -1,7 +1,6 @@
 
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric, YouTubeMetric } from '../types';
+import type { Transaction, Category, TransactionType, ReportConfig, DateRangePreset, Account, User, BalanceEffect, Tag, Counterparty, ReportGroupBy, CustomDateRange, DateRangeUnit, SavedReport, AmazonMetric, YouTubeMetric } from '../types';
 import { ChevronDownIcon, ChevronRightIcon, ChevronLeftIcon, EyeIcon, EyeSlashIcon, SortIcon, EditIcon, TableIcon, CloseIcon, SettingsIcon, SaveIcon, InfoIcon, ExclamationTriangleIcon } from './Icons';
 import { formatDate, calculateDateRange } from '../dateUtils';
 import TransactionTable from './TransactionTable';
@@ -15,7 +14,7 @@ interface ReportColumnProps {
     accounts: Account[];
     users: User[];
     tags: Tag[];
-    payees: Payee[];
+    payees: Counterparty[];
     onSaveReport: (config: ReportConfig) => void;
     onUpdateReport: (config: ReportConfig) => void;
     savedDateRanges: CustomDateRange[];
@@ -263,7 +262,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                 if (config.filters.userIds && !config.filters.userIds.includes(tx.userId || '')) return false;
                 if (config.filters.categoryIds && !config.filters.categoryIds.includes(tx.categoryId)) return false;
                 if (config.filters.typeIds && !config.filters.typeIds.includes(tx.typeId)) return false;
-                if (config.filters.payeeIds && !config.filters.payeeIds.includes(tx.payeeId || '')) return false;
+                // Fixed: Use counterpartyIds and counterpartyId to match types.ts
+                if (config.filters.counterpartyIds && !config.filters.counterpartyIds.includes(tx.counterpartyId || '')) return false;
                 if (config.filters.tagIds && config.filters.tagIds.length > 0) {
                     if (!tx.tagIds || !tx.tagIds.some(tId => config.filters.tagIds!.includes(tId))) return false;
                 }
@@ -271,7 +271,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             });
         }
 
-        const isHierarchical = config.groupBy === 'category' || config.groupBy === 'payee';
+        // Fixed: Use counterparty instead of payee for groupBy comparison
+        const isHierarchical = config.groupBy === 'category' || config.groupBy === 'counterparty';
         const hiddenIds = new Set(config.hiddenIds || config.hiddenCategoryIds || []);
         
         let rootNodes: ItemNode[] = [];
@@ -305,10 +306,11 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                     const cat = categories.find(c => c.id === key);
                     label = cat?.name || 'Uncategorized';
                     parentId = cat?.parentId;
-                } else if (config.groupBy === 'payee') {
-                    key = tx.payeeId || 'no-payee';
+                // Fixed: Use counterparty and counterpartyId to match types.ts
+                } else if (config.groupBy === 'counterparty') {
+                    key = tx.counterpartyId || 'no-counterparty';
                     const p = payees.find(py => py.id === key);
-                    label = p?.name || 'No Payee';
+                    label = p?.name || 'No Counterparty';
                     parentId = p?.parentId;
                 }
 
@@ -435,9 +437,10 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         // Fallback flat category group
                         key = tx.categoryId;
                         label = categories.find(c => c.id === key)?.name || 'Unknown';
-                    } else if (config.groupBy === 'payee') {
-                        key = tx.payeeId || 'no-payee';
-                        label = payees.find(p => p.id === key)?.name || 'No Payee';
+                    // Fixed: Use counterparty and counterpartyId to match types.ts
+                    } else if (config.groupBy === 'counterparty') {
+                        key = tx.counterpartyId || 'no-counterparty';
+                        label = payees.find(p => p.id === key)?.name || 'No Counterparty';
                     }
                 }
 
@@ -659,7 +662,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 categories={categories}
                                 tags={tags}
                                 transactionTypes={transactionTypes}
-                                payees={payees}
+                                // Fixed: Use counterparties prop instead of payees to match TransactionTable definition
+                                counterparties={payees}
                                 users={users}
                                 onUpdateTransaction={() => {}} 
                                 onDeleteTransaction={() => {}}

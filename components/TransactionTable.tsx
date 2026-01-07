@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Account, TransactionType, Payee, Category, User, Tag } from '../types';
+import type { Transaction, Account, TransactionType, Counterparty, Category, User, Tag } from '../types';
 import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon } from './Icons';
 
 interface TransactionTableProps {
@@ -9,7 +8,7 @@ interface TransactionTableProps {
   categories: Category[];
   tags: Tag[];
   transactionTypes: TransactionType[];
-  payees: Payee[];
+  counterparties: Counterparty[];
   users: User[];
   onUpdateTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
@@ -25,7 +24,7 @@ interface TransactionTableProps {
   onSplit?: (transaction: Transaction) => void;
 }
 
-type SortKey = keyof Transaction | 'payeeId' | 'categoryId' | 'accountId' | 'userId' | 'typeId' | '';
+type SortKey = keyof Transaction | 'counterpartyId' | 'categoryId' | 'accountId' | 'userId' | 'typeId' | '';
 type SortDirection = 'asc' | 'desc';
 
 interface GroupItem {
@@ -97,9 +96,6 @@ const RawDataDrawer: React.FC<{ tx: Transaction | null; onClose: () => void; }> 
                         </div>
                     )}
                 </div>
-                <div className="p-4 bg-slate-800 border-t border-white/10">
-                    <p className="text-[9px] text-slate-500 font-bold uppercase text-center leading-relaxed">This metadata represents the immutable state of the record during initial ledger ingestion.</p>
-                </div>
             </div>
         </div>
     );
@@ -111,7 +107,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   categories,
   tags,
   transactionTypes,
-  payees,
+  counterparties,
   users,
   onUpdateTransaction, 
   onDeleteTransaction,
@@ -121,8 +117,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onToggleSelection = (_id) => {},
   onToggleSelectAll = () => {},
   onBulkSelection,
-  deleteConfirmationMessage = 'Are you sure you want to delete this transaction? This action cannot be undone.',
-  visibleColumns = new Set(['date', 'description', 'payee', 'category', 'tags', 'account', 'type', 'amount', 'actions']),
+  deleteConfirmationMessage = 'Are you sure you want to delete this transaction?',
+  visibleColumns = new Set(['date', 'description', 'counterparty', 'category', 'tags', 'account', 'type', 'amount', 'actions']),
   onManageLink,
   onSplit
 }) => {
@@ -131,12 +127,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     const [inspectedTx, setInspectedTx] = useState<Transaction | null>(null);
 
-    // Maps for fast resolution
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
     const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a.name])), [accounts]);
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
-    const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
-    const userMap = useMemo(() => new Map(users.map(u => [u.id, u.name])), [users]);
+    const counterpartyMap = useMemo(() => new Map(counterparties.map(p => [p.id, p.name])), [counterparties]);
     const tagMap = useMemo(() => new Map(tags.map(t => [t.id, t])), [tags]);
 
     const displayItems = useMemo(() => {
@@ -156,11 +150,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         sorted.forEach(tx => {
             if (tx.linkGroupId) {
                 if (processedGroupIds.has(tx.linkGroupId)) return;
-                
                 const groupTxs = transactions.filter(t => t.linkGroupId === tx.linkGroupId);
                 const primary = groupTxs.find(t => t.isParent) || groupTxs[0];
                 const children = groupTxs.filter(t => t.id !== primary.id);
-                
                 items.push({
                     type: 'group',
                     id: tx.linkGroupId,
@@ -212,6 +204,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             {showCheckboxes && <th className="p-4 w-12 border-b bg-slate-50"><input type="checkbox" onChange={onToggleSelectAll} className="rounded text-indigo-600" /></th>}
                             {visibleColumns.has('date') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:text-indigo-600" onClick={() => handleHeaderClick('date')}>Date</th>}
                             {visibleColumns.has('description') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:text-indigo-600" onClick={() => handleHeaderClick('description')}>Description</th>}
+                            {visibleColumns.has('counterparty') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Counterparty</th>}
                             {visibleColumns.has('category') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Category</th>}
                             {visibleColumns.has('account') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Account</th>}
                             {visibleColumns.has('amount') && <th className="px-4 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:text-indigo-600" onClick={() => handleHeaderClick('amount')}>Amount</th>}
@@ -234,6 +227,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 </div>
                                             </td>
                                         )}
+                                        {visibleColumns.has('counterparty') && <td className="px-4 py-3"><span className="text-sm font-medium text-slate-600">{counterpartyMap.get(tx.counterpartyId || '') || <em className="text-slate-300">--</em>}</span></td>}
                                         {visibleColumns.has('category') && <td className="px-4 py-3"><span className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-black uppercase rounded-lg border border-slate-200">{categoryMap.get(tx.categoryId) || 'Uncategorized'}</span></td>}
                                         {visibleColumns.has('account') && <td className="px-4 py-3 text-xs font-bold text-slate-500">{accountMap.get(tx.accountId || '') || 'Unknown'}</td>}
                                         {visibleColumns.has('amount') && <td className={`px-4 py-3 text-right text-sm font-black font-mono ${getAmountColor(tx.typeId)}`}>{formatCurrency(tx.amount, tx.typeId)}</td>}
@@ -270,6 +264,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     </button>
                                                 </td>
                                             )}
+                                            {visibleColumns.has('counterparty') && <td className="px-4 py-3"><span className="text-sm font-medium text-indigo-600/60 italic">Grouped</span></td>}
                                             {visibleColumns.has('category') && <td className="px-4 py-3"><span className="text-[10px] font-black uppercase text-indigo-400 italic">Composite</span></td>}
                                             {visibleColumns.has('account') && <td className="px-4 py-3 text-xs font-bold text-indigo-400">{accountMap.get(item.primaryTx.accountId || '')}</td>}
                                             {visibleColumns.has('amount') && <td className="px-4 py-3 text-right text-sm font-black text-indigo-700 font-mono underline decoration-dotted decoration-indigo-300">{formatCurrency(item.totalAmount, item.primaryTx.typeId)}</td>}
@@ -284,6 +279,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 {showCheckboxes && <td className="p-4 text-center"><input type="checkbox" checked={selectedTxIds.has(child.id)} onChange={() => onToggleSelection?.(child.id)} className="rounded text-indigo-600" /></td>}
                                                 {visibleColumns.has('date') && <td className="px-4 py-2 text-[10px] font-mono text-slate-400 pl-8">{child.date}</td>}
                                                 {visibleColumns.has('description') && <td className="px-4 py-2 pl-12"><div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-slate-200"></div><span className="text-xs font-bold text-slate-600">{child.description}</span></div></td>}
+                                                {visibleColumns.has('counterparty') && <td className="px-4 py-2 text-xs text-slate-400">{counterpartyMap.get(child.counterpartyId || '')}</td>}
                                                 {visibleColumns.has('category') && <td className="px-4 py-2"><span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase">{categoryMap.get(child.categoryId) || 'Uncategorized'}</span></td>}
                                                 {visibleColumns.has('account') && <td className="px-4 py-2 text-[10px] text-slate-400 uppercase font-black">{accountMap.get(child.accountId || '')}</td>}
                                                 {visibleColumns.has('amount') && <td className={`px-4 py-2 text-right text-xs font-black font-mono ${getAmountColor(child.typeId)}`}>{formatCurrency(child.amount, child.typeId)}</td>}

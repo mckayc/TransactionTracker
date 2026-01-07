@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Payee, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, Transaction, AmazonReportType, AmazonMetric } from '../types';
+import type { ReportConfig, Account, Category, User, TransactionType, DateRangePreset, BalanceEffect, Tag, Counterparty, ReportGroupBy, CustomDateRange, DateRangeUnit, DateRangeType, Transaction, AmazonReportType, AmazonMetric } from '../types';
 import { CloseIcon, ChartPieIcon, CalendarIcon, AddIcon, DeleteIcon, EditIcon, TableIcon, ExclamationTriangleIcon, SaveIcon, BoxIcon, YoutubeIcon } from './Icons';
 import MultiSelect from './MultiSelect';
 import { generateUUID } from '../utils';
@@ -16,7 +16,7 @@ interface ReportConfigModalProps {
     users: User[];
     transactionTypes: TransactionType[];
     tags: Tag[];
-    payees: Payee[];
+    payees: Counterparty[];
     savedDateRanges: CustomDateRange[];
     onSaveDateRange: (range: CustomDateRange) => void;
     onDeleteDateRange: (id: string) => void;
@@ -29,7 +29,6 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
 }) => {
     const [name, setName] = useState('');
     const [dataSource, setDataSource] = useState<'financial' | 'amazon' | 'youtube'>('financial');
-    // Fix: loosened state type to allow custom range IDs (strings)
     const [datePreset, setDatePreset] = useState<DateRangePreset | string>('thisMonth');
     const [customStartDate, setCustomStartDate] = useState('');
     const [customEndDate, setCustomEndDate] = useState('');
@@ -60,7 +59,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             if (initialConfig) {
-                // Editing existing report - STRICTLY preserve ID to allow updating existing records
+                // Editing existing report
                 setName(initialConfig.name);
                 setDataSource(initialConfig.dataSource || 'financial');
                 setDatePreset(initialConfig.datePreset);
@@ -76,8 +75,10 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setSelectedTypes(initialConfig.filters.typeIds ? new Set(initialConfig.filters.typeIds) : new Set(transactionTypes.map(t => t.id)));
                 setSelectedEffects(new Set(initialConfig.filters.balanceEffects || ['expense', 'income']));
                 setSelectedTags(initialConfig.filters.tagIds ? new Set(initialConfig.filters.tagIds) : new Set(tags.map(t => t.id)));
-                setSelectedPayees(initialConfig.filters.payeeIds ? new Set(initialConfig.filters.payeeIds) : new Set(payees.map(p => p.id)));
-                setSelectedAmazonSources(initialConfig.filters.amazonSources ? new Set(initialConfig.filters.amazonSources) : new Set(['onsite', 'offsite', 'creator_connections']));
+                // Fixed: Use counterpartyIds instead of payeeIds to match types.ts
+                setSelectedPayees(initialConfig.filters.counterpartyIds ? new Set(initialConfig.filters.counterpartyIds) : new Set(payees.map(p => p.id)));
+                // Fixed: Explicit cast to AmazonReportType[] to resolve generic string set error
+                setSelectedAmazonSources(initialConfig.filters.amazonSources ? new Set(initialConfig.filters.amazonSources as AmazonReportType[]) : new Set(['onsite', 'offsite', 'creator_connections'] as AmazonReportType[]));
             } else {
                 // Creating NEW report
                 setName('');
@@ -102,8 +103,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         }
     }, [isOpen, initialConfig, accounts, categories, users, transactionTypes, tags, payees]);
 
-    // Live Preview Logic (Only for Financial Transactions currently, adding dummy data for amazon preview might be complex without props)
-    // We will just show a placeholder preview for Amazon for simplicity in this modal, relying on real data in the main view.
+    // Live Preview Logic
     const previewData = useMemo(() => {
         if (!isOpen || dataSource !== 'financial') return { transactions: [], total: 0, count: 0, dateLabel: '' };
         
@@ -122,7 +122,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             if (selectedUsers.size > 0 && !selectedUsers.has(tx.userId || '')) return false;
             if (selectedCategories.size > 0 && !selectedCategories.has(tx.categoryId)) return false;
             if (selectedTypes.size > 0 && !selectedTypes.has(tx.typeId)) return false;
-            if (selectedPayees.size > 0 && selectedPayees.size < payees.length && !selectedPayees.has(tx.payeeId || '')) return false;
+            // Fixed: Use counterpartyId instead of payeeId to match types.ts
+            if (selectedPayees.size > 0 && selectedPayees.size < payees.length && !selectedPayees.has(tx.counterpartyId || '')) return false;
             if (selectedTags.size < tags.length && (!tx.tagIds || !tx.tagIds.some(tId => selectedTags.has(tId)))) return false;
 
             return true;
@@ -132,7 +133,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
         const total = filtered.reduce((sum, tx) => sum + tx.amount, 0);
 
         return { transactions: filtered, total, count: filtered.length, dateLabel: `${start.toLocaleDateString()} - ${end.toLocaleDateString()}` };
-    }, [isOpen, dataSource, transactions, datePreset, customStartDate, customEndDate, savedDateRanges, selectedAccounts, selectedCategories, selectedTypes, selectedUsers, selectedTags, selectedPayees, selectedEffects]);
+    }, [isOpen, dataSource, transactions, datePreset, customStartDate, customEndDate, savedDateRanges, selectedAccounts, selectedCategories, selectedTypes, selectedUsers, selectedTags, selectedPayees, selectedEffects, transactionTypes, payees.length, tags.length]);
 
     if (!isOpen) return null;
 
@@ -163,7 +164,8 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 typeIds: isAllTypes ? undefined : Array.from(selectedTypes),
                 balanceEffects: Array.from(selectedEffects),
                 tagIds: isAllTags ? undefined : Array.from(selectedTags),
-                payeeIds: isAllPayees ? undefined : Array.from(selectedPayees),
+                // Fixed: Use counterpartyIds instead of payeeIds to match types.ts
+                counterpartyIds: isAllPayees ? undefined : Array.from(selectedPayees),
                 amazonSources: dataSource === 'amazon' ? Array.from(selectedAmazonSources) : undefined
             },
             hiddenCategoryIds: asNew ? [] : (initialConfig?.hiddenCategoryIds || []),
@@ -194,7 +196,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
             type: rangeType, 
             unit: rangeUnit, 
             value: rangeValue, 
-            offsets: undefined // We only need simple offsets for now based on the prompt
+            offsets: undefined
         };
         onSaveDateRange(newRange);
         handleClearRangeForm();
@@ -261,9 +263,6 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                                 Relative Period
                                             </button>
                                         </div>
-                                        <p className="text-xs text-slate-400 mt-1">
-                                            {rangeType === 'rolling_window' ? 'Current date minus X units (e.g. Last 30 Days)' : 'A specific period relative to now (e.g. 2 Months Ago)'}
-                                        </p>
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2">
@@ -344,7 +343,6 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
 
                                 <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
                                     <div className="flex justify-between mb-1"><label className="block text-sm font-bold text-slate-700">Date Range</label><button onClick={() => setIsManagingRanges(true)} className="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1"><EditIcon className="w-3 h-3"/> Manage Custom</button></div>
-                                    {/* Fix: removed cast to DateRangePreset as state now accepts general strings for custom range IDs */}
                                     <select value={datePreset} onChange={e => setDatePreset(e.target.value)} className="w-full p-2 border rounded-md bg-white">
                                         <option value="thisMonth">This Month</option>
                                         <option value="lastMonth">Last Month</option>
@@ -371,7 +369,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                             {dataSource === 'financial' ? (
                                                 <>
                                                     <option value="category">Category</option>
-                                                    <option value="payee">Payee</option>
+                                                    <option value="counterparty">Counterparty</option>
                                                     <option value="account">Account</option>
                                                     <option value="type">Type</option>
                                                     <option value="tag">Tag</option>
@@ -401,7 +399,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                             <MultiSelect label="Types" options={transactionTypes} selectedIds={selectedTypes} onChange={setSelectedTypes} />
                                             <MultiSelect label="Accounts" options={accounts} selectedIds={selectedAccounts} onChange={setSelectedAccounts} />
                                             <MultiSelect label="Tags" options={tags} selectedIds={selectedTags} onChange={setSelectedTags} />
-                                            <MultiSelect label="Payees" options={payees} selectedIds={selectedPayees} onChange={setSelectedPayees} />
+                                            <MultiSelect label="Counterparties" options={payees} selectedIds={selectedPayees} onChange={setSelectedPayees} />
                                         </>
                                     ) : dataSource === 'amazon' ? (
                                         <div className="flex flex-col gap-2">
@@ -442,12 +440,6 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                 </div>
                             )}
                         </div>
-                        {isManagingRanges && (
-                            <div className="mt-4 p-4 bg-indigo-50 border border-indigo-100 rounded-lg text-sm text-indigo-800">
-                                <p className="font-bold mb-1">Previewing: {rangeName || 'New Range'}</p>
-                                <p>{previewData.dateLabel}</p>
-                            </div>
-                        )}
                     </div>
                 </div>
 

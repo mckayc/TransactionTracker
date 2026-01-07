@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Transaction, Account, TransactionType, Payee, Category, User, Tag } from '../types';
-import { CloseIcon } from '../components/Icons';
+import type { Transaction, Account, TransactionType, Counterparty, Category, User, Tag } from '../types';
+import { CloseIcon, AddIcon } from '../components/Icons';
+import { generateUUID } from '../utils';
 
 interface TransactionModalProps {
     isOpen: boolean;
@@ -12,8 +13,10 @@ interface TransactionModalProps {
     categories: Category[];
     tags: Tag[];
     transactionTypes: TransactionType[];
-    payees: Payee[];
+    counterparties: Counterparty[];
     users: User[];
+    onSaveCategory?: (c: Category) => void;
+    onSaveCounterparty?: (p: Counterparty) => void;
 }
 
 const getTodayDate = () => {
@@ -24,8 +27,10 @@ const getTodayDate = () => {
     return `${year}-${month}-${day}`;
 };
 
-
-const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction, onClose, onSave, accounts, categories, tags, transactionTypes, payees, users }) => {
+const TransactionModal: React.FC<TransactionModalProps> = ({ 
+    isOpen, transaction, onClose, onSave, accounts, categories, tags, transactionTypes, counterparties, users,
+    onSaveCategory, onSaveCounterparty
+}) => {
     
     const getDefaultState = () => {
         const defaultExpenseType = transactionTypes.find(t => t.name === 'Purchase') || transactionTypes.find(t => t.balanceEffect === 'expense');
@@ -41,7 +46,7 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
             location: '',
             accountId: '',
             notes: '',
-            payeeId: '',
+            counterpartyId: '',
             userId: defaultUser?.id || '',
             tagIds: [] as string[],
         }
@@ -50,7 +55,6 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
     const [formData, setFormData] = useState<Omit<Transaction, 'id'>>(getDefaultState());
     const isEditMode = transaction !== null;
 
-    // Recursive helper for deep hierarchies (parents, children, grandchildren)
     const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
         return items
             .filter(i => i.parentId === parentId)
@@ -61,10 +65,9 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
             ]);
     };
 
-    const sortedPayeeOptions = useMemo(() => getSortedOptions(payees), [payees]);
+    const sortedCounterpartyOptions = useMemo(() => getSortedOptions(counterparties), [counterparties]);
     const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
 
-    // Only reset form when modal opens or specific transaction changes
     useEffect(() => {
         if (isOpen) {
             if (isEditMode && transaction) {
@@ -72,42 +75,45 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
             } else {
                 const defaultState = getDefaultState();
                 const defaultAccountId = accounts.length > 0 ? accounts[0].id : '';
-                setFormData({
-                    ...defaultState,
-                    accountId: defaultAccountId,
-                });
+                setFormData({ ...defaultState, accountId: defaultAccountId });
             }
         }
     }, [isOpen, transaction]);
+
+    const handleCreateNewCounterparty = () => {
+        const name = prompt("Enter new Counterparty name:");
+        if (name && name.trim()) {
+            const newCp: Counterparty = { id: generateUUID(), name: name.trim() };
+            onSaveCounterparty?.(newCp);
+            setFormData(prev => ({ ...prev, counterpartyId: newCp.id }));
+        }
+    };
+
+    const handleCreateNewCategory = () => {
+        const name = prompt("Enter new Category name:");
+        if (name && name.trim()) {
+            const newCat: Category = { id: generateUUID(), name: name.trim() };
+            onSaveCategory?.(newCat);
+            setFormData(prev => ({ ...prev, categoryId: newCat.id, category: newCat.name }));
+        }
+    };
 
     if (!isOpen) return null;
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
-        
         if (name === 'categoryId') {
             const catName = categories.find(c => c.id === value)?.name || '';
-            setFormData(prev => ({
-                ...prev,
-                categoryId: value,
-                category: catName
-            }));
+            setFormData(prev => ({ ...prev, categoryId: value, category: catName }));
         } else {
-            setFormData(prev => ({
-                ...prev,
-                [name]: name === 'amount' ? parseFloat(value) || 0 : value,
-            }));
+            setFormData(prev => ({ ...prev, [name]: name === 'amount' ? parseFloat(value) || 0 : value }));
         }
     };
 
     const toggleTag = (tagId: string) => {
         setFormData(prev => {
             const currentTags = prev.tagIds || [];
-            if (currentTags.includes(tagId)) {
-                return { ...prev, tagIds: currentTags.filter(id => id !== tagId) };
-            } else {
-                return { ...prev, tagIds: [...currentTags, tagId] };
-            }
+            return { ...prev, tagIds: currentTags.includes(tagId) ? currentTags.filter(id => id !== tagId) : [...currentTags, tagId] };
         });
     };
 
@@ -117,106 +123,100 @@ const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, transaction
     };
 
     return (
-        <div 
-            className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center"
-            onClick={onClose}
-            aria-modal="true"
-            role="dialog"
-        >
-            <div 
-                className="bg-white rounded-xl shadow-2xl w-full max-w-lg p-6 m-4 transform transition-all max-h-[90vh] overflow-y-auto"
-                onClick={e => e.stopPropagation()}
-            >
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-bold text-slate-800">{isEditMode ? 'Edit Transaction' : 'Add New Transaction'}</h2>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-100" aria-label="Close modal">
-                        <CloseIcon className="w-6 h-6 text-slate-500" />
-                    </button>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex justify-center items-center p-4" onClick={onClose} role="dialog">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 m-4 overflow-hidden flex flex-col max-h-[90vh] animate-slide-up" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-xl font-black text-slate-800 tracking-tight">{isEditMode ? 'Edit Transaction' : 'New Transaction'}</h2>
+                    <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-100 transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                 </div>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Date</label>
-                            <input type="date" name="date" value={formData.date} onChange={handleChange} required />
+                
+                <form onSubmit={handleSubmit} className="space-y-5 overflow-y-auto custom-scrollbar pr-1">
+                     <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Date</label>
+                            <input type="date" name="date" value={formData.date} onChange={handleChange} required className="w-full p-2 border rounded-xl" />
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700">Amount</label>
-                            <input type="number" step="0.01" name="amount" value={formData.amount} onChange={handleChange} required />
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Amount</label>
+                            <input type="number" step="0.01" name="amount" value={formData.amount} onChange={handleChange} required className="w-full p-2 border rounded-xl font-mono font-bold" />
                         </div>
                      </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Description (Raw Statement Info)</label>
-                        <input type="text" name="description" value={formData.description} onChange={handleChange} required />
+                     
+                     <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Memo / Original Statement Line</label>
+                        <input type="text" name="description" value={formData.description} onChange={handleChange} required className="w-full p-2 border rounded-xl font-bold" placeholder="Statement description..." />
                     </div>
+
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Counterparty (Clean Entity)</label>
-                            <select name="payeeId" value={formData.payeeId || ''} onChange={handleChange}>
-                                <option value="">-- No Counterparty --</option>
-                                {sortedPayeeOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                         <div className="space-y-1">
+                            <label className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                <span>Counterparty</span>
+                                <button type="button" onClick={handleCreateNewCounterparty} className="text-indigo-600 hover:underline">NEW</button>
+                            </label>
+                            <select name="counterpartyId" value={formData.counterpartyId || ''} onChange={handleChange} className="w-full p-2 border rounded-xl font-medium">
+                                <option value="">-- No Entity --</option>
+                                {sortedCounterpartyOptions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                             </select>
                         </div>
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Category</label>
-                            <select name="categoryId" value={formData.categoryId} onChange={handleChange}>
-                                 {sortedCategoryOptions.map(cat => (
-                                    <option key={cat.id} value={cat.id}>{cat.name}</option>
-                                ))}
+                         <div className="space-y-1">
+                            <label className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                <span>Category</span>
+                                <button type="button" onClick={handleCreateNewCategory} className="text-indigo-600 hover:underline">NEW</button>
+                            </label>
+                            <select name="categoryId" value={formData.categoryId} onChange={handleChange} className="w-full p-2 border rounded-xl font-medium">
+                                 {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                             </select>
                         </div>
                     </div>
+
                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                         <div>
-                            <label className="block text-sm font-medium text-slate-700">Account</label>
-                            <select name="accountId" value={formData.accountId || ''} onChange={handleChange} required>
-                                <option value="" disabled>Select an account...</option>
-                                {accounts.map(acc => (
-                                    <option key={acc.id} value={acc.id}>{acc.name}</option>
-                                ))}
+                         <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Target Account</label>
+                            <select name="accountId" value={formData.accountId || ''} onChange={handleChange} required className="w-full p-2 border rounded-xl font-medium">
+                                <option value="" disabled>Select account...</option>
+                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                             </select>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700">User</label>
-                            <select name="userId" value={formData.userId || ''} onChange={handleChange} required>
-                                {users.map(user => (
-                                    <option key={user.id} value={user.id}>{user.name}</option>
-                                ))}
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ledger Owner</label>
+                            <select name="userId" value={formData.userId || ''} onChange={handleChange} required className="w-full p-2 border rounded-xl font-medium">
+                                {users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
                             </select>
                         </div>
                     </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700">Transaction Type</label>
-                        <select name="typeId" value={formData.typeId} onChange={handleChange}>
-                           {transactionTypes.map(type => (
-                               <option key={type.id} value={type.id}>{type.name}</option>
-                           ))}
+
+                     <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Transaction Logic Type</label>
+                        <select name="typeId" value={formData.typeId} onChange={handleChange} className="w-full p-2 border rounded-xl font-bold">
+                           {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
                         </select>
                     </div>
                     
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Tags</label>
-                        <div className="flex flex-wrap gap-2">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Organizational Tags</label>
+                        <div className="flex flex-wrap gap-2 p-3 border rounded-2xl bg-slate-50">
                             {tags.map(tag => (
                                 <button
                                     key={tag.id}
                                     type="button"
                                     onClick={() => toggleTag(tag.id)}
-                                    className={`px-2 py-1 rounded-full text-xs border transition-colors ${formData.tagIds?.includes(tag.id) ? tag.color + ' ring-1 ring-offset-1 ring-slate-400' : 'bg-white text-slate-600 border-slate-300'}`}
+                                    className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border transition-all ${formData.tagIds?.includes(tag.id) ? tag.color + ' border-slate-400 ring-2 ring-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'}`}
                                 >
                                     {tag.name}
                                 </button>
                             ))}
+                            {tags.length === 0 && <p className="text-[10px] text-slate-400 italic">No tags configured.</p>}
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700">Notes</label>
-                        <textarea name="notes" value={formData.notes || ''} onChange={handleChange} rows={3}></textarea>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Notes</label>
+                        <textarea name="notes" value={formData.notes || ''} onChange={handleChange} rows={3} className="w-full p-2 border rounded-xl" placeholder="Additional context..." />
                     </div>
 
-                    <div className="flex justify-end gap-3 pt-4">
-                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200">Cancel</button>
-                        <button type="submit" className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700">Save Changes</button>
+                    <div className="flex justify-end gap-3 pt-6 border-t">
+                        <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm font-bold text-slate-500 bg-slate-100 rounded-xl hover:bg-slate-200">Cancel</button>
+                        <button type="submit" className="px-10 py-2.5 text-sm font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100">Save Transaction</button>
                     </div>
                 </form>
             </div>

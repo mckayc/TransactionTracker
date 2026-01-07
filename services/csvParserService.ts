@@ -25,6 +25,7 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         setCategory: header.indexOf('set category'),
         setPayee: header.indexOf('set payee'),
         setMerchant: header.indexOf('set merchant'),
+        setCounterparty: header.indexOf('set counterparty'),
         setLocation: header.indexOf('set location'),
         setType: header.indexOf('set type'),
         setUser: header.indexOf('set user'),
@@ -65,14 +66,14 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
                 nextLogic: 'AND'
             }];
 
+        // Fixed: Use suggestedCounterpartyName instead of suggestedPayeeName/suggestedMerchantName
         const rule: ReconciliationRule = {
             id: generateUUID(),
             name: parts[colMap.name] || `Imported Rule ${i}`,
             ruleCategory: parts[colMap.category] || 'description',
             conditions: conditions,
             suggestedCategoryName: parts[colMap.setCategory],
-            suggestedPayeeName: parts[colMap.setPayee],
-            suggestedMerchantName: parts[colMap.setMerchant],
+            suggestedCounterpartyName: parts[colMap.setCounterparty] || parts[colMap.setPayee] || parts[colMap.setMerchant],
             suggestedLocationName: parts[colMap.setLocation],
             suggestedTypeName: parts[colMap.setType],
             suggestedUserName: parts[colMap.setUser],

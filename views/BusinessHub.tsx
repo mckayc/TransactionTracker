@@ -1,16 +1,15 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote } from '../types';
-import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon, ChevronRightIcon, LightBulbIcon, ChecklistIcon, BoxIcon, RepeatIcon, ListIcon, TypeIcon, DragHandleIcon, TrashIcon, CalendarIcon, ArrowUpIcon, ArrowDownIcon } from '../components/Icons';
-import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
+import React, { useState, useEffect, useMemo } from 'react';
+import type { BusinessNote, Transaction, Account, Category } from '../types';
+import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, DeleteIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface BusinessHubProps {
-    profile: BusinessProfile;
-    onUpdateProfile: (profile: BusinessProfile) => void;
+    profile: any;
+    onUpdateProfile: (profile: any) => void;
     notes: BusinessNote[];
     onUpdateNotes: (notes: BusinessNote[]) => void;
-    chatSessions: ChatSession[];
-    onUpdateChatSessions: (sessions: ChatSession[]) => void;
+    chatSessions: any[];
+    onUpdateChatSessions: (sessions: any[]) => void;
     transactions: Transaction[];
     accounts: Account[];
     categories: Category[];
@@ -26,7 +25,7 @@ interface ContentBlock {
     indent: number;
 }
 
-// --- Markdown Parser & Serializer ---
+// --- Markdown Serialization ---
 
 const parseMarkdownToBlocks = (markdown: string): ContentBlock[] => {
     if (!markdown || markdown.trim() === '') {
@@ -78,16 +77,13 @@ const serializeBlocksToMarkdown = (blocks: ContentBlock[]): string => {
     return blocks.map(b => {
         const prefix = '  '.repeat(b.indent);
         let marker = '';
-        const blockType = b.type as string;
-        if (blockType === 'h1') marker = '# ';
-        else if (blockType === 'todo') marker = `- [${b.checked ? 'x' : ' '}] `;
-        else if (blockType === 'bullet') marker = '- ';
-        else if (blockType === 'number') marker = '1. ';
+        if (b.type === 'h1') marker = '# ';
+        else if (b.type === 'todo') marker = `- [${b.checked ? 'x' : ' '}] `;
+        else if (b.type === 'bullet') marker = '- ';
+        else if (b.type === 'number') marker = '1. ';
         return prefix + marker + b.text;
     }).join('\n');
 };
-
-// --- WYSIWYG Editor Components ---
 
 const BlockEditor: React.FC<{
     blocks: ContentBlock[];
@@ -119,36 +115,21 @@ const BlockEditor: React.FC<{
         if (prevBlock) setTimeout(() => document.getElementById(`block-${prevBlock.id}`)?.focus(), 10);
     };
 
-    const moveBlock = (id: string, direction: 'up' | 'down') => {
-        const index = blocks.findIndex(b => b.id === id);
-        if (direction === 'up' && index > 0) {
-            const newBlocks = [...blocks];
-            [newBlocks[index - 1], newBlocks[index]] = [newBlocks[index], newBlocks[index - 1]];
-            onChange(newBlocks);
-        } else if (direction === 'down' && index < blocks.length - 1) {
-            const newBlocks = [...blocks];
-            [newBlocks[index + 1], newBlocks[index]] = [newBlocks[index], newBlocks[index + 1]];
-            onChange(newBlocks);
-        }
-    };
-
     const sortCheckedToBottom = () => {
-        // Logic: Group todo items and sink checked ones within their contiguous group
+        // Find contiguous groups of checklist items and move completed ones to the bottom of the group
         const newBlocks: ContentBlock[] = [];
         let i = 0;
         while (i < blocks.length) {
-            if ((blocks[i].type as string) === 'todo') {
+            if (blocks[i].type === 'todo') {
                 const group: ContentBlock[] = [];
-                while (i < blocks.length && (blocks[i].type as string) === 'todo') {
+                const baseIndent = blocks[i].indent;
+                while (i < blocks.length && (blocks[i].type === 'todo' || blocks[i].indent > baseIndent)) {
                     group.push(blocks[i]);
                     i++;
                 }
-                // Sort this group: unchecked first, then checked
-                group.sort((a, b) => {
-                    if (a.checked === b.checked) return 0;
-                    return a.checked ? 1 : -1;
-                });
-                newBlocks.push(...group);
+                const unchecked = group.filter(b => !b.checked);
+                const checked = group.filter(b => b.checked);
+                newBlocks.push(...unchecked, ...checked);
             } else {
                 newBlocks.push(blocks[i]);
                 i++;
@@ -160,18 +141,10 @@ const BlockEditor: React.FC<{
     const handleKeyDown = (e: React.KeyboardEvent, b: ContentBlock) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            if (b.text === '' && (b.type as string) !== 'paragraph') {
-                updateBlock(b.id, { type: 'paragraph', indent: 0 });
-            } else {
-                addBlock(b.id, b.type, b.indent);
-            }
+            addBlock(b.id, b.type, b.indent);
         } else if (e.key === 'Backspace' && b.text === '') {
             e.preventDefault();
-            if ((b.type as string) !== 'paragraph' || b.indent > 0) {
-                updateBlock(b.id, { type: 'paragraph', indent: 0 });
-            } else {
-                deleteBlock(b.id);
-            }
+            deleteBlock(b.id);
         } else if (e.key === 'Tab') {
             e.preventDefault();
             const newIndent = e.shiftKey ? Math.max(0, b.indent - 1) : Math.min(5, b.indent + 1);
@@ -179,728 +152,205 @@ const BlockEditor: React.FC<{
         }
     };
 
-    const setSelectionFormatting = (prefix: string, suffix: string) => {
-        if (!focusedId) return;
-        const textarea = document.getElementById(`block-${focusedId}`) as HTMLTextAreaElement;
-        if (!textarea) return;
-
-        const start = textarea.selectionStart;
-        const end = textarea.selectionEnd;
-        const text = textarea.value;
-        const before = text.substring(0, start);
-        const selection = text.substring(start, end);
-        const after = text.substring(end);
-
-        const newText = before + prefix + selection + suffix + after;
-        updateBlock(focusedId, { text: newText });
-        
-        setTimeout(() => {
-            textarea.focus();
-            textarea.setSelectionRange(start + prefix.length, end + prefix.length);
-        }, 10);
-    };
-
     return (
-        <div className="flex flex-col h-full bg-white rounded border border-slate-200 overflow-hidden shadow-sm">
-            <div className="flex items-center gap-1 p-1 bg-slate-50 border-b border-slate-100 sticky top-0 z-20">
-                <div className="flex bg-white rounded border border-slate-200 p-0.5 shadow-sm mr-2">
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all" title="Todo List"><ChecklistIcon className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all" title="Bullet List"><ListIcon className="w-3 h-3" /></button>
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'number' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all font-bold text-[9px]" title="Numbered List">1.</button>
+        <div className="flex flex-col h-full bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="flex items-center gap-1 p-2 bg-slate-50 border-b border-slate-100 sticky top-0 z-20">
+                <div className="flex bg-white rounded-xl border border-slate-200 p-0.5 shadow-sm mr-2">
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all"><ChecklistIcon className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all"><ListIcon className="w-4 h-4" /></button>
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'h1' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all font-black text-xs">H1</button>
                 </div>
-                <div className="flex bg-white rounded border border-slate-200 p-0.5 shadow-sm mr-2">
-                    <button type="button" onClick={() => setSelectionFormatting('**', '**')} className="px-2 py-1 hover:bg-indigo-50 rounded text-slate-600 font-black text-[9px]" title="Bold">B</button>
-                    <button type="button" onClick={() => setSelectionFormatting('~~', '~~')} className="px-2 py-1 hover:bg-indigo-50 rounded text-slate-600 font-medium text-[9px] line-through" title="Strikethrough">S</button>
-                </div>
-                <div className="flex bg-white rounded border border-slate-200 p-0.5 shadow-sm">
-                    <button type="button" onClick={sortCheckedToBottom} className="px-2 py-1 hover:bg-indigo-50 rounded text-indigo-600 font-black text-[8px] uppercase tracking-tighter" title="Sink Completed Tasks">Organize</button>
-                </div>
-                <div className="ml-auto flex items-center gap-2 pr-2">
-                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Nano Editor</span>
-                    <div className="w-1 h-1 rounded-full bg-emerald-500" />
-                </div>
+                <button type="button" onClick={sortCheckedToBottom} className="px-3 py-1.5 bg-white border rounded-xl text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-sm">Sink Completed</button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-3 space-y-0.5 custom-scrollbar bg-white">
-                {blocks.map((b, idx) => {
-                    const blockNumber = blocks.slice(0, idx + 1).filter((pb) => (pb.type as any) === 'number').length;
-                    return (
-                        <div 
-                            key={b.id} 
-                            className={`group flex items-start gap-2 py-0.5 relative rounded transition-colors ${focusedId === b.id ? 'bg-slate-50/50' : 'hover:bg-slate-50/30'}`}
-                            style={{ paddingLeft: `${b.indent * 16}px` }}
-                        >
-                            <div className="flex-shrink-0 mt-0.5 w-4 flex justify-center items-start">
-                                {(b.type as any) === 'todo' ? (
-                                    <button 
-                                        type="button"
-                                        onClick={() => updateBlock(b.id, { checked: !b.checked })}
-                                        className={`w-3.5 h-3.5 rounded border transition-all flex items-center justify-center ${
-                                            b.checked ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-300 hover:border-indigo-400'
-                                        }`}
-                                    >
-                                        {b.checked && <CheckCircleIcon className="w-2.5 h-2.5" />}
-                                    </button>
-                                ) : (b.type as any) === 'bullet' ? (
-                                    <div className="w-1 h-1 rounded-full bg-slate-300 mt-1.5" />
-                                ) : (b.type as any) === 'number' ? (
-                                    <span className="text-[9px] font-black text-slate-400 mt-0.5 font-mono">{blockNumber}.</span>
-                                ) : (b.type as any) === 'h1' ? (
-                                    <span className="text-[9px] font-black text-indigo-400 mt-0.5">H</span>
-                                ) : null}
-                            </div>
-
-                            <textarea
-                                id={`block-${b.id}`}
-                                value={b.text}
-                                onFocus={() => setFocusedId(b.id)}
-                                onChange={(e) => {
-                                    const val = e.target.value;
-                                    let type = b.type;
-                                    let text = val;
-                                    if ((b.type as string) === 'paragraph') {
-                                        if (val === '- ') { type = 'bullet'; text = ''; }
-                                        else if (val === '[] ') { type = 'todo'; text = ''; }
-                                        else if (val === '1. ') { type = 'number'; text = ''; }
-                                        else if (val === '# ') { type = 'h1'; text = ''; }
-                                    }
-                                    updateBlock(b.id, { text, type });
-                                }}
-                                onKeyDown={(e) => handleKeyDown(e, b)}
-                                placeholder={(b.type as string) === 'paragraph' ? "Log..." : "Item..."}
-                                rows={1}
-                                className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] transition-all duration-200 ${
-                                    (b.type as string) === 'h1' ? 'text-sm font-black text-slate-800' : 'text-[12px] font-medium'
-                                } ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
-                                onInput={(e) => {
-                                    const target = e.target as HTMLTextAreaElement;
-                                    target.style.height = 'auto';
-                                    target.style.height = target.scrollHeight + 'px';
-                                }}
-                                style={{ height: 'auto' }}
-                            />
-
-                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity flex-shrink-0">
-                                <button type="button" onClick={() => moveBlock(b.id, 'up')} className="p-0.5 text-slate-300 hover:text-indigo-600 rounded transition-colors" title="Move Up"><ArrowUpIcon className="w-3 h-3"/></button>
-                                <button type="button" onClick={() => moveBlock(b.id, 'down')} className="p-0.5 text-slate-300 hover:text-indigo-600 rounded transition-colors" title="Move Down"><ArrowDownIcon className="w-3 h-3"/></button>
-                                <button type="button" onClick={() => deleteBlock(b.id)} className="p-0.5 text-slate-300 hover:text-red-500 rounded"><TrashIcon className="w-3 h-3"/></button>
-                            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-1 custom-scrollbar">
+                {blocks.map((b) => (
+                    <div 
+                        key={b.id} 
+                        className={`group flex items-start gap-3 py-0.5 relative rounded-lg transition-colors ${focusedId === b.id ? 'bg-indigo-50/30' : 'hover:bg-slate-50/50'}`}
+                        style={{ paddingLeft: `${b.indent * 20}px` }}
+                    >
+                        <div className="flex-shrink-0 mt-1.5 w-5 flex justify-center">
+                            {b.type === 'todo' ? (
+                                <button 
+                                    type="button"
+                                    onClick={() => updateBlock(b.id, { checked: !b.checked })}
+                                    className={`w-4 h-4 rounded border-2 transition-all flex items-center justify-center ${b.checked ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-300 hover:border-indigo-400'}`}
+                                >
+                                    {b.checked && <CheckCircleIcon className="w-3 h-3" />}
+                                </button>
+                            ) : b.type === 'bullet' ? (
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1" />
+                            ) : null}
                         </div>
-                    );
-                })}
-            </div>
-            
-            <div className="px-2 py-1 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-[7px] text-slate-400 font-black uppercase tracking-widest">
-                <span>{blocks.length} Units</span>
-                <div className="flex gap-2">
-                    <span>Tab: Level</span>
-                    <span>Ent: New</span>
-                </div>
-            </div>
-        </div>
-    );
-};
 
-// --- Viewer Components ---
+                        <textarea
+                            id={`block-${b.id}`}
+                            value={b.text}
+                            onFocus={() => setFocusedId(b.id)}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                let type = b.type;
+                                let text = val;
+                                if (b.type === 'paragraph') {
+                                    if (val === '- ') { type = 'bullet'; text = ''; }
+                                    else if (val === '[] ') { type = 'todo'; text = ''; }
+                                    else if (val === '# ') { type = 'h1'; text = ''; }
+                                }
+                                updateBlock(b.id, { text, type });
+                            }}
+                            onKeyDown={(e) => handleKeyDown(e, b)}
+                            placeholder="Type something..."
+                            rows={1}
+                            className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] ${b.type === 'h1' ? 'text-lg font-black text-slate-800' : 'text-sm font-medium'} ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
+                            onInput={(e) => {
+                                const target = e.target as HTMLTextAreaElement;
+                                target.style.height = 'auto';
+                                target.style.height = target.scrollHeight + 'px';
+                            }}
+                        />
 
-const parseInlineMarkdown = (text: string) => {
-    if (!text) return null;
-    let parts: (string | React.ReactNode)[] = [text];
-    parts = parts.flatMap(p => {
-        if (typeof p !== 'string') return p;
-        const subParts = p.split(/~~(.*?)~~/g);
-        return subParts.map((sp, i) => i % 2 === 1 ? <span key={i} className="line-through opacity-60 italic">{sp}</span> : sp);
-    });
-    parts = parts.flatMap(p => {
-        if (typeof p !== 'string') return p;
-        const subParts = p.split(/\*\*(.*?)\*\*/g);
-        return subParts.map((sp, i) => i % 2 === 1 ? <strong key={i} className="font-black text-slate-900">{sp}</strong> : sp);
-    });
-    return <>{parts}</>;
-};
-
-const NoteContentRenderer: React.FC<{ 
-    content: string; 
-    onToggleCheckbox: (lineIndex: number) => void;
-}> = ({ content, onToggleCheckbox }) => {
-    const blocks = parseMarkdownToBlocks(content);
-    let numberIndex = 0;
-
-    return (
-        <div className="space-y-1 font-sans text-[12px] leading-relaxed text-slate-700">
-            {blocks.map((b, idx) => {
-                const style = { paddingLeft: `${b.indent * 16}px` };
-                if ((b.type as string) === 'number') numberIndex++; else if ((b.type as string) !== 'number' && (b.type as string) !== 'paragraph') numberIndex = 0;
-
-                if ((b.type as string) === 'todo') {
-                    return (
-                        <div key={idx} style={style} className="flex items-start gap-2 py-0.5 group">
-                            <button 
-                                onClick={() => onToggleCheckbox(idx)}
-                                className={`mt-0.5 w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
-                                    b.checked ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-300 hover:border-indigo-400'
-                                }`}
-                            >
-                                {b.checked && <CheckCircleIcon className="w-2.5 h-2.5" />}
-                            </button>
-                            <span className={`pt-0 ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>
-                                {parseInlineMarkdown(b.text)}
-                            </span>
-                        </div>
-                    );
-                }
-
-                if ((b.type as string) === 'bullet') {
-                    return (
-                        <div key={idx} style={style} className="flex items-start gap-2 py-0.5">
-                            <span className="text-slate-400 mt-1.5 w-1 h-1 rounded-full bg-slate-300 flex-shrink-0" />
-                            <span className="text-slate-700 font-medium">{parseInlineMarkdown(b.text)}</span>
-                        </div>
-                    );
-                }
-
-                if ((b.type as string) === 'number') {
-                    return (
-                        <div key={idx} style={style} className="flex items-start gap-2 py-0.5">
-                            <span className="text-[9px] font-black text-slate-400 mt-0.5 min-w-[0.7rem] font-mono">{numberIndex}.</span>
-                            <span className="text-slate-700 font-medium">{parseInlineMarkdown(b.text)}</span>
-                        </div>
-                    );
-                }
-
-                if ((b.type as string) === 'h1') {
-                    return <h1 key={idx} style={style} className="text-base font-black text-slate-900 pt-2 pb-1">{parseInlineMarkdown(b.text)}</h1>;
-                }
-
-                return (
-                    <div key={idx} style={style} className="min-h-[1.4em] text-slate-600 font-medium py-0.5">
-                        {parseInlineMarkdown(b.text)}
+                        <button type="button" onClick={() => deleteBlock(b.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 rounded-lg transition-all"><TrashIcon className="w-4 h-4"/></button>
                     </div>
-                );
-            })}
+                ))}
+            </div>
         </div>
     );
 };
 
-// --- Main Journal Tab ---
-
-const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessNote[]) => void }> = ({ notes, onUpdateNotes }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [activeClassification, setActiveClassification] = useState<string>('bug');
+const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
     const [isCreating, setIsCreating] = useState(false);
-    const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error' | 'ai_success'>('idle');
-
-    const [title, setTitle] = useState('');
-    const [blocks, setBlocks] = useState<ContentBlock[]>([]);
-    const [type, setType] = useState<BusinessNote['type']>('bug');
-    const [priority, setPriority] = useState<BusinessNote['priority']>('medium');
-    const [editingId, setEditingId] = useState<string | null>(null);
-
-    const resetForm = () => {
-        setTitle(''); setBlocks([{ id: generateUUID(), type: 'paragraph', text: '', checked: false, indent: 0 }]); setType('bug'); setPriority('medium');
-        setEditingId(null); setIsCreating(false);
-    };
 
     const filteredNotes = useMemo(() => {
-        return notes.filter(n => {
-            const matchesSearch = n.title.toLowerCase().includes(searchTerm.toLowerCase()) || n.content.toLowerCase().includes(searchTerm.toLowerCase());
-            if (activeClassification === 'resolved') return n.isCompleted && matchesSearch;
-            const matchesType = n.type === activeClassification && !n.isCompleted;
-            return matchesSearch && matchesType;
-        }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    }, [notes, activeClassification, searchTerm]);
+        return notes
+            .filter(n => n.title.toLowerCase().includes(searchTerm.toLowerCase()) || n.content.toLowerCase().includes(searchTerm.toLowerCase()))
+            .sort((a, b) => {
+                if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+                return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+            });
+    }, [notes, searchTerm]);
 
     const activeNote = useMemo(() => notes.find(n => n.id === selectedNoteId), [notes, selectedNoteId]);
+    const blocks = useMemo(() => activeNote ? parseMarkdownToBlocks(activeNote.content) : [], [activeNote?.content]);
 
-    const handleSave = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!title.trim()) return;
-        const now = new Date().toISOString();
-        const content = serializeBlocksToMarkdown(blocks);
-        if (editingId) {
-            onUpdateNotes(notes.map(n => n.id === editingId ? { ...n, title, content, type, priority, updatedAt: now } : n));
-        } else {
-            const newNote: BusinessNote = {
-                id: generateUUID(),
-                title, content, type, priority,
-                isCompleted: false,
-                createdAt: now, updatedAt: now
-            };
-            onUpdateNotes([newNote, ...notes]);
-            setSelectedNoteId(newNote.id);
-        }
-        resetForm();
-    };
-
-    const startEdit = (n: BusinessNote) => {
-        setEditingId(n.id); setTitle(n.title); setBlocks(parseMarkdownToBlocks(n.content));
-        setType(n.type); setPriority(n.priority); setIsCreating(true);
-    };
-
-    const toggleCheckboxInContent = (note: BusinessNote, lineIndex: number) => {
-        const lineBlocks = parseMarkdownToBlocks(note.content);
-        if (lineBlocks[lineIndex]) {
-            lineBlocks[lineIndex].checked = !lineBlocks[lineIndex].checked;
-            const updatedContent = serializeBlocksToMarkdown(lineBlocks);
-            const now = new Date().toISOString();
-            onUpdateNotes(notes.map(n => n.id === note.id ? { ...n, content: updatedContent, updatedAt: now } : n));
-        }
-    };
-
-    const toggleComplete = (id: string) => {
-        const now = new Date().toISOString();
-        onUpdateNotes(notes.map(n => n.id === id ? { ...n, isCompleted: !n.isCompleted, resolvedAt: !n.isCompleted ? now : undefined, updatedAt: now } : n));
-    };
-
-    const deleteNote = (id: string) => {
-        if (confirm("Permanently delete this item?")) {
-            onUpdateNotes(notes.filter(n => n.id !== id));
-            if (selectedNoteId === id) setSelectedNoteId(null);
-        }
-    };
-
-    const copyToClipboard = async (text: string, isAi: boolean = false) => {
-        const success = () => {
-            setCopyStatus(isAi ? 'ai_success' : 'success');
-            setTimeout(() => setCopyStatus('idle'), 3000);
+    const handleCreate = () => {
+        const id = generateUUID();
+        const newNote: BusinessNote = {
+            id,
+            title: 'New Log Entry',
+            content: '',
+            type: 'note',
+            priority: 'medium',
+            isCompleted: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
         };
-        const failure = () => {
-            setCopyStatus('error');
-            setTimeout(() => setCopyStatus('idle'), 3000);
-        };
-
-        // Standard modern API (Requires secure context)
-        if (navigator.clipboard && (window as any).isSecureContext) {
-            try {
-                await navigator.clipboard.writeText(text);
-                success();
-                return;
-            } catch (err) {
-                console.warn("Clipboard API failed, falling back", err);
-            }
-        }
-
-        // Fallback for non-secure contexts (e.g. self-hosted on HTTP)
-        try {
-            const textArea = document.createElement("textarea");
-            textArea.value = text;
-            textArea.style.position = "fixed";
-            textArea.style.left = "-9999px";
-            textArea.style.top = "0";
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            const successful = document.execCommand('copy');
-            document.body.removeChild(textArea);
-            if (successful) success();
-            else failure();
-        } catch (err) {
-            console.error("Fallback copy failed", err);
-            failure();
-        }
+        onUpdateNotes([...notes, newNote]);
+        setSelectedNoteId(id);
+        setIsCreating(true);
     };
 
-    const handleCopyContent = (note: BusinessNote, excludeCompleted: boolean) => {
-        const noteBlocks = parseMarkdownToBlocks(note.content);
-        let numberIndex = 0;
-        
-        const filteredBlocks = excludeCompleted 
-            ? noteBlocks.filter(b => !b.checked)
-            : noteBlocks;
-
-        const plainText = filteredBlocks.map(b => {
-            const prefix = '  '.repeat(b.indent);
-            let marker = '';
-            if (b.type === 'h1') marker = '# ';
-            else if (b.type === 'todo') marker = excludeCompleted ? '• ' : `[${b.checked ? 'x' : ' '}] `;
-            else if (b.type === 'bullet') marker = '• ';
-            else if ((b.type as string) === 'number') {
-                numberIndex++;
-                marker = `${numberIndex}. `;
-            } else {
-                numberIndex = 0;
-            }
-            return prefix + marker + b.text;
-        }).join('\n');
-
-        const finalOutput = `TITLE: ${note.title}\nTYPE: ${note.type.toUpperCase()}\nDATE: ${new Date(note.updatedAt).toLocaleDateString()}\n\nCONTENT:\n${plainText}`;
-        copyToClipboard(finalOutput, excludeCompleted);
+    const handleUpdateActive = (updates: Partial<BusinessNote>) => {
+        if (!selectedNoteId) return;
+        onUpdateNotes(notes.map(n => n.id === selectedNoteId ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n));
     };
-
-    const classificationStats = useMemo(() => ({
-        bug: notes.filter(n => n.type === 'bug' && !n.isCompleted).length,
-        note: notes.filter(n => n.type === 'note' && !n.isCompleted).length,
-        idea: notes.filter(n => n.type === 'idea' && !n.isCompleted).length,
-        task: notes.filter(n => n.type === 'task' && !n.isCompleted).length,
-        resolved: notes.filter(n => n.isCompleted).length
-    }), [notes]);
 
     return (
-        <div className="flex h-[700px] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
-            {/* Classification Sidebar (Single Pane Section) */}
-            <div className="w-44 border-r border-slate-100 flex flex-col p-2 bg-slate-50/50">
-                <button 
-                    onClick={() => { resetForm(); setIsCreating(true); }} 
-                    className="w-full py-2 bg-indigo-600 text-white rounded-lg font-black shadow-lg shadow-indigo-100 mb-4 flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest hover:bg-indigo-700 active:scale-95 transition-all"
-                >
-                    <AddIcon className="w-3 h-3" /> New Capture
-                </button>
-                <div className="space-y-0.5">
-                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-2 mb-1.5">Classify</p>
-                    {[
-                        { id: 'bug', label: 'Bugs', icon: <BugIcon className="w-3 h-3" /> },
-                        { id: 'note', label: 'Notes', icon: <NotesIcon className="w-3 h-3" /> },
-                        { id: 'idea', label: 'Ideas', icon: <LightBulbIcon className="w-3 h-3" /> },
-                        { id: 'task', label: 'Tasks', icon: <ChecklistIcon className="w-3 h-3" /> }
-                    ].map(item => (
-                        <button key={item.id} onClick={() => { setActiveClassification(item.id); setSelectedNoteId(null); setIsCreating(false); }} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeClassification === item.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
-                            <div className="flex items-center gap-2">{item.icon}<span>{item.label}</span></div>
-                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === item.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'}`}>{(classificationStats as any)[item.id]}</span>
-                        </button>
-                    ))}
-                    <div className="pt-2 mt-2 border-t border-slate-200/50">
-                        <button onClick={() => { setActiveClassification('resolved'); setSelectedNoteId(null); setIsCreating(false); }} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeClassification === 'resolved' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
-                            <div className="flex items-center gap-2"><CheckCircleIcon className="w-3 h-3" /><span>Archive</span></div>
-                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === 'resolved' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'}`}>{classificationStats.resolved}</span>
-                        </button>
-                    </div>
+        <div className="h-full flex flex-col gap-6">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Journal & Bugs</h1>
+                    <p className="text-sm text-slate-500">Capture operational log entries and track system improvements.</p>
                 </div>
+                <button onClick={handleCreate} className="px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95">
+                    <AddIcon className="w-5 h-5" /> New Entry
+                </button>
             </div>
 
-            {/* List Section (Single Pane Section) */}
-            <div className="w-64 border-r border-slate-100 flex flex-col min-h-0 bg-white">
-                <div className="p-2 border-b border-slate-50 bg-slate-50/30">
-                    <div className="relative group">
-                        <input type="text" placeholder="Search logs..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold focus:ring-1 focus:ring-indigo-500 outline-none transition-all" />
-                        <SearchCircleIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-300" />
+            <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
+                {/* LEFT: LIST */}
+                <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
+                    <div className="p-3 border-b bg-slate-50 rounded-t-2xl">
+                        <div className="relative">
+                            <input type="text" placeholder="Search logs..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
+                            <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                        {filteredNotes.length === 0 ? (
+                            <div className="p-10 text-center text-slate-300">
+                                <BugIcon className="w-12 h-12 mx-auto mb-2 opacity-10" />
+                                <p className="text-[10px] font-black uppercase">No entries found</p>
+                            </div>
+                        ) : (
+                            filteredNotes.map(n => (
+                                <div key={n.id} onClick={() => { setSelectedNoteId(n.id); setIsCreating(false); }} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-2 ${selectedNoteId === n.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+                                    <div className="flex justify-between items-start">
+                                        <h4 className={`text-sm font-black truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
+                                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'bug' ? 'bg-red-500' : n.type === 'idea' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{new Date(n.updatedAt).toLocaleDateString()}</p>
+                                </div>
+                            ))
+                        )}
                     </div>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    {filteredNotes.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-full text-slate-300 p-4 text-center">
-                            <p className="text-[10px] font-black uppercase tracking-widest">Empty Workspace</p>
+
+                {/* RIGHT: EDITOR */}
+                <div className="flex-1 bg-slate-50/50 rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden relative">
+                    {selectedNoteId && activeNote ? (
+                        <div className="flex flex-col h-full animate-fade-in">
+                            <div className="p-6 border-b bg-white flex justify-between items-center z-10 shadow-sm">
+                                <div className="flex-1 min-w-0 mr-4">
+                                    <input 
+                                        type="text" 
+                                        value={activeNote.title} 
+                                        onChange={e => handleUpdateActive({ title: e.target.value })}
+                                        className="text-2xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full"
+                                        placeholder="Entry Title"
+                                    />
+                                    <div className="flex items-center gap-4 mt-2">
+                                        <select 
+                                            value={activeNote.type} 
+                                            onChange={e => handleUpdateActive({ type: e.target.value as any })}
+                                            className="text-[10px] font-black uppercase bg-slate-100 border-none rounded-lg py-1 pl-2 pr-6 focus:ring-0 cursor-pointer"
+                                        >
+                                            <option value="note">Log Entry</option>
+                                            <option value="bug">Software Bug</option>
+                                            <option value="idea">Improvement Idea</option>
+                                            <option value="task">Action Item</option>
+                                        </select>
+                                        <button 
+                                            onClick={() => handleUpdateActive({ isCompleted: !activeNote.isCompleted })}
+                                            className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg transition-all ${activeNote.isCompleted ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}
+                                        >
+                                            {activeNote.isCompleted ? 'Resolved' : 'Active'}
+                                        </button>
+                                    </div>
+                                </div>
+                                <button onClick={() => onUpdateNotes(notes.filter(n => n.id !== selectedNoteId))} className="p-2 text-slate-300 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all"><TrashIcon className="w-5 h-5"/></button>
+                            </div>
+
+                            <div className="flex-1 overflow-hidden p-6 flex flex-col min-h-0">
+                                <BlockEditor 
+                                    blocks={blocks} 
+                                    onChange={(newBlocks) => handleUpdateActive({ content: serializeBlocksToMarkdown(newBlocks) })} 
+                                />
+                            </div>
                         </div>
                     ) : (
-                        filteredNotes.map(n => (
-                            <div 
-                                key={n.id} 
-                                onClick={() => { setSelectedNoteId(n.id); setIsCreating(false); }} 
-                                className={`group p-2.5 border-b border-slate-50 cursor-pointer transition-all ${selectedNoteId === n.id ? 'bg-indigo-50/80 border-l-2 border-l-indigo-600' : 'hover:bg-slate-50/50'}`}
-                            >
-                                <div className="flex items-center justify-between mb-1">
-                                    <h4 className={`text-[11px] font-black truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
-                                    <span className={`text-[7px] font-black uppercase px-1 py-0.5 rounded flex-shrink-0 ${n.priority === 'high' ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-500'}`}>{n.priority}</span>
-                                </div>
-                                <p className="text-[10px] text-slate-400 line-clamp-1 leading-relaxed font-medium">{n.content}</p>
-                                <div className="mt-1.5 flex items-center justify-between">
-                                    <span className="text-[7px] font-black text-slate-300 uppercase">{new Date(n.updatedAt).toLocaleDateString()}</span>
-                                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={(e) => { e.stopPropagation(); startEdit(n); }} className="p-0.5 text-slate-400 hover:text-indigo-600"><EditIcon className="w-2.5 h-2.5"/></button>
-                                        <button onClick={(e) => { e.stopPropagation(); deleteNote(n.id); }} className="p-0.5 text-slate-400 hover:text-red-600"><DeleteIcon className="w-2.5 h-2.5"/></button>
-                                    </div>
-                                </div>
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle">
+                                <BugIcon className="w-12 h-12 text-indigo-200" />
                             </div>
-                        ))
+                            <h3 className="text-2xl font-black text-slate-800">Operational Log</h3>
+                            <p className="text-slate-500 max-w-sm mt-4 font-medium leading-relaxed">Capture development bugs, internal ideas, or general log entries here to keep the engine improving.</p>
+                            <button onClick={handleCreate} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Create Log Entry</button>
+                        </div>
                     )}
                 </div>
-            </div>
-
-            {/* Detail / Editor Canvas (Single Pane Section) */}
-            <div className="flex-1 flex flex-col min-h-0 bg-white relative">
-                {isCreating ? (
-                    <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
-                        <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
-                            <div>
-                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-tight">{editingId ? 'Updating Record' : 'Fresh Entry'}</h3>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-2 border-r pr-2 border-slate-200">
-                                    <select value={type} onChange={e => setType(e.target.value as any)} className="bg-white border border-slate-200 rounded p-1 text-[8px] font-black uppercase text-slate-700 outline-none focus:ring-1 focus:ring-indigo-200 transition-all">
-                                        <option value="bug">BUG</option><option value="note">NOTE</option><option value="idea">IDEA</option><option value="task">TASK</option>
-                                    </select>
-                                    <select value={priority} onChange={e => setPriority(e.target.value as any)} className="bg-white border border-slate-200 rounded p-1 text-[8px] font-black uppercase text-slate-700 outline-none focus:ring-1 focus:ring-indigo-200 transition-all">
-                                        <option value="low">LOW</option><option value="medium">MED</option><option value="high">HIGH</option>
-                                    </select>
-                                </div>
-                                <button type="button" onClick={resetForm} className="p-1 text-slate-400 hover:text-red-500 transition-colors"><CloseIcon className="w-4 h-4" /></button>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar bg-white">
-                            <div className="max-w-2xl mx-auto space-y-3 h-full flex flex-col">
-                                <input 
-                                    type="text" 
-                                    value={title} 
-                                    onChange={e => setTitle(e.target.value)} 
-                                    placeholder="Summary header..." 
-                                    className="w-full text-xl font-black text-slate-900 border-none bg-transparent placeholder:text-slate-100 focus:ring-0 p-0" 
-                                />
-                                <div className="flex-1 min-h-0">
-                                    <BlockEditor blocks={blocks} onChange={setBlocks} />
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
-                            <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                                <SparklesIcon className="w-2.5 h-2.5 text-indigo-400" /> Persistent local cache enabled
-                            </p>
-                            <div className="flex gap-2">
-                                <button type="button" onClick={resetForm} className="px-3 py-1.5 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-slate-800 transition-colors">Discard</button>
-                                <button onClick={handleSave} className="px-5 py-1.5 bg-indigo-600 text-white rounded-lg font-black text-[9px] shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest active:scale-95">Commit</button>
-                            </div>
-                        </div>
-                    </div>
-                ) : activeNote ? (
-                    <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
-                        <div className="p-4 border-b border-slate-50 flex justify-between items-start bg-slate-50/20">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-1.5">
-                                    <span className={`px-1.5 py-0.5 rounded text-[7px] font-black uppercase tracking-widest border ${activeNote.type === 'bug' ? 'bg-red-500 text-white border-red-600' : 'bg-indigo-600 text-white border-indigo-700'}`}>{activeNote.type}</span>
-                                    <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border border-slate-200 text-slate-400`}>{activeNote.priority}</span>
-                                    {activeNote.isCompleted && <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-white text-[7px] font-black uppercase tracking-widest flex items-center gap-0.5 shadow-sm"><CheckCircleIcon className="w-2.5 h-2.5" /> Archive</span>}
-                                </div>
-                                <h3 className="text-xl font-black text-slate-900 leading-tight">{activeNote.title}</h3>
-                                <div className="flex items-center gap-3 text-[8px] font-black text-slate-300 uppercase tracking-tight">
-                                    <span className="flex items-center gap-1"><CalendarIcon className="w-2.5 h-2.5"/> {new Date(activeNote.updatedAt).toLocaleDateString()}</span>
-                                </div>
-                            </div>
-                            <div className="flex gap-1">
-                                <button onClick={() => startEdit(activeNote)} className="p-1.5 bg-white text-slate-300 hover:text-indigo-600 border border-slate-200 rounded transition-all" title="Edit"><EditIcon className="w-3.5 h-3.5"/></button>
-                                <button onClick={() => deleteNote(activeNote.id)} className="p-1.5 bg-white text-slate-300 hover:text-red-500 border border-slate-200 rounded transition-all" title="Delete"><DeleteIcon className="w-3.5 h-3.5"/></button>
-                            </div>
-                        </div>
-                        
-                        <div className="flex-1 p-5 overflow-y-auto custom-scrollbar bg-white">
-                            <div className="max-w-2xl mx-auto min-h-[300px]">
-                                <NoteContentRenderer content={activeNote.content} onToggleCheckbox={(idx) => toggleCheckboxInContent(activeNote, idx)} />
-                            </div>
-                        </div>
-
-                        <div className="p-3 bg-slate-50/50 border-t border-slate-50 flex flex-wrap justify-between items-center gap-3">
-                            <div className="flex items-center gap-2">
-                                <button onClick={() => toggleComplete(activeNote.id)} className={`px-4 py-1.5 rounded-lg font-black uppercase text-[9px] transition-all flex items-center gap-1.5 tracking-widest shadow-sm ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
-                                    {activeNote.isCompleted ? <RepeatIcon className="w-3.5 h-3.5"/> : <CheckCircleIcon className="w-3.5 h-3.5"/>}
-                                    {activeNote.isCompleted ? 'Re-open' : 'Archive Record'}
-                                </button>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button onClick={() => handleCopyContent(activeNote, false)} className="flex items-center gap-1 text-slate-600 font-black text-[8px] uppercase hover:bg-white border border-slate-200 px-2.5 py-1.5 rounded-lg transition-all tracking-widest shadow-sm">
-                                    <CopyIcon className="w-3 h-3"/> Copy Text
-                                </button>
-                                <button onClick={() => handleCopyContent(activeNote, true)} className="flex items-center gap-1 text-indigo-600 font-black text-[8px] uppercase hover:bg-indigo-50 border border-indigo-100 px-2.5 py-1.5 rounded-lg transition-all tracking-widest shadow-sm">
-                                    <SparklesIcon className="w-3 h-3"/> Copy Text for AI
-                                </button>
-                                <button onClick={() => copyToClipboard(activeNote.content)} className="flex items-center gap-1 text-slate-400 font-black text-[8px] uppercase hover:bg-slate-100 px-2 py-1.5 rounded-lg transition-all tracking-widest" title="Export as Raw Markdown">
-                                    Raw Data
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-slate-50/30">
-                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg border border-slate-100 mb-4 opacity-50">
-                             <NotesIcon className="w-5 h-5 text-indigo-200" />
-                        </div>
-                        <h4 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Information Canvas</h4>
-                        <p className="text-slate-400 text-[10px] mt-1.5 font-bold max-w-[160px] leading-relaxed">Select a log from the list or start a new capture session.</p>
-                        <button onClick={() => { resetForm(); setIsCreating(true); }} className="mt-4 px-5 py-2 bg-white border-2 border-indigo-600 text-indigo-600 font-black uppercase tracking-widest text-[9px] rounded-xl hover:bg-indigo-600 hover:text-white shadow-md transition-all active:scale-95">New Capture</button>
-                    </div>
-                )}
-            </div>
-
-            {copyStatus !== 'idle' && (
-                <div className="fixed bottom-6 right-6 z-[200] px-3 py-2 bg-slate-900 text-white rounded-lg shadow-2xl border border-white/10 animate-slide-in-right flex items-center gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full ${copyStatus === 'error' ? 'bg-red-500' : 'bg-emerald-500'}`} />
-                    <span className="text-[9px] font-black uppercase tracking-widest">
-                        {copyStatus === 'success' ? 'Copied to Clipboard' : 
-                         copyStatus === 'ai_success' ? 'Active Content Copied (AI Ready)' : 
-                         'Copy Failed'}
-                    </span>
-                </div>
-            )}
-        </div>
-    );
-};
-
-// --- Setup Guide Tab ---
-const SetupGuideTab: React.FC<{ profile: BusinessProfile; onUpdateProfile: (p: BusinessProfile) => void }> = ({ profile, onUpdateProfile }) => {
-    const updateInfo = (key: keyof BusinessInfo, value: any) => onUpdateProfile({ ...profile, info: { ...profile.info, [key]: value } });
-    const updateTax = (key: keyof TaxInfo, value: any) => onUpdateProfile({ ...profile, tax: { ...profile.tax, [key]: value } });
-
-    return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
-                <div className="flex items-center gap-3 border-b border-slate-100 pb-3"><div className="bg-indigo-100 p-2 rounded-xl"><CheckCircleIcon className="w-5 h-5 text-indigo-600" /></div><h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Entity Framework</h2></div>
-                <div className="space-y-4">
-                    <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Legal Label</label><input type="text" value={profile.info.llcName || ''} onChange={(e) => updateInfo('llcName', e.target.value)} placeholder="My Business LLC" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-sm" /></div>
-                    <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Sector</label><input type="text" value={profile.info.industry || ''} onChange={(e) => updateInfo('industry', e.target.value)} placeholder="e.g. Software Development" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-sm" /></div>
-                    <div className="grid grid-cols-2 gap-3">
-                        <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Structure</label><select value={profile.info.businessType || ''} onChange={(e) => updateInfo('businessType', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-all text-sm"><option value="">Select...</option><option value="sole-proprietor">Sole Proprietor</option><option value="llc-single">Single-Member LLC</option><option value="s-corp">S-Corp</option></select></div>
-                        <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Jurisdiction</label><input type="text" value={profile.info.stateOfFormation || ''} onChange={(e) => updateInfo('stateOfFormation', e.target.value)} placeholder="DE" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-sm" /></div>
-                    </div>
-                </div>
-            </div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
-                <div className="flex items-center gap-3 border-b border-slate-100 pb-3"><div className="bg-emerald-100 p-2 rounded-xl"><CheckCircleIcon className="w-5 h-5 text-emerald-600" /></div><h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Compliance Rules</h2></div>
-                <div className="space-y-4">
-                    <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Tax Method</label><select value={profile.tax.filingStatus || ''} onChange={(e) => updateTax('filingStatus', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-all text-sm"><option value="">Select...</option><option value="sole-proprietor">Sole Proprietor (Schedule C)</option><option value="s-corp">S-Corp (1120-S)</option></select></div>
-                    <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Fiscal Year End</label><input type="date" value={profile.tax.taxYearEnd || ''} onChange={(e) => updateTax('taxYearEnd', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-sm" /></div>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- Tax Advisor Tab ---
-const TaxAdvisorTab: React.FC<{ 
-    profile: BusinessProfile; 
-    sessions: ChatSession[]; 
-    onUpdateSessions: (s: ChatSession[]) => void;
-    transactions: Transaction[];
-    accounts: Account[];
-    categories: Category[];
-}> = ({ profile, sessions, onUpdateSessions, transactions, accounts, categories }) => {
-    const sortedSessions = [...sessions].sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [deductions, setDeductions] = useState<string[]>([]);
-    const [loadingDeductions, setLoadingDeductions] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const apiKeyAvailable = hasApiKey();
-    const activeSession = selectedSessionId ? sessions.find(s => s.id === selectedSessionId) : null;
-
-    useEffect(() => { if (activeSession) messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activeSession?.messages.length, selectedSessionId]);
-
-    const handleCreateSession = () => {
-        const newSession: ChatSession = {
-            id: generateUUID(), title: `Strategy ${new Date().toLocaleDateString()}`,
-            messages: [{ id: generateUUID(), role: 'ai', content: `Expert Guidance active for your **${profile.info.businessType || 'business'}**.`, timestamp: new Date().toISOString() }],
-            createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
-        };
-        onUpdateSessions([...sessions, newSession]);
-        setSelectedSessionId(newSession.id);
-    };
-
-    const handleSendMessage = async () => {
-        if (!input.trim() || !activeSession || isLoading) return;
-        const userMsg: ChatMessage = { id: generateUUID(), role: 'user', content: input, timestamp: new Date().toISOString() };
-        
-        const nextMsgs = [...activeSession.messages, userMsg];
-        const updatedSess = { ...activeSession, messages: nextMsgs, updatedAt: new Date().toISOString() };
-        
-        const otherSessions = sessions.filter(s => s.id !== activeSession.id);
-        onUpdateSessions([...otherSessions, updatedSess]);
-        setInput(''); setIsLoading(true);
-        try {
-            const aiMsgPlaceholder: ChatMessage = { id: generateUUID(), role: 'ai', content: '', timestamp: new Date().toISOString() };
-            const sessionWithAi = { ...updatedSess, messages: [...updatedSess.messages, aiMsgPlaceholder] };
-            onUpdateSessions([...otherSessions, sessionWithAi]);
-            const stream = await streamTaxAdvice(sessionWithAi.messages, profile);
-            let fullContent = '';
-            for await (const chunk of stream) {
-                fullContent += chunk.text;
-                const msgs = [...sessionWithAi.messages];
-                msgs[msgs.length - 1] = { ...msgs[msgs.length - 1], content: fullContent };
-                onUpdateSessions([...otherSessions, { ...sessionWithAi, messages: msgs }]);
-            }
-        } catch (e) { console.error(e); } finally { setIsLoading(false); }
-    };
-
-    if (!apiKeyAvailable) return <div className="p-20 text-center bg-slate-50 border-dashed border-2 border-slate-200 rounded-3xl font-black text-slate-300 uppercase tracking-widest animate-pulse">API Key Configuration Required</div>;
-
-    return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[650px] animate-fade-in">
-            <div className="lg:col-span-2 bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col h-full overflow-hidden">
-                <div className="p-4 border-b bg-slate-50 flex justify-between items-center font-black text-slate-800 uppercase tracking-tighter">
-                    <div className="flex items-center gap-2.5"><SparklesIcon className="w-4 h-4 text-indigo-600"/><span>Advisor Agent {activeSession ? `— ${activeSession.title}` : ''}</span></div>
-                    <button onClick={handleCreateSession} className="px-3 py-1 bg-white border border-slate-200 rounded-lg shadow-sm text-[9px] hover:bg-slate-50 transition-all active:scale-95"><AddIcon className="w-3 h-3 inline mr-1"/>New Strategy</button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
-                    {!activeSession ? <div className="h-full flex flex-col items-center justify-center text-slate-300"><BoxIcon className="w-12 h-12 opacity-5 mb-3"/><p className="text-[10px] font-black uppercase tracking-widest">Select a session</p></div> : 
-                        activeSession.messages.map(m => (
-                            <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`p-3.5 rounded-2xl max-w-[85%] text-[13px] shadow-sm leading-relaxed ${m.role === 'user' ? 'bg-indigo-600 text-white font-bold rounded-br-none' : 'bg-slate-50 text-slate-800 border border-slate-100 rounded-bl-none font-medium'}`}>
-                                    <div className="prose prose-sm prose-indigo" dangerouslySetInnerHTML={{ __html: m.content.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
-                                </div>
-                            </div>
-                        ))}
-                    <div ref={messagesEndRef} />
-                </div>
-                {activeSession && (
-                    <div className="p-4 border-t bg-slate-50 flex gap-3">
-                        <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage()} className="flex-1 p-2.5 border border-slate-200 rounded-xl shadow-inner focus:ring-1 focus:ring-indigo-500 outline-none font-medium text-sm transition-all" placeholder="Ask about deductions..." />
-                        <button onClick={handleSendMessage} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95"><SendIcon className="w-5 h-5"/></button>
-                    </div>
-                )}
-            </div>
-            <div className="space-y-4">
-                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-lg">
-                    <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 uppercase tracking-tight text-sm"><SparklesIcon className="w-5 h-5 text-yellow-500" /> Deduction Scout</h3>
-                    <p className="text-[11px] text-slate-500 mb-4 font-medium leading-relaxed">Scanning breaks for <strong className="text-indigo-600">{profile.info.industry || 'Business'}</strong>.</p>
-                    <button onClick={async () => { setLoadingDeductions(true); try { setDeductions(await getIndustryDeductions(profile.info.industry || 'General')); } catch(e){} finally { setLoadingDeductions(false); }}} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all transform active:scale-95 disabled:opacity-50">{loadingDeductions ? 'Analyzing...' : 'Execute Audit'}</button>
-                    {deductions.length > 0 && <ul className="mt-6 space-y-2">{deductions.map((d, i) => <li key={i} className="text-[10px] bg-emerald-50 p-2.5 rounded-xl border border-emerald-100 flex gap-2.5 text-emerald-800 font-bold"><CheckCircleIcon className="w-3.5 h-3.5 text-emerald-600 shrink-0" />{d}</li>)}</ul>}
-                </div>
-            </div>
-        </div>
-    );
-};
-
-// --- Main Business Hub ---
-
-const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, notes, onUpdateNotes, chatSessions, onUpdateChatSessions, transactions, accounts, categories }) => {
-    const [activeTab, setActiveTab] = useState<'guide' | 'advisor' | 'journal' | 'calendar'>('guide');
-
-    return (
-        <div className="max-w-6xl mx-auto space-y-4 pb-16">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                <div>
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tighter">Business Intelligence</h1>
-                </div>
-                <div className="flex bg-white rounded-xl p-0.5 shadow-md border border-slate-200">
-                    {[
-                        { id: 'guide', label: 'Framework' },
-                        { id: 'advisor', label: 'Strategy' },
-                        { id: 'journal', label: 'Journal & Logs' },
-                        { id: 'calendar', label: 'Timeline' }
-                    ].map((t) => (
-                        <button key={t.id} onClick={() => setActiveTab(t.id as any)} className={`px-4 py-1.5 text-[10px] font-black rounded-lg transition-all uppercase tracking-widest ${activeTab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
-                            {t.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="min-h-[500px]">
-                {activeTab === 'guide' && <SetupGuideTab profile={profile} onUpdateProfile={onUpdateProfile} />}
-                {activeTab === 'advisor' && <TaxAdvisorTab profile={profile} sessions={chatSessions} onUpdateSessions={onUpdateChatSessions} transactions={transactions} accounts={accounts} categories={categories} />}
-                {activeTab === 'journal' && <JournalTab notes={notes} onUpdateNotes={onUpdateNotes} />}
-                {activeTab === 'calendar' && (
-                    <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-2xl animate-fade-in">
-                        <div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-4">
-                            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Compliance Timeline</h2>
-                            <span className="text-[9px] bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-indigo-100">Active Cycle</span>
-                        </div>
-                        <div className="space-y-4">
-                            {[
-                                { date: 'Jan 31', title: '1099-NEC Deadline', desc: 'Execute payments for contractors exceeding $600 threshold.' },
-                                { date: 'Apr 15', title: 'Federal Tax Day', desc: 'Deadline for personal and C-Corp federal filings.' },
-                                { date: 'Jun 15', title: 'Q2 Estimated Payments', desc: 'Submit quarterly withholding to IRS for second period.' },
-                            ].map((d, i) => (
-                                <div key={i} className="flex gap-4 p-4 hover:bg-slate-50 rounded-2xl transition-all border border-transparent hover:border-slate-100 group">
-                                    <div className="text-indigo-600 font-black w-16 text-sm tabular-nums border-r border-indigo-100">{d.date}</div>
-                                    <div className="flex-1">
-                                        <div className="font-black text-slate-800 text-sm group-hover:text-indigo-900 transition-colors uppercase tracking-tight">{d.title}</div>
-                                        <div className="text-xs text-slate-500 mt-0.5 font-medium leading-relaxed">{d.desc}</div>
-                                    </div>
-                                    <ChevronRightIcon className="w-5 h-5 text-slate-200 group-hover:text-indigo-400 transition-colors self-center" />
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );
