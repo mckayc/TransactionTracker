@@ -129,7 +129,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(text).then(resolve).catch(reject);
             } else {
-                // Fallback for non-secure contexts (e.g. self-hosting over IP without SSL)
                 try {
                     const textArea = document.createElement("textarea");
                     textArea.value = text;
@@ -152,7 +151,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const copySupportManifesto = async () => {
         if (!diagnostics) {
-            // Try fetching one last time if diagnostics is missing
             await runDiagnostics();
             if (!diagnostics) {
                 setCopyState('error');
@@ -173,10 +171,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             setCopyState('success');
             setTimeout(() => setCopyState('idle'), 3000);
         } catch (err) {
-            console.error("Copy failed", err);
             setCopyState('error');
             setTimeout(() => setCopyState('idle'), 2000);
-            alert("Clipboard access denied. Please manually select the diagnostic text if available.");
+            alert("Clipboard access denied.");
         }
     };
     
@@ -202,15 +199,15 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     };
 
     const handleRepairSystem = async () => {
-        if (!confirm("Execute system repair? This will verify database schema and re-run seeders for core transaction types.")) return;
+        if (!confirm("Execute system repair? This will verify database schema, migrate legacy tables, and standardize casing.")) return;
         setIsRepairing(true);
         try {
             const success = await api.repairSystem();
             if (success) {
-                alert("Repair Protocol Complete. Database schema verified and core data seeded. Refreshing...");
+                alert("Repair Protocol Complete. Schema standardized and legacy entities consolidated. Refreshing...");
                 window.location.reload();
             } else {
-                throw new Error("Repair sequence returned failure.");
+                throw new Error("Repair sequence failed.");
             }
         } catch (err: any) {
             alert(`Repair failed: ${err.message}`);
@@ -257,17 +254,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleExportData = () => {
         if (exportSelection.size === 0) { alert("Please select items to back up."); return; }
-        const data: any = {
-            exportDate: new Date().toISOString(),
-            version: '0.6.0',
-        };
-        
-        const map: Record<string, any> = {
-            transactions, accounts, categories, tags, counterparties, transactionTypes, accountTypes, users, locations,
-            reconciliationRules: rules, businessProfile, businessNotes, financialGoals, contentLinks, systemSettings,
-            businessDocuments, documentFolders, templates, scheduledEvents, tasks, taskCompletions,
-            savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels
-        };
+        const data: any = { exportDate: new Date().toISOString(), version: '0.6.0' };
+        const map: Record<string, any> = { transactions, accounts, categories, tags, counterparties, transactionTypes, accountTypes, users, locations, reconciliationRules: rules, businessProfile, businessNotes, financialGoals, contentLinks, systemSettings, businessDocuments, documentFolders, templates, scheduledEvents, tasks, taskCompletions, savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels };
 
         exportSelection.forEach(key => {
             if (map[key]) data[key] = map[key];
@@ -306,7 +294,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const handleFinalRestore = async () => {
         if (!restoreData) return;
         if (!confirm("Proceed with data restoration? This will overwrite existing records for the selected entities.")) return;
-        
         for (const key of Array.from(restoreSelection)) {
             const data = restoreData[key];
             if (data) await api.save(key, data);
@@ -322,7 +309,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const handlePurgeAction = async () => {
         if (purgeSelection.size === 0) return;
         if (!confirm(`Permanently delete ${purgeSelection.size} selected entities? This cannot be undone.`)) return;
-        
         setIsPurging(true);
         try {
             const targets = Array.from(purgeSelection) as string[];
@@ -336,7 +322,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         }
     };
 
-    // AI Neural State
     const [aiConfig, setAiConfig] = useState<AiConfig>(systemSettings.aiConfig || getActiveModels());
 
     return (
@@ -379,14 +364,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             </div>
                             <p className="text-slate-400 max-w-lg mb-6 leading-relaxed">
                                 The system is currently using the <strong>{apiKeyActive ? 'Active' : 'Missing'}</strong> API key from your environment. 
-                                This enables automated categorization, document analysis, and wealth strategy synthesis.
                             </p>
                             <div className="flex flex-wrap gap-3">
-                                <button 
-                                    onClick={handleTestConnectivity}
-                                    disabled={isTestingKey || !apiKeyActive}
-                                    className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 disabled:opacity-30 transition-all active:scale-95"
-                                >
+                                <button onClick={handleTestConnectivity} disabled={isTestingKey || !apiKeyActive} className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 disabled:opacity-30 transition-all active:scale-95">
                                     {isTestingKey ? 'Negotiating...' : 'Test Connection'}
                                 </button>
                                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="px-8 py-3 bg-slate-800 text-white font-black rounded-xl hover:bg-slate-700 transition-all flex items-center gap-2">
@@ -405,39 +385,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-4">
-                            <div className="flex items-center gap-2 mb-2">
-                                <TableIcon className="w-5 h-5 text-indigo-500" />
-                                <h4 className="font-bold text-slate-800 uppercase text-xs tracking-widest">Primary Logic Engine</h4>
-                            </div>
-                            <p className="text-xs text-slate-500">Used for transaction extraction and categorization.</p>
-                            <select 
-                                value={aiConfig.textModel} 
-                                onChange={e => handleUpdateAiConfig('textModel', e.target.value)}
-                                className="w-full font-bold text-sm"
-                            >
-                                {MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-                            </select>
-                            <div className="p-3 bg-slate-50 rounded-xl">
-                                <p className="text-[10px] text-slate-400 leading-relaxed italic">{MODEL_OPTIONS.find(o => o.id === aiConfig.textModel)?.desc}</p>
-                            </div>
+                            <div className="flex items-center gap-2 mb-2"><TableIcon className="w-5 h-5 text-indigo-500" /><h4 className="font-bold text-slate-800 uppercase text-xs tracking-widest">Primary Logic Engine</h4></div>
+                            <select value={aiConfig.textModel} onChange={e => handleUpdateAiConfig('textModel', e.target.value)} className="w-full font-bold text-sm">{MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}</select>
+                            <div className="p-3 bg-slate-50 rounded-xl"><p className="text-[10px] text-slate-400 leading-relaxed italic">{MODEL_OPTIONS.find(o => o.id === aiConfig.textModel)?.desc}</p></div>
                         </div>
-
                         <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-4">
-                            <div className="flex items-center gap-2 mb-2">
-                                <SparklesIcon className="w-5 h-5 text-indigo-500" />
-                                <h4 className="font-bold text-slate-800 uppercase text-xs tracking-widest">Strategic Reasoning Engine</h4>
-                            </div>
-                            <p className="text-xs text-slate-500">Used for financial planning and deep data analysis.</p>
-                            <select 
-                                value={aiConfig.complexModel} 
-                                onChange={e => handleUpdateAiConfig('complexModel', e.target.value)}
-                                className="w-full font-bold text-sm"
-                            >
-                                {MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-                            </select>
-                            <div className="p-3 bg-slate-50 rounded-xl">
-                                <p className="text-[10px] text-slate-400 leading-relaxed italic">{MODEL_OPTIONS.find(o => o.id === aiConfig.complexModel)?.desc}</p>
-                            </div>
+                            <div className="flex items-center gap-2 mb-2"><SparklesIcon className="w-5 h-5 text-indigo-500" /><h4 className="font-bold text-slate-800 uppercase text-xs tracking-widest">Strategic Reasoning Engine</h4></div>
+                            <select value={aiConfig.complexModel} onChange={e => handleUpdateAiConfig('complexModel', e.target.value)} className="w-full font-bold text-sm">{MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}</select>
+                            <div className="p-3 bg-slate-50 rounded-xl"><p className="text-[10px] text-slate-400 leading-relaxed italic">{MODEL_OPTIONS.find(o => o.id === aiConfig.complexModel)?.desc}</p></div>
                         </div>
                     </div>
                 </div>
@@ -446,15 +401,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <Section title="Maintenance Hub" variant="info">
                 <div className="space-y-6">
                     <div className="flex flex-col md:flex-row items-start gap-6 p-6 bg-indigo-50 border-2 border-indigo-100 rounded-[2.5rem] shadow-inner">
-                        <div className="p-5 bg-indigo-600 rounded-[1.5rem] text-white shadow-xl shadow-indigo-200">
-                            <StethoscopeIcon className="w-10 h-10" />
-                        </div>
+                        <div className="p-5 bg-indigo-600 rounded-[1.5rem] text-white shadow-xl shadow-indigo-200"><StethoscopeIcon className="w-10 h-10" /></div>
                         <div className="flex-1">
                             <h3 className="text-xl font-black text-indigo-900">System Doctor & Diagnostics</h3>
-                            <p className="text-sm text-indigo-700 mt-1 leading-relaxed">
-                                Use these tools to probe the underlying SQLite engine. If features aren't working, copy the Support Manifesto and provide it to your AI architect.
-                            </p>
-                            
+                            <p className="text-sm text-indigo-700 mt-1 leading-relaxed">Probe the SQLite engine. If features fail, use Force Repair to normalize column names and consolidate legacy tables.</p>
                             <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
                                 {diagnostics?.tables?.map((t: any) => (
                                     <div key={t.table} className={`p-3 rounded-xl border flex flex-col gap-1 ${t.rowCount > 0 ? 'bg-white border-indigo-200' : 'bg-red-50 border-red-200 animate-pulse'}`}>
@@ -466,27 +416,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             </div>
                         </div>
                         <div className="flex flex-col gap-2 w-full md:w-auto">
-                            <button 
-                                onClick={handleRepairSystem}
-                                disabled={isRepairing}
-                                className="w-full px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
-                            >
-                                {isRepairing ? <RepeatIcon className="w-4 h-4 animate-spin" /> : <PlayIcon className="w-4 h-4" />}
-                                Force Repair
+                            <button onClick={handleRepairSystem} disabled={isRepairing} className="w-full px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50">
+                                {isRepairing ? <RepeatIcon className="w-4 h-4 animate-spin" /> : <PlayIcon className="w-4 h-4" />} Force Repair
                             </button>
-                            <button 
-                                onClick={copySupportManifesto}
-                                disabled={isDiagnosing}
-                                className={`w-full px-8 py-3 font-black rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm border ${
-                                    copyState === 'success' ? 'bg-emerald-500 border-emerald-600 text-white' : 
-                                    copyState === 'error' ? 'bg-red-500 border-red-600 text-white' :
-                                    'bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50'
-                                }`}
-                            >
-                                {copyState === 'success' ? <CheckCircleIcon className="w-4 h-4" /> : 
-                                 copyState === 'error' ? <ExclamationTriangleIcon className="w-4 h-4" /> :
-                                 <CopyIcon className="w-4 h-4" />}
-                                {copyState === 'success' ? 'Copied!' : copyState === 'error' ? 'Failed' : 'Copy Manifesto'}
+                            <button onClick={copySupportManifesto} disabled={isDiagnosing} className={`w-full px-8 py-3 font-black rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm border ${copyState === 'success' ? 'bg-emerald-500 border-emerald-600 text-white' : copyState === 'error' ? 'bg-red-500 border-red-600 text-white' : 'bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50'}`}>
+                                {copyState === 'success' ? <CheckCircleIcon className="w-4 h-4" /> : copyState === 'error' ? <ExclamationTriangleIcon className="w-4 h-4" /> : <CopyIcon className="w-4 h-4" />} {copyState === 'success' ? 'Copied!' : copyState === 'error' ? 'Failed' : 'Copy Manifesto'}
                             </button>
                         </div>
                     </div>
@@ -496,11 +430,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <Section title="Data Management & Backup">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                     <div className="space-y-6">
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                            <DownloadIcon className="w-6 h-6 text-indigo-600" />
-                            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Institutional Export</h3>
-                        </div>
-                        <p className="text-sm text-slate-500">Generate a portable JSON archive of your entire system. Encrypt or store this safely.</p>
+                        <div className="flex items-center gap-3 border-b border-slate-100 pb-3"><DownloadIcon className="w-6 h-6 text-indigo-600" /><h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Institutional Export</h3></div>
                         <div className="bg-slate-50 p-4 rounded-3xl border border-slate-100 grid grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar">
                             {Object.entries(ENTITY_LABELS).map(([key, cfg]) => (
                                 <label key={key} className="flex items-center gap-2 p-2 hover:bg-white rounded-xl cursor-pointer transition-colors group">
@@ -509,21 +439,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 </label>
                             ))}
                         </div>
-                        <button onClick={handleExportData} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl shadow-xl hover:bg-black transition-all flex items-center justify-center gap-2">
-                            <DownloadIcon className="w-5 h-5" /> Generate Archive
-                        </button>
+                        <button onClick={handleExportData} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl shadow-xl hover:bg-black transition-all flex items-center justify-center gap-2"><DownloadIcon className="w-5 h-5" /> Generate Archive</button>
                     </div>
-
                     <div className="space-y-6">
-                        <div className="flex items-center gap-3 border-b border-slate-100 pb-3">
-                            <UploadIcon className="w-6 h-6 text-indigo-600" />
-                            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">System Restoration</h3>
-                        </div>
-                        <p className="text-sm text-slate-500">Merge or overwrite current data using a previously exported system blueprint.</p>
-                        <div 
-                            onClick={() => importFileRef.current?.click()}
-                            className="border-2 border-dashed border-slate-200 rounded-[2.5rem] p-10 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-indigo-50 hover:border-indigo-300 transition-all group"
-                        >
+                        <div className="flex items-center gap-3 border-b border-slate-100 pb-3"><UploadIcon className="w-6 h-6 text-indigo-600" /><h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">System Restoration</h3></div>
+                        <div onClick={() => importFileRef.current?.click()} className="border-2 border-dashed border-slate-200 rounded-[2.5rem] p-10 flex flex-col items-center justify-center text-center cursor-pointer hover:bg-indigo-50 hover:border-indigo-300 transition-all group">
                             <CloudArrowUpIcon className="w-12 h-12 text-slate-300 group-hover:text-indigo-500 transition-colors mb-4" />
                             <p className="text-sm font-bold text-slate-700">Select Backup File</p>
                             <input type="file" ref={importFileRef} className="hidden" accept=".json" onChange={handleFileRestoreSelect} />
@@ -535,12 +455,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             <Section title="The Danger Zone" variant="danger">
                 <div className="space-y-8">
                     <div className="bg-red-50 p-8 rounded-[2.5rem] border-2 border-red-100 flex flex-col md:flex-row items-center gap-8">
-                        <div className="p-4 bg-red-600 rounded-full text-white shadow-xl shadow-red-200">
-                            <ExclamationTriangleIcon className="w-10 h-10" />
-                        </div>
+                        <div className="p-4 bg-red-600 rounded-full text-white shadow-xl shadow-red-200"><ExclamationTriangleIcon className="w-10 h-10" /></div>
                         <div className="flex-1 text-center md:text-left">
-                            <h3 className="text-xl font-black text-red-800 uppercase tracking-tight">Purge Data Streams</h3>
-                            <p className="text-sm text-red-600 mt-1 max-w-xl font-medium">Select specific data clusters to permanently wipe. This action is irreversible and affects the local SQL engine immediately.</p>
+                            <h3 className="text-xl font-black text-red-800 uppercase tracking-tight">System Rebuild</h3>
+                            <p className="text-sm text-red-600 mt-1 max-w-xl font-medium">Permanently wipe specific clusters. Note: Selective purge preserves files on disk but wipes the database index.</p>
                         </div>
                         <div className="flex flex-col gap-2 w-full md:w-64">
                             <div className="bg-white p-3 rounded-2xl border border-red-100 max-h-40 overflow-y-auto space-y-1 shadow-inner custom-scrollbar">
@@ -551,11 +469,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                     </label>
                                 ))}
                             </div>
-                            <button 
-                                onClick={handlePurgeAction}
-                                disabled={isPurging || purgeSelection.size === 0}
-                                className="w-full py-4 bg-red-600 text-white font-black rounded-2xl shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2 disabled:opacity-30"
-                            >
+                            <button onClick={handlePurgeAction} disabled={isPurging || purgeSelection.size === 0} className="w-full py-4 bg-red-600 text-white font-black rounded-2xl shadow-lg hover:bg-red-700 transition-all flex items-center justify-center gap-2 disabled:opacity-30">
                                 <TrashIcon className="w-5 h-5" /> Execute Purge
                             </button>
                         </div>
@@ -563,15 +477,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
             </Section>
 
-            {/* Restore Modal */}
             {isRestoreModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-slide-up">
                         <div className="p-6 border-b flex justify-between items-center bg-indigo-600 text-white">
-                            <div>
-                                <h3 className="text-xl font-black">Restoration Forge</h3>
-                                <p className="text-xs font-bold uppercase tracking-widest text-indigo-200">Importing Blueprint</p>
-                            </div>
+                            <div><h3 className="text-xl font-black">Restoration Forge</h3><p className="text-xs font-bold uppercase tracking-widest text-indigo-200">Importing Blueprint</p></div>
                             <button onClick={() => setIsRestoreModalOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-white"/></button>
                         </div>
                         <div className="p-8 space-y-6 bg-slate-50">

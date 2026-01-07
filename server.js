@@ -55,21 +55,129 @@ if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true
 
 let db;
 
-const ensureSeedData = () => {
-    try {
-        console.log("[DB] Verifying system seed data...");
-        
-        // 1. Ensure Table Columns exist (Migration)
-        const tableInfo = db.prepare("PRAGMA table_info(transaction_types)").all();
-        const hasColor = tableInfo.some(col => col.name === 'color');
-        if (!hasColor) {
-            console.log("[DB] Migration: Adding 'color' column to transaction_types...");
-            db.exec("ALTER TABLE transaction_types ADD COLUMN color TEXT");
+/**
+ * MIGRATION ENGINE
+ * Resolves inconsistencies identified in the System Manifesto
+ */
+const runMigrations = () => {
+    console.log("[MIGRATE] Checking system integrity...");
+    
+    const tableExists = (name) => db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name);
+    const getColumns = (name) => db.prepare(`PRAGMA table_info(${name})`).all();
+
+    db.transaction(() => {
+        // 1. Standardize Transaction Types
+        if (tableExists('transaction_types')) {
+            const cols = getColumns('transaction_types');
+            if (cols.some(c => c.name === 'balanceEffect') && !cols.some(c => c.name === 'balance_effect')) {
+                console.log("[MIGRATE] Standardizing transaction_types columns...");
+                db.exec("ALTER TABLE transaction_types RENAME COLUMN balanceEffect TO balance_effect");
+            }
         }
 
+        // 2. Consolidate Payees/Merchants into Counterparties
+        if (!tableExists('counterparties')) {
+             console.log("[MIGRATE] Initializing counterparties table...");
+             db.exec("CREATE TABLE counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT)");
+        }
+
+        if (tableExists('payees')) {
+            console.log("[MIGRATE] Migrating legacy payees...");
+            db.exec("INSERT OR IGNORE INTO counterparties (id, name, parent_id, notes, user_id) SELECT id, name, parentId, notes, userId FROM payees");
+            db.exec("DROP TABLE payees");
+        }
+
+        if (tableExists('merchants')) {
+            console.log("[MIGRATE] Migrating legacy merchants...");
+            db.exec("INSERT OR IGNORE INTO counterparties (id, name, notes) SELECT id, name, notes FROM merchants");
+            db.exec("DROP TABLE merchants");
+        }
+
+        // 3. Fix Casing in Core Tables
+        const fixCasing = (table, oldCol, newCol) => {
+            if (!tableExists(table)) return;
+            const cols = getColumns(table);
+            if (cols.some(c => c.name === oldCol) && !cols.some(c => c.name === newCol)) {
+                console.log(`[MIGRATE] Renaming ${table}.${oldCol} -> ${newCol}`);
+                db.exec(`ALTER TABLE ${table} RENAME COLUMN ${oldCol} TO ${newCol}`);
+            }
+        };
+
+        fixCasing('accounts', 'accountTypeId', 'account_type_id');
+        fixCasing('categories', 'parentId', 'parent_id');
+        fixCasing('users', 'isDefault', 'is_default');
+
+        // 4. Critical: Fix Transactions table schema drift
+        // If it exists but has messy columns and 0 rows, rebuild it.
+        if (tableExists('transactions')) {
+            const count = db.prepare("SELECT COUNT(*) as count FROM transactions").get().count;
+            const cols = getColumns('transactions');
+            const isCorrupted = cols.length > 25 || cols.some(c => c.name === 'categoryId'); // Detect old camelCase
+            
+            if (count === 0 && isCorrupted) {
+                console.log("[MIGRATE] Transactions table corrupted with no data. Rebuilding for safety...");
+                db.exec("DROP TABLE transactions");
+                // The createTables() call later will handle the creation
+            }
+        }
+        
+        // 5. Cleanup redundant storage
+        if (tableExists('app_config')) {
+            console.log("[MIGRATE] Retiring legacy app_config...");
+            db.exec("INSERT OR IGNORE INTO app_storage (key, value) SELECT key, value FROM app_config");
+            db.exec("DROP TABLE app_config");
+        }
+    })();
+};
+
+const createTables = () => {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
+        CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT);
+        CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT);
+        CREATE TABLE IF NOT EXISTS account_types (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
+        CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT, color TEXT);
+        CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
+        CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
+        CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, name TEXT, city TEXT, state TEXT, country TEXT);
+        CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
+
+        CREATE TABLE IF NOT EXISTS transactions (
+            id TEXT PRIMARY KEY,
+            date TEXT,
+            description TEXT,
+            amount REAL,
+            category_id TEXT,
+            account_id TEXT,
+            type_id TEXT,
+            counterparty_id TEXT,
+            location_id TEXT,
+            user_id TEXT,
+            location TEXT,
+            notes TEXT,
+            original_description TEXT,
+            source_filename TEXT,
+            link_group_id TEXT,
+            is_parent INTEGER DEFAULT 0,
+            parent_transaction_id TEXT,
+            is_completed INTEGER DEFAULT 0,
+            metadata TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS transaction_tags (
+            transaction_id TEXT,
+            tag_id TEXT,
+            PRIMARY KEY (transaction_id, tag_id)
+        );
+      `);
+};
+
+const ensureSeedData = () => {
+    try {
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
         if (typeCount < 6) {
-            console.log("[DB] Seeding/Updating default transaction types...");
+            console.log("[DB] Seeding default transaction types...");
             const insertType = db.prepare("INSERT OR REPLACE INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)");
             db.transaction(() => {
                 insertType.run('type_income', 'Income', 'incoming', 'text-emerald-600');
@@ -108,49 +216,6 @@ const ensureSeedData = () => {
     }
 };
 
-const createTables = () => {
-    db.exec(`
-        CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
-        CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
-        CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT);
-        CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT);
-        CREATE TABLE IF NOT EXISTS account_types (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
-        CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT, color TEXT);
-        CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
-        CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
-        CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, name TEXT, city TEXT, state TEXT, country TEXT);
-        CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
-
-        CREATE TABLE IF NOT EXISTS transactions (
-            id TEXT PRIMARY KEY,
-            date TEXT,
-            description TEXT,
-            amount REAL,
-            category_id TEXT,
-            account_id TEXT,
-            type_id TEXT,
-            counterparty_id TEXT,
-            location_id TEXT,
-            user_id TEXT,
-            location TEXT,
-            notes TEXT,
-            original_description TEXT,
-            source_filename TEXT,
-            link_group_id TEXT,
-            is_parent INTEGER DEFAULT 0,
-            parent_transaction_id TEXT,
-            is_completed INTEGER DEFAULT 0,
-            metadata TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS transaction_tags (
-            transaction_id TEXT,
-            tag_id TEXT,
-            PRIMARY KEY (transaction_id, tag_id)
-        );
-      `);
-};
-
 const initDb = () => {
     try {
         console.log(`[DB] Opening database at ${DB_PATH}`);
@@ -158,8 +223,9 @@ const initDb = () => {
         db.pragma('journal_mode = WAL');
         db.pragma('busy_timeout = 5000');
         
-        createTables();
-        ensureSeedData();
+        runMigrations(); // Fix schema drift first
+        createTables();   // Ensure all tables exist
+        ensureSeedData(); // Ensure core types exist
     } catch (dbErr) {
         console.error("[DB] ENGINE STARTUP FAILURE:", dbErr.message);
     }
@@ -420,8 +486,9 @@ app.post('/api/admin/reset', async (req, res) => {
 app.post('/api/admin/repair', (req, res) => {
     try {
         console.log("[ADMIN] Executing system repair protocol...");
-        createTables(); // Force ensure tables exist
-        ensureSeedData(); // Force re-seed
+        runMigrations(); // Run renaming/consolidation logic
+        createTables();   // Force ensure tables exist
+        ensureSeedData(); // Force re-seed missing types
         res.json({ success: true, message: "Schema verified and core data seeded." });
     } catch (e) {
         console.error("[ADMIN] Repair failed:", e.message);
