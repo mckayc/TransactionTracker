@@ -8,7 +8,7 @@ import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import ImportVerification from '../components/ImportVerification';
-import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, CloudArrowUpIcon, ExclamationTriangleIcon, AddIcon, ChecklistIcon, DatabaseIcon } from '../components/Icons';
+import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, CloudArrowUpIcon, ExclamationTriangleIcon, AddIcon, ChecklistIcon, DatabaseIcon, WrenchIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 
@@ -234,14 +234,25 @@ const ImportPage: React.FC<ImportPageProps> = ({
                  </div>
              </div>
         ) : !hasCoreConfiguration && appState === 'idle' ? (
-            <div className="bg-red-50 border-2 border-red-100 p-6 rounded-[2rem] flex flex-col md:flex-row items-center gap-6 animate-pulse">
-                <div className="p-4 bg-red-600 rounded-full text-white shadow-lg"><ExclamationTriangleIcon className="w-8 h-8" /></div>
-                <div>
-                    <h3 className="text-xl font-black text-red-800">Engine Logic Failure</h3>
-                    <p className="text-sm text-red-700 mt-1 max-w-lg leading-relaxed">
-                        The internal transaction types or categories are corrupted or missing from the database. 
-                        Please try the <strong>System Repair</strong> tool in Settings.
-                    </p>
+            <div className="flex-1 flex items-center justify-center p-4">
+                <div className="max-w-2xl w-full bg-red-50 border-2 border-red-100 p-12 rounded-[3rem] text-center space-y-8 animate-pulse">
+                    <div className="w-24 h-24 bg-red-600 rounded-full text-white flex items-center justify-center mx-auto shadow-xl"><ExclamationTriangleIcon className="w-12 h-12" /></div>
+                    <div>
+                        <h3 className="text-3xl font-black text-red-800">Engine Logic Failure</h3>
+                        <p className="text-lg text-red-700 mt-4 leading-relaxed">
+                            The internal transaction types or categories are missing from the database. 
+                            This happens if the initial seeding was interrupted.
+                        </p>
+                    </div>
+                    <div className="flex flex-col gap-3">
+                        <button 
+                            onClick={() => window.location.href = '#settings'}
+                            className="w-full py-5 bg-red-600 text-white font-black text-xl rounded-2xl shadow-xl hover:bg-red-700 transition-all flex items-center justify-center gap-3"
+                        >
+                            <WrenchIcon className="w-6 h-6" /> Open Diagnostics Hub
+                        </button>
+                        <p className="text-xs text-red-400 font-bold uppercase tracking-widest">Run "System Doctor" to recover core schemas</p>
+                    </div>
                 </div>
             </div>
         ) : (

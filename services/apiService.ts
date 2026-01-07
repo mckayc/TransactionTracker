@@ -35,6 +35,11 @@ export const api = {
         return await response.json();
     },
 
+    getDiagnostics: async (): Promise<any> => {
+        const response = await fetchWithRetry('/api/admin/diagnose');
+        return await response.json();
+    },
+
     getTransactions: async (params: Record<string, any> = {}): Promise<{ data: any[], total: number }> => {
         const query = new URLSearchParams(params).toString();
         const response = await fetchWithRetry(`/api/transactions?${query}`);

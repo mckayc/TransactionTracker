@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, BusinessNote, Location, AccountType } from '../types';
-// Added TrashIcon to the imports list from ../components/Icons
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, BugIcon, RepeatIcon, PlayIcon, MapPinIcon, UsersIcon, StethoscopeIcon, TrashIcon } from '../components/Icons';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, BugIcon, RepeatIcon, PlayIcon, MapPinIcon, UsersIcon, StethoscopeIcon, TrashIcon, CopyIcon, DatabaseIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { hasApiKey, validateApiKeyConnectivity } from '../services/geminiService';
@@ -97,6 +96,38 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [isTestingKey, setIsTestingKey] = useState(false);
     const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
     const [isRepairing, setIsRepairing] = useState(false);
+    
+    // Diagnostics state
+    const [diagnostics, setDiagnostics] = useState<any>(null);
+    const [isDiagnosing, setIsDiagnosing] = useState(false);
+
+    const runDiagnostics = async () => {
+        setIsDiagnosing(true);
+        try {
+            const data = await api.getDiagnostics();
+            setDiagnostics(data);
+        } catch (e) {
+            console.error("Diagnosis failed", e);
+        } finally {
+            setIsDiagnosing(false);
+        }
+    };
+
+    useEffect(() => {
+        runDiagnostics();
+    }, []);
+
+    const copySupportManifesto = () => {
+        if (!diagnostics) return;
+        const report = `FINPARSER SYSTEM MANIFESTO\n` +
+            `Timestamp: ${diagnostics.timestamp}\n` +
+            `Database Size: ${(diagnostics.databaseSize / 1024).toFixed(2)} KB\n\n` +
+            diagnostics.tables.map((t: any) => 
+                `TABLE: ${t.table} (${t.rowCount} rows)\nSCHEMA: ${t.schema}\n`
+            ).join('\n');
+        
+        navigator.clipboard.writeText(report).then(() => alert("AI Support Manifesto copied to clipboard. Paste this into the chat."));
+    };
     
     useEffect(() => {
         const interval = setInterval(() => {
@@ -321,26 +352,45 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
             </Section>
 
-            <Section title="Maintenance & Infrastructure" variant="info">
-                <div className="flex flex-col md:flex-row items-center gap-6 p-6 bg-indigo-50 border-2 border-indigo-100 rounded-[2.5rem] shadow-inner">
-                    <div className="p-5 bg-indigo-600 rounded-[1.5rem] text-white shadow-xl shadow-indigo-200">
-                        <StethoscopeIcon className="w-10 h-10" />
+            <Section title="Maintenance Hub" variant="info">
+                <div className="space-y-6">
+                    <div className="flex flex-col md:flex-row items-start gap-6 p-6 bg-indigo-50 border-2 border-indigo-100 rounded-[2.5rem] shadow-inner">
+                        <div className="p-5 bg-indigo-600 rounded-[1.5rem] text-white shadow-xl shadow-indigo-200">
+                            <StethoscopeIcon className="w-10 h-10" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-xl font-black text-indigo-900">System Doctor & Diagnostics</h3>
+                            <p className="text-sm text-indigo-700 mt-1 leading-relaxed">
+                                Use these tools to probe the underlying SQLite engine. If features aren't working, copy the Support Manifesto and provide it to your AI architect.
+                            </p>
+                            
+                            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+                                {diagnostics?.tables.map((t: any) => (
+                                    <div key={t.table} className={`p-3 rounded-xl border flex flex-col gap-1 ${t.rowCount > 0 ? 'bg-white border-indigo-200' : 'bg-red-50 border-red-200 animate-pulse'}`}>
+                                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{t.table}</p>
+                                        <p className={`text-lg font-black ${t.rowCount > 0 ? 'text-indigo-600' : 'text-red-600'}`}>{t.rowCount}</p>
+                                        <p className="text-[8px] font-bold text-slate-400 uppercase">Records</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-2 w-full md:w-auto">
+                            <button 
+                                onClick={handleRepairSystem}
+                                disabled={isRepairing}
+                                className="w-full px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isRepairing ? <RepeatIcon className="w-4 h-4 animate-spin" /> : <PlayIcon className="w-4 h-4" />}
+                                Force Repair
+                            </button>
+                            <button 
+                                onClick={copySupportManifesto}
+                                className="w-full px-8 py-3 bg-white border border-indigo-200 text-indigo-700 font-black rounded-xl hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 shadow-sm"
+                            >
+                                <CopyIcon className="w-4 h-4" /> Copy Manifesto
+                            </button>
+                        </div>
                     </div>
-                    <div className="flex-1">
-                        <h3 className="text-xl font-black text-indigo-900">System Doctor</h3>
-                        <p className="text-sm text-indigo-700 mt-1 leading-relaxed">
-                            If you see "System Uninitialized" errors or miss core categories/types, execute the repair sequence. 
-                            This verifies the database schema, runs missing migrations, and ensures core system types are present.
-                        </p>
-                    </div>
-                    <button 
-                        onClick={handleRepairSystem}
-                        disabled={isRepairing}
-                        className="w-full md:w-auto px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-lg flex items-center justify-center gap-3 disabled:opacity-50 active:scale-95"
-                    >
-                        {isRepairing ? <RepeatIcon className="w-5 h-5 animate-spin" /> : <PlayIcon className="w-5 h-5" />}
-                        {isRepairing ? 'REPAIRING...' : 'Execute Repair'}
-                    </button>
                 </div>
             </Section>
 
