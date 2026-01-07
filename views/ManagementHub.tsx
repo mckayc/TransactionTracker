@@ -276,6 +276,12 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
         return currentList;
     }, [currentList, activeTab]);
 
+    const getPanelSubtitle = (type: EntityType) => {
+        if (type === 'transactionTypes') return 'Transaction Types System Logic';
+        if (type === 'accountTypes') return 'Account Types System Logic';
+        return `${type.slice(0, -1)} System Logic`;
+    };
+
     return (
         <div className="h-full flex flex-col gap-6">
             <div className="flex justify-between items-center">
@@ -293,8 +299,8 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                     { id: 'tags', label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
                     { id: 'locations', label: 'Locations', icon: <MapPinIcon className="w-4 h-4" /> },
                     { id: 'users', label: 'Users', icon: <UserGroupIcon className="w-4 h-4" /> },
-                    { id: 'transactionTypes', label: 'Tx Types', icon: <ChecklistIcon className="w-4 h-4" /> },
-                    { id: 'accountTypes', label: 'Acct Types', icon: <ShieldCheckIcon className="w-4 h-4" /> },
+                    { id: 'transactionTypes', label: 'Transaction Types', icon: <ChecklistIcon className="w-4 h-4" /> },
+                    { id: 'accountTypes', label: 'Account Types', icon: <ShieldCheckIcon className="w-4 h-4" /> },
                 ].map(tab => (
                     <button 
                         key={tab.id}
@@ -318,7 +324,9 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                                     onChange={() => setBulkSelectedIds(bulkSelectedIds.size === currentList.length ? new Set() : new Set(currentList.map(x => x.id)))} 
                                     className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50"
                                 />
-                                <h3 className="font-black text-slate-700 capitalize tracking-tight">{activeTab}</h3>
+                                <h3 className="font-black text-slate-700 capitalize tracking-tight">
+                                    {activeTab === 'transactionTypes' ? 'Transaction Types' : activeTab === 'accountTypes' ? 'Account Types' : activeTab}
+                                </h3>
                             </div>
                             <button onClick={handleNew} className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all shadow-md active:scale-95">
                                 <AddIcon className="w-4 h-4" />
@@ -327,7 +335,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                         <div className="relative group">
                             <input 
                                 type="text" 
-                                placeholder={`Search ${activeTab}...`} 
+                                placeholder={`Search ${activeTab === 'transactionTypes' ? 'Transaction Types' : activeTab === 'accountTypes' ? 'Account Types' : activeTab}...`} 
                                 value={searchFilter} 
                                 onChange={e => setSearchFilter(e.target.value)} 
                                 className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-bold" 
@@ -383,7 +391,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-800">{isCreating ? 'Blueprint Designer' : 'Update Definition'}</h3>
-                                    <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-0.5">{activeTab.slice(0, -1)} System Logic</p>
+                                    <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-0.5">{getPanelSubtitle(activeTab)}</p>
                                 </div>
                                 <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="p-2 text-slate-400 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
                             </div>

@@ -1,10 +1,9 @@
-
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
     let txValue: any;
     
-    if (!condition || !condition.field) return true;
+    if (!tx || !condition || !condition.field) return true;
 
     if (condition.field === 'description') {
         txValue = (tx.description || '').toLowerCase();
@@ -36,7 +35,7 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
             default: return false;
         }
     } else if (condition.field === 'amount') {
-        txValue = tx.amount;
+        txValue = tx.amount || 0;
         const condValue = Number(condition.value);
         if (isNaN(condValue)) return false;
         switch (condition.operator) {
@@ -51,8 +50,7 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
         if (condition.operator === 'equals') {
             return txAccountId === String(condition.value);
         } else {
-            const account = accounts.find(a => a.id === txAccountId);
-            // Use accountId instead or rely on joined account metadata
+            const account = accounts.find(a => a && a.id === txAccountId);
             const accountName = (account?.name || '').toLowerCase();
             const condValue = String(condition.value || '').toLowerCase();
             
@@ -66,7 +64,7 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
 
 const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule, accounts: Account[]): boolean => {
     if (rule.conditions && rule.conditions.length > 0) {
-        const validConditions = rule.conditions.filter(c => 'field' in c) as RuleCondition[];
+        const validConditions = rule.conditions.filter(c => c && 'field' in c) as RuleCondition[];
         
         if (validConditions.length === 0) return true;
 
@@ -75,8 +73,9 @@ const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule,
         for (let i = 0; i < validConditions.length - 1; i++) {
             const currentCond = validConditions[i];
             const nextCond = validConditions[i + 1];
-            const logic = currentCond.nextLogic || 'AND';
+            if (!nextCond) continue;
 
+            const logic = currentCond.nextLogic || 'AND';
             const nextResult = evaluateCondition(tx, nextCond, accounts);
 
             if (logic === 'AND') {
@@ -101,6 +100,7 @@ export const applyRulesToTransactions = (
   }
 
   return rawTransactions.map(tx => {
+    if (!tx) return tx;
     let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string } = { ...tx };
     
     for (const rule of rules) {
@@ -112,7 +112,6 @@ export const applyRulesToTransactions = (
         if (rule.setCategoryId) {
           modifiedTx.categoryId = rule.setCategoryId;
         }
-        // Fixed: Use setCounterpartyId instead of setPayeeId
         if (rule.setCounterpartyId) {
           modifiedTx.counterpartyId = rule.setCounterpartyId;
         }
@@ -146,6 +145,7 @@ export const findMatchingTransactions = (
   const matchedPairs: { original: Transaction; updated: Transaction }[] = [];
 
   transactions.forEach(tx => {
+    if (!tx) return;
     if (matchesRule(tx, rule, accounts)) {
       const updatedTx = { ...tx };
       let changed = false;
@@ -154,7 +154,6 @@ export const findMatchingTransactions = (
         updatedTx.categoryId = rule.setCategoryId;
         changed = true;
       }
-      // Fixed: Use setCounterpartyId instead of setPayeeId
       if (rule.setCounterpartyId && updatedTx.counterpartyId !== rule.setCounterpartyId) {
         updatedTx.counterpartyId = rule.setCounterpartyId;
         changed = true;

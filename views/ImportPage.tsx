@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
@@ -92,7 +91,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
         return;
     }
 
-    const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId }));
+    const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId: userId || 'user_primary' }));
     const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
     const categoryNameToIdMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
     const otherCategoryId = categoryNameToIdMap.get('other') || categories[0]?.id || '';
@@ -121,7 +120,8 @@ const ImportPage: React.FC<ImportPageProps> = ({
           throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
       }
 
-      applyRulesAndSetStaging(raw, users.find(u => u.isDefault)?.id || users[0]?.id || '', rules);
+      const defaultUser = Array.isArray(users) ? (users.find(u => u.isDefault) || users[0]) : null;
+      applyRulesAndSetStaging(raw, defaultUser?.id || 'user_primary', rules);
       setAppState('verifying_import');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
@@ -171,7 +171,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full font-bold text-slate-700">
                                                 <option value="">Select Account...</option>
-                                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.identifier})</option>)}
                                             </select>
                                             
                                             <label className="flex items-center justify-between gap-2 cursor-pointer bg-slate-100 px-4 py-3 rounded-2xl group border border-transparent hover:border-indigo-200 transition-all">
@@ -198,9 +198,12 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                             onClick={async () => {
                                                 setAppState('processing');
                                                 try {
-                                                    // Fixed: Removed 'categories' as it is not an argument for parsing or extraction calls
-                                                    const raw = useAi ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
-                                                    applyRulesAndSetStaging(raw, users[0]?.id || 'default', rules);
+                                                    const raw = useAi 
+                                                        ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) 
+                                                        : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
+                                                    
+                                                    const defaultUser = Array.isArray(users) ? (users.find(u => u.isDefault) || users[0]) : null;
+                                                    applyRulesAndSetStaging(raw, defaultUser?.id || 'user_primary', rules);
                                                     setAppState('verifying_import');
                                                 } catch(e) { setAppState('error'); setError("Parsing failed. Ensure columns align."); }
                                             }} 

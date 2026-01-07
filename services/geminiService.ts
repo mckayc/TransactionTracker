@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule } from '../types';
 
@@ -214,11 +213,14 @@ export const extractTransactionsFromFiles = async (
         }
     });
     const result = JSON.parse(response.text || '{"transactions": []}');
-    return result.transactions.map((tx: any) => ({
+    const txs = result.transactions || [];
+    
+    return txs.filter((tx: any) => tx && tx.date).map((tx: any) => ({
         ...tx,
         accountId,
-        // Fix: Use 'incoming' and 'outgoing' to match BalanceEffect type
-        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'expense')
+        typeId: tx.type === 'income' 
+            ? (transactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'type_income') 
+            : (transactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'type_purchase')
     }));
 };
 
@@ -262,11 +264,14 @@ export const extractTransactionsFromText = async (
         }
     });
     const result = JSON.parse(response.text || '{"transactions": []}');
-    return result.transactions.map((tx: any) => ({
+    const txs = result.transactions || [];
+
+    return txs.filter((tx: any) => tx && tx.date).map((tx: any) => ({
         ...tx,
         accountId,
-        // Fix: Use 'incoming' and 'outgoing' to match BalanceEffect type
-        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'expense')
+        typeId: tx.type === 'income' 
+            ? (transactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'type_income') 
+            : (transactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'type_purchase')
     }));
 };
 
