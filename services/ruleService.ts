@@ -50,7 +50,7 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
         if (condition.operator === 'equals') {
             return txAccountId === String(condition.value);
         } else {
-            const account = accounts.find(a => a && a.id === txAccountId);
+            const account = (accounts || []).filter(Boolean).find(a => a && a.id === txAccountId);
             const accountName = (account?.name || '').toLowerCase();
             const condValue = String(condition.value || '').toLowerCase();
             
@@ -63,6 +63,8 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
 };
 
 const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule, accounts: Account[]): boolean => {
+    if (!rule || !rule.id) return false;
+    
     if (rule.conditions && rule.conditions.length > 0) {
         const validConditions = rule.conditions.filter(c => c && 'field' in c) as RuleCondition[];
         
@@ -95,15 +97,15 @@ export const applyRulesToTransactions = (
   rules: ReconciliationRule[],
   accounts: Account[] = []
 ): (RawTransaction & { categoryId?: string; isIgnored?: boolean })[] => {
-  if (!rules || rules.length === 0) {
+  const safeRules = (rules || []).filter(r => r && r.id);
+  if (safeRules.length === 0) {
     return rawTransactions;
   }
 
-  return rawTransactions.map(tx => {
-    if (!tx) return tx;
+  return rawTransactions.filter(Boolean).map(tx => {
     let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string } = { ...tx };
     
-    for (const rule of rules) {
+    for (const rule of safeRules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
         modifiedTx.appliedRuleId = rule.id;
         if (rule.skipImport) {
@@ -126,7 +128,7 @@ export const applyRulesToTransactions = (
         }
         if (rule.assignTagIds && rule.assignTagIds.length > 0) {
             const currentTags = new Set(modifiedTx.tagIds || []);
-            rule.assignTagIds.forEach(id => currentTags.add(id));
+            rule.assignTagIds.forEach(id => { if(id) currentTags.add(id); });
             modifiedTx.tagIds = Array.from(currentTags);
         }
         return modifiedTx;
@@ -143,9 +145,9 @@ export const findMatchingTransactions = (
   accounts: Account[] = []
 ): { original: Transaction; updated: Transaction }[] => {
   const matchedPairs: { original: Transaction; updated: Transaction }[] = [];
+  if (!rule || !rule.id) return [];
 
-  transactions.forEach(tx => {
-    if (!tx) return;
+  (transactions || []).filter(Boolean).forEach(tx => {
     if (matchesRule(tx, rule, accounts)) {
       const updatedTx = { ...tx };
       let changed = false;
@@ -173,7 +175,7 @@ export const findMatchingTransactions = (
       if (rule.assignTagIds && rule.assignTagIds.length > 0) {
           const originalTagSet = new Set(updatedTx.tagIds || []);
           const newTagSet = new Set(updatedTx.tagIds || []);
-          rule.assignTagIds.forEach(id => newTagSet.add(id));
+          rule.assignTagIds.forEach(id => { if(id) newTagSet.add(id); });
           
           if (newTagSet.size > originalTagSet.size) {
               updatedTx.tagIds = Array.from(newTagSet);

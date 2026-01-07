@@ -91,10 +91,12 @@ const ImportPage: React.FC<ImportPageProps> = ({
         return;
     }
 
-    const rawWithUser = rawTransactions.map(tx => ({ ...tx, userId: userId || 'user_primary' }));
+    const safeRaw = (rawTransactions || []).filter(Boolean);
+    const rawWithUser = safeRaw.map(tx => ({ ...tx, userId: userId || 'user_primary' }));
     const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
-    const categoryNameToIdMap = new Map(categories.map(c => [c.name.toLowerCase(), c.id]));
-    const otherCategoryId = categoryNameToIdMap.get('other') || categories[0]?.id || '';
+    const validCategories = (categories || []).filter(Boolean);
+    const categoryNameToIdMap = new Map(validCategories.map(c => [c.name.toLowerCase(), c.id]));
+    const otherCategoryId = categoryNameToIdMap.get('other') || validCategories[0]?.id || '';
 
     const processedTransactions = transactionsWithRules.map(tx => {
         let finalCategoryId = tx.categoryId;
@@ -116,12 +118,14 @@ const ImportPage: React.FC<ImportPageProps> = ({
         ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage) 
         : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
       
-      if (!raw || raw.length === 0) {
+      const safeRaw = (raw || []).filter(Boolean);
+      if (safeRaw.length === 0) {
           throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
       }
 
-      const defaultUser = Array.isArray(users) ? (users.find(u => u.isDefault) || users[0]) : null;
-      applyRulesAndSetStaging(raw, defaultUser?.id || 'user_primary', rules);
+      const validUsers = Array.isArray(users) ? users.filter(Boolean) : [];
+      const defaultUser = validUsers.length > 0 ? (validUsers.find(u => u.isDefault) || validUsers[0]) : null;
+      applyRulesAndSetStaging(safeRaw, defaultUser?.id || 'user_primary', rules);
       setAppState('verifying_import');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
@@ -130,7 +134,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
   }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
-      const { added } = mergeTransactions(recentGlobalTransactions, verified);
+      const { added } = mergeTransactions(recentGlobalTransactions.filter(Boolean), verified.filter(Boolean));
       onTransactionsAdded(added, []);
       setImportedTxIds(new Set(added.map(tx => tx.id)));
       setAppState('post_import_edit');
@@ -171,7 +175,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full font-bold text-slate-700">
                                                 <option value="">Select Account...</option>
-                                                {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.identifier})</option>)}
+                                                {accounts.filter(Boolean).map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.identifier})</option>)}
                                             </select>
                                             
                                             <label className="flex items-center justify-between gap-2 cursor-pointer bg-slate-100 px-4 py-3 rounded-2xl group border border-transparent hover:border-indigo-200 transition-all">
@@ -202,8 +206,10 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                         ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) 
                                                         : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
                                                     
-                                                    const defaultUser = Array.isArray(users) ? (users.find(u => u.isDefault) || users[0]) : null;
-                                                    applyRulesAndSetStaging(raw, defaultUser?.id || 'user_primary', rules);
+                                                    const safeRaw = (raw || []).filter(Boolean);
+                                                    const validUsers = Array.isArray(users) ? users.filter(Boolean) : [];
+                                                    const defaultUser = validUsers.length > 0 ? (validUsers.find(u => u.isDefault) || validUsers[0]) : null;
+                                                    applyRulesAndSetStaging(safeRaw, defaultUser?.id || 'user_primary', rules);
                                                     setAppState('verifying_import');
                                                 } catch(e) { setAppState('error'); setError("Parsing failed. Ensure columns align."); }
                                             }} 
@@ -244,7 +250,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                         <button onClick={() => setAppState('idle')} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Finish</button>
                     </div>
                     <div className="flex-1 overflow-hidden border border-slate-200 rounded-2xl relative shadow-inner">
-                        <TransactionTable transactions={recentGlobalTransactions.filter(tx => importedTxIds.has(tx.id))} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
+                        <TransactionTable transactions={recentGlobalTransactions.filter(tx => tx && importedTxIds.has(tx.id))} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
                     </div>
                 </div>
             ) : (

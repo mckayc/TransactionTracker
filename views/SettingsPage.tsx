@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon, RepeatIcon, PlayIcon } from '../components/Icons';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, AmazonVideo, BusinessNote, Location, AccountType } from '../types';
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, FolderIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, ChatBubbleIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, ExternalLinkIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, CheckBadgeIcon, BugIcon, NotesIcon, FileCodeIcon, RepeatIcon, PlayIcon, MapPinIcon, UsersIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { hasApiKey, healDataSnippet, validateApiKeyConnectivity } from '../services/geminiService';
@@ -38,6 +37,8 @@ interface SettingsPageProps {
     financialGoals: FinancialGoal[];
     financialPlan: FinancialPlan | null;
     contentLinks: ContentLink[];
+    locations: Location[];
+    accountTypes: AccountType[];
 }
 
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {
@@ -45,7 +46,11 @@ const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warn
     accounts: { label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" /> },
     categories: { label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
     tags: { label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
-    counterparties: { label: 'Counterparties', icon: <DocumentIcon className="w-4 h-4" /> },
+    counterparties: { label: 'Counterparties', icon: <BoxIcon className="w-4 h-4" /> },
+    transactionTypes: { label: 'Transaction Types', icon: <ChecklistIcon className="w-4 h-4" /> },
+    accountTypes: { label: 'Account Types', icon: <ShieldCheckIcon className="w-4 h-4" /> },
+    users: { label: 'Users', icon: <UsersIcon className="w-4 h-4" /> },
+    locations: { label: 'Locations', icon: <MapPinIcon className="w-4 h-4" /> },
     reconciliationRules: { label: 'Automation Rules', icon: <SettingsIcon className="w-4 h-4" /> },
     templates: { label: 'Checklist Templates', icon: <TasksIcon className="w-4 h-4" /> },
     tasks: { label: 'Task Instances', icon: <ChecklistIcon className="w-4 h-4" /> },
@@ -86,7 +91,7 @@ const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation:
 const SettingsPage: React.FC<SettingsPageProps> = ({ 
     transactions, transactionTypes, onAddTransactionType, onRemoveTransactionType, systemSettings, onUpdateSystemSettings,
     accounts, categories, tags, counterparties, rules, templates, scheduledEvents, tasks, taskCompletions, users, businessProfile, businessNotes, documentFolders, businessDocuments, onAddDocument, onCreateFolder,
-    savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks
+    savedReports, savedDateRanges, amazonMetrics, amazonVideos, youtubeMetrics, youtubeChannels, financialGoals, financialPlan, contentLinks, locations, accountTypes
 }) => {
     const importFileRef = useRef<HTMLInputElement>(null);
     
@@ -96,29 +101,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
     
     useEffect(() => {
-        // Diagnostic Logging
-        console.log("[SYS] Settings Page loaded. Diagnostic Check...");
-        
-        const runtimeConfig = (window as any).__FINPARSER_CONFIG__;
-        console.log("[SYS] window.__FINPARSER_CONFIG__ found:", !!runtimeConfig);
-        if (runtimeConfig) {
-            console.log("[SYS] Runtime API_KEY present:", !!runtimeConfig.API_KEY);
-            if (runtimeConfig.API_KEY) {
-                 console.log("[SYS] Runtime API_KEY Length:", runtimeConfig.API_KEY.length);
-                 console.log("[SYS] Runtime API_KEY Prefix:", runtimeConfig.API_KEY.substring(0, 4));
-            }
-        }
-
-        const processObj = (window as any).process;
-        console.log("[SYS] window.process object found:", !!processObj);
-        if (processObj?.env) {
-            console.log("[SYS] process.env.API_KEY present:", !!processObj.env.API_KEY);
-        }
-        
         const interval = setInterval(() => {
             const current = hasApiKey();
             if (current !== apiKeyActive) {
-                console.log("[SYS] hasApiKey() status changed to:", current);
                 setApiKeyActive(current);
             }
         }, 2000);
@@ -221,15 +206,18 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         if (exportSelection.size === 0) { alert("Please select items to back up."); return; }
         const data: any = {
             exportDate: new Date().toISOString(),
-            version: '0.0.53',
-            transactionTypes,
-            users
+            version: '0.6.0',
         };
+        
         if (exportSelection.has('transactions')) data.transactions = transactions;
         if (exportSelection.has('accounts')) data.accounts = accounts;
         if (exportSelection.has('categories')) data.categories = categories;
         if (exportSelection.has('tags')) data.tags = tags;
         if (exportSelection.has('counterparties')) data.counterparties = counterparties;
+        if (exportSelection.has('transactionTypes')) data.transactionTypes = transactionTypes;
+        if (exportSelection.has('accountTypes')) data.accountTypes = accountTypes;
+        if (exportSelection.has('users')) data.users = users;
+        if (exportSelection.has('locations')) data.locations = locations;
         if (exportSelection.has('reconciliationRules')) data.reconciliationRules = rules;
         if (exportSelection.has('businessProfile')) data.businessProfile = businessProfile;
         if (exportSelection.has('businessNotes')) data.businessNotes = businessNotes;
@@ -271,12 +259,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         try {
             json = JSON.parse(pasteText);
         } catch (err) {
-            console.warn("Direct JSON parse failed. Attempting AI Healing...");
             setIsHealing(true);
             try {
                 json = await healDataSnippet(pasteText);
             } catch (aiErr) {
-                alert("AI could not repair the data snippet. Please ensure it is a valid list or object.");
+                alert("AI could not repair the data snippet.");
                 setIsHealing(false);
                 return;
             } finally {
@@ -285,15 +272,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         }
         
         if (json) {
-            if (Array.isArray(json)) {
-                const first = json[0];
-                if (first.asin) json = { amazonMetrics: json };
-                else if (first.videoId) json = { youtubeMetrics: json };
-                else if (first.date && first.description && first.amount) json = { transactions: json };
-                else if (first.name && (first.parentId !== undefined || first.notes !== undefined)) json = { counterparties: json };
-                else if (first.name && first.isDefault !== undefined) json = { users: json };
-            }
-
             handleLoadedRestoreData(json);
             setIsPasteModalOpen(false);
             setPasteText('');
@@ -303,7 +281,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const handleLoadedRestoreData = (json: any) => {
         const detectedKeys = Object.keys(ENTITY_LABELS).filter(key => json.hasOwnProperty(key) || (key === 'files_meta' && json.hasOwnProperty('businessDocuments')));
         if (detectedKeys.length === 0) {
-            alert("No valid data patterns detected in the JSON provided.");
+            alert("No valid data patterns detected.");
             return;
         }
         setRestoreData(json);
@@ -315,7 +293,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         if (!restoreData || restoreSelection.size === 0) return;
         
         const modeLabel = overwrite ? "OVERWRITE AND REPLACE" : "MERGE WITH EXISTING";
-        if (!confirm(`CAUTION: This will ${modeLabel} your data for the selected categories. This cannot be undone. Proceed?`)) return;
+        if (!confirm(`CAUTION: This will ${modeLabel} your data. Proceed?`)) return;
         
         try {
             if (overwrite) {
@@ -337,13 +315,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 }
             }
             
-            if (restoreData.transactionTypes) await api.save('transactionTypes', restoreData.transactionTypes);
-            if (restoreData.users) await api.save('users', restoreData.users);
-
             window.location.reload();
         } catch (err) { 
-            console.error("Restore Failure:", err);
-            alert(`Restore failed: ${err instanceof Error ? err.message : 'Unknown internal error'}.`); 
+            alert(`Restore failed.`); 
         }
     };
 
@@ -374,7 +348,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 <div className={`p-3 rounded-full shadow-sm ${apiKeyActive ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-600'}`}><RobotIcon className="w-8 h-8" /></div>
                                 <div className="flex-grow">
                                     <h3 className={`text-lg font-bold ${apiKeyActive ? 'text-emerald-800' : 'text-amber-800'}`}>AI Status: {apiKeyActive ? 'Enabled' : 'Disabled'}</h3>
-                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Healthy Gemini 3 connection detected." : "Missing or invalid API_KEY in environment. Check Docker logs."}</p>
+                                    <p className={`text-sm mt-1 ${apiKeyActive ? 'text-emerald-700' : 'text-amber-700'}`}>{apiKeyActive ? "Healthy Gemini 3 connection detected." : "Missing or invalid API_KEY in environment."}</p>
                                     
                                     <div className="mt-4 pt-4 border-t border-indigo-100 flex flex-col gap-3">
                                         <button 
@@ -464,7 +438,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 </div>
                             </div>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
-                                {Object.entries(ENTITY_LABELS).map(([key, { label, icon, warning }]) => (
+                                {Object.entries(ENTITY_LABELS).map(([key, { label, icon }]) => (
                                     <button key={key} onClick={() => togglePurgeSelection(key)} className={`flex flex-col items-center p-4 rounded-xl border-2 transition-all relative ${purgeSelection.has(key) ? 'bg-red-100 border-red-500' : 'bg-white border-slate-200 hover:border-red-200'}`}>
                                         <div className={`p-2 rounded-lg mb-2 ${purgeSelection.has(key) ? 'bg-red-600 text-white' : 'bg-slate-100 text-slate-500'}`}>{icon}</div>
                                         <span className={`text-[10px] font-black uppercase tracking-tighter text-center ${purgeSelection.has(key) ? 'text-red-700' : 'text-slate-600'}`}>{label}</span>
@@ -494,13 +468,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
             {isRestoreModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                             <div>
                                 <h3 className="font-black text-slate-800 text-xl">Confirm Restore</h3>
                                 <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">Found {restoreSelection.size} Data Categories</p>
                             </div>
-                            <button onClick={() => setIsRestoreModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                            <button onClick={() => setIsRestoreModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
                         <div className="p-8 space-y-6">
                             <div className="max-h-60 overflow-y-auto space-y-2 custom-scrollbar">
@@ -508,16 +482,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                     if (!restoreData.hasOwnProperty(key) && !(key === 'files_meta' && restoreData.hasOwnProperty('businessDocuments'))) return null;
                                     return (
                                         <label key={key} className={`flex items-center p-3 border rounded-xl cursor-pointer transition-colors ${restoreSelection.has(key) ? 'bg-indigo-50 border-indigo-400 shadow-sm' : 'bg-white border-slate-200 opacity-60'}`}>
-                                            <input type="checkbox" checked={restoreSelection.has(key)} onChange={() => { const s = new Set(restoreSelection); if(s.has(key)) s.delete(key); else s.add(key); setRestoreSelection(s); }} className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
+                                            <input type="checkbox" checked={restoreSelection.has(key)} onChange={() => { const s = new Set(restoreSelection); if(s.has(key)) s.delete(key); else s.add(key); setRestoreSelection(s); }} className="w-5 h-5 text-indigo-600 rounded border-slate-300 focus:ring-indigo-50" />
                                             <span className="ml-3 font-bold text-slate-700 text-sm">{label}</span>
                                         </label>
                                     );
                                 })}
-                            </div>
-                            
-                            <div className="bg-amber-50 p-4 rounded-xl border border-amber-200 flex gap-3 items-start">
-                                <InfoIcon className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                                <p className="text-xs text-amber-800 leading-relaxed font-medium">Choose <strong>Merge</strong> to append data (safe) or <strong>Replace</strong> to wipe current categories before importing (destructive).</p>
                             </div>
                         </div>
                         <div className="p-6 border-t bg-slate-50 flex flex-col sm:flex-row justify-end gap-3">
@@ -537,7 +506,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 <h3 className="font-black text-slate-800 text-xl">Paste Backup Data</h3>
                                 <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mt-1">Raw JSON Restore</p>
                             </div>
-                            <button onClick={() => setIsPasteModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                            <button onClick={() => setIsPasteModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
                         <div className="p-8 space-y-4">
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Backup JSON Content</label>
@@ -547,7 +516,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 placeholder='{ "transactions": [...], "accounts": [...] }'
                                 className="w-full h-80 p-4 font-mono text-xs bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none"
                             />
-                            <p className="text-xs text-slate-400 italic">Formatting tip: Paste content from a .json file export. If the text is malformed, AI will attempt to heal it.</p>
                         </div>
                         <div className="p-6 border-t bg-slate-50 flex justify-end gap-3 items-center">
                             {isHealing && (

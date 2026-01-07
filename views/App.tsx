@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Location } from '../types';
 import Sidebar from '../components/Sidebar';
@@ -146,16 +145,21 @@ const App: React.FC = () => {
     };
 
     const bulkUpdateData = async (key: string, newItems: any[], setter: Function) => {
+        let finalItems: any[] = [];
         setter((prev: any[]) => {
-            const next = [...prev];
+            const current = Array.isArray(prev) ? prev : [];
+            const next = [...current];
             newItems.forEach(item => {
-                const idx = next.findIndex(x => x.id === item.id);
+                if (!item) return;
+                const idx = next.findIndex(x => x && x.id === item.id);
                 if (idx > -1) next[idx] = item;
                 else next.push(item);
             });
-            api.save(key, next);
+            finalItems = next;
             return next;
         });
+        
+        await api.save(key, finalItems);
         if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
     };
 
@@ -361,6 +365,7 @@ const App: React.FC = () => {
                             savedReports={savedReports} savedDateRanges={savedDateRanges} amazonMetrics={amazonMetrics} amazonVideos={amazonVideos}
                             youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels} financialGoals={financialGoals} 
                             financialPlan={financialPlan} contentLinks={contentLinks}
+                            locations={locations} accountTypes={accountTypes}
                         />
                     )}
                     {currentView === 'tasks' && (

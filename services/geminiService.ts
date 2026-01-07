@@ -123,11 +123,11 @@ export const generateRulesFromData = async (
         });
 
         const parsed = JSON.parse(response.text || '{"rules": []}');
-        return (parsed.rules || []).map((r: any) => ({
+        return (parsed.rules || []).filter(Boolean).map((r: any) => ({
             ...r,
             id: Math.random().toString(36).substring(7),
             isAiDraft: true,
-            conditions: (r.conditions || []).map((c: any) => ({ 
+            conditions: (r.conditions || []).filter(Boolean).map((c: any) => ({ 
                 ...c, 
                 id: Math.random().toString(36).substring(7), 
                 type: 'basic', 
@@ -146,15 +146,15 @@ export const getAiFinancialAnalysis = async (query: string, contextData: any) =>
     const ai = new GoogleGenAI({ apiKey: key });
     const optimizedContext = {
         ...contextData,
-        transactions: (contextData.transactions || []).slice(0, 100).map((t: any) => ({
+        transactions: (contextData.transactions || []).filter(Boolean).slice(0, 100).map((t: any) => ({
             date: t.date,
             desc: t.description,
             amt: t.amount,
             cat: t.categoryId,
             ent: t.counterpartyId
         })),
-        amazonMetrics: (contextData.amazonMetrics || []).slice(0, 20),
-        youtubeMetrics: (contextData.youtubeMetrics || []).slice(0, 20)
+        amazonMetrics: (contextData.amazonMetrics || []).filter(Boolean).slice(0, 20),
+        youtubeMetrics: (contextData.youtubeMetrics || []).filter(Boolean).slice(0, 20)
     };
     const systemInstruction = `You are FinParser AI, a world-class financial analyst. 
     You have access to the user's recent 100 transactions and financial profiles.
@@ -215,12 +215,14 @@ export const extractTransactionsFromFiles = async (
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
     
+    const validTransactionTypes = Array.isArray(transactionTypes) ? transactionTypes.filter(Boolean) : [];
+
     return txs.filter((tx: any) => tx && tx.date).map((tx: any) => ({
         ...tx,
         accountId,
         typeId: tx.type === 'income' 
-            ? (transactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'type_income') 
-            : (transactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'type_purchase')
+            ? (validTransactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'type_income') 
+            : (validTransactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'type_purchase')
     }));
 };
 
@@ -266,12 +268,14 @@ export const extractTransactionsFromText = async (
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
 
+    const validTransactionTypes = Array.isArray(transactionTypes) ? transactionTypes.filter(Boolean) : [];
+
     return txs.filter((tx: any) => tx && tx.date).map((tx: any) => ({
         ...tx,
         accountId,
         typeId: tx.type === 'income' 
-            ? (transactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'type_income') 
-            : (transactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'type_purchase')
+            ? (validTransactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'type_income') 
+            : (validTransactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'type_purchase')
     }));
 };
 
@@ -324,7 +328,7 @@ export const streamTaxAdvice = async (messages: ChatMessage[], profile: Business
     const key = getApiKey();
     if (!key) throw new Error("API Key is missing.");
     const ai = new GoogleGenAI({ apiKey: key });
-    const contents = messages.map(m => ({
+    const contents = messages.filter(Boolean).map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
     }));
@@ -376,11 +380,11 @@ export const auditTransactions = async (
     };
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Audit type ${auditType}: ${JSON.stringify(transactions.slice(0, 100))}. Training Examples: ${JSON.stringify(examples || [])}`,
+        contents: `Audit type ${auditType}: ${JSON.stringify(transactions.filter(Boolean).slice(0, 100))}. Training Examples: ${JSON.stringify((examples || []).filter(Boolean))}`,
         config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
     });
     const result = JSON.parse(response.text || '{"findings": []}');
-    return result.findings;
+    return (result.findings || []).filter(Boolean);
 };
 
 export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<any> => {
@@ -434,7 +438,7 @@ export const generateFinancialStrategy = async (
     };
     const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
-        contents: `Strategy for profile: ${JSON.stringify(profile)} with goals: ${JSON.stringify(goals)} and tx sample: ${JSON.stringify(transactions.slice(0, 50))}`,
+        contents: `Strategy for profile: ${JSON.stringify(profile)} with goals: ${JSON.stringify(goals.filter(Boolean))} and tx sample: ${JSON.stringify(transactions.filter(Boolean).slice(0, 50))}`,
         config: { 
             responseMimeType: "application/json", 
             responseSchema: schema,
