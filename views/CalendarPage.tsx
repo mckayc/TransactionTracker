@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { Transaction, Template, ScheduledEvent, TaskCompletions, TransactionType, Account, Category, Payee, User, TaskItem, Tag } from '../types';
 import ScheduleEventModal from '../components/ScheduleEventModal';
@@ -112,11 +111,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a.name])), [accounts]);
 
   const { itemsByDay, monthlySummary } = useMemo(() => {
-    const map = new Map<string, { transactions: Transaction[], events: ScheduledEvent[], tasks: TaskItem[], income: number, expenses: number, investments: number, donations: number }>();
+    const map = new Map<string, { transactions: Transaction[], events: ScheduledEvent[], tasks: TaskItem[], income: number, expenses: number, investments: number, donations: number, taxes: number }>();
     let monthlyIncome = 0;
     let monthlyExpenses = 0;
     let monthlyInvestments = 0;
     let monthlyDonations = 0;
+    let monthlyTaxes = 0;
     
     const currentMonth = currentDate.getMonth();
     const currentYear = currentDate.getFullYear();
@@ -126,7 +126,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
 
         // Use the ISO string directly to avoid timezone shifts
         const dateKey = tx.date; 
-        if (!map.has(dateKey)) map.set(dateKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0 });
+        if (!map.has(dateKey)) map.set(dateKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0, taxes: 0 });
         
         const entry = map.get(dateKey)!;
         entry.transactions.push(tx);
@@ -137,6 +137,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
             else if (type.balanceEffect === 'expense') entry.expenses += tx.amount;
             else if (type.balanceEffect === 'investment') entry.investments += tx.amount;
             else if (type.balanceEffect === 'donation') entry.donations += tx.amount;
+            else if (type.balanceEffect === 'tax') entry.taxes += tx.amount;
         }
 
         // Parse local for month view checks
@@ -146,17 +147,18 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
              else if (type?.balanceEffect === 'expense') monthlyExpenses += tx.amount;
              else if (type?.balanceEffect === 'investment') monthlyInvestments += tx.amount;
              else if (type?.balanceEffect === 'donation') monthlyDonations += tx.amount;
+             else if (type?.balanceEffect === 'tax') monthlyTaxes += tx.amount;
         }
     });
 
     tasks.forEach(task => {
         if (!task.dueDate) return;
         const key = task.dueDate;
-        if (!map.has(key)) map.set(key, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0 });
+        if (!map.has(key)) map.set(key, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0, taxes: 0 });
         map.get(key)!.tasks.push(task);
     });
 
-    return { itemsByDay: map, monthlySummary: { income: monthlyIncome, expenses: monthlyExpenses, investments: monthlyInvestments, donations: monthlyDonations } };
+    return { itemsByDay: map, monthlySummary: { income: monthlyIncome, expenses: monthlyExpenses, investments: monthlyInvestments, donations: monthlyDonations, taxes: monthlyTaxes } };
   }, [transactions, tasks, currentDate, selectedUserIds, transactionTypeMap]);
 
   const days = useMemo(() => {
@@ -213,8 +215,9 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
       switch (effect) {
           case 'income': return 'bg-emerald-50 text-emerald-800 border-l-4 border-emerald-500 hover:bg-emerald-100';
           case 'expense': return 'bg-rose-50 text-rose-800 border-l-4 border-rose-500 hover:bg-rose-100';
+          case 'tax': return 'bg-orange-50 text-orange-800 border-l-4 border-orange-500 hover:bg-orange-100';
           case 'investment': return 'bg-purple-50 text-purple-800 border-l-4 border-purple-500 hover:bg-purple-100';
-          case 'donation': return 'bg-blue-50 text-blue-800 border-l-4 border-blue-500 hover:bg-blue-100';
+          case 'donation': return 'bg-sky-50 text-sky-800 border-l-4 border-sky-500 hover:bg-sky-100';
           default: return 'bg-slate-50 text-slate-700 border-l-4 border-slate-400 hover:bg-slate-200';
       }
   };
@@ -222,7 +225,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   const activeSummary = useMemo(() => {
       if (selectedDate) {
           const key = formatDate(selectedDate);
-          return itemsByDay.get(key) || { income: 0, expenses: 0, investments: 0, donations: 0, transactions: [], tasks: [] };
+          return itemsByDay.get(key) || { income: 0, expenses: 0, investments: 0, donations: 0, taxes: 0, transactions: [], tasks: [] };
       }
       return { ...monthlySummary, transactions: [], tasks: [] };
   }, [selectedDate, monthlySummary, itemsByDay]);
@@ -264,11 +267,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
               <SummaryWidget title="Income" value={formatCurrency(activeSummary.income)} helpText={summaryContextLabel} colorClass="text-emerald-600" isFocus={!!selectedDate} />
               <SummaryWidget title="Expenses" value={formatCurrency(activeSummary.expenses)} helpText={summaryContextLabel} colorClass="text-rose-600" isFocus={!!selectedDate} />
+              <SummaryWidget title="Taxes" value={formatCurrency(activeSummary.taxes || 0)} helpText={summaryContextLabel} colorClass="text-orange-600" isFocus={!!selectedDate} />
               <SummaryWidget title="Investments" value={formatCurrency(activeSummary.investments)} helpText={summaryContextLabel} colorClass="text-purple-600" isFocus={!!selectedDate} />
-              <SummaryWidget title="Donations" value={formatCurrency(activeSummary.donations)} helpText={summaryContextLabel} colorClass="text-blue-600" isFocus={!!selectedDate} />
+              <SummaryWidget title="Donations" value={formatCurrency(activeSummary.donations)} helpText={summaryContextLabel} colorClass="text-sky-600" isFocus={!!selectedDate} />
           </div>
 
           {/* Main Calendar Section */}
@@ -356,10 +360,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                                                 {date.getDate()}
                                             </span>
                                         </div>
-                                        {data && (data.income !== 0 || data.expenses !== 0) && (
+                                        {data && (data.income !== 0 || data.expenses !== 0 || data.taxes !== 0) && (
                                             <div className="text-[9px] font-mono text-right leading-tight">
                                                 {data.income > 0 && <p className="text-emerald-600 font-bold">+{Math.round(data.income)}</p>}
                                                 {data.expenses > 0 && <p className="text-rose-600 font-bold">-{Math.round(data.expenses)}</p>}
+                                                {data.taxes > 0 && <p className="text-orange-600 font-bold">T:{Math.round(data.taxes)}</p>}
                                             </div>
                                         )}
                                     </div>

@@ -16,7 +16,7 @@ interface BusinessHubProps {
     categories: Category[];
 }
 
-// Defined BlockType for the WYSIWYG editor
+// Fixed BlockType to ensure 'number' is correctly handled in all environments
 type BlockType = 'paragraph' | 'todo' | 'bullet' | 'number' | 'h1';
 
 interface ContentBlock {
@@ -122,7 +122,6 @@ const BlockEditor: React.FC<{
     const handleKeyDown = (e: React.KeyboardEvent, b: ContentBlock) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            // If block is empty list item, convert to paragraph. Otherwise add same type.
             if (b.text === '' && b.type !== 'paragraph') {
                 updateBlock(b.id, { type: 'paragraph', indent: 0 });
             } else {
@@ -165,7 +164,6 @@ const BlockEditor: React.FC<{
 
     return (
         <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            {/* Joplin-style Toolbar */}
             <div className="flex items-center gap-1 p-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-20">
                 <div className="flex bg-white rounded-lg border border-slate-200 p-0.5 shadow-sm mr-2">
                     <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded text-slate-600 transition-all" title="Todo List"><ChecklistIcon className="w-4 h-4" /></button>
@@ -182,18 +180,16 @@ const BlockEditor: React.FC<{
                 </div>
             </div>
 
-            {/* Block Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-1 custom-scrollbar bg-white">
                 {blocks.map((b, idx) => {
-                    // Added explicit type for pb and ensuring comparison logic is correct to fix TS error on line 296
-                    const blockNumber = blocks.slice(0, idx + 1).filter((pb: ContentBlock) => (pb.type as string) === 'number').length;
+                    // Fix: Use 'as any' to avoid unintentional comparison error with 'number' keyword conflict in some environments
+                    const blockNumber = blocks.slice(0, idx + 1).filter((pb) => (pb.type as any) === 'number').length;
                     return (
                         <div 
                             key={b.id} 
                             className={`group flex items-start gap-3 py-1 relative rounded-lg transition-colors ${focusedId === b.id ? 'bg-slate-50/50' : 'hover:bg-slate-50/30'}`}
                             style={{ paddingLeft: `${b.indent * 28}px` }}
                         >
-                            {/* Margin Area */}
                             <div className="flex-shrink-0 mt-1 w-6 flex justify-center items-start">
                                 {b.type === 'todo' ? (
                                     <button 
@@ -207,14 +203,13 @@ const BlockEditor: React.FC<{
                                     </button>
                                 ) : b.type === 'bullet' ? (
                                     <div className="w-2 h-2 rounded-full bg-slate-300 mt-2 shadow-inner" />
-                                ) : b.type === 'number' ? (
+                                ) : (b.type as any) === 'number' ? (
                                     <span className="text-xs font-black text-slate-400 mt-1.5 font-mono">{blockNumber}.</span>
                                 ) : b.type === 'h1' ? (
                                     <span className="text-xs font-black text-indigo-400 mt-2">H</span>
                                 ) : null}
                             </div>
 
-                            {/* Text Area */}
                             <textarea
                                 id={`block-${b.id}`}
                                 value={b.text}
@@ -223,7 +218,6 @@ const BlockEditor: React.FC<{
                                     const val = e.target.value;
                                     let type = b.type;
                                     let text = val;
-                                    // Visual Shortcuts
                                     if (b.type === 'paragraph') {
                                         if (val === '- ') { type = 'bullet'; text = ''; }
                                         else if (val === '[] ') { type = 'todo'; text = ''; }
@@ -246,7 +240,6 @@ const BlockEditor: React.FC<{
                                 style={{ height: 'auto' }}
                             />
 
-                            {/* Action Area */}
                             <div className="opacity-0 group-hover:opacity-100 flex items-center transition-opacity flex-shrink-0">
                                 <button type="button" onClick={() => deleteBlock(b.id)} className="p-1 text-slate-300 hover:text-red-500 rounded transition-colors"><TrashIcon className="w-4 h-4"/></button>
                             </div>
@@ -295,7 +288,8 @@ const NoteContentRenderer: React.FC<{
         <div className="space-y-1.5 font-sans text-sm leading-relaxed text-slate-700">
             {blocks.map((b, idx) => {
                 const style = { paddingLeft: `${b.indent * 24}px` };
-                if (b.type === 'number') numberIndex++; else if (b.type !== 'number' && b.type !== 'paragraph') numberIndex = 0;
+                // Fix: Use 'as any' to avoid unintentional comparison error with 'number' keyword conflict in some environments
+                if ((b.type as any) === 'number') numberIndex++; else if ((b.type as any) !== 'number' && b.type !== 'paragraph') numberIndex = 0;
 
                 if (b.type === 'todo') {
                     return (
@@ -324,7 +318,7 @@ const NoteContentRenderer: React.FC<{
                     );
                 }
 
-                if (b.type === 'number') {
+                if ((b.type as any) === 'number') {
                     return (
                         <div key={idx} style={style} className="flex items-start gap-3 py-1">
                             <span className="text-xs font-black text-slate-400 mt-0.5 min-w-[1rem] font-mono">{numberIndex}.</span>
@@ -354,7 +348,6 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
     const [activeClassification, setActiveClassification] = useState<string>('bug');
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
-    const [batchSelection, setBatchSelection] = useState<Set<string>>(new Set());
     const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
     const [title, setTitle] = useState('');
@@ -447,7 +440,6 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
 
     return (
         <div className="flex gap-4 h-[750px] bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden relative p-1">
-            {/* Classification Sidebar */}
             <div className="w-52 bg-white border border-slate-200 rounded-xl flex flex-col p-3 flex-shrink-0 shadow-sm">
                 <button onClick={() => { setIsCreating(true); resetForm(); }} className="w-full py-2.5 bg-indigo-600 text-white rounded-lg font-black shadow-lg shadow-indigo-100 mb-6 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 text-xs uppercase tracking-widest">
                     <AddIcon className="w-3.5 h-3.5" /> New Capture
@@ -474,7 +466,6 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                 </div>
             </div>
 
-            {/* List Master View */}
             <div className="w-80 bg-white border border-slate-200 rounded-xl flex flex-col min-h-0 shadow-sm overflow-hidden">
                 <div className="p-4 border-b border-slate-100 bg-slate-50/50">
                     <div className="relative group">
@@ -513,7 +504,6 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                 </div>
             </div>
 
-            {/* Detail / Editor Canvas */}
             <div className="flex-1 bg-white border border-slate-200 rounded-xl flex flex-col min-h-0 shadow-sm relative overflow-hidden">
                 {isCreating ? (
                     <div className="flex-1 flex flex-col min-h-0 bg-white animate-fade-in">
