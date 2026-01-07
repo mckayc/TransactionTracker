@@ -191,8 +191,9 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
             const linkGroupId = crypto.randomUUID();
 
             // Find specific types
-            const transferType = transactionTypes.find(t => t.balanceEffect === 'transfer');
-            const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense');
+            // Fix: Use 'neutral' and 'outgoing' to match BalanceEffect type
+            const transferType = transactionTypes.find(t => t.balanceEffect === 'neutral');
+            const expenseType = transactionTypes.find(t => t.balanceEffect === 'outgoing');
 
             if (paymentTx) {
                 updates.push({
@@ -252,7 +253,7 @@ const TransactionAuditor: React.FC<TransactionAuditorProps> = ({ isOpen, onClose
                             <p className="text-indigo-100 text-xs">AI-Powered Issue Detection</p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-white/20 rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
+                    <button onClick={onClose} className="p-1 rounded-full hover:bg-white/20 rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
                 </div>
 
                 {/* Content */}

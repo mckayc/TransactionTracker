@@ -1,3 +1,4 @@
+
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -50,14 +51,14 @@ const ensureSeedData = () => {
     try {
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
         if (typeCount === 0) {
-            const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
+            const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)");
             db.transaction(() => {
-                insertType.run('type_income', 'Income', 'income');
-                insertType.run('type_purchase', 'Purchase', 'expense');
-                insertType.run('type_transfer', 'Transfer', 'transfer');
-                insertType.run('type_tax', 'Tax Payment', 'tax');
-                insertType.run('type_investment', 'Investment', 'investment');
-                insertType.run('type_donation', 'Donation', 'donation');
+                insertType.run('type_income', 'Income', 'incoming', 'text-emerald-600');
+                insertType.run('type_purchase', 'Purchase', 'outgoing', 'text-rose-600');
+                insertType.run('type_transfer', 'Transfer', 'neutral', 'text-indigo-600');
+                insertType.run('type_tax', 'Tax Payment', 'outgoing', 'text-orange-600');
+                insertType.run('type_investment', 'Investment', 'outgoing', 'text-purple-600');
+                insertType.run('type_donation', 'Donation', 'outgoing', 'text-pink-600');
             })();
         }
         
@@ -97,7 +98,7 @@ const initDb = () => {
           CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT);
           CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT);
           CREATE TABLE IF NOT EXISTS account_types (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
-          CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT);
+          CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT, color TEXT);
           CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
           CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
           CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, name TEXT, city TEXT, state TEXT, country TEXT);
@@ -274,7 +275,7 @@ app.get('/api/data', (req, res) => {
     try { data.counterparties = db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM counterparties").all(); } catch(e) { data.counterparties = []; }
     try { data.locations = db.prepare("SELECT id, name, city, state, country FROM locations").all(); } catch(e) { data.locations = []; }
     try { data.tags = db.prepare("SELECT * FROM tags").all(); } catch(e) { data.tags = []; }
-    try { data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect FROM transaction_types").all(); } catch(e) { data.transactionTypes = []; }
+    try { data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect, color FROM transaction_types").all(); } catch(e) { data.transactionTypes = []; }
     
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -304,8 +305,8 @@ app.post('/api/data/:key', (req, res) => {
         ensureSeedData();
     } else if (key === 'transactionTypes' && Array.isArray(value)) {
         db.prepare("DELETE FROM transaction_types").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO transaction_types (id, name, balance_effect) VALUES (?, ?, ?)");
-        db.transaction(() => { value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect)); })();
+        const stmt = db.prepare("INSERT OR REPLACE INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)");
+        db.transaction(() => { value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect, t.color || null)); })();
         ensureSeedData();
     } else if (key === 'counterparties' && Array.isArray(value)) {
         db.prepare("DELETE FROM counterparties").run();

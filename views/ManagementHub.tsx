@@ -44,7 +44,8 @@ const TreeNode: React.FC<{
     isBulkSelected: boolean;
     onToggleBulk: (id: string) => void;
     searchFilter: string;
-}> = ({ item, all, level, selectedId, onSelect, usageMap, expandedIds, onToggleExpand, isBulkSelected, onToggleBulk, searchFilter }) => {
+    onDelete: (id: string) => void;
+}> = ({ item, all, level, selectedId, onSelect, usageMap, expandedIds, onToggleExpand, isBulkSelected, onToggleBulk, searchFilter, onDelete }) => {
     const children = all.filter(x => x.parentId === item.id).sort((a,b) => a.name.localeCompare(b.name));
     
     // If searching, we check if the item or any of its descendants match the filter
@@ -89,6 +90,13 @@ const TreeNode: React.FC<{
                     <span className={`text-sm font-bold truncate ${selectedId === item.id ? 'text-indigo-900' : 'text-slate-700'} ${matchesSearch && searchFilter ? 'bg-yellow-100 ring-2 ring-yellow-100 rounded' : ''}`}>{item.name}</span>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+                        className="p-1.5 text-slate-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50"
+                        title="Delete Item"
+                    >
+                        <TrashIcon className="w-4 h-4" />
+                    </button>
                     <span className="text-[9px] font-black bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full">{count}</span>
                 </div>
             </div>
@@ -106,6 +114,7 @@ const TreeNode: React.FC<{
                     isBulkSelected={isBulkSelected}
                     onToggleBulk={onToggleBulk}
                     searchFilter={searchFilter}
+                    onDelete={onDelete}
                 />
             ))}
         </div>
@@ -178,6 +187,27 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
         const next = new Set(bulkSelectedIds);
         if (next.has(id)) next.delete(id); else next.add(id);
         setBulkSelectedIds(next);
+    };
+
+    const handleDeleteSingle = (id: string) => {
+        const count = (usageCounts as any)[activeTab].get(id) || 0;
+        if (count > 0) {
+            alert(`This ${activeTab.slice(0, -1)} is currently used in ${count} records. Re-categorize those items before deleting.`);
+            return;
+        }
+        if (!confirm(`Delete this ${activeTab.slice(0, -1)}?`)) return;
+
+        switch (activeTab) {
+            case 'categories': onDeleteCategory(id); break;
+            case 'tags': onDeleteTag(id); break;
+            case 'counterparties': onDeleteCounterparty(id); break;
+            case 'locations': onDeleteLocation(id); break;
+            case 'users': onDeleteUser(id); break;
+            case 'transactionTypes': onDeleteTransactionType(id); break;
+            case 'accountTypes': onDeleteAccountType(id); break;
+            case 'accounts': onDeleteAccount(id); break;
+        }
+        if (selectedId === id) setSelectedId(null);
     };
 
     const handleBulkDelete = () => {
@@ -327,6 +357,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                                     isBulkSelected={bulkSelectedIds.has(item.id)}
                                     onToggleBulk={handleBulkToggle}
                                     searchFilter={searchFilter}
+                                    onDelete={handleDeleteSingle}
                                 />
                             ))
                         )}

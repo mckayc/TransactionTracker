@@ -112,7 +112,8 @@ const DonationModal: React.FC<DonationModalProps> = ({ isOpen, onClose, onSave, 
             alert("Please select an account.");
             return;
         }
-        const donationType = transactionTypes.find(t => t.balanceEffect === 'donation') || transactionTypes[0];
+        // Try finding donation type specifically, or any outgoing type
+        const donationType = transactionTypes.find(t => t.name.toLowerCase().includes('donation') || t.name.toLowerCase().includes('charity')) || transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
         const donationCategory = categories.find(c => c.name.toLowerCase().includes('donation') || c.name.toLowerCase().includes('charity')) || categories[0];
         items.forEach(item => {
             if (item.amount > 0) {

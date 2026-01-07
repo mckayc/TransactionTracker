@@ -40,7 +40,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
     const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
     const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set());
     const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
-    const [selectedEffects, setSelectedEffects] = useState<Set<BalanceEffect>>(new Set(['expense', 'income']));
+    const [selectedEffects, setSelectedEffects] = useState<Set<BalanceEffect>>(new Set(['outgoing', 'incoming']));
     const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
     const [selectedPayees, setSelectedPayees] = useState<Set<string>>(new Set());
     
@@ -73,7 +73,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setSelectedUsers(initialConfig.filters.userIds ? new Set(initialConfig.filters.userIds) : new Set(users.map(u => u.id)));
                 setSelectedCategories(initialConfig.filters.categoryIds ? new Set(initialConfig.filters.categoryIds) : new Set(categories.map(c => c.id)));
                 setSelectedTypes(initialConfig.filters.typeIds ? new Set(initialConfig.filters.typeIds) : new Set(transactionTypes.map(t => t.id)));
-                setSelectedEffects(new Set(initialConfig.filters.balanceEffects || ['expense', 'income']));
+                setSelectedEffects(new Set(initialConfig.filters.balanceEffects || ['outgoing', 'incoming']));
                 setSelectedTags(initialConfig.filters.tagIds ? new Set(initialConfig.filters.tagIds) : new Set(tags.map(t => t.id)));
                 // Fixed: Use counterpartyIds instead of payeeIds to match types.ts
                 setSelectedPayees(initialConfig.filters.counterpartyIds ? new Set(initialConfig.filters.counterpartyIds) : new Set(payees.map(p => p.id)));
@@ -94,7 +94,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                 setSelectedUsers(new Set(users.map(u => u.id)));
                 setSelectedCategories(new Set(categories.map(c => c.id)));
                 setSelectedTypes(new Set(transactionTypes.map(t => t.id)));
-                setSelectedEffects(new Set(['expense', 'income']));
+                setSelectedEffects(new Set(['outgoing', 'incoming']));
                 setSelectedTags(new Set(tags.map(t => t.id)));
                 setSelectedPayees(new Set(payees.map(p => p.id)));
                 setSelectedAmazonSources(new Set(['onsite', 'offsite', 'creator_connections']));
@@ -394,7 +394,7 @@ const ReportConfigModal: React.FC<ReportConfigModalProps> = ({
                                     
                                     {dataSource === 'financial' ? (
                                         <>
-                                            <div className="flex gap-2">{(['expense', 'income', 'investment'] as BalanceEffect[]).map(e => <button key={e} onClick={() => toggleEffect(e)} className={`px-2 py-1 text-xs rounded border uppercase font-bold ${selectedEffects.has(e) ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white text-slate-500'}`}>{e}</button>)}</div>
+                                            <div className="flex gap-2">{(['outgoing', 'incoming', 'neutral'] as BalanceEffect[]).map(e => <button key={e} onClick={() => toggleEffect(e)} className={`px-2 py-1 text-xs rounded border uppercase font-bold ${selectedEffects.has(e) ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white text-slate-500'}`}>{e}</button>)}</div>
                                             <MultiSelect label="Categories" options={categories} selectedIds={selectedCategories} onChange={setSelectedCategories} />
                                             <MultiSelect label="Types" options={transactionTypes} selectedIds={selectedTypes} onChange={setSelectedTypes} />
                                             <MultiSelect label="Accounts" options={accounts} selectedIds={selectedAccounts} onChange={setSelectedAccounts} />

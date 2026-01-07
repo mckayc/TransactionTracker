@@ -25,8 +25,9 @@ const LinkTransactionModal: React.FC<LinkTransactionModalProps> = ({ isOpen, onC
     // Initialize state when modal opens or transactions change
     useEffect(() => {
         if (isOpen) {
-            const transferType = transactionTypes.find(t => t.balanceEffect === 'transfer');
-            const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense');
+            // Fix: Use 'neutral' and 'outgoing' to match BalanceEffect type
+            const transferType = transactionTypes.find(t => t.balanceEffect === 'neutral');
+            const expenseType = transactionTypes.find(t => t.balanceEffect === 'outgoing');
             
             const initialConfigs: Record<string, any> = {};
             const initialIncluded = new Set<string>();
@@ -53,8 +54,9 @@ const LinkTransactionModal: React.FC<LinkTransactionModalProps> = ({ isOpen, onC
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
 
     const handleRoleChange = (txId: string, role: 'transfer' | 'expense') => {
-        const transferType = transactionTypes.find(t => t.balanceEffect === 'transfer');
-        const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense');
+        // Fix: Use 'neutral' and 'outgoing' to match BalanceEffect type
+        const transferType = transactionTypes.find(t => t.balanceEffect === 'neutral');
+        const expenseType = transactionTypes.find(t => t.balanceEffect === 'outgoing');
         
         setConfigs(prev => ({
             ...prev,

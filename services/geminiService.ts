@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule } from '../types';
 
@@ -216,7 +217,8 @@ export const extractTransactionsFromFiles = async (
     return result.transactions.map((tx: any) => ({
         ...tx,
         accountId,
-        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'income')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'expense')?.id || 'expense')
+        // Fix: Use 'incoming' and 'outgoing' to match BalanceEffect type
+        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'expense')
     }));
 };
 
@@ -263,7 +265,8 @@ export const extractTransactionsFromText = async (
     return result.transactions.map((tx: any) => ({
         ...tx,
         accountId,
-        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'income')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'expense')?.id || 'expense')
+        // Fix: Use 'incoming' and 'outgoing' to match BalanceEffect type
+        typeId: tx.type === 'income' ? (transactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'income') : (transactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'expense')
     }));
 };
 

@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, Counterparty, Category, User, Tag } from '../types';
 import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon } from './Icons';
@@ -178,15 +179,18 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
     const formatCurrency = (amt: number, typeId: string) => {
         const type = typeMap.get(typeId);
-        const sign = type?.balanceEffect === 'expense' ? '-' : (type?.balanceEffect === 'income' ? '+' : '');
+        const sign = type?.balanceEffect === 'outgoing' ? '-' : (type?.balanceEffect === 'incoming' ? '+' : '');
         return `${sign}${new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(amt))}`;
     };
 
     const getAmountColor = (typeId: string) => {
-        const effect = typeMap.get(typeId)?.balanceEffect;
-        if (effect === 'income') return 'text-emerald-600';
-        if (effect === 'expense') return 'text-rose-600';
-        if (effect === 'transfer') return 'text-indigo-600';
+        const type = typeMap.get(typeId);
+        if (!type) return 'text-slate-700';
+        if (type.color) return type.color;
+        
+        const effect = type.balanceEffect;
+        if (effect === 'incoming') return 'text-emerald-600';
+        if (effect === 'outgoing') return 'text-rose-600';
         return 'text-slate-700';
     };
 
@@ -267,7 +271,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                             {visibleColumns.has('counterparty') && <td className="px-4 py-3"><span className="text-sm font-medium text-indigo-600/60 italic">Grouped</span></td>}
                                             {visibleColumns.has('category') && <td className="px-4 py-3"><span className="text-[10px] font-black uppercase text-indigo-400 italic">Composite</span></td>}
                                             {visibleColumns.has('account') && <td className="px-4 py-3 text-xs font-bold text-indigo-400">{accountMap.get(item.primaryTx.accountId || '')}</td>}
-                                            {visibleColumns.has('amount') && <td className="px-4 py-3 text-right text-sm font-black text-indigo-700 font-mono underline decoration-dotted decoration-indigo-300">{formatCurrency(item.totalAmount, item.primaryTx.typeId)}</td>}
+                                            {visibleColumns.has('amount') && <td className={`px-4 py-3 text-right text-sm font-black text-indigo-700 font-mono underline decoration-dotted decoration-indigo-300`}>{formatCurrency(item.totalAmount, item.primaryTx.typeId)}</td>}
                                             {visibleColumns.has('actions') && (
                                                 <td className="px-4 py-3 text-center">
                                                     <button onClick={() => onManageLink?.(item.id)} className="p-2 bg-white text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all border border-indigo-200 shadow-sm" title="Manage Links"><LinkIcon className="w-4 h-4" /></button>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, BalanceEffect, Location } from '../types';
 import { generateUUID } from '../utils';
@@ -32,7 +33,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     const [city, setCity] = useState('');
     const [state, setState] = useState('');
     const [country, setCountry] = useState('');
-    const [balanceEffect, setBalanceEffect] = useState<BalanceEffect>('expense');
+    const [balanceEffect, setBalanceEffect] = useState<BalanceEffect>('outgoing');
     const [identifier, setIdentifier] = useState('');
     const [accountTypeId, setAccountTypeId] = useState('');
 
@@ -56,7 +57,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             else if (type === 'tags') setColor(item.color);
             else if (type === 'counterparties') { setParentId(item.parentId || ''); setNotes(item.notes || ''); setUserId(item.userId || ''); }
             else if (type === 'locations') { setCity(item.city || ''); setState(item.state || ''); setCountry(item.country || ''); }
-            else if (type === 'transactionTypes') { setBalanceEffect(item.balanceEffect); setColor(item.color || 'text-slate-600'); }
+            else if (type === 'transactionTypes') { setBalanceEffect(item.balanceEffect || 'outgoing'); setColor(item.color || 'text-slate-600'); }
             else if (type === 'accounts') { setIdentifier(item.identifier || ''); setAccountTypeId(item.accountTypeId || ''); }
         } else {
             // Reset for new
@@ -69,7 +70,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             setIdentifier('');
             setAccountTypeId(accountTypes[0]?.id || '');
             setUserId(users.find(u => u.isDefault)?.id || users[0]?.id || '');
-            setBalanceEffect('expense');
+            setBalanceEffect('outgoing');
             setColor(type === 'transactionTypes' ? 'text-rose-600' : 'bg-slate-100 text-slate-800');
         }
     }, [type, initialId, categories, tags, counterparties, locations, users, transactionTypes, accountTypes, accounts]);
@@ -97,6 +98,47 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity Label</label>
                         <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:ring-0 font-bold text-slate-800 text-lg shadow-sm" placeholder="Display name..." required autoFocus />
                     </div>
+
+                    {type === 'transactionTypes' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Balance Impact Mapping</label>
+                                <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200">
+                                    {(['incoming', 'outgoing', 'neutral'] as const).map(effect => (
+                                        <button
+                                            key={effect}
+                                            type="button"
+                                            onClick={() => setBalanceEffect(effect)}
+                                            className={`py-2.5 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${balanceEffect === effect ? 'bg-indigo-600 shadow-md text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                                        >
+                                            {effect === 'incoming' ? 'Incoming (+)' : effect === 'outgoing' ? 'Outgoing (-)' : 'Neutral'}
+                                        </button>
+                                    ))}
+                                </div>
+                                <p className="text-[10px] text-slate-400 italic ml-1">Determines whether transactions of this type increment or decrement your account totals.</p>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Visual Branding (Text Color)</label>
+                                <div className="grid grid-cols-5 gap-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 shadow-inner">
+                                    {[
+                                        'text-slate-600', 'text-red-600', 'text-orange-600', 'text-amber-600', 'text-yellow-600',
+                                        'text-lime-600', 'text-green-600', 'text-emerald-600', 'text-teal-600', 'text-cyan-600',
+                                        'text-sky-600', 'text-blue-600', 'text-indigo-600', 'text-violet-600', 'text-purple-600',
+                                        'text-fuchsia-600', 'text-pink-600', 'text-rose-600', 'text-gray-900', 'text-black'
+                                    ].map(c => (
+                                        <button
+                                            key={c}
+                                            type="button"
+                                            onClick={() => setColor(c)}
+                                            className={`py-3 rounded-xl border-2 transition-all flex items-center justify-center font-black text-xs ${color === c ? 'border-indigo-600 bg-white scale-110 shadow-lg' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                                        >
+                                            <span className={c}>ABC</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {type === 'accounts' && (
                         <div className="grid grid-cols-2 gap-4">

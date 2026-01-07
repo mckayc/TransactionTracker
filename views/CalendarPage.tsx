@@ -113,12 +113,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a.name])), [accounts]);
 
   const { itemsByDay, monthlySummary } = useMemo(() => {
-    const map = new Map<string, { transactions: Transaction[], events: ScheduledEvent[], tasks: TaskItem[], income: number, expenses: number, investments: number, donations: number, taxes: number }>();
+    const map = new Map<string, { transactions: Transaction[], events: ScheduledEvent[], tasks: TaskItem[], income: number, expenses: number, neutral: number }>();
     let monthlyIncome = 0;
     let monthlyExpenses = 0;
-    let monthlyInvestments = 0;
-    let monthlyDonations = 0;
-    let monthlyTaxes = 0;
+    let monthlyNeutral = 0;
     
     const currentMonth = currentDate.getMonth();
     const currentYear = currentDate.getFullYear();
@@ -128,39 +126,35 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
 
         // Use the ISO string directly to avoid timezone shifts
         const dateKey = tx.date; 
-        if (!map.has(dateKey)) map.set(dateKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0, taxes: 0 });
+        if (!map.has(dateKey)) map.set(dateKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, neutral: 0 });
         
         const entry = map.get(dateKey)!;
         entry.transactions.push(tx);
         
         const type = transactionTypeMap.get(tx.typeId);
         if (type) {
-            if (type.balanceEffect === 'income') entry.income += tx.amount;
-            else if (type.balanceEffect === 'expense') entry.expenses += tx.amount;
-            else if (type.balanceEffect === 'investment') entry.investments += tx.amount;
-            else if (type.balanceEffect === 'donation') entry.donations += tx.amount;
-            else if (type.balanceEffect === 'tax') entry.taxes += tx.amount;
+            if (type.balanceEffect === 'incoming') entry.income += tx.amount;
+            else if (type.balanceEffect === 'outgoing') entry.expenses += tx.amount;
+            else entry.neutral += tx.amount;
         }
 
         // Parse local for month view checks
         const parsedDate = parseISOLocal(tx.date);
         if (parsedDate.getMonth() === currentMonth && parsedDate.getFullYear() === currentYear && !tx.isParent) {
-             if (type?.balanceEffect === 'income') monthlyIncome += tx.amount;
-             else if (type?.balanceEffect === 'expense') monthlyExpenses += tx.amount;
-             else if (type?.balanceEffect === 'investment') monthlyInvestments += tx.amount;
-             else if (type?.balanceEffect === 'donation') monthlyDonations += tx.amount;
-             else if (type?.balanceEffect === 'tax') monthlyTaxes += tx.amount;
+             if (type?.balanceEffect === 'incoming') monthlyIncome += tx.amount;
+             else if (type?.balanceEffect === 'outgoing') monthlyExpenses += tx.amount;
+             else monthlyNeutral += tx.amount;
         }
     });
 
     tasks.forEach(task => {
         if (!task.dueDate) return;
         const key = task.dueDate;
-        if (!map.has(key)) map.set(key, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0, taxes: 0 });
+        if (!map.has(key)) map.set(key, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, neutral: 0 });
         map.get(key)!.tasks.push(task);
     });
 
-    return { itemsByDay: map, monthlySummary: { income: monthlyIncome, expenses: monthlyExpenses, investments: monthlyInvestments, donations: monthlyDonations, taxes: monthlyTaxes } };
+    return { itemsByDay: map, monthlySummary: { income: monthlyIncome, expenses: monthlyExpenses, neutral: monthlyNeutral } };
   }, [transactions, tasks, currentDate, selectedUserIds, transactionTypeMap]);
 
   const days = useMemo(() => {
@@ -213,13 +207,12 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
 
   const getItemStyle = (tx: Transaction) => {
       const type = transactionTypeMap.get(tx.typeId);
-      const effect = type?.balanceEffect || 'expense';
+      if (type?.color) return `${type.color} bg-white border-l-4 shadow-sm border-current hover:bg-slate-50`;
+      
+      const effect = type?.balanceEffect || 'outgoing';
       switch (effect) {
-          case 'income': return 'bg-emerald-50 text-emerald-800 border-l-4 border-emerald-500 hover:bg-emerald-100';
-          case 'expense': return 'bg-rose-50 text-rose-800 border-l-4 border-rose-500 hover:bg-rose-100';
-          case 'tax': return 'bg-orange-50 text-orange-800 border-l-4 border-orange-500 hover:bg-orange-100';
-          case 'investment': return 'bg-purple-50 text-purple-800 border-l-4 border-purple-500 hover:bg-purple-100';
-          case 'donation': return 'bg-sky-50 text-sky-800 border-l-4 border-sky-500 hover:bg-sky-100';
+          case 'incoming': return 'bg-emerald-50 text-emerald-800 border-l-4 border-emerald-500 hover:bg-emerald-100';
+          case 'outgoing': return 'bg-rose-50 text-rose-800 border-l-4 border-rose-500 hover:bg-rose-100';
           default: return 'bg-slate-50 text-slate-700 border-l-4 border-slate-400 hover:bg-slate-200';
       }
   };
@@ -227,7 +220,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   const activeSummary = useMemo(() => {
       if (selectedDate) {
           const key = formatDate(selectedDate);
-          return itemsByDay.get(key) || { income: 0, expenses: 0, investments: 0, donations: 0, taxes: 0, transactions: [], tasks: [] };
+          return itemsByDay.get(key) || { income: 0, expenses: 0, neutral: 0, transactions: [], tasks: [] };
       }
       return { ...monthlySummary, transactions: [], tasks: [] };
   }, [selectedDate, monthlySummary, itemsByDay]);
@@ -269,12 +262,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
-              <SummaryWidget title="Income" value={formatCurrency(activeSummary.income)} helpText={summaryContextLabel} colorClass="text-emerald-600" isFocus={!!selectedDate} />
-              <SummaryWidget title="Expenses" value={formatCurrency(activeSummary.expenses)} helpText={summaryContextLabel} colorClass="text-rose-600" isFocus={!!selectedDate} />
-              <SummaryWidget title="Taxes" value={formatCurrency(activeSummary.taxes || 0)} helpText={summaryContextLabel} colorClass="text-orange-600" isFocus={!!selectedDate} />
-              <SummaryWidget title="Investments" value={formatCurrency(activeSummary.investments)} helpText={summaryContextLabel} colorClass="text-purple-600" isFocus={!!selectedDate} />
-              <SummaryWidget title="Donations" value={formatCurrency(activeSummary.donations)} helpText={summaryContextLabel} colorClass="text-sky-600" isFocus={!!selectedDate} />
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 flex-shrink-0">
+              <SummaryWidget title="Incoming" value={formatCurrency(activeSummary.income)} helpText={summaryContextLabel} colorClass="text-emerald-600" isFocus={!!selectedDate} />
+              <SummaryWidget title="Outgoing" value={formatCurrency(activeSummary.expenses)} helpText={summaryContextLabel} colorClass="text-rose-600" isFocus={!!selectedDate} />
+              <SummaryWidget title="Neutral" value={formatCurrency(activeSummary.neutral || 0)} helpText={summaryContextLabel} colorClass="text-slate-600" isFocus={!!selectedDate} />
           </div>
 
           {/* Main Calendar Section */}
@@ -362,11 +353,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                                                 {date.getDate()}
                                             </span>
                                         </div>
-                                        {data && (data.income !== 0 || data.expenses !== 0 || data.taxes !== 0) && (
+                                        {data && (data.income !== 0 || data.expenses !== 0) && (
                                             <div className="text-[9px] font-mono text-right leading-tight">
                                                 {data.income > 0 && <p className="text-emerald-600 font-bold">+{Math.round(data.income)}</p>}
                                                 {data.expenses > 0 && <p className="text-rose-600 font-bold">-{Math.round(data.expenses)}</p>}
-                                                {data.taxes > 0 && <p className="text-orange-600 font-bold">T:{Math.round(data.taxes)}</p>}
                                             </div>
                                         )}
                                     </div>
@@ -434,11 +424,11 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                           {/* Daily Stats Summary in Sidebar */}
                           <div className="grid grid-cols-2 gap-3">
                               <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-xl">
-                                  <p className="text-[10px] font-black text-emerald-600 uppercase">Daily Income</p>
+                                  <p className="text-[10px] font-black text-emerald-600 uppercase">Daily Incoming</p>
                                   <p className="text-xl font-black text-emerald-700">{formatCurrency(activeSummary.income)}</p>
                               </div>
                               <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl">
-                                  <p className="text-[10px] font-black text-rose-600 uppercase">Daily Spent</p>
+                                  <p className="text-[10px] font-black text-rose-600 uppercase">Daily Outgoing</p>
                                   <p className="text-xl font-black text-rose-700">{formatCurrency(activeSummary.expenses)}</p>
                               </div>
                           </div>
@@ -486,32 +476,36 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
                                 <span className="bg-slate-100 text-slate-500 text-[10px] font-bold px-2 py-0.5 rounded-full">{(activeSummary as any).transactions?.length || 0} items</span>
                               </div>
                               <div className="space-y-2">
-                                  {(activeSummary as any).transactions?.length > 0 ? (activeSummary as any).transactions.map((tx: Transaction) => (
-                                      <div 
-                                        key={tx.id} 
-                                        onClick={() => handleTransactionClick(tx)}
-                                        className={`p-4 rounded-xl border-2 hover:shadow-md transition-all cursor-pointer ${getItemStyle(tx)} bg-white relative group`}
-                                      >
-                                          <div className="flex justify-between items-start mb-2">
-                                              <div className="min-w-0 flex-1">
-                                                  <h5 className="font-black text-slate-800 truncate pr-2" title={tx.description}>{tx.description}</h5>
-                                                  <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">
-                                                      {categoryMap.get(tx.categoryId) || 'Other'} • {accountMap.get(tx.accountId || '') || 'Unknown Account'}
-                                                  </p>
+                                  {(activeSummary as any).transactions?.length > 0 ? (activeSummary as any).transactions.map((tx: Transaction) => {
+                                      const tType = transactionTypeMap.get(tx.typeId);
+                                      const isIncoming = tType?.balanceEffect === 'incoming';
+                                      return (
+                                          <div 
+                                            key={tx.id} 
+                                            onClick={() => handleTransactionClick(tx)}
+                                            className={`p-4 rounded-xl border-2 hover:shadow-md transition-all cursor-pointer ${getItemStyle(tx)} bg-white relative group`}
+                                          >
+                                              <div className="flex justify-between items-start mb-2">
+                                                  <div className="min-w-0 flex-1">
+                                                      <h5 className="font-black text-slate-800 truncate pr-2" title={tx.description}>{tx.description}</h5>
+                                                      <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">
+                                                          {categoryMap.get(tx.categoryId) || 'Other'} • {accountMap.get(tx.accountId || '') || 'Unknown Account'}
+                                                      </p>
+                                                  </div>
+                                                  <div className="text-right flex-shrink-0">
+                                                      <p className={`font-black text-sm font-mono tracking-tighter ${isIncoming ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                        {isIncoming ? '+' : '-'}{formatCurrency(tx.amount)}
+                                                      </p>
+                                                  </div>
                                               </div>
-                                              <div className="text-right flex-shrink-0">
-                                                  <p className="font-black text-sm font-mono tracking-tighter">
-                                                    {transactionTypeMap.get(tx.typeId)?.balanceEffect === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
-                                                  </p>
+                                              <div className="flex flex-wrap gap-1 mt-1">
+                                                  <span className="text-[9px] font-black uppercase bg-white/50 px-2 py-0.5 rounded-full shadow-sm text-slate-600 border border-slate-200/50">
+                                                      {tType?.name || 'Entry'}
+                                                  </span>
                                               </div>
                                           </div>
-                                          <div className="flex flex-wrap gap-1 mt-1">
-                                              <span className="text-[9px] font-black uppercase bg-white/50 px-2 py-0.5 rounded-full shadow-sm text-slate-600 border border-slate-200/50">
-                                                  {transactionTypeMap.get(tx.typeId)?.name || 'Entry'}
-                                              </span>
-                                          </div>
-                                      </div>
-                                  )) : (
+                                      );
+                                  }) : (
                                       <div className="text-center py-6 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl">
                                           <p className="text-sm text-slate-400 font-medium italic">No financial activity recorded.</p>
                                       </div>

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import type { Transaction } from '../types';
 import Loader from './Loader';
@@ -16,8 +17,8 @@ interface ResultsDisplayProps {
 const RecentlyAddedTable: React.FC<{transactions: Transaction[]}> = ({transactions}) => {
     const formatCurrency = (amount: number, typeId: string) => {
         const value = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(amount));
-        // A simple check as we don't have the full map here. It covers the most common default cases.
-        return typeId.includes('expense') ? `-${value}` : value;
+        const sign = typeId.includes('incoming') ? '+' : (typeId.includes('outgoing') ? '-' : '');
+        return `${sign}${value}`;
     }
     return (
         <div className="overflow-hidden border border-slate-200 rounded-lg">
@@ -34,7 +35,7 @@ const RecentlyAddedTable: React.FC<{transactions: Transaction[]}> = ({transactio
                         <tr key={tx.id}>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-500">{tx.date}</td>
                             <td className="px-4 py-2 whitespace-nowrap text-sm text-slate-800 truncate max-w-xs">{tx.description}</td>
-                            <td className={`px-4 py-2 whitespace-nowrap text-sm text-right font-medium ${tx.typeId.includes('expense') ? 'text-red-600' : 'text-green-600'}`}>
+                            <td className={`px-4 py-2 whitespace-nowrap text-sm text-right font-medium ${tx.typeId.includes('incoming') ? 'text-green-600' : (tx.typeId.includes('outgoing') ? 'text-red-600' : 'text-slate-600')}`}>
                                 {formatCurrency(tx.amount, tx.typeId)}
                             </td>
                         </tr>

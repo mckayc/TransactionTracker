@@ -142,7 +142,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                             {sortedTransactions.map(tx => {
                                 const matchedRule = tx.appliedRuleId ? ruleMap.get(tx.appliedRuleId) : null;
                                 const type = typeMap.get(tx.typeId);
-                                const amountColor = type?.balanceEffect === 'income' ? 'text-green-600' : type?.balanceEffect === 'neutral' ? 'text-slate-400' : 'text-red-600';
+                                // Fix: Use 'incoming' to match BalanceEffect type
+                                const amountColor = type?.balanceEffect === 'incoming' ? 'text-green-600' : type?.balanceEffect === 'neutral' ? 'text-slate-400' : 'text-red-600';
                                 return (
                                     <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-30 bg-slate-50' : 'hover:bg-slate-50'}`}>
                                         <td className="p-2 text-center border-b border-slate-100"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-3.5 w-3.5" /></td>

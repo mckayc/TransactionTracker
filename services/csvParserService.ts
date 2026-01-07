@@ -196,9 +196,10 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     type: lowerHeaders.findIndex(p => p.includes('type'))
   };
 
-  const expenseType = transactionTypes.find(t => t.balanceEffect === 'expense') || transactionTypes[0];
-  const incomeType = transactionTypes.find(t => t.balanceEffect === 'income') || transactionTypes[0];
-  const transferType = transactionTypes.find(t => t.balanceEffect === 'transfer') || transactionTypes[0];
+  // Fix: Use 'outgoing', 'incoming', and 'neutral' to match BalanceEffect type
+  const expenseType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
+  const incomeType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
+  const transferType = transactionTypes.find(t => t.balanceEffect === 'neutral') || transactionTypes[0];
 
   for (let i = headerIndex + 1; i < lines.length; i++) {
     const line = lines[i].trim();
