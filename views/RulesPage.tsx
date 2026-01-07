@@ -1,10 +1,9 @@
 import React, { useState, useMemo, useRef } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft } from '../types';
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, PlayIcon, CloseIcon, FileCodeIcon, UploadIcon } from '../components/Icons';
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
 import { parseRulesFromFile, parseRulesFromLines } from '../services/csvParserService';
-import { generateUUID } from '../utils';
 
 interface RulesPageProps {
     rules: ReconciliationRule[];
@@ -32,7 +31,7 @@ interface RulesPageProps {
 }
 
 const RULE_DOMAINS = [
-    { id: 'all', label: 'All Domains', icon: <ShieldCheckIcon className="w-4 h-4" /> },
+    { id: 'all', label: 'Global Rules', icon: <ShieldCheckIcon className="w-4 h-4" /> },
     { id: 'description', label: 'Descriptions', icon: <TableIcon className="w-4 h-4" /> },
     { id: 'counterpartyId', label: 'Entities', icon: <BoxIcon className="w-4 h-4" /> },
     { id: 'locationId', label: 'Locations', icon: <MapPinIcon className="w-4 h-4" /> },
@@ -74,8 +73,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
             setSelectedRuleId(null);
         }
     };
-
-    // --- Import Logic ---
 
     const processDrafts = (rawRules: ReconciliationRule[]) => {
         const drafts: RuleImportDraft[] = rawRules.map(r => {
@@ -149,21 +146,21 @@ const RulesPage: React.FC<RulesPageProps> = ({
         <div className="h-full flex flex-col gap-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Automation logic</h1>
+                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Automation Engine</h1>
                     <p className="text-sm text-slate-500">Programmatic ingestion rules for the system ledger.</p>
                 </div>
                 <div className="flex gap-3">
                     <button onClick={() => setIsImportModalOpen(true)} className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl shadow-sm hover:bg-slate-50 font-bold transition-all transform active:scale-95">
-                        <CloudArrowUpIcon className="w-5 h-5 text-indigo-500" /> Import Logic
+                        <CloudArrowUpIcon className="w-5 h-5 text-indigo-500" /> Import Rules
                     </button>
-                    <button onClick={() => setIsCreating(true)} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 font-black transition-all transform active:scale-95">
-                        <AddIcon className="w-5 h-5" /> New Rule
+                    <button onClick={() => { setIsCreating(true); setSelectedRuleId(null); }} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 font-black transition-all transform active:scale-95">
+                        <AddIcon className="w-5 h-5" /> New Logic
                     </button>
                 </div>
             </div>
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* LEFT: SCOPES */}
+                {/* COLUMN 1: SCOPES */}
                 <div className="w-56 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col p-3 flex-shrink-0">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Filter Scopes</p>
                     <div className="space-y-0.5 overflow-y-auto custom-scrollbar">
@@ -171,7 +168,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             <button 
                                 key={domain.id} 
                                 onClick={() => setSelectedDomain(domain.id)}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedDomain === domain.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
+                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedDomain === domain.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
                             >
                                 {domain.icon}
                                 <span>{domain.label}</span>
@@ -180,7 +177,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     </div>
                 </div>
 
-                {/* MIDDLE: RULES LIST */}
+                {/* COLUMN 2: STREAM */}
                 <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
                     <div className="p-3 border-b flex items-center gap-3 bg-slate-50 rounded-t-2xl">
                         <input 
@@ -190,15 +187,15 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             onChange={() => setBulkSelectedIds(bulkSelectedIds.size === filteredRules.length ? new Set() : new Set(filteredRules.map(r => r.id)))}
                         />
                         <div className="relative flex-1">
-                            <input type="text" placeholder="Search logic..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
+                            <input type="text" placeholder="Search rules..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
                             <SearchCircleIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1 bg-white/50">
                         {filteredRules.length === 0 ? (
                             <div className="p-10 text-center text-slate-300">
                                 <BoxIcon className="w-12 h-12 mx-auto mb-2 opacity-10" />
-                                <p className="text-[10px] font-black uppercase">No rules matched</p>
+                                <p className="text-[10px] font-black uppercase">Empty</p>
                             </div>
                         ) : (
                             filteredRules.map(r => (
@@ -221,7 +218,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         />
                                         <div className="min-w-0">
                                             <p className={`text-xs font-bold truncate ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-700'}`}>{r.name}</p>
-                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{r.ruleCategory || 'general'}</p>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{r.ruleCategory || 'standard'}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -237,7 +234,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     )}
                 </div>
 
-                {/* RIGHT: EDITOR PREVIEW */}
+                {/* COLUMN 3: EDITOR */}
                 <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden relative">
                     {(selectedRuleId || isCreating) ? (
                         <RuleModal 
@@ -259,25 +256,24 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         />
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
-                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8">
+                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle">
                                 <ShieldCheckIcon className="w-12 h-12 text-indigo-200" />
                             </div>
-                            <h3 className="text-2xl font-black text-slate-800">Logic Hub</h3>
+                            <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Logic Workbench</h3>
                             <p className="text-slate-500 max-w-sm mt-4 font-medium leading-relaxed">Design rules to standardize your ledger automatically. Define criteria for descriptions, amounts, or accounts to auto-apply categories and entities.</p>
-                            <button onClick={() => setIsCreating(true)} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">New System Rule</button>
+                            <button onClick={() => setIsCreating(true)} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Start Designing</button>
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* IMPORT LOGIC MODAL */}
             {isImportModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex justify-center items-center p-4" onClick={() => setIsImportModalOpen(false)}>
                     <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                             <div>
-                                <h3 className="text-xl font-black text-slate-800">Import System Logic</h3>
-                                <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-0.5">Bulk Rule Ingestion</p>
+                                <h3 className="text-xl font-black text-slate-800">Rule Ingestion</h3>
+                                <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-0.5">Bulk logic upload</p>
                             </div>
                             <button onClick={() => setIsImportModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                         </div>
@@ -285,10 +281,10 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         <div className="p-8 space-y-6">
                             <div className="flex bg-slate-100 p-1 rounded-xl">
                                 <button onClick={() => setImportMethod('upload')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${importMethod === 'upload' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <UploadIcon className="w-4 h-4" /> CSV Upload
+                                    <UploadIcon className="w-4 h-4" /> File
                                 </button>
                                 <button onClick={() => setImportMethod('paste')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${importMethod === 'paste' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <FileCodeIcon className="w-4 h-4" /> Paste Text
+                                    <FileCodeIcon className="w-4 h-4" /> Text
                                 </button>
                             </div>
 
@@ -299,8 +295,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         className="border-2 border-dashed border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center text-center group hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer"
                                     >
                                         <CloudArrowUpIcon className="w-12 h-12 text-slate-300 group-hover:text-indigo-500 mb-4 transition-colors" />
-                                        <p className="text-sm font-bold text-slate-600">Click to select a Rule Manifest CSV</p>
-                                        <p className="text-[10px] text-slate-400 mt-1 uppercase font-black">Columns: Rule Name, Match Field, Operator, Match Value, Set Category, Set Counterparty</p>
+                                        <p className="text-sm font-bold text-slate-600">Select Rule CSV</p>
                                     </div>
                                     <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
                                 </div>
@@ -309,15 +304,15 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                     <textarea 
                                         value={pastedRules}
                                         onChange={e => setPastedRules(e.target.value)}
-                                        placeholder="Paste CSV rows here..."
-                                        className="w-full h-64 p-4 font-mono text-[11px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none"
+                                        placeholder="Paste CSV rows..."
+                                        className="w-full h-64 p-4 font-mono text-[11px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none shadow-inner"
                                     />
                                     <button 
                                         onClick={handlePasteSubmit}
                                         disabled={!pastedRules.trim()}
                                         className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl disabled:opacity-30"
                                     >
-                                        Process logic block
+                                        Commit logic
                                     </button>
                                 </div>
                             )}

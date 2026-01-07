@@ -5,7 +5,6 @@ import Dashboard from './views/Dashboard';
 import ImportPage from './views/ImportPage';
 import AllTransactions from './views/AllTransactions';
 import CalendarPage from './views/CalendarPage';
-import AccountsPage from './views/AccountsPage';
 import Reports from './views/Reports';
 import SettingsPage from './views/SettingsPage';
 import TasksPage from './views/TasksPage';
@@ -19,8 +18,7 @@ import AmazonIntegration from './views/integrations/AmazonIntegration';
 import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import ContentHub from './views/integrations/ContentHub';
 import Chatbot from './components/Chatbot';
-import Loader from './components/Loader';
-import { MenuIcon, CloseIcon, SparklesIcon, ExclamationTriangleIcon, RepeatIcon } from './components/Icons';
+import { MenuIcon, RepeatIcon, SparklesIcon, ExclamationTriangleIcon } from './components/Icons';
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
 
@@ -291,12 +289,15 @@ const App: React.FC = () => {
                         <ManagementHub 
                             transactions={transactions} accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} 
                             locations={locations} users={users} transactionTypes={transactionTypes} accountTypes={accountTypes}
+                            onSaveAccount={(a) => bulkUpdateData('accounts', [a], setAccounts)}
+                            onDeleteAccount={(id) => setAccounts(prev => { const next = prev.filter(x => x.id !== id); api.save('accounts', next); return next; })}
                             onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
                             onDeleteCategory={(id) => setCategories(prev => { const next = prev.filter(c => c.id !== id); api.save('categories', next); return next; })}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
                             onDeleteTag={(id) => setTags(prev => { const next = prev.filter(t => t.id !== id); api.save('tags', next); return next; })}
                             onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
                             onDeleteCounterparty={(id) => setCounterparties(prev => { const next = prev.filter(p => p.id !== id); api.save('counterparties', next); return next; })}
+                            onSaveCounterparties={(ps) => bulkUpdateData('counterparties', ps, setCounterparties)}
                             onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations)}
                             onDeleteLocation={(id) => setLocations(prev => { const next = prev.filter(l => l.id !== id); api.save('locations', next); return next; })}
                             onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
@@ -305,16 +306,6 @@ const App: React.FC = () => {
                             onDeleteTransactionType={(id) => setTransactionTypes(prev => { const next = prev.filter(t => t.id !== id); api.save('transactionTypes', next); return next; })}
                             onSaveAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes)}
                             onDeleteAccountType={(id) => setAccountTypes(prev => { const next = prev.filter(t => t.id !== id); api.save('accountTypes', next); return next; })}
-                        />
-                    )}
-                    {currentView === 'accounts' && (
-                        <AccountsPage 
-                            accounts={accounts} accountTypes={accountTypes} 
-                            onAddAccount={(a) => bulkUpdateData('accounts', [a], setAccounts)}
-                            onUpdateAccount={(a) => bulkUpdateData('accounts', [a], setAccounts)}
-                            onRemoveAccount={(id) => setAccounts(prev => { const next = prev.filter(x => x.id !== id); api.save('accounts', next); return next; })}
-                            onAddAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes)}
-                            onRemoveAccountType={(id) => setAccountTypes(prev => { const next = prev.filter(x => x.id !== id); api.save('accountTypes', next); return next; })}
                         />
                     )}
                     {currentView === 'reports' && (

@@ -54,7 +54,7 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
             </div>
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* LEFT: WORKSPACES & FILTERS */}
+                {/* COLUMN 1: TAXONOMY & WORKSPACES */}
                 <div className="w-64 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col p-4 flex-shrink-0 min-h-0">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 px-2">State Registry</p>
                     <div className="space-y-1 mb-8">
@@ -81,7 +81,7 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
                     </div>
                 </div>
 
-                {/* MIDDLE: STACK LIST */}
+                {/* COLUMN 2: STREAM */}
                 <div className="w-96 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
                     <div className="p-3 border-b bg-slate-50 rounded-t-2xl">
                         <div className="relative">
@@ -120,7 +120,6 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
                                         <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full flex-shrink-0 shadow-sm ${t.priority === 'high' ? 'bg-red-500 text-white' : t.priority === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-600'}`}>{t.priority}</span>
                                     </div>
                                     
-                                    {/* Completion Meter */}
                                     {t.subtasks && t.subtasks.length > 0 && (
                                         <div className="absolute bottom-0 left-0 h-1 bg-indigo-500/10 w-full">
                                             <div 
@@ -135,7 +134,7 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
                     </div>
                 </div>
 
-                {/* RIGHT: CONSOLE */}
+                {/* COLUMN 3: CONSOLE */}
                 <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 relative">
                     {selectedTaskId && activeTask ? (
                         <div className="flex flex-col h-full animate-fade-in bg-white">

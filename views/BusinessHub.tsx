@@ -26,10 +26,12 @@ interface ContentBlock {
     indent: number;
 }
 
-// --- Clipboard Utility (Self-Hosted/Insecure Fallback) ---
+// --- Clipboard Utility (Workaround for Insecure/Self-Hosted Environments) ---
 const copyToClipboard = (text: string) => {
     if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(() => alert("Copied to clipboard!")).catch(() => fallbackCopy(text));
+        navigator.clipboard.writeText(text)
+            .then(() => alert("Copied to clipboard!"))
+            .catch(() => fallbackCopy(text));
     } else {
         fallbackCopy(text);
     }
@@ -38,6 +40,7 @@ const copyToClipboard = (text: string) => {
 const fallbackCopy = (text: string) => {
     const textArea = document.createElement("textarea");
     textArea.value = text;
+    // Ensure it's not visible but part of the DOM for selection
     textArea.style.position = "fixed";
     textArea.style.left = "-9999px";
     textArea.style.top = "0";
@@ -45,15 +48,16 @@ const fallbackCopy = (text: string) => {
     textArea.focus();
     textArea.select();
     try {
-        document.execCommand('copy');
-        alert("Copied to clipboard (fallback mode)!");
+        const successful = document.execCommand('copy');
+        if (successful) alert("Copied to clipboard (fallback mode)!");
+        else alert("Failed to copy. Please check browser permissions.");
     } catch (err) {
         console.error('Fallback copy failed', err);
     }
     document.body.removeChild(textArea);
 };
 
-// --- Markdown Serialization ---
+// --- Markdown Logic ---
 
 const parseMarkdownToBlocks = (markdown: string): ContentBlock[] => {
     if (!markdown || markdown.trim() === '') {
@@ -167,24 +171,34 @@ const BlockEditor: React.FC<{
     const sortCheckedToBottom = () => {
         const next: ContentBlock[] = [];
         let i = 0;
+        
         while (i < internalBlocks.length) {
+            // Check if we are starting a contiguous checklist group
             if (internalBlocks[i].type === 'todo') {
-                const todoGroup: { block: ContentBlock; subItems: ContentBlock[] }[] = [];
+                const todoBranches: { parent: ContentBlock; descendants: ContentBlock[] }[] = [];
+                
+                // Group each base todo with its children
                 while (i < internalBlocks.length && internalBlocks[i].type === 'todo') {
                     const currentTodo = internalBlocks[i];
-                    const subItems: ContentBlock[] = [];
+                    const descendants: ContentBlock[] = [];
+                    const baseIndent = currentTodo.indent;
                     i++;
-                    while (i < internalBlocks.length && internalBlocks[i].indent > currentTodo.indent) {
-                        subItems.push(internalBlocks[i]);
+                    
+                    // Collect everything more indented that follows immediately
+                    while (i < internalBlocks.length && internalBlocks[i].indent > baseIndent) {
+                        descendants.push(internalBlocks[i]);
                         i++;
                     }
-                    todoGroup.push({ block: currentTodo, subItems });
+                    todoBranches.push({ parent: currentTodo, descendants });
                 }
-                const unchecked = todoGroup.filter(g => !g.block.checked);
-                const checked = todoGroup.filter(g => g.block.checked);
-                [...unchecked, ...checked].forEach(group => {
-                    next.push(group.block);
-                    next.push(...group.subItems);
+                
+                // Partition branches: Incomplete first, then complete
+                const incomplete = todoBranches.filter(t => !t.parent.checked);
+                const complete = todoBranches.filter(t => t.parent.checked);
+                
+                [...incomplete, ...complete].forEach(branch => {
+                    next.push(branch.parent);
+                    next.push(...branch.descendants);
                 });
             } else {
                 next.push(internalBlocks[i]);
@@ -309,7 +323,9 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                 return matchesSearch && matchesType;
             })
             .sort((a, b) => {
+                // Completed (resolved) items always sink to the bottom
                 if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+                // Then sort by most recently updated
                 return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
             });
     }, [notes, searchTerm, selectedTypeFilter]);
@@ -340,7 +356,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
 
     const handleCopyForAi = () => {
         if (!activeNote) return;
-        const aiPrompt = `Please analyze the following business note and provide insights or suggestions:\n\nTITLE: ${activeNote.title}\nTYPE: ${activeNote.type}\nCONTENT:\n${activeNote.content}`;
+        const aiPrompt = `PROMPT FOR AI ANALYSIS:\n\nAnalyze the following log entry from my business operations journal. Identify any underlying patterns, potential efficiency gains, or technical debt risks mentioned in the text.\n\nTITLE: ${activeNote.title}\nTYPE: ${activeNote.type}\n\nCONTENT:\n${activeNote.content}`;
         copyToClipboard(aiPrompt);
     };
 

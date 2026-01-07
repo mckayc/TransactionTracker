@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import type { RuleCondition, Account, RuleLogic } from '../types';
-import { DeleteIcon, AddIcon, DragHandleIcon, InfoIcon, TableIcon, BoxIcon, MapPinIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon } from './Icons';
+import React from 'react';
+import type { RuleCondition, Account } from '../types';
+import { DeleteIcon, AddIcon, DragHandleIcon, ShieldCheckIcon } from './Icons';
 import { generateUUID } from '../utils';
 
 interface RuleBuilderProps {
@@ -45,14 +45,14 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
     };
 
     return (
-        <div className={`space-y-3 ${depth > 0 ? 'pl-6 border-l-2 border-indigo-200' : ''}`}>
+        <div className={`space-y-4 ${depth > 0 ? 'pl-6 border-l-2 border-indigo-200' : ''}`}>
             {items.map((condition, index) => (
                 <div key={condition.id} className="relative">
                     {condition.type === 'group' ? (
-                        <div className="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 shadow-inner">
-                            <div className="flex justify-between items-center mb-3">
+                        <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 shadow-inner">
+                            <div className="flex justify-between items-center mb-4">
                                 <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                                    <ShieldCheckIcon className="w-3 h-3" /> Logic Group
+                                    <ShieldCheckIcon className="w-3 h-3" /> Logic Cluster
                                 </span>
                                 <button type="button" onClick={() => handleDeleteCondition(index)} className="text-slate-300 hover:text-red-500 p-1"><DeleteIcon className="w-4 h-4" /></button>
                             </div>
@@ -64,22 +64,21 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                             />
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-center bg-white p-3 rounded-xl border border-slate-200 shadow-sm transition-all hover:border-indigo-300">
+                        <div className="grid grid-cols-1 xl:grid-cols-12 gap-3 items-center bg-white p-4 rounded-2xl border border-slate-100 shadow-sm transition-all hover:border-indigo-300 hover:shadow-md">
                             <div className="xl:col-span-1 flex items-center gap-2">
-                                <div className="text-slate-300"><DragHandleIcon className="w-4 h-4" /></div>
+                                <div className="text-slate-200"><DragHandleIcon className="w-4 h-4" /></div>
                             </div>
                             
                             <div className="xl:col-span-2">
                                 <select 
                                     value={condition.field} 
                                     onChange={(e) => handleUpdateCondition(index, 'field', e.target.value)}
-                                    className="w-full p-2 text-xs border rounded-lg bg-slate-50 font-bold text-indigo-800"
+                                    className="w-full p-2.5 text-xs border rounded-xl bg-slate-50 font-black text-indigo-900 border-none shadow-inner"
                                 >
                                     <option value="description">Description</option>
                                     <option value="amount">Amount</option>
                                     <option value="accountId">Account</option>
-                                    <option value="payeeId">Payee</option>
-                                    <option value="merchantId">Merchant</option>
+                                    <option value="counterpartyId">Counterparty</option>
                                     <option value="locationId">Location</option>
                                     <option value="metadata">Metadata Key</option>
                                 </select>
@@ -91,7 +90,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                     value={condition.metadataKey || ''} 
                                     onChange={(e) => handleUpdateCondition(index, 'metadataKey', e.target.value)}
                                     placeholder="Column Name"
-                                    className="w-full p-2 text-xs border border-indigo-100 rounded-lg font-bold"
+                                    className="w-full p-2.5 text-xs border rounded-xl font-bold bg-slate-50"
                                 />
                             </div>
 
@@ -99,9 +98,9 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                 <select 
                                     value={condition.operator} 
                                     onChange={(e) => handleUpdateCondition(index, 'operator', e.target.value)}
-                                    className="w-full p-2 text-xs border rounded-lg bg-slate-50 font-medium"
+                                    className="w-full p-2.5 text-xs border rounded-xl bg-slate-50 font-medium border-none shadow-inner"
                                 >
-                                    {['description', 'metadata', 'payeeId', 'merchantId', 'locationId'].includes(condition.field!) && (
+                                    {['description', 'metadata', 'counterpartyId', 'locationId'].includes(condition.field!) && (
                                         <><option value="contains">Contains</option><option value="does_not_contain">Doesn't Contain</option><option value="starts_with">Starts With</option><option value="ends_with">Ends With</option><option value="equals">Equals</option><option value="regex_match">Regex Match</option></>
                                     )}
                                     {condition.field === 'amount' && (
@@ -118,10 +117,10 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                     <select 
                                         value={condition.value} 
                                         onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                        className="w-full p-2 text-xs border rounded-lg focus:border-indigo-500 outline-none"
+                                        className="w-full p-2.5 text-xs border rounded-xl font-bold bg-slate-50 border-none shadow-inner"
                                     >
                                         <option value="">Select Account...</option>
-                                        {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                                        {[...accounts].sort((a,b) => a.name.localeCompare(b.name)).map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
                                     </select>
                                 ) : (
                                     <input 
@@ -129,24 +128,24 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                         value={condition.value} 
                                         onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
                                         placeholder="Comparison value..."
-                                        className="w-full p-2 text-xs border rounded-lg focus:border-indigo-500 outline-none"
+                                        className="w-full p-2.5 text-xs border rounded-xl font-bold bg-slate-50 border-none shadow-inner"
                                     />
                                 )}
                             </div>
 
                             <div className="xl:col-span-1 flex justify-end">
-                                <button type="button" onClick={() => handleDeleteCondition(index)} className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg transition-all"><DeleteIcon className="w-4 h-4" /></button>
+                                <button type="button" onClick={() => handleDeleteCondition(index)} className="p-2 text-slate-300 hover:text-red-500 rounded-lg transition-all hover:bg-red-50"><DeleteIcon className="w-5 h-5" /></button>
                             </div>
                         </div>
                     )}
 
                     {index < items.length - 1 && (
                         <div className="flex justify-center py-2 relative">
-                            <div className="absolute top-0 bottom-0 w-px bg-slate-200 left-1/2 -translate-x-1/2 -z-0"></div>
+                            <div className="absolute top-0 bottom-0 w-0.5 bg-slate-100 left-1/2 -translate-x-1/2 -z-0"></div>
                             <button 
                                 type="button" 
                                 onClick={() => toggleLogic(index)} 
-                                className={`relative z-10 px-4 py-1 text-[9px] font-black uppercase rounded-full border shadow-sm transition-all hover:scale-105 ${
+                                className={`relative z-10 px-6 py-1.5 text-[9px] font-black uppercase rounded-full border shadow-md transition-all hover:scale-105 ${
                                     (items[index].nextLogic || 'AND') === 'AND' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-amber-400 text-slate-900 border-amber-500'
                                 }`}
                             >
@@ -157,12 +156,12 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                 </div>
             ))}
             
-            <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => handleAddCondition('basic')} className="text-[10px] bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all shadow-sm uppercase tracking-wider">
-                    <AddIcon className="w-3 h-3" /> Add Condition
+            <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => handleAddCondition('basic')} className="text-[10px] bg-white border-2 border-slate-100 text-slate-600 hover:bg-slate-50 px-6 py-3 rounded-2xl font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-sm">
+                    <AddIcon className="w-4 h-4" /> Add criteria
                 </button>
-                <button type="button" onClick={() => handleAddCondition('group')} className="text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-700 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold flex items-center gap-2 transition-all shadow-sm uppercase tracking-wider">
-                    <ShieldCheckIcon className="w-3 h-3" /> New Logic Group
+                <button type="button" onClick={() => handleAddCondition('group')} className="text-[10px] bg-indigo-50 border-2 border-indigo-100 text-indigo-700 hover:bg-indigo-100 px-6 py-3 rounded-2xl font-black uppercase tracking-widest flex items-center gap-2 transition-all shadow-sm">
+                    <ShieldCheckIcon className="w-4 h-4" /> Nest logic
                 </button>
             </div>
         </div>

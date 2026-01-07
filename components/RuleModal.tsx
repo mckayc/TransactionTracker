@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, CheckCircleIcon, BoxIcon, MapPinIcon, UserGroupIcon, PlayIcon, TagIcon, AddIcon } from './Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, CheckCircleIcon, BoxIcon, MapPinIcon, UserGroupIcon, PlayIcon, TagIcon, AddIcon, ChevronDownIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
 
@@ -16,7 +15,8 @@ interface RuleModalProps {
     counterparties: Counterparty[];
     locations: Location[];
     users: User[];
-    transaction: Transaction | null;
+    // Fix: transaction can be a Transaction or a ReconciliationRule context depending on whether we are creating or editing
+    transaction: any;
     onSaveCategory?: (category: Category) => void;
     onSaveCounterparty?: (cp: Counterparty) => void;
     onSaveTag?: (tag: Tag) => void;
@@ -33,6 +33,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
     
     const [setCategoryId, setSetCategoryId] = useState('');
     const [setCounterpartyId, setSetCounterpartyId] = useState('');
+    // Fix: Corrected state array destructuring to avoid duplicate variable names and define missing setters
     const [setLocationId, setSetLocationId] = useState('');
     const [setUserId, setSetUserId] = useState('');
     const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
@@ -42,21 +43,20 @@ const RuleModal: React.FC<RuleModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             if (transaction) {
-                setName(`${transaction.description} Rule`);
-                const newConditions: RuleCondition[] = [
-                    { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: transaction.description, nextLogic: 'AND' }
+                // Fix: Access properties from ReconciliationRule or Transaction safely using type cast
+                const ctx = transaction as any;
+                setName(ctx.name || (ctx.description ? `${ctx.description} Rule` : ''));
+                const newConditions: RuleCondition[] = ctx.conditions ? [...ctx.conditions] : [
+                    { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: ctx.description, nextLogic: 'AND' }
                 ];
-                if (transaction.accountId) {
-                    newConditions.push({ id: generateUUID(), type: 'basic', field: 'accountId', operator: 'equals', value: transaction.accountId, nextLogic: 'AND' });
-                }
                 setConditions(newConditions);
-                setSetCategoryId(transaction.categoryId || '');
-                setSetCounterpartyId(transaction.counterpartyId || '');
-                setSetLocationId(transaction.locationId || '');
-                setSetUserId(transaction.userId || '');
-                setSetTransactionTypeId(transaction.typeId || '');
-                setAssignTagIds(new Set(transaction.tagIds || []));
-                setSkipImport(false);
+                setSetCategoryId(ctx.categoryId || ctx.setCategoryId || '');
+                setSetCounterpartyId(ctx.counterpartyId || ctx.setCounterpartyId || '');
+                setSetLocationId(ctx.locationId || ctx.setLocationId || '');
+                setSetUserId(ctx.userId || ctx.setUserId || '');
+                setSetTransactionTypeId(ctx.typeId || ctx.setTransactionTypeId || '');
+                setAssignTagIds(new Set(ctx.tagIds || ctx.assignTagIds || []));
+                setSkipImport(!!ctx.skipImport);
             } else {
                 setName('');
                 setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
@@ -71,8 +71,20 @@ const RuleModal: React.FC<RuleModalProps> = ({
         }
     }, [isOpen, transaction]);
     
-    const sortedCounterpartyOptions = useMemo(() => [...counterparties].sort((a,b) => a.name.localeCompare(b.name)), [counterparties]);
-    const sortedCategoryOptions = useMemo(() => [...categories].sort((a,b) => a.name.localeCompare(b.name)), [categories]);
+    // Recursive helper for deep hierarchies
+    const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
+        return items
+            .filter(i => i.parentId === parentId)
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+            .flatMap(item => [
+                { id: item.id, name: `${'\u00A0'.repeat(depth * 3)}${depth > 0 ? '⌞ ' : ''}${item.name}` },
+                ...getSortedOptions(items, item.id, depth + 1)
+            ]);
+    };
+
+    const sortedCounterpartyOptions = useMemo(() => getSortedOptions(counterparties), [counterparties]);
+    const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
+    const sortedAccountOptions = useMemo(() => [...accounts].sort((a,b) => a.name.localeCompare(b.name)), [accounts]);
 
     if (!isOpen) return null;
 
@@ -103,7 +115,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
     };
 
     const getRulePayload = (): ReconciliationRule => ({
-        id: transaction?.id === 'temp-context' ? generateUUID() : (transaction?.appliedRuleId || generateUUID()),
+        id: transaction?.id === 'temp-context' ? generateUUID() : (transaction?.id || generateUUID()),
         name: name.trim(),
         conditions,
         setCategoryId: setCategoryId || undefined,
@@ -128,114 +140,101 @@ const RuleModal: React.FC<RuleModalProps> = ({
     };
     
     return (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[70] flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center p-6 border-b bg-white z-20 shadow-sm">
-                    <div>
-                        <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-                            <SparklesIcon className="w-6 h-6 text-indigo-600" />
-                            Logic Forge
-                        </h2>
-                        <p className="text-sm text-slate-500 mt-1">Design criteria for automatic normalization.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <button type="button" onClick={onClose} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">Cancel</button>
-                        <button onClick={handleSave} className="px-5 py-2.5 text-sm font-black text-white bg-slate-700 rounded-xl hover:bg-slate-800 shadow-md">Save</button>
-                        <button onClick={handleSaveAndRun} className="px-8 py-2.5 text-sm font-black text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 flex items-center gap-2 transition-transform active:scale-95">
-                            <PlayIcon className="w-4 h-4" /> Save and Run
-                        </button>
-                    </div>
+        <div className="flex flex-col h-full bg-white overflow-hidden animate-fade-in">
+            <div className="flex justify-between items-center p-6 border-b bg-white sticky top-0 z-20 shadow-sm">
+                <div>
+                    <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+                        <SparklesIcon className="w-6 h-6 text-indigo-600" />
+                        Logic Canvas
+                    </h2>
+                    <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1">Refining standard operating procedures</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button type="button" onClick={onClose} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200">Reset</button>
+                    <button onClick={handleSave} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-700 text-white rounded-xl shadow-md">Apply</button>
+                    <button onClick={handleSaveAndRun} className="px-8 py-2.5 text-xs font-black uppercase bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 flex items-center gap-2">
+                        <PlayIcon className="w-4 h-4" /> Commit & Execute
+                    </button>
+                </div>
+            </div>
+            
+             <form onSubmit={handleSave} className="flex-1 p-8 space-y-10 overflow-y-auto bg-slate-50/20 custom-scrollbar pb-24">
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Administrative Identity</label>
+                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="System designation for this logic..." className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:bg-white focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-lg shadow-inner" required />
                 </div>
                 
-                 <form onSubmit={handleSave} className="flex-1 p-8 space-y-8 overflow-y-auto bg-slate-50/50 custom-scrollbar">
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Identity</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Friendly name for this pattern..." className="w-full p-3 border-2 border-slate-100 rounded-xl focus:border-indigo-500 focus:ring-0 transition-all font-bold text-slate-800 text-lg" required />
-                    </div>
-                    
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px]">1</div>
-                            If data matches these criteria
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">1</div>
+                        Observation Criteria
+                    </h3>
+                    <RuleBuilder items={conditions} onChange={setConditions} accounts={sortedAccountOptions} />
+                </div>
+                
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-[10px]">2</div>
+                            Ledger Resolution
                         </h3>
-                        <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
+                        <label className="flex items-center gap-2 cursor-pointer bg-red-50 px-4 py-2 rounded-xl border border-red-100 hover:border-red-400 transition-colors shadow-sm group">
+                            <input type="checkbox" checked={skipImport} onChange={() => setSkipImport(!skipImport)} className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer" />
+                            <span className="text-[10px] font-black text-red-700 uppercase flex items-center gap-1"><SlashIcon className="w-3 h-3" /> Exclude matching records</span>
+                        </label>
                     </div>
                     
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-[10px]">2</div>
-                                Execution logic (Targets)
-                            </h3>
-                            <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border border-slate-300 hover:border-red-400 transition-colors shadow-sm group">
-                                <input type="checkbox" checked={skipImport} onChange={() => setSkipImport(!skipImport)} className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer" />
-                                <span className="text-xs font-black text-red-700 uppercase flex items-center gap-1"><SlashIcon className="w-3 h-3" /> Exclude matching data</span>
-                            </label>
+                    {!skipImport ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                            <div className="space-y-1">
+                                <label className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    <span>Set Category</span>
+                                    <button type="button" onClick={handleCreateNewCategory} className="text-indigo-600 hover:underline">NEW</button>
+                                </label>
+                                <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 shadow-inner">
+                                    <option value="">-- No Change --</option>
+                                    {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    <span>Set Entity</span>
+                                    <button type="button" onClick={handleCreateNewCounterparty} className="text-indigo-600 hover:underline">NEW</button>
+                                </label>
+                                <select value={setCounterpartyId} onChange={(e) => setSetCounterpartyId(e.target.value)} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 shadow-inner">
+                                    <option value="">-- No Change --</option>
+                                    {sortedCounterpartyOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label>
+                                <select value={setUserId} onChange={(e) => setSetUserId(e.target.value)} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 shadow-inner">
+                                    <option value="">-- No Change --</option>
+                                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="col-span-1 md:col-span-3 pt-6 border-t border-slate-100">
+                                <div className="flex items-center justify-between mb-4 px-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Institutional Tags</label>
+                                    <button type="button" onClick={() => alert("Tag management is in Management Hub")} className="text-[9px] font-black text-indigo-500 uppercase hover:underline">Global Registry</button>
+                                </div>
+                                <div className="flex flex-wrap gap-2 p-4 border-2 border-slate-50 rounded-[2rem] bg-slate-50/50 shadow-inner">
+                                    {tags.map(tag => (
+                                        <button key={tag.id} type="button" onClick={() => toggleTag(tag.id)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border-2 transition-all ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-600 shadow-md scale-105' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200'}`}>{tag.name}</button>
+                                    ))}
+                                    {tags.length === 0 && <p className="text-xs text-slate-300 italic p-2">No tags registered in system.</p>}
+                                </div>
+                            </div>
                         </div>
-                        
-                        {!skipImport ? (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                <div className="space-y-1">
-                                    <label className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                        <span>Set Category</span>
-                                        <button type="button" onClick={handleCreateNewCategory} className="text-indigo-600 hover:underline">NEW</button>
-                                    </label>
-                                    <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
-                                        <option value="">-- No Change --</option>
-                                        {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                        <span>Set Counterparty</span>
-                                        <button type="button" onClick={handleCreateNewCounterparty} className="text-indigo-600 hover:underline">NEW</button>
-                                    </label>
-                                    <select value={setCounterpartyId} onChange={(e) => setSetCounterpartyId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
-                                        <option value="">-- No Change --</option>
-                                        {sortedCounterpartyOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label>
-                                    <select value={setUserId} onChange={(e) => setSetUserId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
-                                        <option value="">-- No Change --</option>
-                                        {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Set Location</label>
-                                    <select value={setLocationId} onChange={(e) => setSetLocationId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
-                                        <option value="">-- No Change --</option>
-                                        {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Set Tx Type</label>
-                                    <select value={setTransactionTypeId} onChange={(e) => setSetTransactionTypeId(e.target.value)} className="w-full p-2.5 border rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none">
-                                        <option value="">-- No Change --</option>
-                                        {transactionTypes.map(type => <option key={type.id} value={type.id}>{type.name}</option>)}
-                                    </select>
-                                </div>
-                                <div className="col-span-1 md:col-span-3 pt-4 border-t border-slate-100">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Attach Tags Automatically</label>
-                                    <div className="flex flex-wrap gap-2 p-4 border-2 border-slate-100 rounded-2xl bg-slate-50 shadow-inner">
-                                        {tags.map(tag => (
-                                            <button key={tag.id} type="button" onClick={() => toggleTag(tag.id)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border-2 transition-all ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-500 shadow-md ring-2 ring-indigo-50' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300'}`}>{tag.name}</button>
-                                        ))}
-                                        {tags.length === 0 && <p className="text-xs text-slate-400 italic">No tags configured in system.</p>}
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="py-12 text-center bg-red-50 rounded-2xl border-2 border-red-100 border-dashed animate-pulse">
-                                <SlashIcon className="w-12 h-12 text-red-200 mx-auto mb-4" />
-                                <p className="text-lg font-black text-red-800 uppercase tracking-tight">Exclusion logic active</p>
-                                <p className="text-sm text-red-600 mt-1 max-w-md mx-auto font-medium">Matching records will be discarded.</p>
-                            </div>
-                        )}
-                    </div>
-                 </form>
-            </div>
+                    ) : (
+                        <div className="py-12 text-center bg-red-50 rounded-[2rem] border-2 border-red-100 border-dashed animate-pulse">
+                            <SlashIcon className="w-12 h-12 text-red-200 mx-auto mb-4" />
+                            <p className="text-lg font-black text-red-800 uppercase tracking-tight">Exclusion sequence active</p>
+                            <p className="text-xs text-red-600 mt-1 max-w-md mx-auto font-medium">Matching records will be purged from the ingestion stream.</p>
+                        </div>
+                    )}
+                </div>
+             </form>
         </div>
     );
 };

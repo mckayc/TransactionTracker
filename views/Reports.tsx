@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import type { Transaction, TransactionType, Category, Counterparty, User, Tag, SavedReport, ReportConfig, Account, CustomDateRange, AmazonMetric, YouTubeMetric } from '../types';
 import ReportColumn from '../components/ReportColumn';
 import ReportConfigModal from '../components/ReportConfigModal';
-import { AddIcon, ChartPieIcon, DocumentIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, TrendingUpIcon, ListIcon, BarChartIcon, TableIcon, PlayIcon, CloseIcon, ShieldCheckIcon } from '../components/Icons';
+import { AddIcon, ChartPieIcon, DocumentIcon, SearchCircleIcon, BoxIcon, YoutubeIcon, TrendingUpIcon, BarChartIcon, CloseIcon, ShieldCheckIcon } from '../components/Icons';
 
 interface ReportsProps {
   transactions: Transaction[];
@@ -59,7 +59,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
             </div>
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* LEFT: TAXONOMY */}
+                {/* COLUMN 1: TAXONOMY */}
                 <div className="w-64 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col p-4 flex-shrink-0 min-h-0">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 px-2">Report Taxonomy</p>
                     <div className="space-y-1">
@@ -76,7 +76,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                     </div>
                 </div>
 
-                {/* MIDDLE: SAVED LIST */}
+                {/* COLUMN 2: SAVED LIST */}
                 <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
                     <div className="p-3 border-b bg-slate-50 rounded-t-2xl">
                         <div className="relative">
@@ -109,10 +109,10 @@ const Reports: React.FC<ReportsProps> = ({ transactions, transactionTypes, categ
                     </div>
                 </div>
 
-                {/* RIGHT: ENGINE */}
+                {/* COLUMN 3: ENGINE */}
                 <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 relative">
                     {activeReportId && activeReport ? (
-                        <div className="flex flex-col h-full animate-fade-in">
+                        <div className="flex flex-col h-full animate-fade-in bg-white">
                             <ReportColumn
                                 config={activeReport.config}
                                 transactions={transactions}
