@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import type { Category, Tag, Counterparty, User, TransactionType, Transaction, AccountType, Account, BalanceEffect, Location } from '../types';
-import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, DeleteIcon, EditIcon, ChevronRightIcon, ChevronDownIcon, NotesIcon, CloseIcon, SparklesIcon, TableIcon, BoxIcon, MapPinIcon, ExclamationTriangleIcon, TrashIcon, CreditCardIcon } from '../components/Icons';
-import { generateUUID } from '../utils';
+import type { Category, Tag, Counterparty, User, TransactionType, Transaction, AccountType, Account, Location } from '../types';
+import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, CloseIcon, BoxIcon, MapPinIcon, TrashIcon, CreditCardIcon } from '../components/Icons';
+import EntityEditor, { EntityType } from '../components/EntityEditor';
 
 interface ManagementHubProps {
     transactions: Transaction[];
@@ -31,8 +31,6 @@ interface ManagementHubProps {
     onSaveAccount: (a: Account) => void;
     onDeleteAccount: (id: string) => void;
 }
-
-type Tab = 'categories' | 'tags' | 'counterparties' | 'locations' | 'users' | 'transactionTypes' | 'accountTypes' | 'accounts';
 
 const TreeNode: React.FC<{ 
     item: any; 
@@ -100,31 +98,20 @@ const TreeNode: React.FC<{
     );
 };
 
-const ManagementHub: React.FC<ManagementHubProps> = ({ 
-    transactions, categories, onSaveCategory, onDeleteCategory, tags, onSaveTag, onDeleteTag,
-    counterparties, onSaveCounterparty, onDeleteCounterparty, onSaveCounterparties,
-    locations, onSaveLocation, onDeleteLocation, users, onSaveUser, onDeleteUser,
-    transactionTypes, onSaveTransactionType, onDeleteTransactionType,
-    accountTypes, onSaveAccountType, onDeleteAccountType, accounts, onSaveAccount, onDeleteAccount
-}) => {
-    const [activeTab, setActiveTab] = useState<Tab>('categories');
+const ManagementHub: React.FC<ManagementHubProps> = (props) => {
+    const { 
+        transactions, categories, onSaveCategory, onDeleteCategory, tags, onSaveTag, onDeleteTag,
+        counterparties, onSaveCounterparty, onDeleteCounterparty, onSaveCounterparties,
+        locations, onSaveLocation, onDeleteLocation, users, onSaveUser, onDeleteUser,
+        transactionTypes, onSaveTransactionType, onDeleteTransactionType,
+        accountTypes, onSaveAccountType, onDeleteAccountType, accounts, onSaveAccount, onDeleteAccount
+    } = props;
+
+    const [activeTab, setActiveTab] = useState<EntityType>('categories');
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
-    
-    // Form states
-    const [name, setName] = useState('');
-    const [parentId, setParentId] = useState('');
-    const [color, setColor] = useState('bg-slate-100 text-slate-800');
-    const [notes, setNotes] = useState('');
-    const [userId, setUserId] = useState('');
-    const [city, setCity] = useState('');
-    const [state, setState] = useState('');
-    const [country, setCountry] = useState('');
-    const [balanceEffect, setBalanceEffect] = useState<BalanceEffect>('expense');
-    const [identifier, setIdentifier] = useState('');
-    const [accountTypeId, setAccountTypeId] = useState('');
 
     const usageCounts = useMemo(() => {
         const counts = {
@@ -155,31 +142,21 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const currentList = useMemo(() => {
         let list: any[] = [];
         switch (activeTab) {
-            case 'categories': list = [...categories]; break;
-            case 'tags': list = [...tags]; break;
-            case 'counterparties': list = [...counterparties]; break;
-            case 'locations': list = [...locations]; break;
-            case 'users': list = [...users]; break;
-            case 'transactionTypes': list = [...transactionTypes]; break;
-            case 'accountTypes': list = [...accountTypes]; break;
-            case 'accounts': list = [...accounts]; break;
+            case 'categories': list = categories; break;
+            case 'tags': list = tags; break;
+            case 'counterparties': list = counterparties; break;
+            case 'locations': list = locations; break;
+            case 'users': list = users; break;
+            case 'transactionTypes': list = transactionTypes; break;
+            case 'accountTypes': list = accountTypes; break;
+            case 'accounts': list = accounts; break;
         }
-        return list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [activeTab, categories, tags, counterparties, locations, users, transactionTypes, accountTypes, accounts]);
 
     const handleSelect = (id: string) => {
         setSelectedId(id);
         setIsCreating(false);
-        const item = currentList.find(x => x.id === id);
-        if (!item) return;
-
-        setName(item.name || '');
-        if (activeTab === 'categories') setParentId(item.parentId || '');
-        else if (activeTab === 'tags') setColor(item.color);
-        else if (activeTab === 'counterparties') { setParentId(item.parentId || ''); setNotes(item.notes || ''); setUserId(item.userId || ''); }
-        else if (activeTab === 'locations') { setCity(item.city || ''); setState(item.state || ''); setCountry(item.country || ''); }
-        else if (activeTab === 'transactionTypes') { setBalanceEffect(item.balanceEffect); setColor(item.color || 'text-slate-600'); }
-        else if (activeTab === 'accounts') { setIdentifier(item.identifier || ''); setAccountTypeId(item.accountTypeId || ''); }
     };
 
     const handleBulkToggle = (id: string) => {
@@ -230,35 +207,21 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
     const handleNew = () => {
         setSelectedId(null);
         setIsCreating(true);
-        setName('');
-        setParentId('');
-        setCity('');
-        setState('');
-        setCountry('');
-        setNotes('');
-        setIdentifier('');
-        setAccountTypeId(accountTypes[0]?.id || '');
-        setUserId(users.find(u => u.isDefault)?.id || users[0]?.id || '');
-        setBalanceEffect('expense');
-        setColor(activeTab === 'transactionTypes' ? 'text-rose-600' : 'bg-slate-100 text-slate-800');
     };
 
-    const handleSave = (e: React.FormEvent) => {
-        e.preventDefault();
-        const id = selectedId || generateUUID();
-        const payload: any = { id, name: name.trim() };
-        switch (activeTab) {
-            case 'categories': onSaveCategory({ ...payload, parentId: parentId || undefined }); break;
-            case 'tags': onSaveTag({ ...payload, color }); break;
-            case 'counterparties': onSaveCounterparty({ ...payload, parentId: parentId || undefined, notes: notes || undefined, userId: userId || undefined }); break;
-            case 'locations': onSaveLocation({ ...payload, city, state, country }); break;
+    const handleSaveEntity = (type: EntityType, payload: any) => {
+        switch (type) {
+            case 'categories': onSaveCategory(payload); break;
+            case 'tags': onSaveTag(payload); break;
+            case 'counterparties': onSaveCounterparty(payload); break;
+            case 'locations': onSaveLocation(payload); break;
             case 'users': onSaveUser(payload); break;
-            case 'transactionTypes': onSaveTransactionType({ ...payload, balanceEffect, color }); break;
+            case 'transactionTypes': onSaveTransactionType(payload); break;
             case 'accountTypes': onSaveAccountType(payload); break;
-            case 'accounts': onSaveAccount({ ...payload, identifier, accountTypeId }); break;
+            case 'accounts': onSaveAccount(payload); break;
         }
         setIsCreating(false);
-        setSelectedId(id);
+        setSelectedId(payload.id);
     };
 
     const rootItems = useMemo(() => {
@@ -290,7 +253,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                 ].map(tab => (
                     <button 
                         key={tab.id}
-                        onClick={() => { setActiveTab(tab.id as Tab); setSelectedId(null); setIsCreating(false); setBulkSelectedIds(new Set()); }}
+                        onClick={() => { setActiveTab(tab.id as EntityType); setSelectedId(null); setIsCreating(false); setBulkSelectedIds(new Set()); }}
                         className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}
                     >
                         {tab.icon} {tab.label}
@@ -356,7 +319,7 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                 {/* COLUMN 2: CONSOLE */}
                 <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 relative">
                     {(selectedId || isCreating) ? (
-                        <form onSubmit={handleSave} className="flex flex-col h-full animate-fade-in">
+                        <div className="flex flex-col h-full animate-fade-in">
                             <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-800">{isCreating ? 'Blueprint Designer' : 'Update Definition'}</h3>
@@ -365,83 +328,21 @@ const ManagementHub: React.FC<ManagementHubProps> = ({
                                 <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="p-2 text-slate-400 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar bg-white">
-                                <div className="space-y-6 max-w-2xl">
-                                    <div className="space-y-1">
-                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity Label</label>
-                                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:ring-0 font-bold text-slate-800 text-lg shadow-sm" placeholder="Display name..." required />
-                                    </div>
-
-                                    {activeTab === 'accounts' && (
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1">
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unique Identifier</label>
-                                                <input type="text" value={identifier} onChange={e => setIdentifier(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold" placeholder="e.g. Last 4 digits" required />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Account Category</label>
-                                                <select value={accountTypeId} onChange={e => setAccountTypeId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold">
-                                                    {accountTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {(activeTab === 'categories' || activeTab === 'counterparties') && (
-                                        <div className="space-y-1">
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Parent Hierarchy</label>
-                                            <select value={parentId} onChange={e => setParentId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 bg-white">
-                                                <option value="">-- No Parent (Root) --</option>
-                                                {currentList.filter(x => x.id !== (selectedId || 'none')).map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
-                                            </select>
-                                        </div>
-                                    )}
-
-                                    {activeTab === 'counterparties' && (
-                                        <div className="space-y-1">
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Default Ledger Assignment</label>
-                                            <select value={userId} onChange={e => setUserId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 bg-white">
-                                                <option value="">-- Global System Default --</option>
-                                                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                            </select>
-                                        </div>
-                                    )}
-
-                                    {activeTab === 'tags' && (
-                                        <div className="space-y-2">
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">System Label Hue</label>
-                                            <div className="flex flex-wrap gap-2 p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                                {[
-                                                    'bg-slate-100 text-slate-800', 'bg-red-100 text-red-800', 'bg-orange-100 text-orange-800',
-                                                    'bg-amber-100 text-amber-800', 'bg-green-100 text-green-800', 'bg-emerald-100 text-emerald-800',
-                                                    'bg-blue-100 text-blue-800', 'bg-indigo-100 text-indigo-800', 'bg-purple-100 text-purple-800'
-                                                ].map(c => (
-                                                    <button 
-                                                        key={c} type="button" onClick={() => setColor(c)}
-                                                        className={`w-10 h-10 rounded-xl border-2 transition-all ${color === c ? 'border-indigo-600 scale-110 shadow-lg' : 'border-transparent opacity-80 hover:opacity-100'}`}
-                                                        style={{ backgroundColor: c.split(' ')[0].replace('bg-', '') }} 
-                                                    />
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {(activeTab === 'counterparties' || activeTab === 'categories' || activeTab === 'accounts') && (
-                                        <div className="space-y-1">
-                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Archival Context & Logic</label>
-                                            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium min-h-[140px]" placeholder="Record account details, vendor logic, or institutional memory..." />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="p-6 border-t bg-slate-50 flex justify-end gap-3">
-                                <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-xl transition-all">Discard</button>
-                                <button type="submit" className="px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-xl active:scale-95 transition-all">
-                                    {isCreating ? 'Register Logic' : 'Update definition'}
-                                </button>
-                            </div>
-                        </form>
+                            <EntityEditor 
+                                type={activeTab}
+                                initialId={selectedId}
+                                onSave={handleSaveEntity}
+                                onCancel={() => { setSelectedId(null); setIsCreating(false); }}
+                                categories={categories}
+                                tags={tags}
+                                counterparties={counterparties}
+                                locations={locations}
+                                users={users}
+                                transactionTypes={transactionTypes}
+                                accountTypes={accountTypes}
+                                accounts={accounts}
+                            />
+                        </div>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
                             <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-2xl border border-slate-100 mb-6 animate-bounce-subtle">

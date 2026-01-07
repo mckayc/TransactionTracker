@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, CheckCircleIcon, BoxIcon, MapPinIcon, UserGroupIcon, PlayIcon, TagIcon, AddIcon, ChevronDownIcon } from './Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
+import SearchableSelect from './SearchableSelect';
+import EntityModal from './EntityModal';
+import { EntityType } from './EntityEditor';
 
 interface RuleModalProps {
     isOpen: boolean;
@@ -15,35 +18,37 @@ interface RuleModalProps {
     counterparties: Counterparty[];
     locations: Location[];
     users: User[];
-    // Fix: transaction can be a Transaction or a ReconciliationRule context depending on whether we are creating or editing
     transaction: any;
     onSaveCategory?: (category: Category) => void;
     onSaveCounterparty?: (cp: Counterparty) => void;
     onSaveTag?: (tag: Tag) => void;
+    onSaveLocation?: (loc: Location) => void;
+    onSaveUser?: (user: User) => void;
     onAddTransactionType?: (type: TransactionType) => void;
     onSaveAndRun?: (rule: ReconciliationRule) => void;
 }
 
 const RuleModal: React.FC<RuleModalProps> = ({ 
-    isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transaction, onSaveCategory, onSaveCounterparty, onSaveTag, onAddTransactionType, onSaveAndRun
+    isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transaction, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, onSaveAndRun
 }) => {
-    
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
     
+    // Resolution state
     const [setCategoryId, setSetCategoryId] = useState('');
     const [setCounterpartyId, setSetCounterpartyId] = useState('');
-    // Fix: Corrected state array destructuring to avoid duplicate variable names and define missing setters
     const [setLocationId, setSetLocationId] = useState('');
     const [setUserId, setSetUserId] = useState('');
     const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
     const [skipImport, setSkipImport] = useState(false);
 
+    // Entity Quick Add State
+    const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
+
     useEffect(() => {
         if (isOpen) {
             if (transaction) {
-                // Fix: Access properties from ReconciliationRule or Transaction safely using type cast
                 const ctx = transaction as any;
                 setName(ctx.name || (ctx.description ? `${ctx.description} Rule` : ''));
                 const newConditions: RuleCondition[] = ctx.conditions ? [...ctx.conditions] : [
@@ -70,21 +75,18 @@ const RuleModal: React.FC<RuleModalProps> = ({
             }
         }
     }, [isOpen, transaction]);
-    
-    // Recursive helper for deep hierarchies
-    const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
-        return items
-            .filter(i => i.parentId === parentId)
-            .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-            .flatMap(item => [
-                { id: item.id, name: `${'\u00A0'.repeat(depth * 3)}${depth > 0 ? '⌞ ' : ''}${item.name}` },
-                ...getSortedOptions(items, item.id, depth + 1)
-            ]);
-    };
 
-    const sortedCounterpartyOptions = useMemo(() => getSortedOptions(counterparties), [counterparties]);
-    const sortedCategoryOptions = useMemo(() => getSortedOptions(categories), [categories]);
-    const sortedAccountOptions = useMemo(() => [...accounts].sort((a,b) => a.name.localeCompare(b.name)), [accounts]);
+    const handleQuickAddSave = (type: EntityType, payload: any) => {
+        switch (type) {
+            case 'categories': onSaveCategory?.(payload); setSetCategoryId(payload.id); break;
+            case 'counterparties': onSaveCounterparty?.(payload); setSetCounterpartyId(payload.id); break;
+            case 'locations': onSaveLocation?.(payload); setSetLocationId(payload.id); break;
+            case 'users': onSaveUser?.(payload); setSetUserId(payload.id); break;
+            case 'transactionTypes': onAddTransactionType?.(payload); setSetTransactionTypeId(payload.id); break;
+            case 'tags': onSaveTag?.(payload); toggleTag(payload.id); break;
+        }
+        setQuickAddType(null);
+    };
 
     if (!isOpen) return null;
 
@@ -94,24 +96,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
             if (newSet.has(tagId)) newSet.delete(tagId); else newSet.add(tagId);
             return newSet;
         });
-    };
-
-    const handleCreateNewCounterparty = () => {
-        const n = prompt("New Counterparty Name:");
-        if (n && n.trim()) {
-            const cp: Counterparty = { id: generateUUID(), name: n.trim() };
-            onSaveCounterparty?.(cp);
-            setSetCounterpartyId(cp.id);
-        }
-    };
-
-    const handleCreateNewCategory = () => {
-        const n = prompt("New Category Name:");
-        if (n && n.trim()) {
-            const cat: Category = { id: generateUUID(), name: n.trim() };
-            onSaveCategory?.(cat);
-            setSetCategoryId(cat.id);
-        }
     };
 
     const getRulePayload = (): ReconciliationRule => ({
@@ -145,9 +129,9 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 <div>
                     <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
                         <SparklesIcon className="w-6 h-6 text-indigo-600" />
-                        Logic Canvas
+                        Rule Editor
                     </h2>
-                    <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1">Refining standard operating procedures</p>
+                    <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1">Design automated ledger logic</p>
                 </div>
                 <div className="flex items-center gap-2">
                     <button type="button" onClick={onClose} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200">Reset</button>
@@ -169,14 +153,14 @@ const RuleModal: React.FC<RuleModalProps> = ({
                         <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">1</div>
                         Observation Criteria
                     </h3>
-                    <RuleBuilder items={conditions} onChange={setConditions} accounts={sortedAccountOptions} />
+                    <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
                 </div>
                 
                 <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                             <div className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-[10px]">2</div>
-                            Ledger Resolution
+                            Field Changes
                         </h3>
                         <label className="flex items-center gap-2 cursor-pointer bg-red-50 px-4 py-2 rounded-xl border border-red-100 hover:border-red-400 transition-colors shadow-sm group">
                             <input type="checkbox" checked={skipImport} onChange={() => setSkipImport(!skipImport)} className="h-4 w-4 text-red-600 rounded border-slate-300 focus:ring-red-500 cursor-pointer" />
@@ -186,37 +170,48 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     
                     {!skipImport ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            <div className="space-y-1">
-                                <label className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    <span>Set Category</span>
-                                    <button type="button" onClick={handleCreateNewCategory} className="text-indigo-600 hover:underline">NEW</button>
-                                </label>
-                                <select value={setCategoryId} onChange={(e) => setSetCategoryId(e.target.value)} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 shadow-inner">
-                                    <option value="">-- No Change --</option>
-                                    {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-                                </select>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="flex justify-between items-center text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                                    <span>Set Entity</span>
-                                    <button type="button" onClick={handleCreateNewCounterparty} className="text-indigo-600 hover:underline">NEW</button>
-                                </label>
-                                <select value={setCounterpartyId} onChange={(e) => setSetCounterpartyId(e.target.value)} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 shadow-inner">
-                                    <option value="">-- No Change --</option>
-                                    {sortedCounterpartyOptions.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                                </select>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Assign User</label>
-                                <select value={setUserId} onChange={(e) => setSetUserId(e.target.value)} className="w-full p-3 bg-slate-50 border-none rounded-xl font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 shadow-inner">
-                                    <option value="">-- No Change --</option>
-                                    {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                                </select>
-                            </div>
+                            <SearchableSelect 
+                                label="Set Category" 
+                                options={categories} 
+                                value={setCategoryId} 
+                                onChange={setSetCategoryId} 
+                                isHierarchical 
+                                onAddNew={() => setQuickAddType('categories')}
+                            />
+                            <SearchableSelect 
+                                label="Set Entity" 
+                                options={counterparties} 
+                                value={setCounterpartyId} 
+                                onChange={setSetCounterpartyId} 
+                                isHierarchical 
+                                onAddNew={() => setQuickAddType('counterparties')}
+                            />
+                            <SearchableSelect 
+                                label="Assign User" 
+                                options={users} 
+                                value={setUserId} 
+                                onChange={setSetUserId} 
+                                onAddNew={() => setQuickAddType('users')}
+                            />
+                            <SearchableSelect 
+                                label="Assign Location" 
+                                options={locations} 
+                                value={setLocationId} 
+                                onChange={setSetLocationId} 
+                                onAddNew={() => setQuickAddType('locations')}
+                            />
+                            <SearchableSelect 
+                                label="Change Tx Type" 
+                                options={transactionTypes} 
+                                value={setTransactionTypeId} 
+                                onChange={setSetTransactionTypeId} 
+                                onAddNew={() => setQuickAddType('transactionTypes')}
+                            />
+
                             <div className="col-span-1 md:col-span-3 pt-6 border-t border-slate-100">
                                 <div className="flex items-center justify-between mb-4 px-1">
                                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Institutional Tags</label>
-                                    <button type="button" onClick={() => alert("Tag management is in Management Hub")} className="text-[9px] font-black text-indigo-500 uppercase hover:underline">Global Registry</button>
+                                    <button type="button" onClick={() => setQuickAddType('tags')} className="text-[9px] font-black text-indigo-500 uppercase hover:underline">Register New Tag</button>
                                 </div>
                                 <div className="flex flex-wrap gap-2 p-4 border-2 border-slate-50 rounded-[2rem] bg-slate-50/50 shadow-inner">
                                     {tags.map(tag => (
@@ -235,6 +230,21 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     )}
                 </div>
              </form>
+
+             <EntityModal 
+                isOpen={!!quickAddType}
+                onClose={() => setQuickAddType(null)}
+                type={quickAddType || 'categories'}
+                onSave={handleQuickAddSave}
+                categories={categories}
+                tags={tags}
+                counterparties={counterparties}
+                locations={locations}
+                users={users}
+                transactionTypes={transactionTypes}
+                accountTypes={[]}
+                accounts={accounts}
+             />
         </div>
     );
 };

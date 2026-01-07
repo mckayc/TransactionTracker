@@ -5,29 +5,30 @@
 /* Fix flashing dropdown issue by ensuring backgrounds are consistent and transitions are clean */
 select, input[type='text'], input[type='date'], input[type='number'], textarea {
   appearance: none;
-  background-color: #ffffff !important; /* Explicit white background to prevent black flash */
-  border: 1px solid #cbd5e1; /* slate-300 */
-  border-radius: 0.5rem; /* rounded-lg */
-  padding: 0.5rem 0.75rem;
+  background-color: #ffffff !important;
+  border: 1px solid #e2e8f0; /* slate-200 */
+  border-radius: 0.75rem; /* rounded-xl */
+  padding: 0.625rem 0.875rem;
   font-size: 0.875rem;
   line-height: 1.25rem;
   color: #1e293b; /* slate-800 */
   width: 100%;
-  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, background-color 0.2s;
 }
 
 /* Remove default highlight/flash on some browsers */
 select:focus, input:focus, textarea:focus {
   outline: none !important;
   border-color: #4f46e5 !important; /* indigo-600 */
-  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2) !important;
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1) !important;
+  background-color: #fff !important;
 }
 
 select {
   background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%2364748b' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
-  background-position: right 0.5rem center;
+  background-position: right 0.75rem center;
   background-repeat: no-repeat;
-  background-size: 1.5em 1.5em;
+  background-size: 1.25em 1.25em;
   padding-right: 2.5rem;
 }
 
