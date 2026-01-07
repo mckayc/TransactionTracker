@@ -181,6 +181,11 @@ export const extractTransactionsFromFiles = async (
     const key = getApiKey();
     if (!key) throw new Error("API Key is missing.");
     const ai = new GoogleGenAI({ apiKey: key });
+    
+    if (!transactionTypes || transactionTypes.length === 0) {
+        throw new Error("System Error: No transaction types available to apply extraction logic.");
+    }
+
     onProgress("AI is analyzing files...");
     const fileParts = await Promise.all(files.map(fileToGenerativePart));
     const schema = {
@@ -216,13 +221,13 @@ export const extractTransactionsFromFiles = async (
     const txs = result.transactions || [];
     
     const validTransactionTypes = Array.isArray(transactionTypes) ? transactionTypes.filter(Boolean) : [];
+    const incomingType = validTransactionTypes.find(t => t.balanceEffect === 'incoming') || validTransactionTypes[0];
+    const outgoingType = validTransactionTypes.find(t => t.balanceEffect === 'outgoing') || validTransactionTypes[0];
 
     return txs.filter((tx: any) => tx && tx.date).map((tx: any) => ({
         ...tx,
         accountId,
-        typeId: tx.type === 'income' 
-            ? (validTransactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'type_income') 
-            : (validTransactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'type_purchase')
+        typeId: tx.type === 'income' ? incomingType.id : outgoingType.id
     }));
 };
 
@@ -236,6 +241,11 @@ export const extractTransactionsFromText = async (
     const key = getApiKey();
     if (!key) throw new Error("API Key is missing.");
     const ai = new GoogleGenAI({ apiKey: key });
+
+    if (!transactionTypes || transactionTypes.length === 0) {
+        throw new Error("System Error: No transaction types available to apply parsing logic.");
+    }
+
     onProgress("AI is parsing text...");
     const schema = {
         type: Type.OBJECT,
@@ -269,13 +279,13 @@ export const extractTransactionsFromText = async (
     const txs = result.transactions || [];
 
     const validTransactionTypes = Array.isArray(transactionTypes) ? transactionTypes.filter(Boolean) : [];
+    const incomingType = validTransactionTypes.find(t => t.balanceEffect === 'incoming') || validTransactionTypes[0];
+    const outgoingType = validTransactionTypes.find(t => t.balanceEffect === 'outgoing') || validTransactionTypes[0];
 
     return txs.filter((tx: any) => tx && tx.date).map((tx: any) => ({
         ...tx,
         accountId,
-        typeId: tx.type === 'income' 
-            ? (validTransactionTypes.find(t => t.balanceEffect === 'incoming')?.id || 'type_income') 
-            : (validTransactionTypes.find(t => t.balanceEffect === 'outgoing')?.id || 'type_purchase')
+        typeId: tx.type === 'income' ? incomingType.id : outgoingType.id
     }));
 };
 

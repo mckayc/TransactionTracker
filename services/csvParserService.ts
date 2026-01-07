@@ -1,4 +1,3 @@
-
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -100,7 +99,8 @@ export const parseRulesFromFile = async (file: File): Promise<ReconciliationRule
             reader.readAsArrayBuffer(file);
         });
         const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.Sheets[workbook.Sheets[workbook.SheetNames[0]] ? workbook.SheetNames[0] : workbook.SheetNames[0]];
+        const firstSheetName = workbook.SheetNames[0];
+        const firstSheet = workbook.Sheets[firstSheetName];
         const csv = XLSX.utils.sheet_to_csv(firstSheet);
         return parseRulesFromLines(csv.split('\n'));
     }
@@ -166,6 +166,10 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
   const transactions: RawTransaction[] = [];
   if (lines.length === 0) return transactions;
 
+  if (!transactionTypes || transactionTypes.length === 0) {
+      throw new Error("System Error: No transaction types loaded. Please verify database connectivity.");
+  }
+
   let headerIndex = -1;
   let rawHeaders: string[] = [];
   const delimiter = lines[0].includes('\t') ? '\t' : ',';
@@ -196,10 +200,9 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     type: lowerHeaders.findIndex(p => p.includes('type'))
   };
 
-  // Fix: Use 'outgoing', 'incoming', and 'neutral' to match BalanceEffect type
+  // Safe finding of default types
   const expenseType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
   const incomeType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
-  const transferType = transactionTypes.find(t => t.balanceEffect === 'neutral') || transactionTypes[0];
 
   for (let i = headerIndex + 1; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -235,7 +238,8 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
       if (Math.abs(cr) > 0) { amount = Math.abs(cr); isIncome = true; }
       else { amount = Math.abs(db); isIncome = false; }
     } else if (colMap.amount > -1) {
-      const val = parseFloat(parts[colMap.amount].replace(/[$,\s]/g, ''));
+      const valText = parts[colMap.amount]?.replace(/[$,\s]/g, '') || '0';
+      const val = parseFloat(valText);
       if (isNaN(val)) continue;
       
       amount = Math.abs(val);

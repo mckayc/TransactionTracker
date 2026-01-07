@@ -5,7 +5,6 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import os from 'os';
 import Database from 'better-sqlite3';
-import { GoogleGenAI } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,6 +59,15 @@ let db;
 const ensureSeedData = () => {
     try {
         console.log("[DB] Verifying system seed data...");
+        
+        // 1. Ensure Table Columns exist (Migration)
+        const tableInfo = db.prepare("PRAGMA table_info(transaction_types)").all();
+        const hasColor = tableInfo.some(col => col.name === 'color');
+        if (!hasColor) {
+            console.log("[DB] Migration: Adding 'color' column to transaction_types...");
+            db.exec("ALTER TABLE transaction_types ADD COLUMN color TEXT");
+        }
+
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
         if (typeCount === 0) {
             console.log("[DB] Seeding default transaction types...");
@@ -97,7 +105,7 @@ const ensureSeedData = () => {
             })();
         }
     } catch (err) {
-        console.error("[DB] Seeder warning:", err.message);
+        console.error("[DB] Seeder Error:", err.message);
     }
 };
 

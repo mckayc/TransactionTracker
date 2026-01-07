@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
@@ -8,7 +9,7 @@ import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import ImportVerification from '../components/ImportVerification';
-import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, CloudArrowUpIcon } from '../components/Icons';
+import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, CloudArrowUpIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 
@@ -41,19 +42,6 @@ interface ImportPageProps {
   onDeleteTransaction: (transactionId: string) => void;
 }
 
-const SummaryWidget: React.FC<{title: string, value: string, helpText: string, icon?: React.ReactNode, className?: string}> = ({title, value, helpText, icon, className}) => (
-    <div className={`bg-white p-4 rounded-xl shadow-sm border border-slate-200 ${className}`}>
-        <div className="flex justify-between items-start">
-            <div>
-                <h3 className="text-sm font-medium text-slate-500">{title}</h3>
-                <p className="text-2xl font-bold text-slate-800 mt-1">{value}</p>
-            </div>
-            {icon && <div className="p-2 bg-slate-50 rounded-lg">{icon}</div>}
-        </div>
-        <p className="text-xs text-slate-400 mt-1">{helpText}</p>
-    </div>
-);
-
 const ImportPage: React.FC<ImportPageProps> = ({ 
     onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, counterparties, locations, users, transactionTypes, onSaveCategory, onSaveCounterparty, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule 
 }) => {
@@ -69,6 +57,11 @@ const ImportPage: React.FC<ImportPageProps> = ({
 
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
   const [importedTxIds, setImportedTxIds] = useState<Set<string>>(new Set());
+
+  // System Readiness Check
+  const systemReady = useMemo(() => {
+      return accounts.length > 0 && transactionTypes.length > 0 && categories.length > 0;
+  }, [accounts, transactionTypes, categories]);
 
   useEffect(() => {
     const fetchSummary = async () => {
@@ -172,9 +165,22 @@ const ImportPage: React.FC<ImportPageProps> = ({
         </div>
       </div>
       
+      {!systemReady && appState === 'idle' && (
+          <div className="bg-red-50 border-2 border-red-100 p-6 rounded-[2rem] flex flex-col md:flex-row items-center gap-6 animate-pulse">
+              <div className="p-4 bg-red-600 rounded-full text-white shadow-lg"><ExclamationTriangleIcon className="w-8 h-8" /></div>
+              <div>
+                  <h3 className="text-xl font-black text-red-800">System Uninitialized</h3>
+                  <p className="text-sm text-red-700 mt-1 max-w-lg leading-relaxed">
+                      Your database is missing core configuration (Accounts, Transaction Types, or Categories). 
+                      Importing now will cause a system crash. Please visit <strong>Organize Data</strong> or <strong>Settings</strong> to run initial setup or restore a backup.
+                  </p>
+              </div>
+          </div>
+      )}
+
       <div className="flex-1 min-h-0 flex flex-col gap-6 overflow-hidden">
         {isImportFormVisible && (
-            <div className="w-full flex flex-col shrink-0 animate-fade-in">
+            <div className={`w-full flex flex-col shrink-0 animate-fade-in ${!systemReady ? 'opacity-50 pointer-events-none' : ''}`}>
                 <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
                     {appState === 'idle' ? (
                         <div className="flex flex-col h-full overflow-hidden">
