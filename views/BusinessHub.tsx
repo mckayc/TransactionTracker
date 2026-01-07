@@ -1,11 +1,12 @@
-import React, { useState, useMemo } from 'react';
-import type { BusinessNote, Transaction, Account, Category } from '../types';
-import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, DeleteIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon } from '../components/Icons';
+import React, { useState, useMemo, useEffect } from 'react';
+import type { BusinessNote, Transaction, Account, Category, BusinessProfile, BusinessInfo, TaxInfo } from '../types';
+import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, UsersIcon, BoxIcon, InfoIcon, RobotIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
+import { askAiAdvisor } from '../services/geminiService';
 
 interface BusinessHubProps {
-    profile: any;
-    onUpdateProfile: (profile: any) => void;
+    profile: BusinessProfile;
+    onUpdateProfile: (profile: BusinessProfile) => void;
     notes: BusinessNote[];
     onUpdateNotes: (notes: BusinessNote[]) => void;
     chatSessions: any[];
@@ -122,7 +123,6 @@ const BlockEditor: React.FC<{
             if (blocks[i].type === 'todo') {
                 const group: ContentBlock[] = [];
                 const baseIndent = blocks[i].indent;
-                // Identify the group of checklist items at this level or deeper
                 while (i < blocks.length && (blocks[i].type === 'todo' || blocks[i].indent > baseIndent)) {
                     group.push(blocks[i]);
                     i++;
@@ -136,19 +136,6 @@ const BlockEditor: React.FC<{
             }
         }
         onChange(newBlocks);
-    };
-
-    const moveBlock = (id: string, dir: 'up' | 'down') => {
-        const index = blocks.findIndex(b => b.id === id);
-        if (dir === 'up' && index > 0) {
-            const next = [...blocks];
-            [next[index-1], next[index]] = [next[index], next[index-1]];
-            onChange(next);
-        } else if (dir === 'down' && index < blocks.length - 1) {
-            const next = [...blocks];
-            [next[index+1], next[index]] = [next[index], next[index+1]];
-            onChange(next);
-        }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent, b: ContentBlock) => {
@@ -215,7 +202,7 @@ const BlockEditor: React.FC<{
                                 updateBlock(b.id, { text, type });
                             }}
                             onKeyDown={(e) => handleKeyDown(e, b)}
-                            placeholder="Type something..."
+                            placeholder="Start typing..."
                             rows={1}
                             className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] transition-all duration-200 ${b.type === 'h1' ? 'text-lg font-black text-slate-800' : 'text-sm font-medium'} ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
                             onInput={(e) => {
@@ -225,11 +212,7 @@ const BlockEditor: React.FC<{
                             }}
                         />
 
-                        <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 items-center transition-opacity">
-                            <button type="button" onClick={() => moveBlock(b.id, 'up')} className="p-1 text-slate-300 hover:text-indigo-600 rounded-lg"><ArrowUpIcon className="w-3.5 h-3.5"/></button>
-                            <button type="button" onClick={() => moveBlock(b.id, 'down')} className="p-1 text-slate-300 hover:text-indigo-600 rounded-lg"><ArrowDownIcon className="w-3.5 h-3.5"/></button>
-                            <button type="button" onClick={() => deleteBlock(b.id)} className="p-1 text-slate-300 hover:text-red-500 rounded-lg"><TrashIcon className="w-3.5 h-3.5"/></button>
-                        </div>
+                        <button type="button" onClick={() => deleteBlock(b.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 rounded-lg transition-all"><TrashIcon className="w-4 h-4"/></button>
                     </div>
                 ))}
             </div>
@@ -237,9 +220,23 @@ const BlockEditor: React.FC<{
     );
 };
 
-const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
+const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, notes, onUpdateNotes }) => {
+    const [activeTab, setActiveTab] = useState<'identity' | 'journal'>('identity');
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    
+    // AI Advisor State
+    const [aiQuery, setAiQuery] = useState('');
+    const [aiResponse, setAiResponse] = useState('');
+    const [isAiLoading, setIsAiLoading] = useState(false);
+
+    const updateInfo = (key: keyof BusinessInfo, value: string) => {
+        onUpdateProfile({ ...profile, info: { ...profile.info, [key]: value } });
+    };
+
+    const updateTax = (key: keyof TaxInfo, value: string) => {
+        onUpdateProfile({ ...profile, tax: { ...profile.tax, [key]: value } });
+    };
 
     const filteredNotes = useMemo(() => {
         return notes
@@ -253,7 +250,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
     const activeNote = useMemo(() => notes.find(n => n.id === selectedNoteId), [notes, selectedNoteId]);
     const blocks = useMemo(() => activeNote ? parseMarkdownToBlocks(activeNote.content) : [], [activeNote?.content]);
 
-    const handleCreate = () => {
+    const handleCreateNote = () => {
         const id = generateUUID();
         const newNote: BusinessNote = {
             id,
@@ -269,111 +266,232 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
         setSelectedNoteId(id);
     };
 
-    const handleUpdateActive = (updates: Partial<BusinessNote>) => {
+    const handleUpdateActiveNote = (updates: Partial<BusinessNote>) => {
         if (!selectedNoteId) return;
         onUpdateNotes(notes.map(n => n.id === selectedNoteId ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n));
+    };
+
+    const handleAskAi = async () => {
+        if (!aiQuery.trim() || isAiLoading) return;
+        setIsAiLoading(true);
+        try {
+            const prompt = `Based on my business profile: ${JSON.stringify(profile)}, ${aiQuery}`;
+            const response = await askAiAdvisor(prompt);
+            setAiResponse(response);
+        } catch (e) {
+            setAiResponse("I encountered an error processing your structural query. Check your API key.");
+        } finally {
+            setIsAiLoading(false);
+        }
     };
 
     return (
         <div className="h-full flex flex-col gap-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Journal & Bugs</h1>
-                    <p className="text-sm text-slate-500">Capture operational logs and track development debt.</p>
+                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Business Hub</h1>
+                    <p className="text-sm text-slate-500">Corporate identity, tax compliance, and institutional memory.</p>
                 </div>
-                <button onClick={handleCreate} className="px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95">
-                    <AddIcon className="w-5 h-5" /> New Entry
-                </button>
+                <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200">
+                    <button onClick={() => setActiveTab('identity')} className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'identity' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>Identity & Tax</button>
+                    <button onClick={() => setActiveTab('journal')} className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'journal' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>Operations Journal</button>
+                </div>
             </div>
 
-            <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* LEFT LIST PANE */}
-                <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
-                    <div className="p-3 border-b bg-slate-50 rounded-t-2xl">
-                        <div className="relative">
-                            <input type="text" placeholder="Search logs..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
-                            <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                        {filteredNotes.length === 0 ? (
-                            <div className="p-10 text-center text-slate-300">
-                                <BugIcon className="w-12 h-12 mx-auto mb-2 opacity-10" />
-                                <p className="text-[10px] font-black uppercase">No entries found</p>
-                            </div>
-                        ) : (
-                            filteredNotes.map(n => (
-                                <div key={n.id} onClick={() => setSelectedNoteId(n.id)} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-1.5 ${selectedNoteId === n.id ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}>
-                                    <div className="flex justify-between items-start">
-                                        <h4 className={`text-sm font-black truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
-                                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'bug' ? 'bg-red-500 shadow-sm shadow-red-200' : n.type === 'idea' ? 'bg-amber-500 shadow-sm shadow-amber-200' : 'bg-blue-500 shadow-sm shadow-blue-200'}`} />
+            <div className="flex-1 min-h-0 overflow-hidden pb-10">
+                {activeTab === 'identity' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
+                        {/* PROFILE EDITOR */}
+                        <div className="lg:col-span-2 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+                            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8">
+                                <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                                    <ShieldCheckIcon className="w-6 h-6 text-indigo-600" />
+                                    <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Legal Entity Information</h2>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Entity Registered Name</label>
+                                        <input type="text" value={profile.info.llcName || ''} onChange={e => updateInfo('llcName', e.target.value)} className="w-full font-bold" placeholder="e.g. My Global Ventures LLC" />
                                     </div>
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{new Date(n.updatedAt).toLocaleDateString()}</p>
-                                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${n.type === 'bug' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'}`}>{n.type}</span>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Structure Type</label>
+                                        <select value={profile.info.businessType || ''} onChange={e => updateInfo('businessType', e.target.value)} className="w-full font-bold">
+                                            <option value="">Select structure...</option>
+                                            <option value="sole-prop">Sole Proprietorship</option>
+                                            <option value="single-llc">Single-Member LLC</option>
+                                            <option value="multi-llc">Multi-Member LLC</option>
+                                            <option value="s-corp">S-Corporation</option>
+                                            <option value="c-corp">C-Corporation</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Employer ID (EIN)</label>
+                                        <input type="text" value={profile.info.ein || ''} onChange={e => updateInfo('ein', e.target.value)} className="w-full font-bold" placeholder="XX-XXXXXXX" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">State of Formation</label>
+                                        <input type="text" value={profile.info.stateOfFormation || ''} onChange={e => updateInfo('stateOfFormation', e.target.value)} className="w-full font-bold" placeholder="e.g. Wyoming" />
                                     </div>
                                 </div>
-                            ))
-                        )}
-                    </div>
-                </div>
+                            </div>
 
-                {/* RIGHT EDITOR PANE */}
-                <div className="flex-1 bg-slate-50/50 rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden relative">
-                    {selectedNoteId && activeNote ? (
-                        <div className="flex flex-col h-full animate-fade-in">
-                            <div className="p-6 border-b bg-white flex justify-between items-center z-10 shadow-sm">
-                                <div className="flex-1 min-w-0 mr-4">
-                                    <input 
-                                        type="text" 
-                                        value={activeNote.title} 
-                                        onChange={e => handleUpdateActive({ title: e.target.value })}
-                                        className="text-2xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full placeholder:text-slate-200"
-                                        placeholder="Entry Title"
+                            <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8">
+                                <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+                                    <BoxIcon className="w-6 h-6 text-emerald-600" />
+                                    <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Tax & Compliance Registry</h2>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">IRS Filing Status</label>
+                                        <select value={profile.tax.filingStatus || ''} onChange={e => updateTax('filingStatus', e.target.value)} className="w-full font-bold">
+                                            <option value="">Select status...</option>
+                                            <option value="individual">Individual / Disregarded Entity</option>
+                                            <option value="partnership">Partnership (1065)</option>
+                                            <option value="s-corp">S-Corp (1120-S)</option>
+                                            <option value="c-corp">C-Corp (1120)</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fiscal Year End</label>
+                                        <input type="date" value={profile.tax.taxYearEnd || ''} onChange={e => updateTax('taxYearEnd', e.target.value)} className="w-full font-bold" />
+                                    </div>
+                                    <div className="col-span-1 md:col-span-2 space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Accounting Professional</label>
+                                        <input type="text" value={profile.tax.accountantName || ''} onChange={e => updateTax('accountantName', e.target.value)} className="w-full font-bold" placeholder="Name or Firm Contact..." />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* AI SIDEBAR */}
+                        <div className="bg-slate-900 rounded-3xl p-6 text-white flex flex-col gap-6 shadow-2xl relative overflow-hidden">
+                            <div className="relative z-10 flex flex-col h-full">
+                                <div className="flex items-center gap-2 mb-4">
+                                    <RobotIcon className="w-6 h-6 text-indigo-400" />
+                                    <h3 className="font-black uppercase tracking-tight">Structure Advisor</h3>
+                                </div>
+                                
+                                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 mb-4 text-sm leading-relaxed text-slate-300 bg-black/20 p-4 rounded-2xl border border-white/5 shadow-inner">
+                                    {aiResponse ? (
+                                        <div dangerouslySetInnerHTML={{ __html: aiResponse.replace(/\n/g, '<br/>') }} />
+                                    ) : (
+                                        <p className="italic text-slate-500">Ask about tax strategy, entity benefits, or nexus requirements based on your saved profile.</p>
+                                    )}
+                                </div>
+
+                                <div className="space-y-3">
+                                    <textarea 
+                                        value={aiQuery} 
+                                        onChange={e => setAiQuery(e.target.value)}
+                                        className="w-full bg-white/5 border-white/10 text-white rounded-xl text-xs p-3 focus:border-indigo-500 transition-all placeholder:text-slate-600 min-h-[100px] resize-none"
+                                        placeholder="e.g. What are my estimated tax deadlines for an S-Corp?"
                                     />
-                                    <div className="flex items-center gap-4 mt-2">
-                                        <div className="relative group">
-                                            <select 
-                                                value={activeNote.type} 
-                                                onChange={e => handleUpdateActive({ type: e.target.value as any })}
-                                                className="text-[10px] font-black uppercase bg-slate-100 border-none rounded-lg py-1 pl-2 pr-6 focus:ring-0 cursor-pointer appearance-none hover:bg-slate-200 transition-colors"
-                                            >
-                                                <option value="note">System Log</option>
-                                                <option value="bug">Bug Report</option>
-                                                <option value="idea">Proposal</option>
-                                                <option value="task">Action Item</option>
-                                            </select>
-                                            <ChevronDownIcon className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                                    <button 
+                                        onClick={handleAskAi}
+                                        disabled={isAiLoading || !aiQuery.trim()}
+                                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-30"
+                                    >
+                                        {isAiLoading ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin"></div> : <SendIcon className="w-4 h-4" />}
+                                        Consult AI
+                                    </button>
+                                </div>
+                            </div>
+                            <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-5 text-indigo-400 pointer-events-none" />
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'journal' && (
+                    <div className="flex gap-6 h-full overflow-hidden">
+                        {/* JOURNAL LIST */}
+                        <div className="w-80 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col min-h-0">
+                            <div className="p-4 border-b bg-slate-50 rounded-t-3xl flex justify-between items-center">
+                                <h3 className="font-black text-slate-700 uppercase tracking-tighter text-sm">Capture Stream</h3>
+                                <button onClick={handleCreateNote} className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 shadow-md transition-transform active:scale-95"><AddIcon className="w-4 h-4"/></button>
+                            </div>
+                            <div className="p-3 border-b bg-white">
+                                <div className="relative">
+                                    <input type="text" placeholder="Search memory..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-50 border-none rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
+                                    <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                                </div>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
+                                {filteredNotes.length === 0 ? (
+                                    <div className="p-10 text-center opacity-20"><BugIcon className="w-12 h-12 mx-auto mb-2" /><p className="text-[10px] font-black uppercase">No logs</p></div>
+                                ) : (
+                                    filteredNotes.map(n => (
+                                        <div key={n.id} onClick={() => setSelectedNoteId(n.id)} className={`p-4 rounded-2xl cursor-pointer border-2 transition-all flex flex-col gap-1.5 ${selectedNoteId === n.id ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+                                            <div className="flex justify-between items-start">
+                                                <h4 className={`text-sm font-black truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
+                                                <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'bug' ? 'bg-red-500' : n.type === 'idea' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                                            </div>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{new Date(n.updatedAt).toLocaleDateString()}</p>
                                         </div>
-                                        <button 
-                                            onClick={() => handleUpdateActive({ isCompleted: !activeNote.isCompleted })}
-                                            className={`text-[10px] font-black uppercase px-3 py-1 rounded-lg transition-all shadow-sm ${activeNote.isCompleted ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-slate-700 text-white hover:bg-slate-800'}`}
-                                        >
-                                            {activeNote.isCompleted ? 'Completed' : 'Mark Fixed'}
-                                        </button>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        {/* JOURNAL EDITOR */}
+                        <div className="flex-1 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden relative">
+                            {selectedNoteId && activeNote ? (
+                                <div className="flex flex-col h-full animate-fade-in">
+                                    <div className="p-6 border-b bg-white flex justify-between items-center z-10 shadow-sm">
+                                        <div className="flex-1 min-w-0 mr-4">
+                                            <input 
+                                                type="text" 
+                                                value={activeNote.title} 
+                                                onChange={e => handleUpdateActiveNote({ title: e.target.value })}
+                                                className="text-2xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full placeholder:text-slate-300"
+                                                placeholder="Log Title"
+                                            />
+                                            <div className="flex items-center gap-3 mt-2">
+                                                <div className="relative">
+                                                    <select 
+                                                        value={activeNote.type} 
+                                                        onChange={e => handleUpdateActiveNote({ type: e.target.value as any })}
+                                                        className="text-[10px] font-black uppercase bg-slate-100 border-none rounded-lg py-1 pl-2 pr-6 focus:ring-0 cursor-pointer appearance-none"
+                                                    >
+                                                        <option value="note">Log Entry</option>
+                                                        <option value="bug">Software Bug</option>
+                                                        <option value="idea">Proposal</option>
+                                                        <option value="task">Action Item</option>
+                                                    </select>
+                                                    <ChevronDownIcon className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                                                </div>
+                                                <button 
+                                                    onClick={() => handleUpdateActiveNote({ isCompleted: !activeNote.isCompleted })}
+                                                    className={`text-[10px] font-black uppercase px-3 py-1 rounded-lg transition-all shadow-sm ${activeNote.isCompleted ? 'bg-green-100 text-green-700' : 'bg-slate-700 text-white hover:bg-slate-800'}`}
+                                                >
+                                                    {activeNote.isCompleted ? 'Fixed/Resolved' : 'Mark Resolved'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => { if(confirm("Discard permanently?")) { onUpdateNotes(notes.filter(n => n.id !== selectedNoteId)); setSelectedNoteId(null); } }} className="p-2.5 text-slate-300 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all"><TrashIcon className="w-6 h-6"/></button>
+                                    </div>
+
+                                    <div className="flex-1 overflow-hidden p-6 flex flex-col min-h-0 bg-slate-50/30">
+                                        <BlockEditor 
+                                            blocks={blocks} 
+                                            onChange={(newBlocks) => handleUpdateActiveNote({ content: serializeBlocksToMarkdown(newBlocks) })} 
+                                        />
                                     </div>
                                 </div>
-                                <button onClick={() => { if(confirm("Delete permanently?")) onUpdateNotes(notes.filter(n => n.id !== selectedNoteId)); setSelectedNoteId(null); }} className="p-2.5 text-slate-300 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all" title="Purge Record"><TrashIcon className="w-6 h-6"/></button>
-                            </div>
-
-                            <div className="flex-1 overflow-hidden p-6 flex flex-col min-h-0 bg-white/50">
-                                <BlockEditor 
-                                    blocks={blocks} 
-                                    onChange={(newBlocks) => handleUpdateActive({ content: serializeBlocksToMarkdown(newBlocks) })} 
-                                />
-                            </div>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/20">
+                                    <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle">
+                                        <NotesIcon className="w-12 h-12 text-indigo-200" />
+                                    </div>
+                                    <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Institutional Ledger</h3>
+                                    <p className="text-slate-500 max-w-sm mt-4 font-medium leading-relaxed">Select an operational capture from the stream to refine your institutional memory or track development debt.</p>
+                                    <button onClick={handleCreateNote} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Start Capture</button>
+                                </div>
+                            )}
                         </div>
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-white/30">
-                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle">
-                                <NotesIcon className="w-12 h-12 text-indigo-200" />
-                            </div>
-                            <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Operations Ledger</h3>
-                            <p className="text-slate-500 max-w-sm mt-4 font-medium leading-relaxed">Select a log entry from the list to update its contents, or start a new capture to track system improvements.</p>
-                            <button onClick={handleCreate} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Start Capture</button>
-                        </div>
-                    )}
-                </div>
+                    </div>
+                )}
             </div>
         </div>
     );

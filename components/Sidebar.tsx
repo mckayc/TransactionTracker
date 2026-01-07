@@ -23,7 +23,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
     { id: 'calendar', label: 'Calendar', icon: CalendarIcon },
     { id: 'tasks', label: 'Tasks', icon: TasksIcon },
     { id: 'reports', label: 'Reports', icon: ChartPieIcon },
-    { id: 'hub', label: 'Journal & Bugs', icon: BugIcon },
+    { id: 'hub', label: 'Business Hub', icon: WizardIcon },
     { id: 'integrations', label: 'Integrations', icon: PuzzleIcon },
   ];
 
