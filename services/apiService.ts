@@ -72,6 +72,11 @@ export const api = {
         });
     },
 
+    repairSystem: async (): Promise<boolean> => {
+        const response = await fetchWithRetry('/api/admin/repair', { method: 'POST' });
+        return response.ok;
+    },
+
     resetDatabase: async (entities: string[] = ['all']): Promise<boolean> => {
         const response = await fetchWithRetry('/api/admin/reset', { 
             method: 'POST',

@@ -69,9 +69,9 @@ const ensureSeedData = () => {
         }
 
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
-        if (typeCount === 0) {
-            console.log("[DB] Seeding default transaction types...");
-            const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)");
+        if (typeCount < 6) {
+            console.log("[DB] Seeding/Updating default transaction types...");
+            const insertType = db.prepare("INSERT OR REPLACE INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)");
             db.transaction(() => {
                 insertType.run('type_income', 'Income', 'incoming', 'text-emerald-600');
                 insertType.run('type_purchase', 'Purchase', 'outgoing', 'text-rose-600');
@@ -391,6 +391,17 @@ app.post('/api/admin/reset', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/admin/repair', (req, res) => {
+    try {
+        console.log("[ADMIN] Executing system repair protocol...");
+        ensureSeedData();
+        res.json({ success: true, message: "Schema verified and core data seeded." });
+    } catch (e) {
+        console.error("[ADMIN] Repair failed:", e.message);
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/api/files/:id', (req, res) => {
   const { id } = req.params;
   const rawFilename = req.headers['x-filename'] || 'unknown.bin';
@@ -413,13 +424,13 @@ app.get('/api/files/:id', (req, res) => {
     if (!meta) return res.status(404).send('Metadata entry not found');
     
     const fullPath = path.join(DOCUMENTS_DIR, meta.disk_filename);
-    if (!fs.existsSync(fullPath)) {
+    if (fs.existsSync(fullPath)) {
+        res.setHeader('Content-Type', meta.mime_type);
+        res.sendFile(fullPath);
+    } else {
         console.error(`[FILES] Orphaned record: ${meta.original_name} metadata exists but file ${meta.disk_filename} is missing on disk.`);
-        return res.status(404).send('File missing on server storage');
+        res.status(404).send('File missing on server storage');
     }
-    
-    res.setHeader('Content-Type', meta.mime_type);
-    res.sendFile(fullPath);
   } catch (e) { res.status(500).send('Error reading file'); }
 });
 

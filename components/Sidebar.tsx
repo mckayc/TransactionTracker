@@ -1,20 +1,18 @@
 import React from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction, View } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, CreditCardIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, WizardIcon, DocumentIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon, SearchCircleIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, WizardIcon, DocumentIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon } from './Icons';
 
 interface SidebarProps {
   currentView: View;
   onNavigate: (view: View) => void;
   transactions: Transaction[];
   onChatToggle?: () => void;
-  // Added onSearchToggle to SidebarProps to fix TypeScript error in views/App.tsx
-  onSearchToggle?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions, onChatToggle, onSearchToggle, isCollapsed = false, onToggleCollapse }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions, onChatToggle, isCollapsed = false, onToggleCollapse }) => {
 
   const mainNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
@@ -117,18 +115,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
       </div>
       
       <div className={`mt-auto pt-4 space-y-3 ${isCollapsed ? 'px-2 pb-4' : 'px-4 pb-4'}`}>
-          {/* Implement Search Button if onSearchToggle is provided */}
-          {onSearchToggle && (
-              <button 
-                onClick={onSearchToggle}
-                title={isCollapsed ? 'Global Search (⌘K)' : ''}
-                className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'gap-3 px-5 py-2.5'} text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-700 transition-all rounded-xl border border-slate-700`}
-              >
-                  <SearchCircleIcon className={`${isCollapsed ? 'w-6 h-6' : 'w-5 h-5'} flex-shrink-0`} />
-                  {!isCollapsed && <span>Search <span className="ml-auto text-[10px] opacity-50 font-mono">⌘K</span></span>}
-              </button>
-          )}
-
           {onChatToggle && (
               <button 
                 onClick={onChatToggle}

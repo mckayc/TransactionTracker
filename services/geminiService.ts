@@ -1,32 +1,29 @@
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule } from '../types';
 
-const getApiKey = (): string => {
-    const key = (globalThis as any).process?.env?.API_KEY;
-    if (key && key !== 'undefined' && key.trim() !== '') return key;
-    const configKey = (globalThis as any).__FINPARSER_CONFIG__?.API_KEY;
-    if (configKey && configKey !== 'undefined' && configKey.trim() !== '') return configKey;
-    return '';
-};
-
+// Guideline: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+// Assume this variable is pre-configured, valid, and accessible.
 export const hasApiKey = (): boolean => {
-    return getApiKey().length > 0;
+    const key = process.env.API_KEY;
+    return !!key && key !== 'undefined' && key.trim() !== '';
 };
 
 export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, message: string }> => {
-    const key = getApiKey();
-    if (!key) return { success: false, message: "No API Key found. Check your environment/server configuration." };
+    if (!hasApiKey()) return { success: false, message: "No API Key found. Check your environment/server configuration." };
     
-    const ai = new GoogleGenAI({ apiKey: key });
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: "Respond with exactly the word 'Pong'.",
             config: { 
                 maxOutputTokens: 10,
+                // Guideline: Use thinkingBudget: 0 to disable thinking for low latency.
                 thinkingConfig: { thinkingBudget: 0 }
             }
         });
+        // Guideline: The GenerateContentResponse object features a text property (not a method).
         if (response && response.text) {
             return { success: true, message: `Connection successful! Model replied: "${response.text.trim()}"` };
         }
@@ -58,10 +55,10 @@ export const generateRulesFromData = async (
     users: User[],
     promptContext?: string
 ): Promise<ReconciliationRule[]> => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing. Please configure your environment.");
+    if (!hasApiKey()) throw new Error("API Key is missing. Please configure your environment.");
     
-    const ai = new GoogleGenAI({ apiKey: key });
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     let sampleParts: any[] = [];
     if (typeof data === 'string') {
         sampleParts = [{ text: `DATA SAMPLE:\n${data}` }];
@@ -122,6 +119,7 @@ export const generateRulesFromData = async (
             }
         });
 
+        // Guideline: The GenerateContentResponse object features a text property (not a method).
         const parsed = JSON.parse(response.text || '{"rules": []}');
         return (parsed.rules || []).filter(Boolean).map((r: any) => ({
             ...r,
@@ -141,9 +139,9 @@ export const generateRulesFromData = async (
 };
 
 export const getAiFinancialAnalysis = async (query: string, contextData: any) => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) throw new Error("API Key is missing.");
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const optimizedContext = {
         ...contextData,
         transactions: (contextData.transactions || []).filter(Boolean).slice(0, 100).map((t: any) => ({
@@ -178,9 +176,9 @@ export const extractTransactionsFromFiles = async (
     categories: Category[], 
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) throw new Error("API Key is missing.");
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     if (!transactionTypes || transactionTypes.length === 0) {
         throw new Error("System Error: No transaction types available to apply extraction logic.");
@@ -217,6 +215,7 @@ export const extractTransactionsFromFiles = async (
             thinkingConfig: { thinkingBudget: 0 }
         }
     });
+    // Guideline: The GenerateContentResponse object features a text property (not a method).
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
     
@@ -238,9 +237,9 @@ export const extractTransactionsFromText = async (
     categories: Category[], 
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) throw new Error("API Key is missing.");
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
     if (!transactionTypes || transactionTypes.length === 0) {
         throw new Error("System Error: No transaction types available to apply parsing logic.");
@@ -275,6 +274,7 @@ export const extractTransactionsFromText = async (
             thinkingConfig: { thinkingBudget: 0 }
         }
     });
+    // Guideline: The GenerateContentResponse object features a text property (not a method).
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
 
@@ -290,9 +290,9 @@ export const extractTransactionsFromText = async (
 };
 
 export const healDataSnippet = async (text: string): Promise<any> => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) throw new Error("API Key is missing.");
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: `Repair this malformed JSON snippet: ${text}. Return ONLY the repaired JSON object.`,
@@ -301,25 +301,27 @@ export const healDataSnippet = async (text: string): Promise<any> => {
             thinkingConfig: { thinkingBudget: 0 }
         }
     });
+    // Guideline: The GenerateContentResponse object features a text property (not a method).
     return JSON.parse(response.text || 'null');
 };
 
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
-    const key = getApiKey();
-    if (!key) return "AI Configuration required.";
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) return "AI Configuration required.";
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
         config: { thinkingConfig: { thinkingBudget: 0 } }
     });
+    // Guideline: The GenerateContentResponse object features a text property (not a method).
     return response.text || "No response.";
 };
 
 export const getIndustryDeductions = async (industry: string): Promise<string[]> => {
-    const key = getApiKey();
-    if (!key) return [];
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) return [];
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const schema = {
         type: Type.OBJECT,
         properties: { deductions: { type: Type.ARRAY, items: { type: Type.STRING } } },
@@ -330,14 +332,15 @@ export const getIndustryDeductions = async (industry: string): Promise<string[]>
         contents: `List common tax deductions for the ${industry} industry.`,
         config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
     });
+    // Guideline: The GenerateContentResponse object features a text property (not a method).
     const parsed = JSON.parse(response.text || '{"deductions": []}');
     return parsed.deductions;
 };
 
 export const streamTaxAdvice = async (messages: ChatMessage[], profile: BusinessProfile) => {
-    const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) throw new Error("API Key is missing.");
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const contents = messages.filter(Boolean).map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
@@ -360,9 +363,9 @@ export const auditTransactions = async (
     auditType: string,
     examples?: Transaction[][]
 ): Promise<AuditFinding[]> => {
-    const key = getApiKey();
-    if (!key) return [];
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) return [];
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const schema = {
         type: Type.OBJECT,
         properties: {
@@ -393,14 +396,15 @@ export const auditTransactions = async (
         contents: `Audit type ${auditType}: ${JSON.stringify(transactions.filter(Boolean).slice(0, 100))}. Training Examples: ${JSON.stringify((examples || []).filter(Boolean))}`,
         config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
     });
+    // Guideline: The GenerateContentResponse object features a text property (not a method).
     const result = JSON.parse(response.text || '{"findings": []}');
     return (result.findings || []).filter(Boolean);
 };
 
 export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<any> => {
-    const key = getApiKey();
-    if (!key) return {};
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) return {};
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     onProgress("AI is reading document...");
     const part = await fileToGenerativePart(file);
     const schema = {
@@ -417,6 +421,7 @@ export const analyzeBusinessDocument = async (file: File, onProgress: (msg: stri
         contents: { parts: [part, { text: "Analyze this document and provide a summary with key dates." }] },
         config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
     });
+    // Guideline: The GenerateContentResponse object features a text property (not a method).
     return JSON.parse(response.text || '{}');
 };
 
@@ -426,9 +431,9 @@ export const generateFinancialStrategy = async (
     categories: Category[],
     profile: BusinessProfile
 ): Promise<any> => {
-    const key = getApiKey();
-    if (!key) return { strategy: "API Key required." };
-    const ai = new GoogleGenAI({ apiKey: key });
+    if (!hasApiKey()) return { strategy: "API Key required." };
+    // Guideline: Always use const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const schema = {
         type: Type.OBJECT,
         properties: {
@@ -455,5 +460,6 @@ export const generateFinancialStrategy = async (
             thinkingConfig: { thinkingBudget: 4000 }
         }
     });
+    // Guideline: The GenerateContentResponse object features a text property (not a method).
     return JSON.parse(response.text || '{"strategy": "No strategy found."}');
 };
