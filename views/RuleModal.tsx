@@ -2,10 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
 import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
-import RuleBuilder from './RuleBuilder';
-import SearchableSelect from './SearchableSelect';
-import EntityModal from './EntityModal';
-import { EntityType } from './EntityEditor';
+import RuleBuilder from '../components/RuleBuilder';
+import SearchableSelect from '../components/SearchableSelect';
+import EntityModal from '../components/EntityModal';
+import { EntityType } from '../components/EntityEditor';
 
 interface RuleModalProps {
     isOpen: boolean;
