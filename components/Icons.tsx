@@ -45,6 +45,7 @@ export const CheckBadgeIcon = BadgeCheck;
 export const PlayIcon = Play;
 export const WizardIcon = Wand2;
 export const DocumentIcon = FileText;
+export const FileTextIcon = FileText;
 export const LightBulbIcon = Lightbulb;
 export const CloudArrowUpIcon = UploadCloud;
 export const CurrencyDollarIcon = DollarSign;
