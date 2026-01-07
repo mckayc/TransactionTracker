@@ -21,6 +21,16 @@ const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'dist'))
     ? path.join(__dirname, 'dist') 
     : path.join(__dirname, 'public');
 
+// Request Logging Middleware
+app.use((req, res, next) => {
+    const start = Date.now();
+    res.on('finish', () => {
+        const duration = Date.now() - start;
+        console.log(`[REQ] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    });
+    next();
+});
+
 app.use(express.json({ limit: '100mb' }));
 app.use('/api/files', express.raw({ type: '*/*', limit: '100mb' }));
 
@@ -49,8 +59,10 @@ let db;
 
 const ensureSeedData = () => {
     try {
+        console.log("[DB] Verifying system seed data...");
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
         if (typeCount === 0) {
+            console.log("[DB] Seeding default transaction types...");
             const insertType = db.prepare("INSERT INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)");
             db.transaction(() => {
                 insertType.run('type_income', 'Income', 'incoming', 'text-emerald-600');
@@ -64,16 +76,19 @@ const ensureSeedData = () => {
         
         const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
         if (userCount === 0) {
+            console.log("[DB] Seeding default user...");
             db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
         }
 
         const categoryCount = db.prepare("SELECT COUNT(*) as count FROM categories").get().count;
         if (categoryCount === 0) {
+            console.log("[DB] Seeding default category...");
             db.prepare("INSERT INTO categories (id, name) VALUES (?, ?)").run('cat_other', 'Other');
         }
 
         const accountTypeCount = db.prepare("SELECT COUNT(*) as count FROM account_types").get().count;
         if (accountTypeCount === 0) {
+            console.log("[DB] Seeding default account types...");
             const insertAT = db.prepare("INSERT INTO account_types (id, name, is_default) VALUES (?, ?, ?)");
             db.transaction(() => {
                 insertAT.run('at_checking', 'Checking', 1);
@@ -88,6 +103,7 @@ const ensureSeedData = () => {
 
 const initDb = () => {
     try {
+        console.log(`[DB] Opening database at ${DB_PATH}`);
         db = new Database(DB_PATH);
         db.pragma('journal_mode = WAL');
         db.pragma('busy_timeout = 5000');
@@ -200,7 +216,10 @@ app.get('/api/transactions', (req, res) => {
             parentTransactionId: r.parent_transaction_id
         }));
         res.json({ data: results, total: totalCount });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        console.error("[API] Error fetching transactions:", e.message);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
 app.get('/api/analytics/summary', (req, res) => {
@@ -225,6 +244,7 @@ app.get('/api/analytics/summary', (req, res) => {
 app.post('/api/transactions/batch', (req, res) => {
     try {
         const txs = req.body;
+        console.log(`[DB] Batch inserting ${txs.length} transactions...`);
         const insert = db.prepare(`
             INSERT OR REPLACE INTO transactions (
                 id, date, description, amount, category_id, account_id, type_id, 
@@ -249,7 +269,10 @@ app.post('/api/transactions/batch', (req, res) => {
             }
         })(txs);
         res.json({ success: true, count: txs.length });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        console.error("[DB] Batch transaction error:", e.message);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
 app.delete('/api/transactions/:id', (req, res) => {
@@ -285,6 +308,7 @@ app.post('/api/data/:key', (req, res) => {
   try {
     const key = req.params.key;
     const value = req.body;
+    console.log(`[DB] Saving key '${key}'...`);
     
     if (key === 'categories' && Array.isArray(value)) {
         db.prepare("DELETE FROM categories").run();
@@ -324,12 +348,16 @@ app.post('/api/data/:key', (req, res) => {
         db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
     }
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) { 
+      console.error(`[DB] Error saving '${req.params.key}':`, e.message);
+      res.status(500).json({ error: e.message }); 
+  }
 });
 
 app.post('/api/admin/reset', async (req, res) => {
     const { entities } = req.body || {};
     try {
+        console.warn(`[ADMIN] Database reset requested for entities: ${entities || 'ALL'}`);
         if (!entities || entities.includes('all')) {
             if (db) db.close();
             if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
@@ -361,27 +389,42 @@ app.post('/api/files/:id', (req, res) => {
   const mimeType = req.headers['content-type'] || 'application/octet-stream';
   try {
     const diskFilename = `${Date.now()}_${rawFilename.replace(/[^a-zA-Z0-9.]/g, '_')}`;
+    console.log(`[FILES] Uploading ${rawFilename} as ${diskFilename}`);
     fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), req.body);
     db.prepare('INSERT OR REPLACE INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, rawFilename, diskFilename, mimeType, req.body.length, new Date().toISOString());
     res.json({ success: true });
-  } catch (e) { res.status(500).send(e.message); }
+  } catch (e) { 
+      console.error("[FILES] Upload failure:", e.message);
+      res.status(500).send(e.message); 
+  }
 });
 
 app.get('/api/files/:id', (req, res) => {
   try {
     const meta = db.prepare('SELECT * FROM files_meta WHERE id = ?').get(req.params.id);
-    if (!meta) return res.status(404).send('Not found');
+    if (!meta) return res.status(404).send('Metadata entry not found');
+    
+    const fullPath = path.join(DOCUMENTS_DIR, meta.disk_filename);
+    if (!fs.existsSync(fullPath)) {
+        console.error(`[FILES] Orphaned record: ${meta.original_name} metadata exists but file ${meta.disk_filename} is missing on disk.`);
+        return res.status(404).send('File missing on server storage');
+    }
+    
     res.setHeader('Content-Type', meta.mime_type);
-    res.sendFile(path.join(DOCUMENTS_DIR, meta.disk_filename));
-  } catch (e) { res.status(500).send('Error'); }
+    res.sendFile(fullPath);
+  } catch (e) { res.status(500).send('Error reading file'); }
 });
 
 app.delete('/api/files/:id', (req, res) => {
   try {
     const meta = db.prepare('SELECT * FROM files_meta WHERE id = ?').get(req.params.id);
-    if (meta) { fs.unlinkSync(path.join(DOCUMENTS_DIR, meta.disk_filename)); db.prepare('DELETE FROM files_meta WHERE id = ?').run(req.params.id); }
+    if (meta) { 
+        const fullPath = path.join(DOCUMENTS_DIR, meta.disk_filename);
+        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+        db.prepare('DELETE FROM files_meta WHERE id = ?').run(req.params.id); 
+    }
     res.json({ success: true });
-  } catch (e) { res.status(500).json({ error: 'Failed' }); }
+  } catch (e) { res.status(500).json({ error: 'Failed to delete file' }); }
 });
 
 if (fs.existsSync(PUBLIC_DIR)) {

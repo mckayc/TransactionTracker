@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
@@ -85,28 +86,37 @@ const ImportPage: React.FC<ImportPageProps> = ({
   }, [dashboardRange, recentGlobalTransactions]);
 
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
-    if (!rawTransactions || rawTransactions.length === 0) {
-        setError("No transactions were found in the provided data. Please check the file format or try AI mode.");
-        setAppState('error');
-        return;
-    }
-
-    const safeRaw = (rawTransactions || []).filter(Boolean);
-    const rawWithUser = safeRaw.map(tx => ({ ...tx, userId: userId || 'user_primary' }));
-    const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
-    const validCategories = (categories || []).filter(Boolean);
-    const categoryNameToIdMap = new Map(validCategories.map(c => [c.name.toLowerCase(), c.id]));
-    const otherCategoryId = categoryNameToIdMap.get('other') || validCategories[0]?.id || '';
-
-    const processedTransactions = transactionsWithRules.map(tx => {
-        let finalCategoryId = tx.categoryId;
-        if (!finalCategoryId) {
-            const aiCategoryName = (tx.category || '').toLowerCase();
-            finalCategoryId = categoryNameToIdMap.get(aiCategoryName) || otherCategoryId;
+    try {
+        console.log(`[IMPORT] Normalizing ${rawTransactions.length} items with ${currentRules.length} rules...`);
+        if (!rawTransactions || rawTransactions.length === 0) {
+            setError("No transactions were found in the provided data. Please check the file format or try AI mode.");
+            setAppState('error');
+            return;
         }
-        return { ...tx, categoryId: finalCategoryId, tempId: generateUUID() };
-    });
-    setRawTransactionsToVerify(processedTransactions);
+
+        const safeRaw = (rawTransactions || []).filter(Boolean);
+        const rawWithUser = safeRaw.map(tx => ({ ...tx, userId: userId || 'user_primary' }));
+        const transactionsWithRules = applyRulesToTransactions(rawWithUser, currentRules, accounts);
+        const validCategories = (categories || []).filter(Boolean);
+        const categoryNameToIdMap = new Map(validCategories.map(c => [c.name.toLowerCase(), c.id]));
+        const otherCategoryId = categoryNameToIdMap.get('other') || validCategories[0]?.id || '';
+
+        const processedTransactions = transactionsWithRules.map(tx => {
+            let finalCategoryId = tx.categoryId;
+            if (!finalCategoryId) {
+                const aiCategoryName = (tx.category || '').toLowerCase();
+                finalCategoryId = categoryNameToIdMap.get(aiCategoryName) || otherCategoryId;
+            }
+            return { ...tx, categoryId: finalCategoryId, tempId: generateUUID() };
+        });
+        
+        console.log("[IMPORT] Staging complete. Ready for verification.");
+        setRawTransactionsToVerify(processedTransactions);
+    } catch (e) {
+        console.error("[IMPORT] Transformation error:", e);
+        setError(`Transformation error: ${e.message}`);
+        setAppState('error');
+    }
   }, [categories, accounts]);
 
   const handleFileUpload = useCallback(async (files: File[], accountId: string, aiMode: boolean) => {
@@ -114,11 +124,14 @@ const ImportPage: React.FC<ImportPageProps> = ({
     setAppState('processing');
     setProgressMessage(aiMode ? 'AI Thinking (Analyzing Statements)...' : 'Parsing local files...');
     try {
+      console.log(`[IMPORT] Starting ${aiMode ? 'AI' : 'Local'} extraction for ${files.length} files...`);
       const raw = aiMode 
         ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage) 
         : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
       
       const safeRaw = (raw || []).filter(Boolean);
+      console.log(`[IMPORT] Parser returned ${safeRaw.length} results.`);
+      
       if (safeRaw.length === 0) {
           throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
       }
@@ -128,13 +141,16 @@ const ImportPage: React.FC<ImportPageProps> = ({
       applyRulesAndSetStaging(safeRaw, defaultUser?.id || 'user_primary', rules);
       setAppState('verifying_import');
     } catch (err) {
+      console.error("[IMPORT] Critical extraction failure:", err);
       setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
       setAppState('error');
     }
   }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
+      console.log(`[IMPORT] User confirmed ${verified.length} transactions for merge...`);
       const { added } = mergeTransactions(recentGlobalTransactions.filter(Boolean), verified.filter(Boolean));
+      console.log(`[IMPORT] Merge results: ${added.length} new records created.`);
       onTransactionsAdded(added, []);
       setImportedTxIds(new Set(added.map(tx => tx.id)));
       setAppState('post_import_edit');
@@ -202,6 +218,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                             onClick={async () => {
                                                 setAppState('processing');
                                                 try {
+                                                    console.log("[IMPORT] Starting text-based ingestion...");
                                                     const raw = useAi 
                                                         ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) 
                                                         : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
@@ -211,7 +228,11 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                     const defaultUser = validUsers.length > 0 ? (validUsers.find(u => u.isDefault) || validUsers[0]) : null;
                                                     applyRulesAndSetStaging(safeRaw, defaultUser?.id || 'user_primary', rules);
                                                     setAppState('verifying_import');
-                                                } catch(e) { setAppState('error'); setError("Parsing failed. Ensure columns align."); }
+                                                } catch(e) { 
+                                                    console.error("[IMPORT] Text parse failure:", e);
+                                                    setAppState('error'); 
+                                                    setError(`Parsing failed: ${e.message}. Ensure columns align.`); 
+                                                }
                                             }} 
                                             disabled={!textInput.trim() || !pasteAccountId} 
                                             className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 disabled:opacity-50"

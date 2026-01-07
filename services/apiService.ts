@@ -6,8 +6,12 @@ const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = 
     try {
         const response = await fetch(url, options);
         if (!response.ok) {
+            const errorBody = await response.text().catch(() => 'No response body');
+            console.error(`[API] Failure: ${options.method || 'GET'} ${url} - Status: ${response.status}. Body: ${errorBody}`);
+            
             if (retries > 0 && (response.status >= 500 || response.status === 429)) {
                 const delay = INITIAL_DELAY * (MAX_RETRIES - retries + 1);
+                console.log(`[API] Retrying in ${delay}ms... (${retries} attempts left)`);
                 await new Promise(res => setTimeout(res, delay));
                 return fetchWithRetry(url, options, retries - 1);
             }
@@ -15,6 +19,7 @@ const fetchWithRetry = async (url: string, options: RequestInit = {}, retries = 
         }
         return response;
     } catch (error) {
+        console.error(`[API] Network or System Error for ${url}:`, error);
         if (retries > 0) {
             const delay = INITIAL_DELAY * (MAX_RETRIES - retries + 1);
             await new Promise(res => setTimeout(res, delay));
