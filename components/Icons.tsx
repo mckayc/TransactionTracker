@@ -8,7 +8,7 @@ import {
     ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Heart, Printer, 
     ShieldCheck, Scissors, UsersRound, Puzzle, Box, BarChart3, ArrowRight,
     Youtube, Video, TrendingUp, Slash, Bug, Database, FileCode, MapPin,
-    Trash
+    Trash, List, Type
 } from 'lucide-react';
 
 export const UploadIcon = Upload;
@@ -79,5 +79,7 @@ export const FileCodeIcon = FileCode;
 /* Added MapPinIcon export to resolve missing member error */
 export const MapPinIcon = MapPin;
 export const TrashIcon = Trash;
+export const ListIcon = List;
+export const TypeIcon = Type;
 /* Specifically export DollarSign as requested by Reports.tsx */
 export { DollarSign };

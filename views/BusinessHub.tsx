@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote } from '../types';
-import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon, ChevronRightIcon, LightBulbIcon, ChecklistIcon, BoxIcon, RepeatIcon } from '../components/Icons';
+import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon, ChevronRightIcon, LightBulbIcon, ChecklistIcon, BoxIcon, RepeatIcon, ListIcon, TypeIcon } from '../components/Icons';
 import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -16,6 +15,100 @@ interface BusinessHubProps {
     accounts: Account[];
     categories: Category[];
 }
+
+// Helper: Smart Content Renderer with Interactive Checkboxes
+const NoteContentRenderer: React.FC<{ 
+    content: string; 
+    onToggleCheckbox: (lineIndex: number) => void;
+}> = ({ content, onToggleCheckbox }) => {
+    const lines = content.split('\n');
+
+    return (
+        <div className="space-y-1 font-sans text-[13px] leading-relaxed text-slate-700">
+            {lines.map((line, idx) => {
+                // Hierarchical Checkbox Detection: "- [ ] " or "- [x] "
+                const checkboxMatch = line.match(/^(\s*)-\s*\[([ xX])\]\s*(.*)/);
+                // Bullet Detection: "- " or "* "
+                const bulletMatch = line.match(/^(\s*)[-*]\s+(.*)/);
+                // Numbered List Detection: "1. "
+                const numberMatch = line.match(/^(\s*)\d+\.\s+(.*)/);
+
+                const indent = (line.match(/^\s*/) || [""])[0].length;
+                const style = { paddingLeft: `${indent * 8}px` };
+
+                if (checkboxMatch) {
+                    const isChecked = checkboxMatch[2].toLowerCase() === 'x';
+                    const textContent = checkboxMatch[3];
+                    return (
+                        <div key={idx} style={style} className="flex items-start gap-2 py-0.5 group/line">
+                            <button 
+                                onClick={() => onToggleCheckbox(idx)}
+                                className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
+                                    isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300 hover:border-indigo-400'
+                                }`}
+                            >
+                                {isChecked && <CheckCircleIcon className="w-3 h-3" />}
+                            </button>
+                            <span className={`${isChecked ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>
+                                {parseInlineMarkdown(textContent)}
+                            </span>
+                        </div>
+                    );
+                }
+
+                if (bulletMatch) {
+                    return (
+                        <div key={idx} style={style} className="flex items-start gap-2 py-0.5">
+                            <span className="text-slate-400 mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-300 flex-shrink-0" />
+                            <span>{parseInlineMarkdown(bulletMatch[2])}</span>
+                        </div>
+                    );
+                }
+
+                if (numberMatch) {
+                    return (
+                        <div key={idx} style={style} className="flex items-start gap-2 py-0.5">
+                            <span className="text-xs font-black text-slate-400 min-w-[1.25rem]">{idx + 1}.</span>
+                            <span>{parseInlineMarkdown(numberMatch[2])}</span>
+                        </div>
+                    );
+                }
+
+                // Default text rendering
+                return (
+                    <div key={idx} style={style} className="min-h-[1.2em]">
+                        {parseInlineMarkdown(line)}
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+// Basic Inline Parser for ~~strikethrough~~, **bold**, *italic*
+// Fix: Replace JSX.Element with React.ReactNode to resolve namespace error
+const parseInlineMarkdown = (text: string) => {
+    if (!text) return null;
+    
+    // Simple regex replacements for basic markdown patterns
+    let parts: (string | React.ReactNode)[] = [text];
+
+    // Strikethrough ~~text~~
+    parts = parts.flatMap(p => {
+        if (typeof p !== 'string') return p;
+        const subParts = p.split(/~~(.*?)~~/g);
+        return subParts.map((sp, i) => i % 2 === 1 ? <span key={i} className="line-through opacity-60">{sp}</span> : sp);
+    });
+
+    // Bold **text**
+    parts = parts.flatMap(p => {
+        if (typeof p !== 'string') return p;
+        const subParts = p.split(/\*\*(.*?)\*\*/g);
+        return subParts.map((sp, i) => i % 2 === 1 ? <strong key={i} className="font-black text-slate-900">{sp}</strong> : sp);
+    });
+
+    return <>{parts}</>;
+};
 
 // Internal Sub-component for Journaling
 const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessNote[]) => void }> = ({ notes, onUpdateNotes }) => {
@@ -60,6 +153,48 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
             setSelectedNoteId(newNote.id);
         }
         resetForm();
+    };
+
+    const toggleCheckboxInContent = (note: BusinessNote, lineIndex: number) => {
+        const lines = note.content.split('\n');
+        const line = lines[lineIndex];
+        
+        // Regex to toggle [ ] vs [x]
+        let newLine = line;
+        if (line.includes('- [ ]')) {
+            newLine = line.replace('- [ ]', '- [x]');
+        } else if (line.includes('- [x]')) {
+            newLine = line.replace('- [x]', '- [ ]');
+        } else if (line.includes('- [X]')) {
+            newLine = line.replace('- [X]', '- [ ]');
+        }
+
+        lines[lineIndex] = newLine;
+        const updatedContent = lines.join('\n');
+        const now = new Date().toISOString();
+        
+        onUpdateNotes(notes.map(n => n.id === note.id ? { ...n, content: updatedContent, updatedAt: now } : n));
+    };
+
+    const insertFormatting = (prefix: string, suffix: string = '') => {
+        const textarea = document.getElementById('note-editor') as HTMLTextAreaElement;
+        if (!textarea) return;
+
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = textarea.value;
+        const before = text.substring(0, start);
+        const selection = text.substring(start, end);
+        const after = text.substring(end);
+
+        const newText = before + prefix + selection + suffix + after;
+        setContent(newText);
+        
+        // Refocus and set cursor
+        setTimeout(() => {
+            textarea.focus();
+            textarea.setSelectionRange(start + prefix.length, end + prefix.length);
+        }, 10);
     };
 
     const resetForm = () => {
@@ -107,17 +242,11 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
         }
     };
 
-    /**
-     * Optimized clipboard function with fallback for insecure (HTTP) contexts.
-     * Essential for self-hosted apps running on IPs/Internal domains.
-     */
     const copyToClipboard = async (text: string) => {
         try {
             if (navigator.clipboard && window.isSecureContext) {
-                // High-perf modern way
                 await navigator.clipboard.writeText(text);
             } else {
-                // Robust Fallback for HTTP environments
                 const textArea = document.createElement("textarea");
                 textArea.value = text;
                 textArea.style.position = "fixed";
@@ -162,7 +291,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
     }), [notes]);
 
     return (
-        <div className="flex gap-4 h-[700px] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden relative">
+        <div className="flex gap-4 h-[750px] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden relative">
             {/* SIDEBAR: CLASSIFICATIONS */}
             <div className="w-52 bg-slate-50 border-r border-slate-200 flex flex-col p-3 flex-shrink-0">
                 <button onClick={() => setIsCreating(true)} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold shadow-md mb-6 flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 text-xs">
@@ -257,15 +386,15 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
             {/* DETAIL: INSPECTOR VIEW */}
             <div className="flex-1 bg-white flex flex-col min-h-0 relative">
                 {isCreating ? (
-                    <div className="p-6 flex-1 overflow-y-auto animate-fade-in">
-                        <form onSubmit={handleSave} className="space-y-4 max-w-2xl">
+                    <div className="p-6 flex-1 overflow-y-auto animate-fade-in flex flex-col">
+                        <form onSubmit={handleSave} className="space-y-4 max-w-3xl w-full mx-auto flex flex-col h-full">
                             <div className="flex justify-between items-center mb-2">
                                 <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Drafting Record</h3>
                                 <button type="button" onClick={resetForm} className="p-1 text-slate-400 hover:text-red-500"><CloseIcon className="w-5 h-5" /></button>
                             </div>
                             <div>
                                 <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Title</label>
-                                <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Enter title..." className="w-full p-1.5 border border-slate-200 rounded-lg font-bold text-xs" required />
+                                <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder="Enter title..." className="w-full p-2 border border-slate-200 rounded-lg font-bold text-xs focus:ring-2 focus:ring-indigo-500 outline-none" required />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -281,9 +410,26 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                                     </select>
                                 </div>
                             </div>
-                            <div>
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Context / Description</label>
-                                <textarea value={content} onChange={e => setContent(e.target.value)} rows={12} placeholder="Provide details..." className="w-full p-3 border border-slate-200 rounded-lg font-medium text-[11px] leading-relaxed" />
+
+                            {/* Toolbar */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-t-lg p-1.5 flex gap-1.5">
+                                <button type="button" onClick={() => insertFormatting('- [ ] ')} className="p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-200 text-slate-600 transition-all" title="Add Checklist Item"><ChecklistIcon className="w-4 h-4" /></button>
+                                <button type="button" onClick={() => insertFormatting('- ')} className="p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-200 text-slate-600 transition-all" title="Add Bullet"><ListIcon className="w-4 h-4" /></button>
+                                <button type="button" onClick={() => insertFormatting('1. ')} className="p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-200 text-slate-600 font-bold text-xs" title="Add Numbered List">1.</button>
+                                <div className="w-px h-6 bg-slate-200 mx-1" />
+                                <button type="button" onClick={() => insertFormatting('~~', '~~')} className="p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-200 text-slate-600 transition-all" title="Strikethrough"><TypeIcon className="w-4 h-4 italic line-through" /></button>
+                                <button type="button" onClick={() => insertFormatting('**', '**')} className="p-1.5 hover:bg-white rounded border border-transparent hover:border-slate-200 text-slate-600 font-black text-xs" title="Bold">B</button>
+                            </div>
+
+                            <div className="flex-1 min-h-0">
+                                <textarea 
+                                    id="note-editor"
+                                    value={content} 
+                                    onChange={e => setContent(e.target.value)} 
+                                    rows={12} 
+                                    placeholder="Use - [ ] for checklists, - for bullets..." 
+                                    className="w-full h-full p-4 border border-slate-200 border-t-0 rounded-b-lg font-mono text-[11px] leading-relaxed focus:ring-0 outline-none resize-none" 
+                                />
                             </div>
                             <div className="flex justify-end gap-3 pt-2">
                                 <button type="button" onClick={resetForm} className="px-4 py-1.5 text-[10px] text-slate-500 font-bold uppercase hover:bg-slate-50 rounded-lg">Discard</button>
@@ -292,7 +438,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                         </form>
                     </div>
                 ) : activeNote ? (
-                    <div className="p-8 flex-1 overflow-y-auto animate-fade-in custom-scrollbar">
+                    <div className="p-8 flex-1 overflow-y-auto animate-fade-in custom-scrollbar bg-white">
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <div className="flex items-center gap-2 mb-2">
@@ -317,32 +463,37 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                                 <button onClick={() => deleteNote(activeNote.id)} className="p-1.5 bg-slate-50 text-slate-400 hover:text-red-500 border border-slate-200 rounded-lg transition-all" title="Delete"><DeleteIcon className="w-3.5 h-3.5"/></button>
                             </div>
                         </div>
-                        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 shadow-inner mb-6">
-                            <p className="text-[12px] text-slate-700 whitespace-pre-wrap leading-relaxed font-medium">{activeNote.content}</p>
+                        
+                        <div className="bg-slate-50/50 p-8 rounded-[2rem] border border-slate-100 shadow-inner mb-6 min-h-[300px]">
+                            <NoteContentRenderer 
+                                content={activeNote.content} 
+                                onToggleCheckbox={(lineIdx) => toggleCheckboxInContent(activeNote, lineIdx)} 
+                            />
                         </div>
-                        <div className="flex justify-between items-center pt-4 border-t border-slate-50">
+
+                        <div className="flex justify-between items-center pt-6 border-t border-slate-100">
                             <div className="flex items-center gap-4">
-                                <button onClick={() => toggleComplete(activeNote.id)} className={`px-4 py-2 rounded-lg font-black uppercase text-[9px] transition-all flex items-center gap-2 tracking-widest ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}>
-                                    {activeNote.isCompleted ? <RepeatIcon className="w-3.5 h-3.5"/> : <CheckCircleIcon className="w-3.5 h-3.5"/>}
+                                <button onClick={() => toggleComplete(activeNote.id)} className={`px-5 py-2.5 rounded-xl font-black uppercase text-[10px] transition-all flex items-center gap-2 tracking-widest shadow-sm ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-100'}`}>
+                                    {activeNote.isCompleted ? <RepeatIcon className="w-4 h-4"/> : <CheckCircleIcon className="w-4 h-4"/>}
                                     {activeNote.isCompleted ? 'Move to Backlog' : 'Resolve & Archive'}
                                 </button>
                                 {activeNote.isCompleted && (
-                                    <p className="text-[9px] font-bold text-slate-400 italic">Resolved on {new Date(activeNote.resolvedAt!).toLocaleDateString()}</p>
+                                    <p className="text-[10px] font-bold text-slate-400 italic">Resolved on {new Date(activeNote.resolvedAt!).toLocaleDateString()}</p>
                                 )}
                             </div>
-                            <button onClick={() => copyToClipboard(`Subject: ${activeNote.title}\n\nContext: ${activeNote.content}`)} className="flex items-center gap-1.5 text-indigo-600 font-bold text-[9px] uppercase hover:underline">
-                                <CopyIcon className="w-3.5 h-3.5"/> Copy Details
+                            <button onClick={() => copyToClipboard(`Subject: ${activeNote.title}\n\nContext: ${activeNote.content}`)} className="flex items-center gap-2 text-indigo-600 font-bold text-[10px] uppercase hover:bg-indigo-50 px-3 py-2 rounded-lg transition-all">
+                                <CopyIcon className="w-4 h-4"/> Copy Details
                             </button>
                         </div>
                     </div>
                 ) : (
                     <div className="flex-1 flex flex-col items-center justify-center text-center p-10 bg-slate-50/30">
-                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg mb-4">
-                             <BoxIcon className="w-6 h-6 text-indigo-100" />
+                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-lg mb-6">
+                             <BoxIcon className="w-8 h-8 text-indigo-100" />
                         </div>
-                        <h4 className="text-base font-black text-slate-800 uppercase tracking-tighter">Select a record</h4>
-                        <p className="text-slate-400 text-[11px] mt-2 font-bold max-w-[180px]">Choose an item from the list to view logs or edit details.</p>
-                        <button onClick={() => setIsCreating(true)} className="mt-4 text-indigo-600 font-black uppercase tracking-widest text-[9px] border-b-2 border-indigo-100 pb-0.5 hover:border-indigo-500 transition-all">Or create new entry</button>
+                        <h4 className="text-lg font-black text-slate-800 uppercase tracking-tighter">Document Selector</h4>
+                        <p className="text-slate-400 text-xs mt-2 font-bold max-w-[220px]">Choose an item from the ledger to view associated logs or execute edits.</p>
+                        <button onClick={() => setIsCreating(true)} className="mt-6 px-6 py-2 bg-white border border-indigo-200 text-indigo-600 font-black uppercase tracking-widest text-[10px] rounded-xl hover:bg-indigo-50 shadow-sm transition-all">Create New Entry</button>
                     </div>
                 )}
             </div>
@@ -350,7 +501,7 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                 <div className="fixed bottom-10 right-10 z-[200] animate-slide-in-right">
                     <div className={`px-4 py-2 rounded-xl shadow-2xl flex items-center gap-2 border-2 ${copyStatus === 'success' ? 'bg-slate-900 border-emerald-500 text-white' : 'bg-red-900 border-red-500 text-white'}`}>
                         {copyStatus === 'success' ? <CheckCircleIcon className="w-4 h-4 text-emerald-500" /> : <ExclamationTriangleIcon className="w-4 h-4 text-red-500" />}
-                        <span className="font-bold text-xs">{copyStatus === 'success' ? 'Copied' : 'Error'}</span>
+                        <span className="font-bold text-xs">{copyStatus === 'success' ? 'Copied to Clipboard' : 'Copy Failed'}</span>
                     </div>
                 </div>
             )}
