@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { BusinessProfile, BusinessInfo, TaxInfo, ChatSession, ChatMessage, Transaction, Account, Category, BusinessNote } from '../types';
-import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon, ChevronRightIcon, LightBulbIcon, ChecklistIcon, BoxIcon, RepeatIcon, ListIcon, TypeIcon, DragHandleIcon, TrashIcon } from '../components/Icons';
+import { CheckCircleIcon, SparklesIcon, CurrencyDollarIcon, SendIcon, ExclamationTriangleIcon, AddIcon, DeleteIcon, ChatBubbleIcon, CloudArrowUpIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, SortIcon, ChevronDownIcon, CloseIcon, CopyIcon, TableIcon, ChevronRightIcon, LightBulbIcon, ChecklistIcon, BoxIcon, RepeatIcon, ListIcon, TypeIcon, DragHandleIcon, TrashIcon, CalendarIcon } from '../components/Icons';
 import { askAiAdvisor, getIndustryDeductions, hasApiKey, streamTaxAdvice } from '../services/geminiService';
 import { generateUUID } from '../utils';
 
@@ -16,6 +16,7 @@ interface BusinessHubProps {
     categories: Category[];
 }
 
+// Defined BlockType for the WYSIWYG editor
 type BlockType = 'paragraph' | 'todo' | 'bullet' | 'number' | 'h1';
 
 interface ContentBlock {
@@ -184,7 +185,8 @@ const BlockEditor: React.FC<{
             {/* Block Area */}
             <div className="flex-1 overflow-y-auto p-6 space-y-1 custom-scrollbar bg-white">
                 {blocks.map((b, idx) => {
-                    const blockNumber = blocks.slice(0, idx + 1).filter(pb => pb.type === 'number').length;
+                    // Added explicit type for pb and ensuring comparison logic is correct to fix TS error on line 296
+                    const blockNumber = blocks.slice(0, idx + 1).filter((pb: ContentBlock) => (pb.type as string) === 'number').length;
                     return (
                         <div 
                             key={b.id} 
