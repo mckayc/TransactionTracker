@@ -1,4 +1,3 @@
-
 import React from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction, View } from '../types';
@@ -9,6 +8,7 @@ interface SidebarProps {
   onNavigate: (view: View) => void;
   transactions: Transaction[];
   onChatToggle?: () => void;
+  // Added onSearchToggle to SidebarProps to fix TypeScript error in views/App.tsx
   onSearchToggle?: () => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -27,11 +27,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
     { id: 'reports', label: 'Reports', icon: ChartPieIcon },
     { id: 'hub', label: 'Business Hub', icon: WizardIcon },
     { id: 'integrations', label: 'Integrations', icon: PuzzleIcon },
-  ];
-
-  const managementNavItems = [
-    { id: 'management', label: 'Organize Data', icon: ChecklistIcon },
-    { id: 'rules', label: 'Rule Engine', icon: LinkIcon },
   ];
 
   const sidebarWidthClass = isCollapsed ? 'w-20' : 'w-64';
@@ -65,16 +60,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             </div>
         )}
 
-        <div className="px-2 mb-4">
-             <button 
-                onClick={onSearchToggle}
-                className={`w-full flex items-center ${isCollapsed ? 'justify-center py-2' : 'gap-3 px-3 py-2.5'} bg-slate-900/50 border border-slate-700 rounded-xl text-slate-400 hover:text-white hover:border-indigo-500 transition-all group`}
-             >
-                <SearchCircleIcon className="w-4 h-4 group-hover:text-indigo-400" />
-                {!isCollapsed && <div className="flex-1 flex justify-between items-center"><span className="text-xs font-bold">Search...</span><span className="text-[9px] font-black opacity-40">⌘K</span></div>}
-             </button>
-        </div>
-
         <nav className="px-2 space-y-1 mt-2">
             {mainNavItems.map(item => (
               <button
@@ -94,7 +79,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
             
             <div className="pt-6 pb-1">
                 {!isCollapsed && <p className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">System Management</p>}
-                {managementNavItems.map(item => (
+                {[
+                  { id: 'management', label: 'Organize Data', icon: ChecklistIcon },
+                  { id: 'rules', label: 'Rule Engine', icon: LinkIcon },
+                ].map(item => (
                     <button
                         key={item.id}
                         onClick={() => onNavigate(item.id as View)}
@@ -128,7 +116,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
         </nav>
       </div>
       
-      <div className={`mt-auto pt-4 space-y-4 ${isCollapsed ? 'px-2 pb-4' : 'px-4 pb-4'}`}>
+      <div className={`mt-auto pt-4 space-y-3 ${isCollapsed ? 'px-2 pb-4' : 'px-4 pb-4'}`}>
+          {/* Implement Search Button if onSearchToggle is provided */}
+          {onSearchToggle && (
+              <button 
+                onClick={onSearchToggle}
+                title={isCollapsed ? 'Global Search (⌘K)' : ''}
+                className={`w-full flex items-center ${isCollapsed ? 'justify-center py-3' : 'gap-3 px-5 py-2.5'} text-sm font-bold text-slate-400 hover:text-white hover:bg-slate-700 transition-all rounded-xl border border-slate-700`}
+              >
+                  <SearchCircleIcon className={`${isCollapsed ? 'w-6 h-6' : 'w-5 h-5'} flex-shrink-0`} />
+                  {!isCollapsed && <span>Search <span className="ml-auto text-[10px] opacity-50 font-mono">⌘K</span></span>}
+              </button>
+          )}
+
           {onChatToggle && (
               <button 
                 onClick={onChatToggle}

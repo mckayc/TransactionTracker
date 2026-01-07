@@ -18,8 +18,6 @@ import AmazonIntegration from './views/integrations/AmazonIntegration';
 import YouTubeIntegration from './views/integrations/YouTubeIntegration';
 import ContentHub from './views/integrations/ContentHub';
 import Chatbot from './components/Chatbot';
-// Added OmniSearch import
-import OmniSearch from './components/OmniSearch';
 import { MenuIcon, RepeatIcon, SparklesIcon, ExclamationTriangleIcon } from './components/Icons';
 import { api } from './services/apiService';
 import { generateUUID } from './utils';
@@ -36,8 +34,6 @@ const App: React.FC = () => {
     const [currentView, setCurrentView] = useState<View>('dashboard');
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
-    // Added isOmniSearchOpen state
-    const [isOmniSearchOpen, setIsOmniSearchOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
@@ -126,18 +122,8 @@ const App: React.FC = () => {
         const handleSync = (event: MessageEvent) => { if (event.data === 'REFRESH_REQUIRED') loadCoreData(false); };
         if (syncChannel) syncChannel.addEventListener('message', handleSync);
 
-        // Added global keyboard listener for OmniSearch (Cmd+K)
-        const handleGlobalKey = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                e.preventDefault();
-                setIsOmniSearchOpen(true);
-            }
-        };
-        window.addEventListener('keydown', handleGlobalKey);
-
         return () => { 
             if (syncChannel) syncChannel.removeEventListener('message', handleSync); 
-            window.removeEventListener('keydown', handleGlobalKey);
         };
     }, []);
 
@@ -148,7 +134,6 @@ const App: React.FC = () => {
     };
 
     const bulkUpdateData = async (key: string, newItems: any[], setter: Function) => {
-        // Use a more stable state management pattern to prevent race conditions during save
         setter((prev: any[]) => {
             const current = Array.isArray(prev) ? prev.filter(Boolean) : [];
             const next = [...current];
@@ -158,7 +143,6 @@ const App: React.FC = () => {
                 else next.push(item);
             });
             
-            // Trigger API save outside this synchronous block
             api.save(key, next).then(() => {
                 if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
             });
@@ -219,7 +203,6 @@ const App: React.FC = () => {
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
-            {/* Added onSearchToggle to Sidebar */}
             <Sidebar 
                 currentView={currentView} 
                 onNavigate={setCurrentView} 
@@ -227,7 +210,6 @@ const App: React.FC = () => {
                 isCollapsed={isSidebarCollapsed} 
                 onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} 
                 onChatToggle={() => setIsChatOpen(!isChatOpen)} 
-                onSearchToggle={() => setIsOmniSearchOpen(true)}
             />
             <main className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
                 <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 z-30">
@@ -396,9 +378,9 @@ const App: React.FC = () => {
                         <DocumentsPage 
                             documents={businessDocuments} folders={documentFolders} 
                             onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)}
-                            onRemoveDocument={(id) => setBusinessDocuments(prev => { const next = prev.filter(d => d && d.id !== id); api.save('businessDocuments', next); return next; })}
+                            onRemoveDocument={(id) => setBusinessDocuments(prev => { const next = prev.filter(d => d && d.id !== id); api.save('businessDocuments', next).catch(console.error); return next; })}
                             onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders)}
-                            onDeleteFolder={(id) => setDocumentFolders(prev => { const next = prev.filter(f => f && f.id !== id); api.save('documentFolders', next); return next; })}
+                            onDeleteFolder={(id) => setDocumentFolders(prev => { const next = prev.filter(f => f && f.id !== id); api.save('documentFolders', next).catch(console.error); return next; })}
                         />
                     )}
                     {currentView === 'plan' && (
@@ -435,15 +417,6 @@ const App: React.FC = () => {
                 </div>
             </main>
             <Chatbot contextData={currentContext} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
-            {/* Added missing OmniSearch component with correct state handling */}
-            <OmniSearch 
-                isOpen={isOmniSearchOpen} 
-                onClose={() => setIsOmniSearchOpen(false)} 
-                transactions={transactions} 
-                categories={categories} 
-                counterparties={counterparties} 
-                onNavigate={(v) => setCurrentView(v)}
-            />
         </div>
     );
 };
