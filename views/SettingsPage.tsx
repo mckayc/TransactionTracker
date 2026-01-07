@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, BusinessNote, Location, AccountType, AiConfig } from '../types';
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, BugIcon, RepeatIcon, PlayIcon, MapPinIcon, UsersIcon, StethoscopeIcon, TrashIcon, CopyIcon, DatabaseIcon, ChevronDownIcon } from '../components/Icons';
@@ -43,9 +42,9 @@ interface SettingsPageProps {
 }
 
 const MODEL_OPTIONS = [
-    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Fast)', tier: 'Standard', desc: 'Cutting-edge speed for data extraction and sorting.' },
-    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Genius)', tier: 'Advanced', desc: 'Superior reasoning for financial strategy and deep analysis.' },
-    { id: 'gemini-flash-lite-latest', label: 'Gemini Flash Lite', tier: 'Efficient', desc: 'Ultra-low latency for simple text processing tasks.' }
+    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Performant)', tier: 'Standard', desc: 'Cutting-edge speed and high reliability for ledger sorting.' },
+    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Analytical)', tier: 'Advanced', desc: 'Superior reasoning for complex financial roadmap synthesis.' },
+    { id: 'gemini-flash-lite-latest', label: 'Gemini Flash Lite (Efficient)', tier: 'Standard', desc: 'Optimized for low-latency basic text extraction.' }
 ];
 
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {

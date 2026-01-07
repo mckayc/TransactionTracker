@@ -1,24 +1,41 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig } from '../types';
 
+// Default to Gemini 3 series as per instructions for text-based tasks
 let currentAiConfig: AiConfig = {
     textModel: 'gemini-3-flash-preview',
     complexModel: 'gemini-3-pro-preview',
     thinkingBudget: 0
 };
 
+/**
+ * Validates and updates the current AI configuration.
+ * Includes a migration layer to handle legacy/broken model names.
+ */
 export const updateGeminiConfig = (config: AiConfig) => {
-    if (config.textModel) currentAiConfig.textModel = config.textModel;
-    if (config.complexModel) currentAiConfig.complexModel = config.complexModel;
-    if (config.thinkingBudget !== undefined) currentAiConfig.thinkingBudget = config.thinkingBudget;
-    console.log("[GEMINI] Configuration updated:", currentAiConfig);
+    const sanitizeModel = (modelId: string | undefined, fallback: string) => {
+        if (!modelId) return fallback;
+        // Fix for the 404 error: if the model name is the broken 'gemini-2.5-flash-latest' string, migrate to Gemini 3
+        if (modelId.includes('gemini-2.5-flash-latest')) return 'gemini-3-flash-preview';
+        return modelId;
+    };
+
+    if (config.textModel) {
+        currentAiConfig.textModel = sanitizeModel(config.textModel, 'gemini-3-flash-preview');
+    }
+    if (config.complexModel) {
+        currentAiConfig.complexModel = sanitizeModel(config.complexModel, 'gemini-3-pro-preview');
+    }
+    if (config.thinkingBudget !== undefined) {
+        currentAiConfig.thinkingBudget = config.thinkingBudget;
+    }
+    console.log("[GEMINI] Configuration updated & sanitized:", currentAiConfig);
 };
 
 export const getActiveModels = () => ({ ...currentAiConfig });
 
 // Guideline: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-// We look in multiple window-level locations where the server might have injected it.
+// In this setup, the server.js injects it into the browser window at runtime via /env.js.
 export const getApiKey = (): string => {
     const config = (window as any).__FINPARSER_CONFIG__;
     const proc = (window as any).process;
@@ -32,27 +49,28 @@ export const hasApiKey = (): boolean => {
 
 export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, message: string }> => {
     const key = getApiKey();
-    if (!key) return { success: false, message: "No API Key detected. Ensure API_KEY is set in your Docker environment." };
+    if (!key) return { success: false, message: "No API Key detected. Ensure API_KEY is set in your container environment." };
     
     const ai = new GoogleGenAI({ apiKey: key });
+    // Use the sanitized model ID to test connectivity
     const model = currentAiConfig.textModel || 'gemini-3-flash-preview';
     
     try {
         const response = await ai.models.generateContent({
             model: model,
-            contents: "Respond with exactly the word 'Pong'.",
+            contents: "Respond with exactly the word 'OK'.",
             config: { 
                 maxOutputTokens: 10,
                 thinkingConfig: { thinkingBudget: 0 }
             }
         });
         if (response && response.text) {
-            return { success: true, message: `Handshake successful! Model ${model} replied: "${response.text.trim()}"` };
+            return { success: true, message: `System Handshake: Model ${model} is ONLINE.` };
         }
-        return { success: true, message: `Connected to ${model}. Authorization confirmed.` };
+        return { success: true, message: `Connected to ${model}. Ready for processing.` };
     } catch (e: any) {
         console.error("Gemini Connectivity Test Error:", e);
-        return { success: false, message: `Connection Failed: ${e.message || "Unknown error"}. Check key validity and model access.` };
+        return { success: false, message: `API Error: ${e.message || "Unknown error"}. Check key status and model name.` };
     }
 };
 
@@ -78,7 +96,7 @@ export const generateRulesFromData = async (
     promptContext?: string
 ): Promise<ReconciliationRule[]> => {
     const key = getApiKey();
-    if (!key) throw new Error("API Key is missing from environment.");
+    if (!key) throw new Error("API Key is missing.");
     
     const ai = new GoogleGenAI({ apiKey: key });
     let sampleParts: any[] = [];
@@ -137,7 +155,7 @@ export const generateRulesFromData = async (
                 systemInstruction,
                 responseMimeType: 'application/json',
                 responseSchema: schema,
-                thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 2000 }
+                thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget || 0, 2000) }
             }
         });
 
@@ -315,7 +333,7 @@ export const askAiAdvisor = async (prompt: string): Promise<string> => {
     const response = await ai.models.generateContent({
         model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
         contents: prompt,
-        config: { thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 0 } }
+        config: { thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget || 0, 2000) } }
     });
     return response.text || "No response.";
 };
@@ -438,7 +456,7 @@ export const generateFinancialStrategy = async (
         config: { 
             responseMimeType: "application/json", 
             responseSchema: schema,
-            thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 4000 }
+            thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget || 0, 4000) }
         }
     });
     return JSON.parse(response.text || '{"strategy": "No strategy found."}');
