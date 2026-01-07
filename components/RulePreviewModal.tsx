@@ -1,8 +1,7 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty as Payee, Category } from '../types';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category } from '../types';
 import { findMatchingTransactions } from '../services/ruleService';
-import { CloseIcon } from './Icons';
+import { CloseIcon, SparklesIcon, CheckCircleIcon } from './Icons';
 
 interface RulePreviewModalProps {
     isOpen: boolean;
@@ -13,14 +12,14 @@ interface RulePreviewModalProps {
     accounts: Account[];
     transactionTypes: TransactionType[];
     categories: Category[];
-    payees: Payee[];
+    payees: Counterparty[];
 }
 
-type MatchedPair = { original: Transaction; updated: Transaction };
+const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(amount);
 
 const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, onApply, rule, transactions, accounts, transactionTypes, categories, payees }) => {
     const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
-    const payeeMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
+    const counterpartyMap = useMemo(() => new Map(payees.map(p => [p.id, p.name])), [payees]);
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t.name])), [transactionTypes]);
 
     const matchingPairs = useMemo(() => {
@@ -40,20 +39,14 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
 
     const handleToggleSelection = (txId: string) => {
         const newSelection = new Set(selectedIds);
-        if (newSelection.has(txId)) {
-            newSelection.delete(txId);
-        } else {
-            newSelection.add(txId);
-        }
+        if (newSelection.has(txId)) newSelection.delete(txId);
+        else newSelection.add(txId);
         setSelectedIds(newSelection);
     };
 
     const handleToggleSelectAll = () => {
-        if (selectedIds.size === matchingPairs.length) {
-            setSelectedIds(new Set());
-        } else {
-            setSelectedIds(new Set(matchingPairs.map(p => p.original.id)));
-        }
+        if (selectedIds.size === matchingPairs.length) setSelectedIds(new Set());
+        else setSelectedIds(new Set(matchingPairs.map(p => p.original.id)));
     };
     
     const handleApply = () => {
@@ -64,63 +57,66 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
     };
     
     const renderChange = (label: string, originalId: string | undefined, updatedId: string | undefined, map: Map<string, string>) => {
-        if (originalId === updatedId) return null;
+        if (!updatedId || originalId === updatedId) return null;
         return (
-            <p className="text-xs">
-                <span className="font-semibold">{label}:</span>{' '}
-                <span className="text-slate-500 line-through">{map.get(originalId || '') || 'None'}</span>
-                {' → '}
-                <span className="text-green-600 font-semibold">{map.get(updatedId || '') || 'None'}</span>
-            </p>
+            <div className="text-[10px] leading-tight">
+                <span className="font-bold text-slate-400 uppercase mr-1">{label}:</span>
+                <span className="text-slate-400 line-through">{map.get(originalId || '') || 'None'}</span>
+                <span className="mx-1 text-slate-400">→</span>
+                <span className="text-indigo-600 font-bold">{map.get(updatedId) || 'None'}</span>
+            </div>
         );
-    }
+    };
     
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                <header className="p-4 border-b flex justify-between items-center">
-                    <h2 className="text-xl font-bold text-slate-800">Run Rule: {rule.name}</h2>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-100"><CloseIcon className="w-6 h-6" /></button>
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                <header className="p-6 border-b flex justify-between items-center bg-slate-50 rounded-t-2xl">
+                    <div>
+                        <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
+                            <SparklesIcon className="w-5 h-5 text-indigo-600" />
+                            Run Rule Preview: {rule.name}
+                        </h2>
+                        <p className="text-xs text-slate-500 font-medium uppercase tracking-widest mt-1">Impact Analysis</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                 </header>
 
-                <main className="flex-1 p-4 overflow-y-auto">
+                <main className="flex-1 p-6 overflow-y-auto custom-scrollbar bg-white">
                     {matchingPairs.length > 0 ? (
                         <div className="space-y-4">
-                            <p className="text-sm text-slate-600">This rule matches <span className="font-bold">{matchingPairs.length}</span> transaction(s). Uncheck any you don't want to change.</p>
-                            <div className="overflow-x-auto border rounded-lg">
-                                <table className="min-w-full divide-y divide-slate-200">
-                                    <thead className="bg-slate-50">
+                            <div className="flex items-center justify-between bg-indigo-50 p-3 rounded-xl border border-indigo-100">
+                                <p className="text-sm text-indigo-900 font-medium">This logic matches <span className="font-black underline">{matchingPairs.length}</span> historical records.</p>
+                                <button onClick={handleToggleSelectAll} className="text-xs font-black text-indigo-600 uppercase hover:underline">
+                                    {selectedIds.size === matchingPairs.length ? 'Deselect All' : 'Select All'}
+                                </button>
+                            </div>
+                            <div className="overflow-hidden border border-slate-200 rounded-xl shadow-sm">
+                                <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
+                                    <thead className="bg-slate-50 sticky top-0">
                                         <tr>
-                                            <th className="px-4 py-2">
-                                                <input
-                                                    type="checkbox"
-                                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50"
-                                                    checked={selectedIds.size === matchingPairs.length}
-                                                    onChange={handleToggleSelectAll}
-                                                />
-                                            </th>
-                                            <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Date</th>
-                                            <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Description</th>
-                                            <th className="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase">Changes</th>
+                                            <th className="px-4 py-3 w-10 border-b"></th>
+                                            <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Date</th>
+                                            <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Description</th>
+                                            <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Updates Applied</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-white divide-y divide-slate-200">
+                                    <tbody className="bg-white divide-y divide-slate-100">
                                         {matchingPairs.map(pair => (
-                                            <tr key={pair.original.id}>
-                                                <td className="px-4 py-2">
+                                            <tr key={pair.original.id} className={`transition-colors ${selectedIds.has(pair.original.id) ? 'bg-indigo-50/20' : 'opacity-40 grayscale bg-slate-50'}`}>
+                                                <td className="px-4 py-3 text-center border-b">
                                                     <input
                                                         type="checkbox"
-                                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50"
+                                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50 cursor-pointer"
                                                         checked={selectedIds.has(pair.original.id)}
                                                         onChange={() => handleToggleSelection(pair.original.id)}
                                                     />
                                                 </td>
-                                                <td className="px-4 py-2 text-sm text-slate-500 whitespace-nowrap">{pair.original.date}</td>
-                                                <td className="px-4 py-2 text-sm text-slate-800 max-w-xs truncate" title={pair.original.description}>{pair.original.description}</td>
-                                                <td className="px-4 py-2">
+                                                <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap border-b">{pair.original.date}</td>
+                                                <td className="px-4 py-3 text-sm text-slate-800 max-w-xs truncate border-b font-bold" title={pair.original.description}>{pair.original.description}</td>
+                                                <td className="px-4 py-3 border-b space-y-1">
                                                     {renderChange('Category', pair.original.categoryId, pair.updated.categoryId, categoryMap)}
-                                                    {/* Fixed: Use counterpartyId instead of payeeId */}
-                                                    {renderChange('Payee', pair.original.counterpartyId, pair.updated.counterpartyId, payeeMap)}
+                                                    {renderChange('Counterparty', pair.original.counterpartyId, pair.updated.counterpartyId, counterpartyMap)}
                                                     {renderChange('Type', pair.original.typeId, pair.updated.typeId, typeMap)}
                                                 </td>
                                             </tr>
@@ -130,18 +126,32 @@ const RulePreviewModal: React.FC<RulePreviewModalProps> = ({ isOpen, onClose, on
                             </div>
                         </div>
                     ) : (
-                        <div className="text-center py-16">
-                            <h3 className="text-lg font-semibold text-slate-600">No Matching Transactions</h3>
-                            <p className="text-sm text-slate-500 mt-2">This rule did not find any existing transactions to update.</p>
+                        <div className="text-center py-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                            <CloseIcon className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">No Historical Matches</h3>
+                            <p className="text-sm text-slate-400 mt-2 max-w-xs mx-auto font-medium">This logic is valid, but no existing transactions match the criteria.</p>
                         </div>
                     )}
                 </main>
 
-                <footer className="p-4 bg-slate-50 border-t flex justify-between items-center">
-                    <p className="text-sm font-medium text-slate-600">{selectedIds.size} of {matchingPairs.length} selected for update.</p>
+                <footer className="p-6 bg-slate-50 border-t flex justify-between items-center rounded-b-2xl">
+                    <p className="text-xs font-black text-slate-500 uppercase tracking-widest">{selectedIds.size} of {matchingPairs.length} targeted</p>
                     <div className="flex gap-3">
-                        <button type="button" onClick={onClose} className="px-4 py-2 font-medium text-slate-700 bg-slate-200 rounded-lg hover:bg-slate-300">Cancel</button>
+                        <button type="button" onClick={onClose} className="px-6 py-2.5 text-sm font-bold text-slate-500 bg-white border border-slate-200 rounded-xl hover:bg-slate-100 transition-all shadow-sm">Discard</button>
                         <button
                             type="button"
                             onClick={handleApply}
-                            disabled={selectedIds.size ===
+                            disabled={selectedIds.size === 0}
+                            className="px-10 py-2.5 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-30 disabled:hover:bg-indigo-600 flex items-center gap-2"
+                        >
+                            <CheckCircleIcon className="w-5 h-5" />
+                            Apply Historical Update
+                        </button>
+                    </div>
+                </footer>
+            </div>
+        </div>
+    );
+};
+
+export default RulePreviewModal;

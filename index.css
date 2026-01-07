@@ -5,7 +5,7 @@
 /* Fix flashing dropdown issue by ensuring backgrounds are consistent and transitions are clean */
 select, input[type='text'], input[type='date'], input[type='number'], textarea {
   appearance: none;
-  background-color: #ffffff; /* Explicit white background */
+  background-color: #ffffff !important; /* Explicit white background to prevent black flash */
   border: 1px solid #cbd5e1; /* slate-300 */
   border-radius: 0.5rem; /* rounded-lg */
   padding: 0.5rem 0.75rem;
@@ -18,9 +18,9 @@ select, input[type='text'], input[type='date'], input[type='number'], textarea {
 
 /* Remove default highlight/flash on some browsers */
 select:focus, input:focus, textarea:focus {
-  outline: none;
-  border-color: #4f46e5; /* indigo-600 */
-  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+  outline: none !important;
+  border-color: #4f46e5 !important; /* indigo-600 */
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2) !important;
 }
 
 select {

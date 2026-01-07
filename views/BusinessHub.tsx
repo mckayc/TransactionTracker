@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { BusinessNote, Transaction, Account, Category } from '../types';
-import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, DeleteIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon } from '../components/Icons';
+import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, DeleteIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface BusinessHubProps {
@@ -116,13 +116,13 @@ const BlockEditor: React.FC<{
     };
 
     const sortCheckedToBottom = () => {
-        // Find contiguous groups of checklist items and move completed ones to the bottom of the group
         const newBlocks: ContentBlock[] = [];
         let i = 0;
         while (i < blocks.length) {
             if (blocks[i].type === 'todo') {
                 const group: ContentBlock[] = [];
                 const baseIndent = blocks[i].indent;
+                // Identify the group of checklist items at this level or deeper
                 while (i < blocks.length && (blocks[i].type === 'todo' || blocks[i].indent > baseIndent)) {
                     group.push(blocks[i]);
                     i++;
@@ -136,6 +136,19 @@ const BlockEditor: React.FC<{
             }
         }
         onChange(newBlocks);
+    };
+
+    const moveBlock = (id: string, dir: 'up' | 'down') => {
+        const index = blocks.findIndex(b => b.id === id);
+        if (dir === 'up' && index > 0) {
+            const next = [...blocks];
+            [next[index-1], next[index]] = [next[index], next[index-1]];
+            onChange(next);
+        } else if (dir === 'down' && index < blocks.length - 1) {
+            const next = [...blocks];
+            [next[index+1], next[index]] = [next[index], next[index+1]];
+            onChange(next);
+        }
     };
 
     const handleKeyDown = (e: React.KeyboardEvent, b: ContentBlock) => {
@@ -158,9 +171,9 @@ const BlockEditor: React.FC<{
                 <div className="flex bg-white rounded-xl border border-slate-200 p-0.5 shadow-sm mr-2">
                     <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all"><ChecklistIcon className="w-4 h-4" /></button>
                     <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all"><ListIcon className="w-4 h-4" /></button>
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'h1' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all font-black text-xs">H1</button>
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'h1' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all font-black text-xs px-2">H1</button>
                 </div>
-                <button type="button" onClick={sortCheckedToBottom} className="px-3 py-1.5 bg-white border rounded-xl text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-sm">Sink Completed</button>
+                <button type="button" onClick={sortCheckedToBottom} className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-black text-indigo-600 uppercase tracking-widest hover:bg-indigo-50 transition-all shadow-sm">Sink Completed</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-1 custom-scrollbar">
@@ -180,7 +193,9 @@ const BlockEditor: React.FC<{
                                     {b.checked && <CheckCircleIcon className="w-3 h-3" />}
                                 </button>
                             ) : b.type === 'bullet' ? (
-                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5" />
+                            ) : b.type === 'h1' ? (
+                                <span className="text-[10px] font-black text-indigo-400 mt-1 uppercase">h1</span>
                             ) : null}
                         </div>
 
@@ -202,7 +217,7 @@ const BlockEditor: React.FC<{
                             onKeyDown={(e) => handleKeyDown(e, b)}
                             placeholder="Type something..."
                             rows={1}
-                            className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] ${b.type === 'h1' ? 'text-lg font-black text-slate-800' : 'text-sm font-medium'} ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
+                            className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] transition-all duration-200 ${b.type === 'h1' ? 'text-lg font-black text-slate-800' : 'text-sm font-medium'} ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
                             onInput={(e) => {
                                 const target = e.target as HTMLTextAreaElement;
                                 target.style.height = 'auto';
@@ -210,7 +225,11 @@ const BlockEditor: React.FC<{
                             }}
                         />
 
-                        <button type="button" onClick={() => deleteBlock(b.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 rounded-lg transition-all"><TrashIcon className="w-4 h-4"/></button>
+                        <div className="opacity-0 group-hover:opacity-100 flex gap-0.5 items-center transition-opacity">
+                            <button type="button" onClick={() => moveBlock(b.id, 'up')} className="p-1 text-slate-300 hover:text-indigo-600 rounded-lg"><ArrowUpIcon className="w-3.5 h-3.5"/></button>
+                            <button type="button" onClick={() => moveBlock(b.id, 'down')} className="p-1 text-slate-300 hover:text-indigo-600 rounded-lg"><ArrowDownIcon className="w-3.5 h-3.5"/></button>
+                            <button type="button" onClick={() => deleteBlock(b.id)} className="p-1 text-slate-300 hover:text-red-500 rounded-lg"><TrashIcon className="w-3.5 h-3.5"/></button>
+                        </div>
                     </div>
                 ))}
             </div>
@@ -221,7 +240,6 @@ const BlockEditor: React.FC<{
 const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
-    const [isCreating, setIsCreating] = useState(false);
 
     const filteredNotes = useMemo(() => {
         return notes
@@ -249,7 +267,6 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
         };
         onUpdateNotes([...notes, newNote]);
         setSelectedNoteId(id);
-        setIsCreating(true);
     };
 
     const handleUpdateActive = (updates: Partial<BusinessNote>) => {
@@ -262,7 +279,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight">Journal & Bugs</h1>
-                    <p className="text-sm text-slate-500">Capture operational log entries and track system improvements.</p>
+                    <p className="text-sm text-slate-500">Capture operational logs and track development debt.</p>
                 </div>
                 <button onClick={handleCreate} className="px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95">
                     <AddIcon className="w-5 h-5" /> New Entry
@@ -270,7 +287,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
             </div>
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* LEFT: LIST */}
+                {/* LEFT LIST PANE */}
                 <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
                     <div className="p-3 border-b bg-slate-50 rounded-t-2xl">
                         <div className="relative">
@@ -286,19 +303,22 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
                             </div>
                         ) : (
                             filteredNotes.map(n => (
-                                <div key={n.id} onClick={() => { setSelectedNoteId(n.id); setIsCreating(false); }} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-2 ${selectedNoteId === n.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+                                <div key={n.id} onClick={() => setSelectedNoteId(n.id)} className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-1.5 ${selectedNoteId === n.id ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}>
                                     <div className="flex justify-between items-start">
                                         <h4 className={`text-sm font-black truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
-                                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'bug' ? 'bg-red-500' : n.type === 'idea' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                                        <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'bug' ? 'bg-red-500 shadow-sm shadow-red-200' : n.type === 'idea' ? 'bg-amber-500 shadow-sm shadow-amber-200' : 'bg-blue-500 shadow-sm shadow-blue-200'}`} />
                                     </div>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{new Date(n.updatedAt).toLocaleDateString()}</p>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{new Date(n.updatedAt).toLocaleDateString()}</p>
+                                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${n.type === 'bug' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-500'}`}>{n.type}</span>
+                                    </div>
                                 </div>
                             ))
                         )}
                     </div>
                 </div>
 
-                {/* RIGHT: EDITOR */}
+                {/* RIGHT EDITOR PANE */}
                 <div className="flex-1 bg-slate-50/50 rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden relative">
                     {selectedNoteId && activeNote ? (
                         <div className="flex flex-col h-full animate-fade-in">
@@ -308,32 +328,35 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
                                         type="text" 
                                         value={activeNote.title} 
                                         onChange={e => handleUpdateActive({ title: e.target.value })}
-                                        className="text-2xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full"
+                                        className="text-2xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full placeholder:text-slate-200"
                                         placeholder="Entry Title"
                                     />
                                     <div className="flex items-center gap-4 mt-2">
-                                        <select 
-                                            value={activeNote.type} 
-                                            onChange={e => handleUpdateActive({ type: e.target.value as any })}
-                                            className="text-[10px] font-black uppercase bg-slate-100 border-none rounded-lg py-1 pl-2 pr-6 focus:ring-0 cursor-pointer"
-                                        >
-                                            <option value="note">Log Entry</option>
-                                            <option value="bug">Software Bug</option>
-                                            <option value="idea">Improvement Idea</option>
-                                            <option value="task">Action Item</option>
-                                        </select>
+                                        <div className="relative group">
+                                            <select 
+                                                value={activeNote.type} 
+                                                onChange={e => handleUpdateActive({ type: e.target.value as any })}
+                                                className="text-[10px] font-black uppercase bg-slate-100 border-none rounded-lg py-1 pl-2 pr-6 focus:ring-0 cursor-pointer appearance-none hover:bg-slate-200 transition-colors"
+                                            >
+                                                <option value="note">System Log</option>
+                                                <option value="bug">Bug Report</option>
+                                                <option value="idea">Proposal</option>
+                                                <option value="task">Action Item</option>
+                                            </select>
+                                            <ChevronDownIcon className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                                        </div>
                                         <button 
                                             onClick={() => handleUpdateActive({ isCompleted: !activeNote.isCompleted })}
-                                            className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg transition-all ${activeNote.isCompleted ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-600'}`}
+                                            className={`text-[10px] font-black uppercase px-3 py-1 rounded-lg transition-all shadow-sm ${activeNote.isCompleted ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-slate-700 text-white hover:bg-slate-800'}`}
                                         >
-                                            {activeNote.isCompleted ? 'Resolved' : 'Active'}
+                                            {activeNote.isCompleted ? 'Completed' : 'Mark Fixed'}
                                         </button>
                                     </div>
                                 </div>
-                                <button onClick={() => onUpdateNotes(notes.filter(n => n.id !== selectedNoteId))} className="p-2 text-slate-300 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all"><TrashIcon className="w-5 h-5"/></button>
+                                <button onClick={() => { if(confirm("Delete permanently?")) onUpdateNotes(notes.filter(n => n.id !== selectedNoteId)); setSelectedNoteId(null); }} className="p-2.5 text-slate-300 hover:text-red-500 rounded-xl hover:bg-red-50 transition-all" title="Purge Record"><TrashIcon className="w-6 h-6"/></button>
                             </div>
 
-                            <div className="flex-1 overflow-hidden p-6 flex flex-col min-h-0">
+                            <div className="flex-1 overflow-hidden p-6 flex flex-col min-h-0 bg-white/50">
                                 <BlockEditor 
                                     blocks={blocks} 
                                     onChange={(newBlocks) => handleUpdateActive({ content: serializeBlocksToMarkdown(newBlocks) })} 
@@ -341,13 +364,13 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ notes, onUpdateNotes }) => {
                             </div>
                         </div>
                     ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-white/30">
                             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle">
-                                <BugIcon className="w-12 h-12 text-indigo-200" />
+                                <NotesIcon className="w-12 h-12 text-indigo-200" />
                             </div>
-                            <h3 className="text-2xl font-black text-slate-800">Operational Log</h3>
-                            <p className="text-slate-500 max-w-sm mt-4 font-medium leading-relaxed">Capture development bugs, internal ideas, or general log entries here to keep the engine improving.</p>
-                            <button onClick={handleCreate} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Create Log Entry</button>
+                            <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Operations Ledger</h3>
+                            <p className="text-slate-500 max-w-sm mt-4 font-medium leading-relaxed">Select a log entry from the list to update its contents, or start a new capture to track system improvements.</p>
+                            <button onClick={handleCreate} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Start Capture</button>
                         </div>
                     )}
                 </div>
