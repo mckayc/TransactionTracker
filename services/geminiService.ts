@@ -18,15 +18,21 @@ export const updateGeminiConfig = (config: AiConfig) => {
 export const getActiveModels = () => ({ ...currentAiConfig });
 
 // Guideline: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+// In this architecture, the server injects it into window.process.env.API_KEY at runtime.
+export const getApiKey = (): string => {
+    const key = (window as any).process?.env?.API_KEY || process.env.API_KEY;
+    return (key && key !== 'undefined') ? key.trim() : '';
+};
+
 export const hasApiKey = (): boolean => {
-    const key = process.env.API_KEY;
-    return !!key && key !== 'undefined' && key.trim() !== '';
+    return getApiKey().length > 0;
 };
 
 export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, message: string }> => {
-    if (!hasApiKey()) return { success: false, message: "No API Key found. Check your environment/server configuration." };
+    const key = getApiKey();
+    if (!key) return { success: false, message: "No API Key detected in runtime environment." };
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: key });
     const model = currentAiConfig.textModel || 'gemini-3-flash-preview';
     
     try {
@@ -44,7 +50,7 @@ export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, 
         return { success: true, message: `Connected to ${model}. Key is authorized.` };
     } catch (e: any) {
         console.error("Gemini Connectivity Test Error:", e);
-        return { success: false, message: `API Error: ${e.message || "Unknown error"}. Check model availability and billing.` };
+        return { success: false, message: `API Error: ${e.message || "Unknown error"}. Verify your key and model access.` };
     }
 };
 
@@ -69,9 +75,10 @@ export const generateRulesFromData = async (
     users: User[],
     promptContext?: string
 ): Promise<ReconciliationRule[]> => {
-    if (!hasApiKey()) throw new Error("API Key is missing. Please configure your environment.");
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
     
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: key });
     let sampleParts: any[] = [];
     if (typeof data === 'string') {
         sampleParts = [{ text: `DATA SAMPLE:\n${data}` }];
@@ -151,8 +158,9 @@ export const generateRulesFromData = async (
 };
 
 export const getAiFinancialAnalysis = async (query: string, contextData: any) => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
+    const ai = new GoogleGenAI({ apiKey: key });
     const optimizedContext = {
         ...contextData,
         transactions: (contextData.transactions || []).filter(Boolean).slice(0, 100).map((t: any) => ({
@@ -187,11 +195,12 @@ export const extractTransactionsFromFiles = async (
     categories: Category[], 
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
+    const ai = new GoogleGenAI({ apiKey: key });
     
     if (!transactionTypes || transactionTypes.length === 0) {
-        throw new Error("System Error: No transaction types available to apply extraction logic.");
+        throw new Error("System Error: No transaction types available.");
     }
 
     onProgress("AI is analyzing files...");
@@ -246,11 +255,12 @@ export const extractTransactionsFromText = async (
     categories: Category[], 
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
+    const ai = new GoogleGenAI({ apiKey: key });
 
     if (!transactionTypes || transactionTypes.length === 0) {
-        throw new Error("System Error: No transaction types available to apply parsing logic.");
+        throw new Error("System Error: No transaction types available.");
     }
 
     onProgress("AI is parsing text...");
@@ -297,8 +307,9 @@ export const extractTransactionsFromText = async (
 };
 
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
-    if (!hasApiKey()) return "AI Configuration required.";
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) return "AI Configuration required.";
+    const ai = new GoogleGenAI({ apiKey: key });
     const response = await ai.models.generateContent({
         model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
         contents: prompt,
@@ -308,8 +319,9 @@ export const askAiAdvisor = async (prompt: string): Promise<string> => {
 };
 
 export const streamTaxAdvice = async (messages: ChatMessage[], profile: BusinessProfile) => {
-    if (!hasApiKey()) throw new Error("API Key is missing.");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) throw new Error("API Key is missing.");
+    const ai = new GoogleGenAI({ apiKey: key });
     const contents = messages.filter(Boolean).map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
@@ -332,8 +344,9 @@ export const auditTransactions = async (
     auditType: string,
     examples?: Transaction[][]
 ): Promise<AuditFinding[]> => {
-    if (!hasApiKey()) return [];
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) return [];
+    const ai = new GoogleGenAI({ apiKey: key });
     const schema = {
         type: Type.OBJECT,
         properties: {
@@ -369,8 +382,9 @@ export const auditTransactions = async (
 };
 
 export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<any> => {
-    if (!hasApiKey()) return {};
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) return {};
+    const ai = new GoogleGenAI({ apiKey: key });
     onProgress("AI is reading document...");
     const part = await fileToGenerativePart(file);
     const schema = {
@@ -396,8 +410,9 @@ export const generateFinancialStrategy = async (
     categories: Category[],
     profile: BusinessProfile
 ): Promise<any> => {
-    if (!hasApiKey()) return { strategy: "API Key required." };
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const key = getApiKey();
+    if (!key) return { strategy: "API Key required." };
+    const ai = new GoogleGenAI({ apiKey: key });
     const schema = {
         type: Type.OBJECT,
         properties: {

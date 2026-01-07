@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, BusinessNote, Location, AccountType, AiConfig } from '../types';
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, BugIcon, RepeatIcon, PlayIcon, MapPinIcon, UsersIcon, StethoscopeIcon, TrashIcon, CopyIcon, DatabaseIcon, ChevronDownIcon } from '../components/Icons';
@@ -42,9 +43,11 @@ interface SettingsPageProps {
 }
 
 const MODEL_OPTIONS = [
-    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', tier: 'Performant', desc: 'Optimal for text processing and categorization.' },
-    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro', tier: 'Genius', desc: 'Superior reasoning for strategy and analysis.' },
-    { id: 'gemini-2.5-flash-lite-latest', label: 'Gemini 2.5 Flash Lite', tier: 'Efficient', desc: 'Low latency, good for simple tasks.' }
+    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', tier: 'Top Speed', desc: 'Cutting-edge speed and efficiency for categorization.' },
+    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro', tier: 'Top Genius', desc: 'The absolute benchmark for strategic reasoning.' },
+    { id: 'gemini-2.5-pro-latest', label: 'Gemini 2.5 Pro', tier: 'Strategic', desc: 'High-capability 2.5 series model for complex logic.' },
+    { id: 'gemini-2.5-flash-latest', label: 'Gemini 2.5 Flash', tier: 'Balanced', desc: 'Excellent balance of speed and reasoning.' },
+    { id: 'gemini-2.5-flash-lite-latest', label: 'Gemini 2.5 Flash Lite', tier: 'Efficient', desc: 'Ultra-low latency for simple processing.' }
 ];
 
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {
@@ -216,6 +219,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         }
     };
 
+    const [aiConfig, setAiConfig] = useState<AiConfig>(systemSettings.aiConfig || getActiveModels());
+
     const handleUpdateAiConfig = (key: keyof AiConfig, value: any) => {
         const next = { ...aiConfig, [key]: value };
         setAiConfig(next);
@@ -322,8 +327,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         }
     };
 
-    const [aiConfig, setAiConfig] = useState<AiConfig>(systemSettings.aiConfig || getActiveModels());
-
     return (
         <div className="max-w-5xl mx-auto space-y-10 pb-20">
             <header>
@@ -363,7 +366,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                 <h3 className="text-2xl font-black">Google Gemini Neural Core</h3>
                             </div>
                             <p className="text-slate-400 max-w-lg mb-6 leading-relaxed">
-                                The system is currently using the <strong>{apiKeyActive ? 'Active' : 'Missing'}</strong> API key from your environment. 
+                                The system is currently using the <strong>{apiKeyActive ? 'Active' : 'Missing'}</strong> API key injected from your container environment.
                             </p>
                             <div className="flex flex-wrap gap-3">
                                 <button onClick={handleTestConnectivity} disabled={isTestingKey || !apiKeyActive} className="px-8 py-3 bg-white text-slate-900 font-black rounded-xl hover:bg-slate-100 disabled:opacity-30 transition-all active:scale-95">
@@ -386,12 +389,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-4">
                             <div className="flex items-center gap-2 mb-2"><TableIcon className="w-5 h-5 text-indigo-500" /><h4 className="font-bold text-slate-800 uppercase text-xs tracking-widest">Primary Logic Engine</h4></div>
-                            <select value={aiConfig.textModel} onChange={e => handleUpdateAiConfig('textModel', e.target.value)} className="w-full font-bold text-sm">{MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}</select>
+                            <select value={aiConfig.textModel} onChange={e => handleUpdateAiConfig('textModel', e.target.value)} className="w-full font-bold text-sm">
+                                {MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label} ({opt.tier})</option>)}
+                            </select>
                             <div className="p-3 bg-slate-50 rounded-xl"><p className="text-[10px] text-slate-400 leading-relaxed italic">{MODEL_OPTIONS.find(o => o.id === aiConfig.textModel)?.desc}</p></div>
                         </div>
                         <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm space-y-4">
                             <div className="flex items-center gap-2 mb-2"><SparklesIcon className="w-5 h-5 text-indigo-500" /><h4 className="font-bold text-slate-800 uppercase text-xs tracking-widest">Strategic Reasoning Engine</h4></div>
-                            <select value={aiConfig.complexModel} onChange={e => handleUpdateAiConfig('complexModel', e.target.value)} className="w-full font-bold text-sm">{MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label}</option>)}</select>
+                            <select value={aiConfig.complexModel} onChange={e => handleUpdateAiConfig('complexModel', e.target.value)} className="w-full font-bold text-sm">
+                                {MODEL_OPTIONS.map(opt => <option key={opt.id} value={opt.id}>{opt.label} ({opt.tier})</option>)}
+                            </select>
                             <div className="p-3 bg-slate-50 rounded-xl"><p className="text-[10px] text-slate-400 leading-relaxed italic">{MODEL_OPTIONS.find(o => o.id === aiConfig.complexModel)?.desc}</p></div>
                         </div>
                     </div>

@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { BusinessDocument, DocumentFolder } from '../types';
 import { DocumentIcon, CloudArrowUpIcon, DeleteIcon, DownloadIcon, AddIcon, ExclamationTriangleIcon, FolderIcon } from '../components/Icons';
 import { analyzeBusinessDocument, hasApiKey } from '../services/geminiService';
@@ -20,9 +20,19 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
     const [isUploading, setIsUploading] = useState(false);
     const [isCreatingFolder, setIsCreatingFolder] = useState(false);
     const [newFolderName, setNewFolderName] = useState('');
+    const [apiKeyAvailable, setApiKeyAvailable] = useState(hasApiKey());
     
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const apiKeyAvailable = hasApiKey();
+
+    // Refresh API key status periodically or on mount
+    useEffect(() => {
+        setApiKeyAvailable(hasApiKey());
+        const interval = setInterval(() => {
+            const current = hasApiKey();
+            if (current !== apiKeyAvailable) setApiKeyAvailable(current);
+        }, 3000);
+        return () => clearInterval(interval);
+    }, [apiKeyAvailable]);
 
     const currentPath = React.useMemo(() => {
         const path = [];
@@ -43,28 +53,16 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
 
         setIsUploading(true);
         try {
-            // Prepend Date/Time to filename for better organization and collision avoidance
             const now = new Date();
-            const year = now.getFullYear();
-            const month = String(now.getMonth() + 1).padStart(2, '0');
-            const day = String(now.getDate()).padStart(2, '0');
-            const hours = String(now.getHours()).padStart(2, '0');
-            const minutes = String(now.getMinutes()).padStart(2, '0');
-            const seconds = String(now.getSeconds()).padStart(2, '0');
-            
-            const timestampPrefix = `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
+            const timestampPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
             const newFileName = `${timestampPrefix}_${originalFile.name}`;
 
-            // Create a new File object with the updated name
             const file = new File([originalFile], newFileName, { type: originalFile.type });
-
             const docId = generateUUID();
             
-            // 1. Save file content to Server
             await saveFile(docId, file);
 
             let analysis = undefined;
-            // 2. Analyze with AI only if API key is present AND it's not a JSON backup
             if (apiKeyAvailable && file.type !== 'application/json') {
                 try {
                     analysis = await analyzeBusinessDocument(file, (msg) => console.log(msg));
@@ -73,7 +71,6 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
                 }
             }
 
-            // 3. Save metadata
             const newDoc: BusinessDocument = {
                 id: docId,
                 name: file.name,
@@ -86,7 +83,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
             onAddDocument(newDoc);
         } catch (error) {
             console.error("Upload failed", error);
-            alert(`Failed to upload document: ${error instanceof Error ? error.message : 'Unknown error'}. Check server logs/permissions.`);
+            alert(`Failed to upload document: ${error instanceof Error ? error.message : 'Unknown error'}.`);
         } finally {
             setIsUploading(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -203,11 +200,11 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
                 )}
 
                 {!apiKeyAvailable && (
-                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 flex items-start gap-3">
+                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200 flex items-start gap-3 animate-pulse">
                         <ExclamationTriangleIcon className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
                         <div>
-                            <p className="text-sm font-bold text-amber-800">AI Analysis Disabled</p>
-                            <p className="text-sm text-amber-700">Because the API_KEY environment variable is missing, documents will be stored but not analyzed for insights.</p>
+                            <p className="text-sm font-bold text-amber-800 uppercase tracking-tight">AI Ingestion Inactive</p>
+                            <p className="text-sm text-amber-700">The system ledger is currently disconnected from the Gemini Neural Core. Documents will be archived without forensic analysis.</p>
                         </div>
                     </div>
                 )}
@@ -219,7 +216,6 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {/* Folders */}
                         {visibleFolders.map(folder => (
                             <div 
                                 key={folder.id} 
@@ -242,7 +238,6 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
                             </div>
                         ))}
 
-                        {/* Files */}
                         {visibleDocuments.map(doc => (
                             <div key={doc.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden flex flex-col hover:shadow-sm transition-shadow">
                                 <div className="p-4 flex items-start justify-between bg-slate-50 border-b border-slate-100">
