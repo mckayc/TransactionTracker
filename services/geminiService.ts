@@ -18,10 +18,12 @@ export const updateGeminiConfig = (config: AiConfig) => {
 export const getActiveModels = () => ({ ...currentAiConfig });
 
 // Guideline: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-// In this architecture, the server injects it into window.process.env.API_KEY at runtime.
+// We look in multiple window-level locations where the server might have injected it.
 export const getApiKey = (): string => {
-    const key = (window as any).process?.env?.API_KEY || process.env.API_KEY;
-    return (key && key !== 'undefined') ? key.trim() : '';
+    const config = (window as any).__FINPARSER_CONFIG__;
+    const proc = (window as any).process;
+    const key = config?.API_KEY || proc?.env?.API_KEY || process.env.API_KEY;
+    return (key && key !== 'undefined' && key !== 'null') ? key.trim() : '';
 };
 
 export const hasApiKey = (): boolean => {
@@ -30,7 +32,7 @@ export const hasApiKey = (): boolean => {
 
 export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, message: string }> => {
     const key = getApiKey();
-    if (!key) return { success: false, message: "No API Key detected in runtime environment." };
+    if (!key) return { success: false, message: "No API Key detected. Ensure API_KEY is set in your Docker environment." };
     
     const ai = new GoogleGenAI({ apiKey: key });
     const model = currentAiConfig.textModel || 'gemini-3-flash-preview';
@@ -45,12 +47,12 @@ export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, 
             }
         });
         if (response && response.text) {
-            return { success: true, message: `Connected to ${model}! Replied: "${response.text.trim()}"` };
+            return { success: true, message: `Handshake successful! Model ${model} replied: "${response.text.trim()}"` };
         }
-        return { success: true, message: `Connected to ${model}. Key is authorized.` };
+        return { success: true, message: `Connected to ${model}. Authorization confirmed.` };
     } catch (e: any) {
         console.error("Gemini Connectivity Test Error:", e);
-        return { success: false, message: `API Error: ${e.message || "Unknown error"}. Verify your key and model access.` };
+        return { success: false, message: `Connection Failed: ${e.message || "Unknown error"}. Check key validity and model access.` };
     }
 };
 
@@ -76,7 +78,7 @@ export const generateRulesFromData = async (
     promptContext?: string
 ): Promise<ReconciliationRule[]> => {
     const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
+    if (!key) throw new Error("API Key is missing from environment.");
     
     const ai = new GoogleGenAI({ apiKey: key });
     let sampleParts: any[] = [];

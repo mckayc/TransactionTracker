@@ -24,15 +24,17 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Refresh API key status periodically or on mount
+    // Refresh API key status periodically to handle lazy environment injection
     useEffect(() => {
-        setApiKeyAvailable(hasApiKey());
-        const interval = setInterval(() => {
+        const checkKey = () => {
             const current = hasApiKey();
-            if (current !== apiKeyAvailable) setApiKeyAvailable(current);
-        }, 3000);
+            setApiKeyAvailable(current);
+        };
+        
+        checkKey();
+        const interval = setInterval(checkKey, 2000);
         return () => clearInterval(interval);
-    }, [apiKeyAvailable]);
+    }, []);
 
     const currentPath = React.useMemo(() => {
         const path = [];

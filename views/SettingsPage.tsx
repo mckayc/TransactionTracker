@@ -43,11 +43,9 @@ interface SettingsPageProps {
 }
 
 const MODEL_OPTIONS = [
-    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', tier: 'Top Speed', desc: 'Cutting-edge speed and efficiency for categorization.' },
-    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro', tier: 'Top Genius', desc: 'The absolute benchmark for strategic reasoning.' },
-    { id: 'gemini-2.5-pro-latest', label: 'Gemini 2.5 Pro', tier: 'Strategic', desc: 'High-capability 2.5 series model for complex logic.' },
-    { id: 'gemini-2.5-flash-latest', label: 'Gemini 2.5 Flash', tier: 'Balanced', desc: 'Excellent balance of speed and reasoning.' },
-    { id: 'gemini-2.5-flash-lite-latest', label: 'Gemini 2.5 Flash Lite', tier: 'Efficient', desc: 'Ultra-low latency for simple processing.' }
+    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Fast)', tier: 'Standard', desc: 'Cutting-edge speed for data extraction and sorting.' },
+    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Genius)', tier: 'Advanced', desc: 'Superior reasoning for financial strategy and deep analysis.' },
+    { id: 'gemini-flash-lite-latest', label: 'Gemini Flash Lite', tier: 'Efficient', desc: 'Ultra-low latency for simple text processing tasks.' }
 ];
 
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {
@@ -486,7 +484,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
             {isRestoreModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-slide-up">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b flex justify-between items-center bg-indigo-600 text-white">
                             <div><h3 className="text-xl font-black">Restoration Forge</h3><p className="text-xs font-bold uppercase tracking-widest text-indigo-200">Importing Blueprint</p></div>
                             <button onClick={() => setIsRestoreModalOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-white"/></button>
