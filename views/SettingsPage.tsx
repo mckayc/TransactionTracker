@@ -44,6 +44,8 @@ interface SettingsPageProps {
 const MODEL_OPTIONS = [
     { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Performant)', tier: 'Standard', desc: 'Cutting-edge speed and high reliability for ledger sorting.' },
     { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Analytical)', tier: 'Advanced', desc: 'Superior reasoning for complex financial roadmap synthesis.' },
+    { id: 'gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro (Deep Reasoning)', tier: 'Advanced', desc: 'Powerful logic from the 2.5 series, great for multi-step strategy.' },
+    { id: 'gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash (Balanced)', tier: 'Standard', desc: 'Fast, efficient, and capable 2.5 series model.' },
     { id: 'gemini-flash-lite-latest', label: 'Gemini Flash Lite (Efficient)', tier: 'Standard', desc: 'Optimized for low-latency basic text extraction.' }
 ];
 

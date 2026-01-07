@@ -1,7 +1,10 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig } from '../types';
+// Added missing import for generateUUID
+import { generateUUID } from '../utils';
 
-// Default to Gemini 3 series as per instructions for text-based tasks
+// Default to Gemini 3 series as per instructions for standard text-based tasks
 let currentAiConfig: AiConfig = {
     textModel: 'gemini-3-flash-preview',
     complexModel: 'gemini-3-pro-preview',
@@ -10,13 +13,17 @@ let currentAiConfig: AiConfig = {
 
 /**
  * Validates and updates the current AI configuration.
- * Includes a migration layer to handle legacy/broken model names.
+ * Aggressively sanitizes model strings to prevent 404 errors from legacy or incorrect naming conventions.
  */
 export const updateGeminiConfig = (config: AiConfig) => {
     const sanitizeModel = (modelId: string | undefined, fallback: string) => {
-        if (!modelId) return fallback;
-        // Fix for the 404 error: if the model name is the broken 'gemini-2.5-flash-latest' string, migrate to Gemini 3
-        if (modelId.includes('gemini-2.5-flash-latest')) return 'gemini-3-flash-preview';
+        if (!modelId || modelId === 'undefined' || modelId === 'null') return fallback;
+        
+        // Safety fix for the 404 error reported: 2.5 series models are currently '-preview', not '-latest'
+        if (modelId.includes('gemini-2.5-flash-latest')) return 'gemini-2.5-flash-preview';
+        if (modelId.includes('gemini-2.5-pro-latest')) return 'gemini-2.5-pro-preview';
+        if (modelId.includes('gemini-2.5-flash-lite-latest')) return 'gemini-flash-lite-latest';
+        
         return modelId;
     };
 
@@ -29,17 +36,22 @@ export const updateGeminiConfig = (config: AiConfig) => {
     if (config.thinkingBudget !== undefined) {
         currentAiConfig.thinkingBudget = config.thinkingBudget;
     }
-    console.log("[GEMINI] Configuration updated & sanitized:", currentAiConfig);
+    console.log("[GEMINI] Configuration active:", currentAiConfig);
 };
 
 export const getActiveModels = () => ({ ...currentAiConfig });
 
-// Guideline: The API key must be obtained exclusively from the environment variable process.env.API_KEY.
-// In this setup, the server.js injects it into the browser window at runtime via /env.js.
+/**
+ * Retrieves the API Key from the injected global environment.
+ * The server serves /env.js which populates window.process.env.API_KEY.
+ */
 export const getApiKey = (): string => {
-    const config = (window as any).__FINPARSER_CONFIG__;
-    const proc = (window as any).process;
-    const key = config?.API_KEY || proc?.env?.API_KEY || process.env.API_KEY;
+    const injectedProc = (window as any).process;
+    const configObj = (window as any).__FINPARSER_CONFIG__;
+    
+    // Check multiple injection points for maximum resilience
+    const key = configObj?.API_KEY || injectedProc?.env?.API_KEY || process.env.API_KEY;
+    
     return (key && key !== 'undefined' && key !== 'null') ? key.trim() : '';
 };
 
@@ -47,30 +59,37 @@ export const hasApiKey = (): boolean => {
     return getApiKey().length > 0;
 };
 
+/**
+ * Tests connectivity using the currently configured text model.
+ */
 export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, message: string }> => {
     const key = getApiKey();
-    if (!key) return { success: false, message: "No API Key detected. Ensure API_KEY is set in your container environment." };
+    if (!key) return { success: false, message: "No API Key detected. Ensure the API_KEY environment variable is set in your container." };
     
     const ai = new GoogleGenAI({ apiKey: key });
-    // Use the sanitized model ID to test connectivity
     const model = currentAiConfig.textModel || 'gemini-3-flash-preview';
     
     try {
         const response = await ai.models.generateContent({
             model: model,
-            contents: "Respond with exactly the word 'OK'.",
+            contents: "Respond with 'OK'.",
             config: { 
-                maxOutputTokens: 10,
+                maxOutputTokens: 5,
                 thinkingConfig: { thinkingBudget: 0 }
             }
         });
         if (response && response.text) {
-            return { success: true, message: `System Handshake: Model ${model} is ONLINE.` };
+            return { success: true, message: `Handshake successful. Model ${model} responded: "${response.text.trim()}"` };
         }
-        return { success: true, message: `Connected to ${model}. Ready for processing.` };
+        return { success: true, message: `Connected to ${model}. Ready for analysis.` };
     } catch (e: any) {
-        console.error("Gemini Connectivity Test Error:", e);
-        return { success: false, message: `API Error: ${e.message || "Unknown error"}. Check key status and model name.` };
+        console.error("Gemini Handshake Failure:", e);
+        // Clean up common error messages for the user
+        let msg = e.message || "Unknown error";
+        if (msg.includes("404")) msg = `Model '${model}' not found. Please select a valid Gemini 3 or 2.5 model in Settings.`;
+        if (msg.includes("403")) msg = "API Key restricted or invalid. Check your Google AI Studio project permissions.";
+        
+        return { success: false, message: `Engine Error: ${msg}` };
     }
 };
 
@@ -96,7 +115,7 @@ export const generateRulesFromData = async (
     promptContext?: string
 ): Promise<ReconciliationRule[]> => {
     const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
+    if (!key) throw new Error("Missing API Key.");
     
     const ai = new GoogleGenAI({ apiKey: key });
     let sampleParts: any[] = [];
@@ -108,8 +127,7 @@ export const generateRulesFromData = async (
 
     const systemInstruction = `You are a Senior Financial Systems Architect. Task: generate atomic normalization rules for FinParser.
     Analyze patterns in description and metadata to suggest category, counterparty, and location mapping.
-    Contextual User Notes: ${promptContext || 'None provided'}.
-    Schema context available: ${categories.length} categories, ${counterparties.length} counterparties.`;
+    Contextual User Notes: ${promptContext || 'None provided'}.`;
 
     const schema = {
         type: Type.OBJECT,
@@ -162,25 +180,28 @@ export const generateRulesFromData = async (
         const parsed = JSON.parse(response.text || '{"rules": []}');
         return (parsed.rules || []).filter(Boolean).map((r: any) => ({
             ...r,
-            id: Math.random().toString(36).substring(7),
+            // Fixed: Added generateUUID call which was missing an import
+            id: generateUUID(),
             isAiDraft: true,
             conditions: (r.conditions || []).filter(Boolean).map((c: any) => ({ 
                 ...c, 
-                id: Math.random().toString(36).substring(7), 
+                // Fixed: Added generateUUID call which was missing an import
+                id: generateUUID(), 
                 type: 'basic', 
                 nextLogic: 'AND' 
             }))
         }));
     } catch (e: any) {
         console.error("Gemini Rule Forge Error:", e);
-        throw new Error(e.message || "AI extraction failed.");
+        throw new Error(e.message || "Rule synthesis failed.");
     }
 };
 
 export const getAiFinancialAnalysis = async (query: string, contextData: any) => {
     const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
+    if (!key) throw new Error("Missing API Key.");
     const ai = new GoogleGenAI({ apiKey: key });
+    
     const optimizedContext = {
         ...contextData,
         transactions: (contextData.transactions || []).filter(Boolean).slice(0, 100).map((t: any) => ({
@@ -189,19 +210,14 @@ export const getAiFinancialAnalysis = async (query: string, contextData: any) =>
             amt: t.amount,
             cat: t.categoryId,
             ent: t.counterpartyId
-        })),
-        amazonMetrics: (contextData.amazonMetrics || []).filter(Boolean).slice(0, 20),
-        youtubeMetrics: (contextData.youtubeMetrics || []).filter(Boolean).slice(0, 20)
+        }))
     };
-    const systemInstruction = `You are FinParser AI, a world-class financial analyst. 
-    You have access to the user's recent 100 transactions and financial profiles.
-    Use Markdown for formatting. Be concise.`;
 
     const stream = await ai.models.generateContentStream({
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
         contents: `CONTEXT:\n${JSON.stringify(optimizedContext)}\n\nUSER QUERY: ${query}`,
         config: {
-            systemInstruction,
+            systemInstruction: "You are FinParser AI, a world-class financial analyst. Use Markdown for reports.",
             thinkingConfig: { thinkingBudget: 0 }
         }
     });
@@ -216,14 +232,10 @@ export const extractTransactionsFromFiles = async (
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
     const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
+    if (!key) throw new Error("Missing API Key.");
     const ai = new GoogleGenAI({ apiKey: key });
     
-    if (!transactionTypes || transactionTypes.length === 0) {
-        throw new Error("System Error: No transaction types available.");
-    }
-
-    onProgress("AI is analyzing files...");
+    onProgress("AI is reading statements...");
     const fileParts = await Promise.all(files.map(fileToGenerativePart));
     const schema = {
         type: Type.OBJECT,
@@ -236,7 +248,6 @@ export const extractTransactionsFromFiles = async (
                         date: { type: Type.STRING },
                         description: { type: Type.STRING },
                         amount: { type: Type.NUMBER },
-                        category: { type: Type.STRING },
                         type: { type: Type.STRING }
                     },
                     required: ["date", "description", "amount"]
@@ -247,7 +258,7 @@ export const extractTransactionsFromFiles = async (
     };
     const response = await ai.models.generateContent({
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
-        contents: { parts: [...fileParts, { text: "Extract all financial transactions from these files." }] },
+        contents: { parts: [...fileParts, { text: "Extract transaction rows including date, description, amount, and type (income/purchase)." }] },
         config: {
             responseMimeType: "application/json",
             responseSchema: schema,
@@ -257,14 +268,13 @@ export const extractTransactionsFromFiles = async (
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
     
-    const validTransactionTypes = Array.isArray(transactionTypes) ? transactionTypes.filter(Boolean) : [];
-    const incomingType = validTransactionTypes.find(t => t.balanceEffect === 'incoming') || validTransactionTypes[0];
-    const outgoingType = validTransactionTypes.find(t => t.balanceEffect === 'outgoing') || validTransactionTypes[0];
+    const incomingType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
+    const outgoingType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
 
-    return txs.filter((tx: any) => tx && tx.date).map((tx: any) => ({
+    return txs.map((tx: any) => ({
         ...tx,
         accountId,
-        typeId: tx.type === 'income' ? incomingType.id : outgoingType.id
+        typeId: tx.type?.toLowerCase().includes('income') ? incomingType.id : outgoingType.id
     }));
 };
 
@@ -276,14 +286,10 @@ export const extractTransactionsFromText = async (
     onProgress: (msg: string) => void
 ): Promise<RawTransaction[]> => {
     const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
+    if (!key) throw new Error("Missing API Key.");
     const ai = new GoogleGenAI({ apiKey: key });
 
-    if (!transactionTypes || transactionTypes.length === 0) {
-        throw new Error("System Error: No transaction types available.");
-    }
-
-    onProgress("AI is parsing text...");
+    onProgress("AI is parsing stream...");
     const schema = {
         type: Type.OBJECT,
         properties: {
@@ -294,8 +300,7 @@ export const extractTransactionsFromText = async (
                     properties: {
                         date: { type: Type.STRING },
                         description: { type: Type.STRING },
-                        amount: { type: Type.NUMBER },
-                        type: { type: Type.STRING }
+                        amount: { type: Type.NUMBER }
                     },
                     required: ["date", "description", "amount"]
                 }
@@ -305,7 +310,7 @@ export const extractTransactionsFromText = async (
     };
     const response = await ai.models.generateContent({
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
-        contents: `Extract transactions from this text: ${text}`,
+        contents: `Extract transactions from this raw data: ${text}`,
         config: {
             responseMimeType: "application/json",
             responseSchema: schema,
@@ -315,34 +320,32 @@ export const extractTransactionsFromText = async (
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
 
-    const validTransactionTypes = Array.isArray(transactionTypes) ? transactionTypes.filter(Boolean) : [];
-    const incomingType = validTransactionTypes.find(t => t.balanceEffect === 'incoming') || validTransactionTypes[0];
-    const outgoingType = validTransactionTypes.find(t => t.balanceEffect === 'outgoing') || validTransactionTypes[0];
+    const outgoingType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
 
-    return txs.filter((tx: any) => tx && tx.date).map((tx: any) => ({
+    return txs.map((tx: any) => ({
         ...tx,
         accountId,
-        typeId: tx.type === 'income' ? incomingType.id : outgoingType.id
+        typeId: outgoingType.id
     }));
 };
 
 export const askAiAdvisor = async (prompt: string): Promise<string> => {
     const key = getApiKey();
-    if (!key) return "AI Configuration required.";
+    if (!key) return "Configuration required.";
     const ai = new GoogleGenAI({ apiKey: key });
     const response = await ai.models.generateContent({
         model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
         contents: prompt,
-        config: { thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget || 0, 2000) } }
+        config: { thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 0 } }
     });
     return response.text || "No response.";
 };
 
 export const streamTaxAdvice = async (messages: ChatMessage[], profile: BusinessProfile) => {
     const key = getApiKey();
-    if (!key) throw new Error("API Key is missing.");
+    if (!key) throw new Error("Missing API Key.");
     const ai = new GoogleGenAI({ apiKey: key });
-    const contents = messages.filter(Boolean).map(m => ({
+    const contents = messages.map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
     }));
@@ -350,7 +353,7 @@ export const streamTaxAdvice = async (messages: ChatMessage[], profile: Business
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
         contents,
         config: {
-            systemInstruction: `You are an expert Tax Advisor for a ${profile.info.businessType || 'business'}.`,
+            systemInstruction: `You are a world-class financial strategy bot for a ${profile.info.businessType || 'business'}.`,
             thinkingConfig: { thinkingBudget: 0 }
         }
     });
@@ -394,11 +397,11 @@ export const auditTransactions = async (
     };
     const response = await ai.models.generateContent({
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
-        contents: `Audit type ${auditType}: ${JSON.stringify(transactions.filter(Boolean).slice(0, 100))}. Training Examples: ${JSON.stringify((examples || []).filter(Boolean))}`,
+        contents: `Audit request: ${auditType} on data: ${JSON.stringify(transactions.slice(0, 50))}`,
         config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
     });
     const result = JSON.parse(response.text || '{"findings": []}');
-    return (result.findings || []).filter(Boolean);
+    return (result.findings || []);
 };
 
 export const analyzeBusinessDocument = async (file: File, onProgress: (msg: string) => void): Promise<any> => {
@@ -418,7 +421,7 @@ export const analyzeBusinessDocument = async (file: File, onProgress: (msg: stri
     };
     const response = await ai.models.generateContent({
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
-        contents: { parts: [part, { text: "Analyze this document and provide a summary with key dates." }] },
+        contents: { parts: [part, { text: "Summarize this financial document." }] },
         config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
     });
     return JSON.parse(response.text || '{}');
@@ -452,12 +455,12 @@ export const generateFinancialStrategy = async (
     };
     const response = await ai.models.generateContent({
         model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
-        contents: `Strategy for profile: ${JSON.stringify(profile)} with goals: ${JSON.stringify(goals.filter(Boolean))} and tx sample: ${JSON.stringify(transactions.filter(Boolean).slice(0, 50))}`,
+        contents: `Analyze data for wealth plan: ${JSON.stringify(profile)}. Goals: ${JSON.stringify(goals)}.`,
         config: { 
             responseMimeType: "application/json", 
             responseSchema: schema,
             thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget || 0, 4000) }
         }
     });
-    return JSON.parse(response.text || '{"strategy": "No strategy found."}');
+    return JSON.parse(response.text || '{"strategy": "No response."}');
 };

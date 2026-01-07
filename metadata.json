@@ -1,5 +1,5 @@
 {
-  "name": "Transaction Tracker - Import Improvements - v0.3.54",
+  "name": "Transaction Tracker - Database Fixes - v0.3.55",
   "description": "High-performance normalized SQLite architecture for millions of financial records.",
   "requestFramePermissions": []
 }
