@@ -16,7 +16,6 @@ interface BusinessHubProps {
     categories: Category[];
 }
 
-// Fixed BlockType to ensure 'number' is correctly handled in all environments
 type BlockType = 'paragraph' | 'todo' | 'bullet' | 'number' | 'h1';
 
 interface ContentBlock {
@@ -163,49 +162,49 @@ const BlockEditor: React.FC<{
     };
 
     return (
-        <div className="flex flex-col h-full bg-white rounded-lg border border-slate-200 overflow-hidden shadow-sm">
-            <div className="flex items-center gap-1 p-1 bg-slate-50 border-b border-slate-200 sticky top-0 z-20">
-                <div className="flex bg-white rounded-md border border-slate-200 p-0.5 shadow-sm mr-2">
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all" title="Todo List"><ChecklistIcon className="w-3.5 h-3.5" /></button>
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all" title="Bullet List"><ListIcon className="w-3.5 h-3.5" /></button>
-                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'number' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all font-bold text-[10px]" title="Numbered List">1.</button>
+        <div className="flex flex-col h-full bg-white rounded border border-slate-200 overflow-hidden shadow-sm">
+            <div className="flex items-center gap-1 p-1 bg-slate-50 border-b border-slate-100 sticky top-0 z-20">
+                <div className="flex bg-white rounded border border-slate-200 p-0.5 shadow-sm mr-2">
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all" title="Todo List"><ChecklistIcon className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all" title="Bullet List"><ListIcon className="w-3 h-3" /></button>
+                    <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'number' })} className="p-1 hover:bg-indigo-50 rounded text-slate-600 transition-all font-bold text-[9px]" title="Numbered List">1.</button>
                 </div>
-                <div className="flex bg-white rounded-md border border-slate-200 p-0.5 shadow-sm">
-                    <button type="button" onClick={() => setSelectionFormatting('**', '**')} className="px-2 py-1 hover:bg-indigo-50 rounded text-slate-600 font-black text-[10px]" title="Bold">B</button>
-                    <button type="button" onClick={() => setSelectionFormatting('~~', '~~')} className="px-2 py-1 hover:bg-indigo-50 rounded text-slate-600 font-medium text-[10px] line-through" title="Strikethrough">S</button>
+                <div className="flex bg-white rounded border border-slate-200 p-0.5 shadow-sm">
+                    <button type="button" onClick={() => setSelectionFormatting('**', '**')} className="px-2 py-1 hover:bg-indigo-50 rounded text-slate-600 font-black text-[9px]" title="Bold">B</button>
+                    <button type="button" onClick={() => setSelectionFormatting('~~', '~~')} className="px-2 py-1 hover:bg-indigo-50 rounded text-slate-600 font-medium text-[9px] line-through" title="Strikethrough">S</button>
                 </div>
                 <div className="ml-auto flex items-center gap-2 pr-2">
-                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Compact Editor</span>
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <span className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Nano Editor</span>
+                    <div className="w-1 h-1 rounded-full bg-emerald-500" />
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-0.5 custom-scrollbar bg-white">
+            <div className="flex-1 overflow-y-auto p-3 space-y-0.5 custom-scrollbar bg-white">
                 {blocks.map((b, idx) => {
                     const blockNumber = blocks.slice(0, idx + 1).filter((pb) => (pb.type as any) === 'number').length;
                     return (
                         <div 
                             key={b.id} 
                             className={`group flex items-start gap-2 py-0.5 relative rounded transition-colors ${focusedId === b.id ? 'bg-slate-50/50' : 'hover:bg-slate-50/30'}`}
-                            style={{ paddingLeft: `${b.indent * 20}px` }}
+                            style={{ paddingLeft: `${b.indent * 16}px` }}
                         >
-                            <div className="flex-shrink-0 mt-1 w-5 flex justify-center items-start">
+                            <div className="flex-shrink-0 mt-0.5 w-4 flex justify-center items-start">
                                 {(b.type as any) === 'todo' ? (
                                     <button 
                                         type="button"
                                         onClick={() => updateBlock(b.id, { checked: !b.checked })}
-                                        className={`w-4 h-4 rounded border transition-all flex items-center justify-center ${
+                                        className={`w-3.5 h-3.5 rounded border transition-all flex items-center justify-center ${
                                             b.checked ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-300 hover:border-indigo-400'
                                         }`}
                                     >
-                                        {b.checked && <CheckCircleIcon className="w-3 h-3" />}
+                                        {b.checked && <CheckCircleIcon className="w-2.5 h-2.5" />}
                                     </button>
                                 ) : (b.type as any) === 'bullet' ? (
-                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5 shadow-inner" />
+                                    <div className="w-1 h-1 rounded-full bg-slate-300 mt-1.5" />
                                 ) : (b.type as any) === 'number' ? (
-                                    <span className="text-[10px] font-black text-slate-400 mt-0.5 font-mono">{blockNumber}.</span>
+                                    <span className="text-[9px] font-black text-slate-400 mt-0.5 font-mono">{blockNumber}.</span>
                                 ) : (b.type as any) === 'h1' ? (
-                                    <span className="text-[10px] font-black text-indigo-400 mt-0.5">H</span>
+                                    <span className="text-[9px] font-black text-indigo-400 mt-0.5">H</span>
                                 ) : null}
                             </div>
 
@@ -226,10 +225,10 @@ const BlockEditor: React.FC<{
                                     updateBlock(b.id, { text, type });
                                 }}
                                 onKeyDown={(e) => handleKeyDown(e, b)}
-                                placeholder={b.type === 'paragraph' ? "Note..." : "List..."}
+                                placeholder={b.type === 'paragraph' ? "Log..." : "Item..."}
                                 rows={1}
                                 className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] transition-all duration-200 ${
-                                    b.type === 'h1' ? 'text-base font-black text-slate-800' : 'text-[13px] font-medium'
+                                    b.type === 'h1' ? 'text-sm font-black text-slate-800' : 'text-[12px] font-medium'
                                 } ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
                                 onInput={(e) => {
                                     const target = e.target as HTMLTextAreaElement;
@@ -240,18 +239,18 @@ const BlockEditor: React.FC<{
                             />
 
                             <div className="opacity-0 group-hover:opacity-100 flex items-center transition-opacity flex-shrink-0">
-                                <button type="button" onClick={() => deleteBlock(b.id)} className="p-0.5 text-slate-300 hover:text-red-500 rounded"><TrashIcon className="w-3.5 h-3.5"/></button>
+                                <button type="button" onClick={() => deleteBlock(b.id)} className="p-0.5 text-slate-300 hover:text-red-500 rounded"><TrashIcon className="w-3 h-3"/></button>
                             </div>
                         </div>
                     );
                 })}
             </div>
             
-            <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-[8px] text-slate-400 font-black uppercase tracking-widest">
-                <span>Blocks: {blocks.length}</span>
-                <div className="flex gap-3">
-                    <span>Tab: Indent</span>
-                    <span>Enter: New</span>
+            <div className="px-2 py-1 bg-slate-50 border-t border-slate-200 flex justify-between items-center text-[7px] text-slate-400 font-black uppercase tracking-widest">
+                <span>{blocks.length} Units</span>
+                <div className="flex gap-2">
+                    <span>Tab: Level</span>
+                    <span>Ent: New</span>
                 </div>
             </div>
         </div>
@@ -284,23 +283,23 @@ const NoteContentRenderer: React.FC<{
     let numberIndex = 0;
 
     return (
-        <div className="space-y-1 font-sans text-[13px] leading-relaxed text-slate-700">
+        <div className="space-y-1 font-sans text-[12px] leading-relaxed text-slate-700">
             {blocks.map((b, idx) => {
-                const style = { paddingLeft: `${b.indent * 20}px` };
+                const style = { paddingLeft: `${b.indent * 16}px` };
                 if ((b.type as any) === 'number') numberIndex++; else if ((b.type as any) !== 'number' && b.type !== 'paragraph') numberIndex = 0;
 
                 if (b.type === 'todo') {
                     return (
-                        <div key={idx} style={style} className="flex items-start gap-2.5 py-0.5 group">
+                        <div key={idx} style={style} className="flex items-start gap-2 py-0.5 group">
                             <button 
                                 onClick={() => onToggleCheckbox(idx)}
-                                className={`mt-0.5 w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-all ${
+                                className={`mt-0.5 w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
                                     b.checked ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-300 hover:border-indigo-400'
                                 }`}
                             >
                                 {b.checked && <CheckCircleIcon className="w-2.5 h-2.5" />}
                             </button>
-                            <span className={`pt-0.5 ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>
+                            <span className={`pt-0 ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700 font-medium'}`}>
                                 {parseInlineMarkdown(b.text)}
                             </span>
                         </div>
@@ -309,8 +308,8 @@ const NoteContentRenderer: React.FC<{
 
                 if (b.type === 'bullet') {
                     return (
-                        <div key={idx} style={style} className="flex items-start gap-2.5 py-0.5">
-                            <span className="text-slate-400 mt-1.5 w-1.5 h-1.5 rounded-full bg-slate-300 flex-shrink-0" />
+                        <div key={idx} style={style} className="flex items-start gap-2 py-0.5">
+                            <span className="text-slate-400 mt-1.5 w-1 h-1 rounded-full bg-slate-300 flex-shrink-0" />
                             <span className="text-slate-700 font-medium">{parseInlineMarkdown(b.text)}</span>
                         </div>
                     );
@@ -318,15 +317,15 @@ const NoteContentRenderer: React.FC<{
 
                 if ((b.type as any) === 'number') {
                     return (
-                        <div key={idx} style={style} className="flex items-start gap-2.5 py-0.5">
-                            <span className="text-[10px] font-black text-slate-400 mt-0.5 min-w-[0.8rem] font-mono">{numberIndex}.</span>
+                        <div key={idx} style={style} className="flex items-start gap-2 py-0.5">
+                            <span className="text-[9px] font-black text-slate-400 mt-0.5 min-w-[0.7rem] font-mono">{numberIndex}.</span>
                             <span className="text-slate-700 font-medium">{parseInlineMarkdown(b.text)}</span>
                         </div>
                     );
                 }
 
                 if (b.type === 'h1') {
-                    return <h1 key={idx} style={style} className="text-lg font-black text-slate-900 pt-2 pb-1">{parseInlineMarkdown(b.text)}</h1>;
+                    return <h1 key={idx} style={style} className="text-base font-black text-slate-900 pt-2 pb-1">{parseInlineMarkdown(b.text)}</h1>;
                 }
 
                 return (
@@ -353,6 +352,11 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
     const [type, setType] = useState<BusinessNote['type']>('bug');
     const [priority, setPriority] = useState<BusinessNote['priority']>('medium');
     const [editingId, setEditingId] = useState<string | null>(null);
+
+    const resetForm = () => {
+        setTitle(''); setBlocks([{ id: generateUUID(), type: 'paragraph', text: '', checked: false, indent: 0 }]); setType('bug'); setPriority('medium');
+        setEditingId(null); setIsCreating(false);
+    };
 
     const filteredNotes = useMemo(() => {
         return notes.filter(n => {
@@ -383,11 +387,6 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
             setSelectedNoteId(newNote.id);
         }
         resetForm();
-    };
-
-    const resetForm = () => {
-        setTitle(''); setBlocks([{ id: generateUUID(), type: 'paragraph', text: '', checked: false, indent: 0 }]); setType('bug'); setPriority('medium');
-        setEditingId(null); setIsCreating(false);
     };
 
     const startEdit = (n: BusinessNote) => {
@@ -437,11 +436,14 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
     }), [notes]);
 
     return (
-        <div className="flex gap-2 h-[750px] bg-slate-50 border border-slate-200 rounded-2xl shadow-xl overflow-hidden relative p-1">
-            {/* Classification Sidebar (Condensed) */}
-            <div className="w-44 bg-white border border-slate-200 rounded-xl flex flex-col p-2 flex-shrink-0 shadow-sm">
-                <button onClick={() => { setIsCreating(true); resetForm(); }} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-black shadow-lg shadow-indigo-100 mb-4 flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest">
-                    <AddIcon className="w-3 h-3" /> New
+        <div className="flex h-[700px] bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+            {/* Classification Sidebar (Single Pane Section) */}
+            <div className="w-44 border-r border-slate-100 flex flex-col p-2 bg-slate-50/50">
+                <button 
+                    onClick={() => { resetForm(); setIsCreating(true); }} 
+                    className="w-full py-2 bg-indigo-600 text-white rounded-lg font-black shadow-lg shadow-indigo-100 mb-4 flex items-center justify-center gap-1.5 text-[10px] uppercase tracking-widest hover:bg-indigo-700 active:scale-95 transition-all"
+                >
+                    <AddIcon className="w-3 h-3" /> New Capture
                 </button>
                 <div className="space-y-0.5">
                     <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-2 mb-1.5">Classify</p>
@@ -451,43 +453,43 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                         { id: 'idea', label: 'Ideas', icon: <LightBulbIcon className="w-3 h-3" /> },
                         { id: 'task', label: 'Tasks', icon: <ChecklistIcon className="w-3 h-3" /> }
                     ].map(item => (
-                        <button key={item.id} onClick={() => { setActiveClassification(item.id); setSelectedNoteId(null); }} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeClassification === item.id ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+                        <button key={item.id} onClick={() => { setActiveClassification(item.id); setSelectedNoteId(null); setIsCreating(false); }} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeClassification === item.id ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
                             <div className="flex items-center gap-2">{item.icon}<span>{item.label}</span></div>
-                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === item.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{(classificationStats as any)[item.id]}</span>
+                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === item.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'}`}>{(classificationStats as any)[item.id]}</span>
                         </button>
                     ))}
-                    <div className="pt-2 mt-2 border-t border-slate-100">
-                        <button onClick={() => { setActiveClassification('resolved'); setSelectedNoteId(null); }} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeClassification === 'resolved' ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
+                    <div className="pt-2 mt-2 border-t border-slate-200/50">
+                        <button onClick={() => { setActiveClassification('resolved'); setSelectedNoteId(null); setIsCreating(false); }} className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] font-bold transition-all ${activeClassification === 'resolved' ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-200/50'}`}>
                             <div className="flex items-center gap-2"><CheckCircleIcon className="w-3 h-3" /><span>Archive</span></div>
-                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === 'resolved' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>{classificationStats.resolved}</span>
+                            <span className={`text-[9px] px-1.5 rounded-full ${activeClassification === 'resolved' ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-500'}`}>{classificationStats.resolved}</span>
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* List Master View (Condensed) */}
-            <div className="w-64 bg-white border border-slate-200 rounded-xl flex flex-col min-h-0 shadow-sm overflow-hidden">
-                <div className="p-2.5 border-b border-slate-100 bg-slate-50/50">
+            {/* List Section (Single Pane Section) */}
+            <div className="w-64 border-r border-slate-100 flex flex-col min-h-0 bg-white">
+                <div className="p-2 border-b border-slate-50 bg-slate-50/30">
                     <div className="relative group">
-                        <input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold focus:ring-1 focus:ring-indigo-500 outline-none transition-all" />
+                        <input type="text" placeholder="Search logs..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-bold focus:ring-1 focus:ring-indigo-500 outline-none transition-all" />
                         <SearchCircleIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-300" />
                     </div>
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {filteredNotes.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-slate-300 p-4 text-center">
-                            <p className="text-[10px] font-black uppercase tracking-widest">No entries</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest">Empty Workspace</p>
                         </div>
                     ) : (
                         filteredNotes.map(n => (
                             <div 
                                 key={n.id} 
                                 onClick={() => { setSelectedNoteId(n.id); setIsCreating(false); }} 
-                                className={`group p-3 border-b border-slate-50 cursor-pointer transition-all ${selectedNoteId === n.id ? 'bg-indigo-50 border-l-2 border-l-indigo-600' : 'hover:bg-slate-50'}`}
+                                className={`group p-2.5 border-b border-slate-50 cursor-pointer transition-all ${selectedNoteId === n.id ? 'bg-indigo-50/80 border-l-2 border-l-indigo-600' : 'hover:bg-slate-50/50'}`}
                             >
                                 <div className="flex items-center justify-between mb-1">
                                     <h4 className={`text-[11px] font-black truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4>
-                                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${n.priority === 'high' ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-500'}`}>{n.priority}</span>
+                                    <span className={`text-[7px] font-black uppercase px-1 py-0.5 rounded flex-shrink-0 ${n.priority === 'high' ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-500'}`}>{n.priority}</span>
                                 </div>
                                 <p className="text-[10px] text-slate-400 line-clamp-1 leading-relaxed font-medium">{n.content}</p>
                                 <div className="mt-1.5 flex items-center justify-between">
@@ -503,103 +505,104 @@ const JournalTab: React.FC<{ notes: BusinessNote[]; onUpdateNotes: (n: BusinessN
                 </div>
             </div>
 
-            {/* Detail / Editor Canvas (Tightened) */}
-            <div className="flex-1 bg-white border border-slate-200 rounded-xl flex flex-col min-h-0 shadow-sm relative overflow-hidden">
+            {/* Detail / Editor Canvas (Single Pane Section) */}
+            <div className="flex-1 flex flex-col min-h-0 bg-white relative">
                 {isCreating ? (
-                    <div className="flex-1 flex flex-col min-h-0 bg-white animate-fade-in">
-                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
+                        <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/30">
                             <div>
-                                <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">{editingId ? 'Edit Entry' : 'New Capture'}</h3>
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-tight">{editingId ? 'Updating Record' : 'Fresh Entry'}</h3>
                             </div>
                             <div className="flex items-center gap-2">
                                 <div className="flex items-center gap-2 border-r pr-2 border-slate-200">
-                                    <select value={type} onChange={e => setType(e.target.value as any)} className="bg-white border rounded p-1 text-[9px] font-black uppercase text-slate-700 outline-none">
+                                    <select value={type} onChange={e => setType(e.target.value as any)} className="bg-white border border-slate-200 rounded p-1 text-[8px] font-black uppercase text-slate-700 outline-none focus:ring-1 focus:ring-indigo-200 transition-all">
                                         <option value="bug">BUG</option><option value="note">NOTE</option><option value="idea">IDEA</option><option value="task">TASK</option>
                                     </select>
-                                    <select value={priority} onChange={e => setPriority(e.target.value as any)} className="bg-white border rounded p-1 text-[9px] font-black uppercase text-slate-700 outline-none">
+                                    <select value={priority} onChange={e => setPriority(e.target.value as any)} className="bg-white border border-slate-200 rounded p-1 text-[8px] font-black uppercase text-slate-700 outline-none focus:ring-1 focus:ring-indigo-200 transition-all">
                                         <option value="low">LOW</option><option value="medium">MED</option><option value="high">HIGH</option>
                                     </select>
                                 </div>
-                                <button type="button" onClick={resetForm} className="p-1.5 text-slate-400 hover:text-red-500 rounded-full transition-colors"><CloseIcon className="w-5 h-5" /></button>
+                                <button type="button" onClick={resetForm} className="p-1 text-slate-400 hover:text-red-500 transition-colors"><CloseIcon className="w-4 h-4" /></button>
                             </div>
                         </div>
 
-                        <div className="flex-1 p-6 space-y-4 overflow-y-auto custom-scrollbar">
-                            <div className="max-w-3xl mx-auto space-y-4 h-full flex flex-col">
+                        <div className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar">
+                            <div className="max-w-2xl mx-auto space-y-3 h-full flex flex-col">
                                 <input 
                                     type="text" 
                                     value={title} 
                                     onChange={e => setTitle(e.target.value)} 
-                                    placeholder="Title..." 
-                                    className="w-full text-2xl font-black text-slate-900 border-none bg-transparent placeholder:text-slate-200 focus:ring-0 p-0" 
+                                    placeholder="Summary header..." 
+                                    className="w-full text-xl font-black text-slate-900 border-none bg-transparent placeholder:text-slate-100 focus:ring-0 p-0" 
                                 />
-                                <div className="flex-1">
+                                <div className="flex-1 min-h-0">
                                     <BlockEditor blocks={blocks} onChange={setBlocks} />
                                 </div>
                             </div>
                         </div>
 
-                        <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-between items-center">
-                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                                <SparklesIcon className="w-3 h-3 text-indigo-400" /> Auto-sync enabled
+                        <div className="p-3 bg-slate-50 border-t border-slate-100 flex justify-between items-center">
+                            <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <SparklesIcon className="w-2.5 h-2.5 text-indigo-400" /> Persistent local cache enabled
                             </p>
                             <div className="flex gap-2">
-                                <button type="button" onClick={resetForm} className="px-4 py-1.5 text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-slate-800 transition-colors">Abort</button>
-                                <button onClick={handleSave} className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-black text-[10px] shadow-md hover:bg-indigo-700 transition-all uppercase tracking-widest">Commit</button>
+                                <button type="button" onClick={resetForm} className="px-3 py-1.5 text-[9px] font-black text-slate-500 uppercase tracking-widest hover:text-slate-800 transition-colors">Discard</button>
+                                <button onClick={handleSave} className="px-5 py-1.5 bg-indigo-600 text-white rounded-lg font-black text-[9px] shadow-lg hover:bg-indigo-700 transition-all uppercase tracking-widest active:scale-95">Commit</button>
                             </div>
                         </div>
                     </div>
                 ) : activeNote ? (
-                    <div className="flex-1 flex flex-col min-h-0 bg-white animate-fade-in">
-                        <div className="p-6 border-b border-slate-100 flex justify-between items-start bg-slate-50/30">
-                            <div className="space-y-1.5">
+                    <div className="flex-1 flex flex-col min-h-0 animate-fade-in">
+                        <div className="p-4 border-b border-slate-50 flex justify-between items-start bg-slate-50/20">
+                            <div className="space-y-1">
                                 <div className="flex items-center gap-1.5">
-                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${activeNote.type === 'bug' ? 'bg-red-500 text-white border-red-600' : 'bg-indigo-600 text-white border-indigo-700'}`}>{activeNote.type}</span>
-                                    <span className={`text-[8px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border border-slate-200 text-slate-500`}>{activeNote.priority}</span>
-                                    {activeNote.isCompleted && <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-white text-[8px] font-black uppercase tracking-widest flex items-center gap-1 shadow-sm"><CheckCircleIcon className="w-2.5 h-2.5" /> Archive</span>}
+                                    <span className={`px-1.5 py-0.5 rounded text-[7px] font-black uppercase tracking-widest border ${activeNote.type === 'bug' ? 'bg-red-500 text-white border-red-600' : 'bg-indigo-600 text-white border-indigo-700'}`}>{activeNote.type}</span>
+                                    <span className={`text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border border-slate-200 text-slate-400`}>{activeNote.priority}</span>
+                                    {activeNote.isCompleted && <span className="px-1.5 py-0.5 rounded bg-emerald-500 text-white text-[7px] font-black uppercase tracking-widest flex items-center gap-0.5 shadow-sm"><CheckCircleIcon className="w-2.5 h-2.5" /> Archive</span>}
                                 </div>
-                                <h3 className="text-2xl font-black text-slate-900 leading-tight">{activeNote.title}</h3>
-                                <div className="flex items-center gap-4 text-[9px] font-black text-slate-400 uppercase tracking-tighter">
-                                    <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3"/> {new Date(activeNote.updatedAt).toLocaleDateString()}</span>
+                                <h3 className="text-xl font-black text-slate-900 leading-tight">{activeNote.title}</h3>
+                                <div className="flex items-center gap-3 text-[8px] font-black text-slate-300 uppercase tracking-tight">
+                                    <span className="flex items-center gap-1"><CalendarIcon className="w-2.5 h-2.5"/> {new Date(activeNote.updatedAt).toLocaleDateString()}</span>
                                 </div>
                             </div>
-                            <div className="flex gap-1.5">
-                                <button onClick={() => startEdit(activeNote)} className="p-1.5 bg-white text-slate-400 hover:text-indigo-600 border border-slate-200 rounded-lg shadow-sm transition-all" title="Edit"><EditIcon className="w-4 h-4"/></button>
-                                <button onClick={() => deleteNote(activeNote.id)} className="p-1.5 bg-white text-slate-400 hover:text-red-500 border border-slate-200 rounded-lg shadow-sm transition-all" title="Delete"><DeleteIcon className="w-4 h-4"/></button>
+                            <div className="flex gap-1">
+                                <button onClick={() => startEdit(activeNote)} className="p-1.5 bg-white text-slate-300 hover:text-indigo-600 border border-slate-200 rounded transition-all" title="Edit"><EditIcon className="w-3.5 h-3.5"/></button>
+                                <button onClick={() => deleteNote(activeNote.id)} className="p-1.5 bg-white text-slate-300 hover:text-red-500 border border-slate-200 rounded transition-all" title="Delete"><DeleteIcon className="w-3.5 h-3.5"/></button>
                             </div>
                         </div>
                         
-                        <div className="flex-1 p-6 overflow-y-auto custom-scrollbar bg-white">
-                            <div className="max-w-3xl mx-auto min-h-[300px]">
+                        <div className="flex-1 p-5 overflow-y-auto custom-scrollbar bg-white">
+                            <div className="max-w-2xl mx-auto min-h-[300px]">
                                 <NoteContentRenderer content={activeNote.content} onToggleCheckbox={(idx) => toggleCheckboxInContent(activeNote, idx)} />
                             </div>
                         </div>
 
-                        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-between items-center rounded-b-xl">
-                            <button onClick={() => toggleComplete(activeNote.id)} className={`px-5 py-2 rounded-lg font-black uppercase text-[10px] transition-all flex items-center gap-2 tracking-widest shadow-sm ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
-                                {activeNote.isCompleted ? <RepeatIcon className="w-4 h-4"/> : <CheckCircleIcon className="w-4 h-4"/>}
-                                {activeNote.isCompleted ? 'Backlog' : 'Archive Entry'}
+                        <div className="p-3 bg-slate-50/50 border-t border-slate-50 flex justify-between items-center">
+                            <button onClick={() => toggleComplete(activeNote.id)} className={`px-4 py-1.5 rounded-lg font-black uppercase text-[9px] transition-all flex items-center gap-1.5 tracking-widest shadow-sm ${activeNote.isCompleted ? 'bg-slate-800 text-white hover:bg-slate-900' : 'bg-emerald-600 text-white hover:bg-emerald-700'}`}>
+                                {activeNote.isCompleted ? <RepeatIcon className="w-3.5 h-3.5"/> : <CheckCircleIcon className="w-3.5 h-3.5"/>}
+                                {activeNote.isCompleted ? 'Re-open' : 'Archive Record'}
                             </button>
-                            <button onClick={() => copyToClipboard(activeNote.content)} className="flex items-center gap-1.5 text-indigo-600 font-black text-[9px] uppercase hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-all tracking-widest">
-                                <CopyIcon className="w-3 h-3"/> Raw Data
+                            <button onClick={() => copyToClipboard(activeNote.content)} className="flex items-center gap-1 text-indigo-600 font-black text-[8px] uppercase hover:bg-indigo-50 px-2.5 py-1.5 rounded-lg transition-all tracking-widest">
+                                <CopyIcon className="w-3 h-3"/> Export
                             </button>
                         </div>
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-12 bg-slate-50/50">
-                        <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-xl mb-6">
-                             <NotesIcon className="w-6 h-6 text-indigo-200" />
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-8 bg-slate-50/30">
+                        <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg border border-slate-100 mb-4 opacity-50">
+                             <NotesIcon className="w-5 h-5 text-indigo-200" />
                         </div>
-                        <h4 className="text-base font-black text-slate-800 uppercase tracking-tighter">Capture Center</h4>
-                        <p className="text-slate-400 text-[11px] mt-2 font-bold max-w-[180px] leading-relaxed">Select a log or start a new engineering entry.</p>
-                        <button onClick={() => setIsCreating(true)} className="mt-6 px-6 py-2.5 bg-white border-2 border-indigo-600 text-indigo-600 font-black uppercase tracking-widest text-[10px] rounded-xl hover:bg-indigo-600 hover:text-white shadow-md transition-all active:scale-95">New Record</button>
+                        <h4 className="text-sm font-black text-slate-800 uppercase tracking-tighter">Information Canvas</h4>
+                        <p className="text-slate-400 text-[10px] mt-1.5 font-bold max-w-[160px] leading-relaxed">Select a log from the list or start a new capture session.</p>
+                        <button onClick={() => { resetForm(); setIsCreating(true); }} className="mt-4 px-5 py-2 bg-white border-2 border-indigo-600 text-indigo-600 font-black uppercase tracking-widest text-[9px] rounded-xl hover:bg-indigo-600 hover:text-white shadow-md transition-all active:scale-95">New Capture</button>
                     </div>
                 )}
             </div>
+
             {copyStatus !== 'idle' && (
-                <div className="fixed bottom-6 right-6 z-[200] px-4 py-2 bg-slate-900 text-white rounded-xl shadow-2xl border border-white/10 animate-slide-in-right flex items-center gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full ${copyStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
-                    <span className="text-[10px] font-black uppercase tracking-widest">{copyStatus === 'success' ? 'Copied' : 'Error'}</span>
+                <div className="fixed bottom-6 right-6 z-[200] px-3 py-1.5 bg-slate-900 text-white rounded-lg shadow-2xl border border-white/10 animate-slide-in-right flex items-center gap-2">
+                    <div className={`w-1 h-1 rounded-full ${copyStatus === 'success' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                    <span className="text-[9px] font-black uppercase tracking-widest">{copyStatus === 'success' ? 'Copied' : 'Failed'}</span>
                 </div>
             )}
         </div>
@@ -612,23 +615,23 @@ const SetupGuideTab: React.FC<{ profile: BusinessProfile; onUpdateProfile: (p: B
     const updateTax = (key: keyof TaxInfo, value: any) => onUpdateProfile({ ...profile, tax: { ...profile.tax, [key]: value } });
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-fade-in">
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-                <div className="flex items-center gap-4 border-b border-slate-100 pb-4"><div className="bg-indigo-100 p-2.5 rounded-xl"><CheckCircleIcon className="w-6 h-6 text-indigo-600" /></div><h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Business Structure</h2></div>
-                <div className="space-y-5">
-                    <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Legal Business Name</label><input type="text" value={profile.info.llcName || ''} onChange={(e) => updateInfo('llcName', e.target.value)} placeholder="My Business LLC" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" /></div>
-                    <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Industry Sector</label><input type="text" value={profile.info.industry || ''} onChange={(e) => updateInfo('industry', e.target.value)} placeholder="e.g. Software, E-commerce" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" /></div>
-                    <div className="grid grid-cols-2 gap-4">
-                        <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Entity Type</label><select value={profile.info.businessType || ''} onChange={(e) => updateInfo('businessType', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">Select...</option><option value="sole-proprietor">Sole Proprietor</option><option value="llc-single">Single-Member LLC</option><option value="s-corp">S-Corp</option></select></div>
-                        <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">State Registry</label><input type="text" value={profile.info.stateOfFormation || ''} onChange={(e) => updateInfo('stateOfFormation', e.target.value)} placeholder="DE" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" /></div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-3"><div className="bg-indigo-100 p-2 rounded-xl"><CheckCircleIcon className="w-5 h-5 text-indigo-600" /></div><h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Entity Framework</h2></div>
+                <div className="space-y-4">
+                    <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Legal Label</label><input type="text" value={profile.info.llcName || ''} onChange={(e) => updateInfo('llcName', e.target.value)} placeholder="My Business LLC" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-sm" /></div>
+                    <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Sector</label><input type="text" value={profile.info.industry || ''} onChange={(e) => updateInfo('industry', e.target.value)} placeholder="e.g. Software Development" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-sm" /></div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Structure</label><select value={profile.info.businessType || ''} onChange={(e) => updateInfo('businessType', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-all text-sm"><option value="">Select...</option><option value="sole-proprietor">Sole Proprietor</option><option value="llc-single">Single-Member LLC</option><option value="s-corp">S-Corp</option></select></div>
+                        <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Jurisdiction</label><input type="text" value={profile.info.stateOfFormation || ''} onChange={(e) => updateInfo('stateOfFormation', e.target.value)} placeholder="DE" className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-sm" /></div>
                     </div>
                 </div>
             </div>
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 space-y-6">
-                <div className="flex items-center gap-4 border-b border-slate-100 pb-4"><div className="bg-emerald-100 p-2.5 rounded-xl"><CheckCircleIcon className="w-6 h-6 text-emerald-600" /></div><h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Tax Configuration</h2></div>
-                <div className="space-y-5">
-                    <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Filing Status</label><select value={profile.tax.filingStatus || ''} onChange={(e) => updateTax('filingStatus', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"><option value="">Select...</option><option value="sole-proprietor">Sole Proprietor (Schedule C)</option><option value="s-corp">S-Corp (1120-S)</option></select></div>
-                    <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tax Year End</label><input type="date" value={profile.tax.taxYearEnd || ''} onChange={(e) => updateTax('taxYearEnd', e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none transition-all" /></div>
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
+                <div className="flex items-center gap-3 border-b border-slate-100 pb-3"><div className="bg-emerald-100 p-2 rounded-xl"><CheckCircleIcon className="w-5 h-5 text-emerald-600" /></div><h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">Compliance Rules</h2></div>
+                <div className="space-y-4">
+                    <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Tax Method</label><select value={profile.tax.filingStatus || ''} onChange={(e) => updateTax('filingStatus', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-all text-sm"><option value="">Select...</option><option value="sole-proprietor">Sole Proprietor (Schedule C)</option><option value="s-corp">S-Corp (1120-S)</option></select></div>
+                    <div><label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Fiscal Year End</label><input type="date" value={profile.tax.taxYearEnd || ''} onChange={(e) => updateTax('taxYearEnd', e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 focus:ring-1 focus:ring-indigo-500 outline-none transition-all text-sm" /></div>
                 </div>
             </div>
         </div>
@@ -691,20 +694,20 @@ const TaxAdvisorTab: React.FC<{
         } catch (e) { console.error(e); } finally { setIsLoading(false); }
     };
 
-    if (!apiKeyAvailable) return <div className="p-20 text-center bg-slate-50 border-dashed border-2 border-slate-200 rounded-3xl font-black text-slate-300 uppercase tracking-widest animate-pulse">API Configuration Required for AI Guidance</div>;
+    if (!apiKeyAvailable) return <div className="p-20 text-center bg-slate-50 border-dashed border-2 border-slate-200 rounded-3xl font-black text-slate-300 uppercase tracking-widest animate-pulse">API Key Configuration Required</div>;
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 h-[700px] animate-fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 h-[650px] animate-fade-in">
             <div className="lg:col-span-2 bg-white rounded-2xl shadow-xl border border-slate-200 flex flex-col h-full overflow-hidden">
-                <div className="p-5 border-b bg-slate-50 flex justify-between items-center font-black text-slate-800 uppercase tracking-tighter">
-                    <div className="flex items-center gap-3"><SparklesIcon className="w-5 h-5 text-indigo-600"/><span>Advisor Chat {activeSession ? `— ${activeSession.title}` : ''}</span></div>
-                    <button onClick={handleCreateSession} className="px-4 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm text-[10px] hover:bg-slate-50 transition-all active:scale-95"><AddIcon className="w-4 h-4 inline mr-1.5"/>New session</button>
+                <div className="p-4 border-b bg-slate-50 flex justify-between items-center font-black text-slate-800 uppercase tracking-tighter">
+                    <div className="flex items-center gap-2.5"><SparklesIcon className="w-4 h-4 text-indigo-600"/><span>Advisor Agent {activeSession ? `— ${activeSession.title}` : ''}</span></div>
+                    <button onClick={handleCreateSession} className="px-3 py-1 bg-white border border-slate-200 rounded-lg shadow-sm text-[9px] hover:bg-slate-50 transition-all active:scale-95"><AddIcon className="w-3 h-3 inline mr-1"/>New Strategy</button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar bg-white">
-                    {!activeSession ? <div className="h-full flex flex-col items-center justify-center text-slate-300"><BoxIcon className="w-16 h-16 opacity-5 mb-4"/><p className="text-xs font-black uppercase tracking-widest">Open a strategy session</p></div> : 
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-white">
+                    {!activeSession ? <div className="h-full flex flex-col items-center justify-center text-slate-300"><BoxIcon className="w-12 h-12 opacity-5 mb-3"/><p className="text-[10px] font-black uppercase tracking-widest">Select a session</p></div> : 
                         activeSession.messages.map(m => (
                             <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`p-4 rounded-2xl max-w-[85%] text-sm shadow-sm leading-relaxed ${m.role === 'user' ? 'bg-indigo-600 text-white font-bold rounded-br-none' : 'bg-slate-50 text-slate-800 border border-slate-100 rounded-bl-none font-medium'}`}>
+                                <div className={`p-3.5 rounded-2xl max-w-[85%] text-[13px] shadow-sm leading-relaxed ${m.role === 'user' ? 'bg-indigo-600 text-white font-bold rounded-br-none' : 'bg-slate-50 text-slate-800 border border-slate-100 rounded-bl-none font-medium'}`}>
                                     <div className="prose prose-sm prose-indigo" dangerouslySetInnerHTML={{ __html: m.content.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') }} />
                                 </div>
                             </div>
@@ -712,18 +715,18 @@ const TaxAdvisorTab: React.FC<{
                     <div ref={messagesEndRef} />
                 </div>
                 {activeSession && (
-                    <div className="p-6 border-t bg-slate-50 flex gap-4">
-                        <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage()} className="flex-1 p-3 border-2 border-white rounded-xl shadow-inner focus:border-indigo-500 outline-none font-medium text-sm transition-all" placeholder="Inquire about deductions or strategies..." />
-                        <button onClick={handleSendMessage} className="bg-indigo-600 text-white p-4 rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95"><SendIcon className="w-6 h-6"/></button>
+                    <div className="p-4 border-t bg-slate-50 flex gap-3">
+                        <input type="text" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSendMessage()} className="flex-1 p-2.5 border border-slate-200 rounded-xl shadow-inner focus:ring-1 focus:ring-indigo-500 outline-none font-medium text-sm transition-all" placeholder="Ask about deductions..." />
+                        <button onClick={handleSendMessage} className="bg-indigo-600 text-white p-3 rounded-xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95"><SendIcon className="w-5 h-5"/></button>
                     </div>
                 )}
             </div>
-            <div className="space-y-6">
-                <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-lg">
-                    <h3 className="font-black text-slate-800 mb-6 flex items-center gap-3 uppercase tracking-tight"><SparklesIcon className="w-6 h-6 text-yellow-500" /> Deduction Scout</h3>
-                    <p className="text-xs text-slate-500 mb-6 font-medium leading-relaxed">AI analysis of common tax breaks for the <strong className="text-indigo-600">{profile.info.industry || 'specified'}</strong> sector.</p>
-                    <button onClick={async () => { setLoadingDeductions(true); try { setDeductions(await getIndustryDeductions(profile.info.industry || 'General')); } catch(e){} finally { setLoadingDeductions(false); }}} className="w-full py-3 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all transform active:scale-95 disabled:opacity-50">{loadingDeductions ? 'Analyzing...' : 'Execute Audit'}</button>
-                    {deductions.length > 0 && <ul className="mt-8 space-y-3">{deductions.map((d, i) => <li key={i} className="text-[11px] bg-emerald-50 p-3 rounded-xl border border-emerald-100 flex gap-3 text-emerald-800 font-bold"><CheckCircleIcon className="w-4 h-4 text-emerald-600 shrink-0" />{d}</li>)}</ul>}
+            <div className="space-y-4">
+                <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-lg">
+                    <h3 className="font-black text-slate-800 mb-4 flex items-center gap-2 uppercase tracking-tight text-sm"><SparklesIcon className="w-5 h-5 text-yellow-500" /> Deduction Scout</h3>
+                    <p className="text-[11px] text-slate-500 mb-4 font-medium leading-relaxed">Scanning breaks for <strong className="text-indigo-600">{profile.info.industry || 'Business'}</strong>.</p>
+                    <button onClick={async () => { setLoadingDeductions(true); try { setDeductions(await getIndustryDeductions(profile.info.industry || 'General')); } catch(e){} finally { setLoadingDeductions(false); }}} className="w-full py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl hover:bg-black transition-all transform active:scale-95 disabled:opacity-50">{loadingDeductions ? 'Analyzing...' : 'Execute Audit'}</button>
+                    {deductions.length > 0 && <ul className="mt-6 space-y-2">{deductions.map((d, i) => <li key={i} className="text-[10px] bg-emerald-50 p-2.5 rounded-xl border border-emerald-100 flex gap-2.5 text-emerald-800 font-bold"><CheckCircleIcon className="w-3.5 h-3.5 text-emerald-600 shrink-0" />{d}</li>)}</ul>}
                 </div>
             </div>
         </div>
@@ -736,17 +739,17 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
     const [activeTab, setActiveTab] = useState<'guide' | 'advisor' | 'journal' | 'calendar'>('guide');
 
     return (
-        <div className="max-w-6xl mx-auto space-y-4 pb-20">
+        <div className="max-w-6xl mx-auto space-y-4 pb-16">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
-                    <h1 className="text-2xl font-black text-slate-900 tracking-tighter">Business Hub</h1>
+                    <h1 className="text-2xl font-black text-slate-900 tracking-tighter">Business Intelligence</h1>
                 </div>
                 <div className="flex bg-white rounded-xl p-0.5 shadow-md border border-slate-200">
                     {[
-                        { id: 'guide', label: 'Guide' },
-                        { id: 'advisor', label: 'Advisor' },
-                        { id: 'journal', label: 'Journal' },
-                        { id: 'calendar', label: 'Events' }
+                        { id: 'guide', label: 'Framework' },
+                        { id: 'advisor', label: 'Strategy' },
+                        { id: 'journal', label: 'Journal & Logs' },
+                        { id: 'calendar', label: 'Timeline' }
                     ].map((t) => (
                         <button key={t.id} onClick={() => setActiveTab(t.id as any)} className={`px-4 py-1.5 text-[10px] font-black rounded-lg transition-all uppercase tracking-widest ${activeTab === t.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}>
                             {t.label}
@@ -760,24 +763,24 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                 {activeTab === 'advisor' && <TaxAdvisorTab profile={profile} sessions={chatSessions} onUpdateSessions={onUpdateChatSessions} transactions={transactions} accounts={accounts} categories={categories} />}
                 {activeTab === 'journal' && <JournalTab notes={notes} onUpdateNotes={onUpdateNotes} />}
                 {activeTab === 'calendar' && (
-                    <div className="bg-white p-12 rounded-[2.5rem] border border-slate-200 shadow-2xl animate-fade-in">
-                        <div className="flex justify-between items-center mb-10 border-b border-slate-100 pb-6">
-                            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Compliance Timeline</h2>
-                            <span className="text-[10px] bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-indigo-100 shadow-sm">Upcoming Deadlines</span>
+                    <div className="bg-white p-8 rounded-[2rem] border border-slate-200 shadow-2xl animate-fade-in">
+                        <div className="flex justify-between items-center mb-8 border-b border-slate-100 pb-4">
+                            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Compliance Timeline</h2>
+                            <span className="text-[9px] bg-indigo-50 text-indigo-700 px-3 py-1 rounded-full font-black uppercase tracking-widest border border-indigo-100">Active Cycle</span>
                         </div>
-                        <div className="space-y-6">
+                        <div className="space-y-4">
                             {[
                                 { date: 'Jan 31', title: '1099-NEC Deadline', desc: 'Execute payments for contractors exceeding $600 threshold.' },
                                 { date: 'Apr 15', title: 'Federal Tax Day', desc: 'Deadline for personal and C-Corp federal filings.' },
                                 { date: 'Jun 15', title: 'Q2 Estimated Payments', desc: 'Submit quarterly withholding to IRS for second period.' },
                             ].map((d, i) => (
-                                <div key={i} className="flex gap-6 p-6 hover:bg-slate-50 rounded-3xl transition-all border border-transparent hover:border-slate-100 group">
-                                    <div className="text-indigo-600 font-black w-24 text-lg tabular-nums border-r border-indigo-100">{d.date}</div>
+                                <div key={i} className="flex gap-4 p-4 hover:bg-slate-50 rounded-2xl transition-all border border-transparent hover:border-slate-100 group">
+                                    <div className="text-indigo-600 font-black w-16 text-sm tabular-nums border-r border-indigo-100">{d.date}</div>
                                     <div className="flex-1">
-                                        <div className="font-black text-slate-800 text-lg group-hover:text-indigo-900 transition-colors uppercase tracking-tight">{d.title}</div>
-                                        <div className="text-sm text-slate-500 mt-1 font-medium leading-relaxed">{d.desc}</div>
+                                        <div className="font-black text-slate-800 text-sm group-hover:text-indigo-900 transition-colors uppercase tracking-tight">{d.title}</div>
+                                        <div className="text-xs text-slate-500 mt-0.5 font-medium leading-relaxed">{d.desc}</div>
                                     </div>
-                                    <ChevronRightIcon className="w-6 h-6 text-slate-200 group-hover:text-indigo-400 transition-colors self-center" />
+                                    <ChevronRightIcon className="w-5 h-5 text-slate-200 group-hover:text-indigo-400 transition-colors self-center" />
                                 </div>
                             ))}
                         </div>
