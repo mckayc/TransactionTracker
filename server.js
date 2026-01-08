@@ -185,13 +185,6 @@ const createTables = () => {
             tag_id TEXT,
             PRIMARY KEY (transaction_id, tag_id)
         );
-
-        CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
-        CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
-        CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
-        CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
-        CREATE INDEX IF NOT EXISTS idx_transactions_link_group ON transactions(link_group_id);
-        CREATE INDEX IF NOT EXISTS idx_transaction_tags_tx ON transaction_tags(transaction_id);
       `);
 };
 
@@ -223,7 +216,6 @@ const ensureSeedData = () => {
             db.prepare("INSERT INTO categories (id, name) VALUES (?, ?)").run('cat_other', 'Other');
         }
         
-        const ruleCatCount = db.prepare("SELECT COUNT(*) as count FROM rule_categories").get().count;
         // Seed new Manual Rule default
         console.log("[DB] Verifying rule categories...");
         const insertRuleCat = db.prepare("INSERT OR REPLACE INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)");

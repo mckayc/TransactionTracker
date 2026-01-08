@@ -88,8 +88,11 @@ const RuleImportVerification: React.FC<Props> = ({
                     nextLogic: 'AND'
                 }];
             } else {
-                // Handle new entity creations only if not merging with an established identical rule
-                if (draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
+                // 1. RESOLVE OR CREATE CATEGORY
+                if (draft.mappingStatus.category === 'match' && draft.suggestedCategoryName) {
+                    const match = categories.find(c => c.name.toLowerCase().trim() === draft.suggestedCategoryName?.toLowerCase().trim());
+                    if (match) finalRule.setCategoryId = match.id;
+                } else if (draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
                     const normName = draft.suggestedCategoryName.toLowerCase().trim();
                     let catId = createdCats.get(normName);
                     if (!catId) {
@@ -101,7 +104,11 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCategoryId = catId;
                 }
 
-                if (draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
+                // 2. RESOLVE OR CREATE COUNTERPARTY
+                if (draft.mappingStatus.counterparty === 'match' && draft.suggestedCounterpartyName) {
+                    const match = payees.find(p => p.name.toLowerCase().trim() === draft.suggestedCounterpartyName?.toLowerCase().trim());
+                    if (match) finalRule.setCounterpartyId = match.id;
+                } else if (draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
                     const normName = draft.suggestedCounterpartyName.toLowerCase().trim();
                     let cpId = createdCounterparties.get(normName);
                     if (!cpId) {
@@ -113,7 +120,11 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCounterpartyId = cpId;
                 }
 
-                if (draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
+                // 3. RESOLVE OR CREATE LOCATION
+                if (draft.mappingStatus.location === 'match' && draft.suggestedLocationName) {
+                    const match = locations.find(l => l.name.toLowerCase().trim() === draft.suggestedLocationName?.toLowerCase().trim());
+                    if (match) finalRule.setLocationId = match.id;
+                } else if (draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
                     const normName = draft.suggestedLocationName.toLowerCase().trim();
                     let locId = createdLocs.get(normName);
                     if (!locId) {
@@ -125,8 +136,9 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setLocationId = locId;
                 }
 
-                if (draft.mappingStatus.type === 'create' && draft.suggestedTypeName) {
-                    const matchedType = transactionTypes.find(t => t.name.toLowerCase() === draft.suggestedTypeName?.toLowerCase());
+                // 4. RESOLVE TRANSACTION TYPE
+                if (draft.suggestedTypeName) {
+                    const matchedType = transactionTypes.find(t => t.name.toLowerCase().trim() === draft.suggestedTypeName?.toLowerCase().trim());
                     if (matchedType) finalRule.setTransactionTypeId = matchedType.id;
                 }
             }
@@ -164,7 +176,7 @@ const RuleImportVerification: React.FC<Props> = ({
             merges: sel.filter(d => {
                 const ex = existingNames.get(d.name.toLowerCase());
                 // Merge candidate if name matches AND target matches
-                return ex && (ex.setCategoryId === d.setCategoryId || d.suggestedCategoryName?.toLowerCase() === categories.find(c => c.id === ex.setCategoryId)?.name.toLowerCase());
+                return ex && (ex.setCategoryId === d.setCategoryId || d.suggestedCategoryName?.toLowerCase() === categories.find(c => c.id === existingNames.get(d.name.toLowerCase())?.setCategoryId)?.name.toLowerCase());
             }).length
         };
     }, [drafts, existingNames, categories]);
