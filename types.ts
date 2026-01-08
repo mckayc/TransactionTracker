@@ -21,6 +21,12 @@ export interface Category {
     parentId?: string;
 }
 
+export interface RuleCategory {
+    id: string;
+    name: string;
+    isDefault?: boolean;
+}
+
 export interface User {
     id: string;
     name: string;
@@ -75,7 +81,8 @@ export interface RawTransaction {
     userId?: string;
     tagIds?: string[];
     notes?: string;
-    appliedRuleId?: string;
+    appliedRuleId?: string; // Legacy support
+    appliedRuleIds?: string[];
     metadata?: Record<string, any>;
 }
 
@@ -107,7 +114,8 @@ export interface RuleCondition {
 export interface ReconciliationRule {
     id: string;
     name: string;
-    ruleCategory?: string; 
+    ruleCategoryId?: string;
+    ruleCategory?: string; // Legacy support
     conditions: RuleCondition[];
     setCategoryId?: string;
     setCounterpartyId?: string;

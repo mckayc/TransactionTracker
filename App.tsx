@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Location } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, View, BusinessNote, Location, RuleCategory } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import ImportPage from './views/ImportPage';
@@ -44,6 +44,7 @@ const App: React.FC = () => {
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [accountTypes, setAccountTypes] = useState<AccountType[]>([]);
     const [categories, setCategories] = useState<Category[]>([]);
+    const [ruleCategories, setRuleCategories] = useState<RuleCategory[]>([]);
     const [tags, setTags] = useState<Tag[]>([]);
     const [transactionTypes, setTransactionTypes] = useState<TransactionType[]>([]);
     const [rules, setRules] = useState<ReconciliationRule[]>([]);
@@ -81,6 +82,7 @@ const App: React.FC = () => {
             setAccounts((data.accounts || []).filter(Boolean));
             setAccountTypes((data.accountTypes || []).filter(Boolean));
             setCategories((data.categories || []).filter(Boolean));
+            setRuleCategories((data.ruleCategories || []).filter(Boolean));
             setTags((data.tags || []).filter(Boolean));
             setTransactionTypes((data.transactionTypes || []).filter(Boolean));
             setRules((data.reconciliationRules || []).filter(Boolean));
@@ -294,7 +296,6 @@ const App: React.FC = () => {
                             onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules)}
                             onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
                             onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
-                            // Pass missing onSaveLocation and onSaveUser to ImportPage
                             onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations)}
                             onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
@@ -349,6 +350,9 @@ const App: React.FC = () => {
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
                             onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
                             onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
+                            ruleCategories={ruleCategories}
+                            onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories)}
+                            onDeleteRuleCategory={(id) => setRuleCategories(prev => { const next = prev.filter(rc => rc && rc.id !== id); api.save('ruleCategories', next).catch(console.error); return next; })}
                         />
                     )}
                     {currentView === 'management' && (

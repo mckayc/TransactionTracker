@@ -1,3 +1,4 @@
+
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -6,7 +7,6 @@ declare const pdfjsLib: any;
 
 /**
  * Returns a CSV template string for rule imports with rich examples for AI/Users.
- * Updated to include all filter scopes as examples.
  */
 export const generateRuleTemplate = (): string => {
     const headers = [
@@ -25,12 +25,14 @@ export const generateRuleTemplate = (): string => {
     ];
 
     const examples = [
-        ['Global High Value', 'all', 'amount', 'greater_than', '5000', 'Capital Expenditure', '', '', 'Investment', '', 'high-value;audit', 'false'],
-        ['Coffee Shop Rule', 'description', 'description', 'contains', 'STARBUCKS || PEETS', 'Dining', 'Starbucks', 'Seattle', 'Purchase', 'Primary User', 'coffee;morning', 'false'],
-        ['Amazon Cloud Services', 'counterpartyId', 'description', 'starts_with', 'AMZN MKTP', 'Software Subscription', 'Amazon Web Services', 'Cloud', 'Purchase', 'Primary User', 'saas;aws', 'false'],
-        ['Local Grocery Tax', 'locationId', 'amount', 'less_than', '5', 'Groceries', 'Whole Foods', 'New York', 'Purchase', '', 'tax-deductible', 'false'],
-        ['Personal Phone Bill', 'userId', 'description', 'contains', 'VERIZON', 'Utilities', 'Verizon Wireless', '', 'Purchase', 'Primary User', 'personal;monthly', 'false'],
-        ['Ignore Spam Fees', 'all', 'amount', 'less_than', '0.50', '', '', '', '', '', '', 'true']
+        ['Example1 - Category Descriptions', 'Description', 'description', 'contains', 'STARBUCKS || PEETS', 'Dining', 'Starbucks', '', 'Purchase', '', 'coffee;morning', 'false'],
+        ['Example2 - Category Users', 'User', 'description', 'contains', 'VERIZON', 'Utilities', 'Verizon Wireless', '', 'Purchase', 'Primary User', 'personal;monthly', 'false'],
+        ['Example3 - Category Location', 'Location', 'description', 'contains', 'SAFEWAY', 'Groceries', 'Safeway', 'Seattle, WA', 'Purchase', '', 'food;local', 'false'],
+        ['Example4 - Category Location', 'Location', 'description', 'contains', 'WHOLEFOODS', 'Groceries', 'Whole Foods', 'New York, NY', 'Purchase', '', 'organic', 'false'],
+        ['Example5 - Category Location', 'Location', 'description', 'contains', 'KROGER', 'Groceries', 'Kroger', 'Austin, TX', 'Purchase', '', 'supplies', 'false'],
+        ['Example6 - Global High Value', 'All', 'amount', 'greater_than', '5000', 'Capital Expenditure', '', '', 'Investment', '', 'high-value;audit', 'false'],
+        ['Example7 - Ignore Spam Fees', 'Other', 'amount', 'less_than', '0.50', '', '', '', '', '', '', 'true'],
+        ['Example8 - Description Match', 'Description', 'description', 'starts_with', 'AMZN MKTP', 'Software Subscription', 'Amazon Web Services', '', 'Purchase', '', 'saas;aws', 'false']
     ];
 
     const rows = [headers, ...examples];
@@ -87,7 +89,6 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         const line = lines[i].trim();
         if (!line) continue;
         
-        // Use regex for CSV to handle quoted strings containing delimiters
         const parts = delimiter === '\t' 
             ? line.split('\t').map(p => p.trim().replace(/^"|"$/g, ''))
             : line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(p => p.trim().replace(/^"|"$/g, ''));
@@ -95,7 +96,6 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         if (parts.length < 4) continue;
 
         const rawMatchValue = parts[colMap.value] || '';
-        // Split by | or || for OR logic
         const matchValues = rawMatchValue.split(/\s*\|\|\s*|\s*\|\s*/).filter(Boolean);
         
         const conditions: RuleCondition[] = matchValues.length > 0 
@@ -119,7 +119,7 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         const rule: ReconciliationRule = {
             id: generateUUID(),
             name: parts[colMap.name] || `Imported Rule ${i}`,
-            ruleCategory: parts[colMap.category] || 'all',
+            ruleCategory: parts[colMap.category] || 'Other',
             conditions: conditions,
             suggestedCategoryName: parts[colMap.setCategory],
             suggestedCounterpartyName: parts[colMap.setCounterparty] || parts[colMap.setPayee] || parts[colMap.setMerchant],
@@ -251,7 +251,6 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     type: lowerHeaders.findIndex(p => p.includes('type'))
   };
 
-  // Safe finding of default types
   const expenseType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
   const incomeType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
 

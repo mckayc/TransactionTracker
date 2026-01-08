@@ -104,16 +104,17 @@ export const applyRulesToTransactions = (
   }
 
   return rawTransactions.filter(Boolean).map(tx => {
-    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string } = { ...tx };
+    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string; appliedRuleIds?: string[] } = { ...tx };
+    const matchedRuleIds: string[] = [];
     
-    // Ensure originalDescription is captured before any potential modification
     if (!modifiedTx.originalDescription) {
         modifiedTx.originalDescription = modifiedTx.description;
     }
 
     for (const rule of safeRules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
-        modifiedTx.appliedRuleId = rule.id;
+        matchedRuleIds.push(rule.id);
+        
         if (rule.skipImport) {
             modifiedTx.isIgnored = true;
         }
@@ -140,10 +141,14 @@ export const applyRulesToTransactions = (
             rule.assignTagIds.forEach(id => { if(id) currentTags.add(id); });
             modifiedTx.tagIds = Array.from(currentTags);
         }
-        return modifiedTx;
       }
     }
     
+    if (matchedRuleIds.length > 0) {
+        modifiedTx.appliedRuleId = matchedRuleIds[0];
+        modifiedTx.appliedRuleIds = matchedRuleIds;
+    }
+
     return modifiedTx;
   });
 };

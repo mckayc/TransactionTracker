@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon } from './Icons';
+import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User, RuleCategory } from '../types';
+import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon, FolderIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
 import SearchableSelect from './SearchableSelect';
@@ -20,6 +20,8 @@ interface RuleModalProps {
     locations: Location[];
     users: User[];
     transaction: any;
+    ruleCategories: RuleCategory[];
+    onSaveRuleCategory: (rc: RuleCategory) => void;
     onSaveCategory?: (category: Category) => void;
     onSaveCounterparty?: (cp: Counterparty) => void;
     onSaveTag?: (tag: Tag) => void;
@@ -31,11 +33,12 @@ interface RuleModalProps {
 }
 
 const RuleModal: React.FC<RuleModalProps> = ({ 
-    isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transaction, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, onSaveAndRun, existingRules = []
+    isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transaction, ruleCategories, onSaveRuleCategory, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, onSaveAndRun, existingRules = []
 }) => {
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
     const [showMetadata, setShowMetadata] = useState(false);
+    const [ruleCategoryId, setRuleCategoryId] = useState('rcat_other');
     
     // Resolution state
     const [setCategoryId, setSetCategoryId] = useState('');
@@ -48,18 +51,15 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const [skipImport, setSkipImport] = useState(false);
     const [ruleId, setRuleId] = useState<string>(generateUUID());
 
-    // Entity Quick Add State
-    const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
+    const [quickAddType, setQuickAddType] = useState<EntityType | 'ruleCategory' | null>(null);
 
     const normId = (id: any) => String(id || '').trim().toLowerCase();
 
-    // The rule currently being edited (if it exists in the system)
     const activeRuleInSystem = useMemo(() => {
         const id = normId(ruleId);
         return existingRules.find(r => normId(r.id) === id);
     }, [ruleId, existingRules]);
 
-    // Another rule that happens to have the same name the user is typing
     const collidingRule = useMemo(() => {
         const trimmedName = name.trim().toLowerCase();
         if (!trimmedName) return null;
@@ -67,11 +67,9 @@ const RuleModal: React.FC<RuleModalProps> = ({
         return existingRules.find(r => r.name.toLowerCase() === trimmedName && normId(r.id) !== currentId);
     }, [name, existingRules, ruleId]);
 
-    // State Classification
     const isExistingRule = !!activeRuleInSystem;
     const isCollision = !!collidingRule;
 
-    // Button Labels
     const primaryLabel = isCollision ? 'Overwrite' : (isExistingRule ? 'Update' : 'Commit');
     const executeLabel = isCollision ? 'Overwrite & Execute' : (isExistingRule ? 'Update & Execute' : 'Commit & Execute');
 
@@ -79,11 +77,11 @@ const RuleModal: React.FC<RuleModalProps> = ({
         if (isOpen) {
             if (transaction) {
                 const ctx = transaction as any;
-                // If context has an ID that isn't the placeholder, use it. Else new UUID.
                 const potentialId = ctx.id && ctx.id !== 'temp-context' ? ctx.id : generateUUID();
                 
                 setRuleId(potentialId);
                 setName(ctx.name || (ctx.description ? `${ctx.description} Rule` : ''));
+                setRuleCategoryId(ctx.ruleCategoryId || 'rcat_other');
                 
                 const newConditions: RuleCondition[] = ctx.conditions ? [...ctx.conditions] : [
                     { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: ctx.description, nextLogic: 'AND' }
@@ -100,6 +98,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
             } else {
                 setRuleId(generateUUID());
                 setName('');
+                setRuleCategoryId('rcat_other');
                 setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
                 setSetCategoryId('');
                 setSetCounterpartyId('');
@@ -113,7 +112,14 @@ const RuleModal: React.FC<RuleModalProps> = ({
         }
     }, [isOpen, transaction]);
 
-    const handleQuickAddSave = (type: EntityType, payload: any) => {
+    const handleQuickAddSave = (type: EntityType | 'ruleCategory', payload: any) => {
+        if (type === 'ruleCategory') {
+            onSaveRuleCategory(payload);
+            setRuleCategoryId(payload.id);
+            setQuickAddType(null);
+            return;
+        }
+
         switch (type) {
             case 'categories': onSaveCategory?.(payload); setSetCategoryId(payload.id); break;
             case 'counterparties': onSaveCounterparty?.(payload); setSetCounterpartyId(payload.id); break;
@@ -136,9 +142,9 @@ const RuleModal: React.FC<RuleModalProps> = ({
     };
 
     const getRulePayload = (): ReconciliationRule => ({
-        // If we are colliding with another rule's name, we adopt that rule's ID to overwrite it
         id: isCollision ? collidingRule.id : ruleId,
         name: name.trim(),
+        ruleCategoryId,
         conditions,
         setCategoryId: setCategoryId || undefined,
         setCounterpartyId: setCounterpartyId || undefined,
@@ -230,26 +236,40 @@ const RuleModal: React.FC<RuleModalProps> = ({
                         </div>
                     )}
 
-                    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm relative">
-                        {isExistingRule && !isCollision && (
-                            <div className="absolute -top-3 right-8 px-3 py-1 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-full border border-indigo-200 flex items-center gap-1 shadow-sm">
-                                <ShieldCheckIcon className="w-2.5 h-2.5" /> Persistent Logic
-                            </div>
-                        )}
-                        {isCollision && (
-                            <div className="absolute -top-3 right-8 px-3 py-1 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded-full border border-amber-200 flex items-center gap-1 shadow-sm">
-                                <ExclamationTriangleIcon className="w-2.5 h-2.5" /> Identity Overlap: Will Overwrite Existing
-                            </div>
-                        )}
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Administrative Identity</label>
-                        <input 
-                            type="text" 
-                            value={name} 
-                            onChange={e => setName(e.target.value)} 
-                            placeholder="System designation for this logic..." 
-                            className={`w-full p-4 border-2 rounded-2xl focus:ring-0 font-bold text-lg shadow-inner transition-colors ${isCollision ? 'border-amber-300 bg-amber-50 focus:border-amber-500' : 'bg-slate-50 border-transparent focus:border-indigo-500'}`} 
-                            required 
-                        />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm relative">
+                            {isExistingRule && !isCollision && (
+                                <div className="absolute -top-3 right-8 px-3 py-1 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-full border border-indigo-200 flex items-center gap-1 shadow-sm">
+                                    <ShieldCheckIcon className="w-2.5 h-2.5" /> Persistent Logic
+                                </div>
+                            )}
+                            {isCollision && (
+                                <div className="absolute -top-3 right-8 px-3 py-1 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded-full border border-amber-200 flex items-center gap-1 shadow-sm">
+                                    <ExclamationTriangleIcon className="w-2.5 h-2.5" /> Identity Overlap: Will Overwrite Existing
+                                </div>
+                            )}
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Administrative Identity</label>
+                            <input 
+                                type="text" 
+                                value={name} 
+                                onChange={e => setName(e.target.value)} 
+                                placeholder="System designation for this logic..." 
+                                className={`w-full p-4 border-2 rounded-2xl focus:ring-0 font-bold text-lg shadow-inner transition-colors ${isCollision ? 'border-amber-300 bg-amber-50 focus:border-amber-500' : 'bg-slate-50 border-transparent focus:border-indigo-500'}`} 
+                                required 
+                            />
+                        </div>
+
+                        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Rule Category</label>
+                            <SearchableSelect 
+                                options={ruleCategories}
+                                value={ruleCategoryId}
+                                onChange={setRuleCategoryId}
+                                placeholder="Select category..."
+                                className="w-full"
+                                onAddNew={() => setQuickAddType('ruleCategory')}
+                            />
+                        </div>
                     </div>
                     
                     <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
@@ -294,7 +314,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                     <SearchableSelect label="Set Counterparty" options={counterparties} value={setCounterpartyId} onChange={setSetCounterpartyId} isHierarchical onAddNew={() => setQuickAddType('counterparties')} />
                                     <SearchableSelect label="Assign User" options={users} value={setUserId} onChange={setSetUserId} onAddNew={() => setQuickAddType('users')} />
                                     <SearchableSelect label="Assign Location" options={locations} value={setLocationId} onChange={setSetLocationId} onAddNew={() => setQuickAddType('locations')} />
-                                    {/* Fix: use setSetTransactionTypeId setter instead of setTransactionTypeId state value */}
                                     <SearchableSelect label="Change Tx Type" options={transactionTypes} value={setTransactionTypeId} onChange={setSetTransactionTypeId} onAddNew={() => setQuickAddType('transactionTypes')} />
 
                                     <div className="col-span-1 md:col-span-3 pt-6 border-t border-slate-100">
@@ -319,7 +338,42 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     </div>
                 </form>
 
-                <EntityModal isOpen={!!quickAddType} onClose={() => setQuickAddType(null)} type={quickAddType || 'categories'} onSave={handleQuickAddSave} categories={categories} tags={tags} counterparties={counterparties} locations={locations} users={users} transactionTypes={transactionTypes} accountTypes={[]} accounts={accounts} />
+                {quickAddType === 'ruleCategory' ? (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden p-8 animate-slide-up">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-black">New Rule Category</h3>
+                                <button onClick={() => setQuickAddType(null)} className="p-2 hover:bg-slate-100 rounded-full"><CloseIcon className="w-6 h-6"/></button>
+                            </div>
+                            <input 
+                                id="new-rcat-input"
+                                type="text" 
+                                placeholder="Category Name" 
+                                className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold mb-6"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        const val = (e.target as HTMLInputElement).value;
+                                        if (val) handleQuickAddSave('ruleCategory', { id: generateUUID(), name: val });
+                                    }
+                                }}
+                            />
+                            <div className="flex gap-4">
+                                <button onClick={() => setQuickAddType(null)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black">Cancel</button>
+                                <button 
+                                    onClick={() => {
+                                        const el = document.getElementById('new-rcat-input') as HTMLInputElement;
+                                        if (el.value) handleQuickAddSave('ruleCategory', { id: generateUUID(), name: el.value });
+                                    }} 
+                                    className="flex-1 py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100"
+                                >
+                                    Save Category
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <EntityModal isOpen={!!quickAddType} onClose={() => setQuickAddType(null)} type={quickAddType as EntityType || 'categories'} onSave={handleQuickAddSave} categories={categories} tags={tags} counterparties={counterparties} locations={locations} users={users} transactionTypes={transactionTypes} accountTypes={[]} accounts={accounts} />
+                )}
             </div>
         </div>
     );

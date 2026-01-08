@@ -1,3 +1,4 @@
+
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -108,20 +109,32 @@ const runMigrations = () => {
         fixCasing('users', 'isDefault', 'is_default');
 
         // 4. Critical: Fix Transactions table schema drift
-        // If it exists but has messy columns and 0 rows, rebuild it.
         if (tableExists('transactions')) {
-            const count = db.prepare("SELECT COUNT(*) as count FROM transactions").get().count;
             const cols = getColumns('transactions');
-            const isCorrupted = cols.length > 25 || cols.some(c => c.name === 'categoryId'); // Detect old camelCase
-            
-            if (count === 0 && isCorrupted) {
-                console.log("[MIGRATE] Transactions table corrupted with no data. Rebuilding for safety...");
-                db.exec("DROP TABLE transactions");
-                // The createTables() call later will handle the creation
+            if (!cols.some(c => c.name === 'applied_rule_ids')) {
+                console.log("[MIGRATE] Adding applied_rule_ids to transactions...");
+                db.exec("ALTER TABLE transactions ADD COLUMN applied_rule_ids TEXT");
             }
         }
         
-        // 5. Cleanup redundant storage
+        // 5. Rule Categories Table & Migration
+        if (!tableExists('rule_categories')) {
+             console.log("[MIGRATE] Creating rule_categories table...");
+             db.exec("CREATE TABLE rule_categories (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER)");
+        }
+        
+        // 6. Ensure Indexes exist for performance
+        console.log("[MIGRATE] Verifying performance indexes...");
+        db.exec(`
+            CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+            CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
+            CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
+            CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
+            CREATE INDEX IF NOT EXISTS idx_transactions_link_group ON transactions(link_group_id);
+            CREATE INDEX IF NOT EXISTS idx_transaction_tags_tx ON transaction_tags(transaction_id);
+        `);
+        
+        // 7. Cleanup redundant storage
         if (tableExists('app_config')) {
             console.log("[MIGRATE] Retiring legacy app_config...");
             db.exec("INSERT OR IGNORE INTO app_storage (key, value) SELECT key, value FROM app_config");
@@ -142,6 +155,7 @@ const createTables = () => {
         CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
         CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, name TEXT, city TEXT, state TEXT, country TEXT);
         CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
+        CREATE TABLE IF NOT EXISTS rule_categories (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
 
         CREATE TABLE IF NOT EXISTS transactions (
             id TEXT PRIMARY KEY,
@@ -162,6 +176,7 @@ const createTables = () => {
             is_parent INTEGER DEFAULT 0,
             parent_transaction_id TEXT,
             is_completed INTEGER DEFAULT 0,
+            applied_rule_ids TEXT,
             metadata TEXT
         );
 
@@ -170,6 +185,13 @@ const createTables = () => {
             tag_id TEXT,
             PRIMARY KEY (transaction_id, tag_id)
         );
+
+        CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+        CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_link_group ON transactions(link_group_id);
+        CREATE INDEX IF NOT EXISTS idx_transaction_tags_tx ON transaction_tags(transaction_id);
       `);
 };
 
@@ -199,6 +221,19 @@ const ensureSeedData = () => {
         if (categoryCount === 0) {
             console.log("[DB] Seeding default category...");
             db.prepare("INSERT INTO categories (id, name) VALUES (?, ?)").run('cat_other', 'Other');
+        }
+        
+        const ruleCatCount = db.prepare("SELECT COUNT(*) as count FROM rule_categories").get().count;
+        if (ruleCatCount === 0) {
+            console.log("[DB] Seeding default rule categories...");
+            const insertRuleCat = db.prepare("INSERT INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)");
+            db.transaction(() => {
+                insertRuleCat.run('rcat_all', 'All', 1);
+                insertRuleCat.run('rcat_desc', 'Description', 0);
+                insertRuleCat.run('rcat_loc', 'Location', 0);
+                insertRuleCat.run('rcat_user', 'User', 0);
+                insertRuleCat.run('rcat_other', 'Other', 0);
+            })();
         }
 
         const accountTypeCount = db.prepare("SELECT COUNT(*) as count FROM account_types").get().count;
@@ -313,7 +348,8 @@ app.get('/api/transactions', (req, res) => {
             originalDescription: r.original_description,
             sourceFilename: r.source_filename,
             linkGroupId: r.link_group_id,
-            parentTransactionId: r.parent_transaction_id
+            parentTransactionId: r.parent_transaction_id,
+            appliedRuleIds: r.applied_rule_ids ? JSON.parse(r.applied_rule_ids) : []
         }));
         res.json({ data: results, total: totalCount });
     } catch (e) { 
@@ -350,8 +386,8 @@ app.post('/api/transactions/batch', (req, res) => {
                 id, date, description, amount, category_id, account_id, type_id, 
                 counterparty_id, location_id, user_id, location, notes, original_description, 
                 source_filename, link_group_id, is_parent, parent_transaction_id, 
-                is_completed, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_completed, applied_rule_ids, metadata
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const tagClear = db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?");
         const tagInsert = db.prepare("INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)");
@@ -362,6 +398,7 @@ app.post('/api/transactions/batch', (req, res) => {
                     tx.counterpartyId || null, tx.locationId || null, tx.userId || null, tx.location || null, tx.notes || null,
                     tx.originalDescription || null, tx.sourceFilename || null, tx.linkGroupId || null,
                     tx.isParent ? 1 : 0, tx.parentTransactionId || null, tx.isCompleted ? 1 : 0,
+                    JSON.stringify(tx.appliedRuleIds || []),
                     JSON.stringify(tx.metadata || {})
                 );
                 tagClear.run(tx.id);
@@ -392,6 +429,7 @@ app.get('/api/data', (req, res) => {
     }
     
     try { data.categories = db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all(); } catch(e) { data.categories = []; }
+    try { data.ruleCategories = db.prepare("SELECT id, name, is_default AS isDefault FROM rule_categories").all().map(r => ({...r, isDefault: !!r.isDefault})); } catch(e) { data.ruleCategories = []; }
     try { data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId FROM accounts").all(); } catch(e) { data.accounts = []; }
     try { data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all().map(a => ({...a, isDefault: !!a.isDefault})); } catch(e) { data.accountTypes = []; }
     try { data.users = db.prepare("SELECT id, name, is_default AS isDefault FROM users").all().map(u => ({...u, isDefault: !!u.isDefault})); } catch(e) { data.users = []; }
@@ -414,6 +452,11 @@ app.post('/api/data/:key', (req, res) => {
         db.prepare("DELETE FROM categories").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO categories (id, name, parent_id) VALUES (?, ?, ?)");
         db.transaction(() => { value.forEach(c => stmt.run(c.id, c.name, c.parentId || null)); })();
+    } else if (key === 'ruleCategories' && Array.isArray(value)) {
+        db.prepare("DELETE FROM rule_categories").run();
+        const stmt = db.prepare("INSERT OR REPLACE INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)");
+        db.transaction(() => { value.forEach(rc => stmt.run(rc.id, rc.name, rc.isDefault ? 1 : 0)); })();
+        ensureSeedData();
     } else if (key === 'accounts' && Array.isArray(value)) {
         db.prepare("DELETE FROM accounts").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO accounts (id, name, identifier, account_type_id) VALUES (?, ?, ?, ?)");
@@ -469,6 +512,7 @@ app.post('/api/admin/reset', async (req, res) => {
             if (entities.includes('accounts')) db.prepare("DELETE FROM accounts").run();
             if (entities.includes('accountTypes')) db.prepare("DELETE FROM account_types").run();
             if (entities.includes('categories')) db.prepare("DELETE FROM categories").run();
+            if (entities.includes('ruleCategories')) db.prepare("DELETE FROM rule_categories").run();
             if (entities.includes('tags')) { db.prepare("DELETE FROM tags").run(); db.prepare("DELETE FROM transaction_tags").run(); }
             if (entities.includes('counterparties')) db.prepare("DELETE FROM counterparties").run();
             if (entities.includes('locations')) db.prepare("DELETE FROM locations").run();

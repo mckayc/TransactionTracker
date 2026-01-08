@@ -1,10 +1,11 @@
+
 import React, { useState, useMemo, useRef } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft } from '../types';
-// Fixed: Added ExclamationTriangleIcon to imports and removed non-existent InfoBubbleIcon
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon } from '../components/Icons';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory } from '../types';
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
+import { generateUUID } from '../utils';
 
 interface RulesPageProps {
     rules: ReconciliationRule[];
@@ -29,25 +30,21 @@ interface RulesPageProps {
     onSaveTag: (tag: Tag) => void;
     onAddTransactionType: (type: TransactionType) => void;
     onSaveUser: (user: User) => void;
+    ruleCategories: RuleCategory[];
+    onSaveRuleCategory: (rc: RuleCategory) => void;
+    onDeleteRuleCategory: (id: string) => void;
 }
 
-const RULE_DOMAINS = [
-    { id: 'all', label: 'Global Rules', icon: <ShieldCheckIcon className="w-4 h-4" /> },
-    { id: 'description', label: 'Descriptions', icon: <TableIcon className="w-4 h-4" /> },
-    { id: 'counterpartyId', label: 'Entities', icon: <BoxIcon className="w-4 h-4" /> },
-    { id: 'locationId', label: 'Locations', icon: <MapPinIcon className="w-4 h-4" /> },
-    { id: 'userId', label: 'Users', icon: <UserGroupIcon className="w-4 h-4" /> },
-    { id: 'tagIds', label: 'Taxonomy', icon: <TagIcon className="w-4 h-4" /> },
-];
-
 const RulesPage: React.FC<RulesPageProps> = ({ 
-    rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser 
+    rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser,
+    ruleCategories, onSaveRuleCategory, onDeleteRuleCategory
 }) => {
-    const [selectedDomain, setSelectedDomain] = useState('all');
+    const [selectedCategoryId, setSelectedCategoryId] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
+    const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
 
     // Import Flow State
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -57,15 +54,22 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [isVerifyingImport, setIsVerifyingImport] = useState(false);
     const [importError, setImportError] = useState<string | null>(null);
     const [showInstructions, setShowInstructions] = useState(false);
+    
+    // Category management
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+    const [newCatName, setNewCatName] = useState('');
+    const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Filter rules by category and search
     const filteredRules = useMemo(() => {
         let list = rules.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
-        if (selectedDomain !== 'all') {
-            list = list.filter(r => r.ruleCategory === selectedDomain || r.conditions.some((c: RuleCondition) => c.field === selectedDomain));
+        if (selectedCategoryId !== 'all') {
+            list = list.filter(r => r.ruleCategoryId === selectedCategoryId);
         }
         return list.sort((a, b) => a.name.localeCompare(b.name));
-    }, [rules, searchTerm, selectedDomain]);
+    }, [rules, searchTerm, selectedCategoryId]);
 
     const activeRule = useMemo(() => rules.find(r => r.id === selectedRuleId), [rules, selectedRuleId]);
 
@@ -77,6 +81,14 @@ const RulesPage: React.FC<RulesPageProps> = ({
         }
     };
 
+    const handleBulkMove = (targetCategoryId: string) => {
+        const rulesToUpdate = rules.filter(r => bulkSelectedIds.has(r.id));
+        const updatedRules = rulesToUpdate.map(r => ({ ...r, ruleCategoryId: targetCategoryId }));
+        onSaveRules(updatedRules);
+        setBulkSelectedIds(new Set());
+        setIsMoveModalOpen(false);
+    };
+
     const processDrafts = (rawRules: ReconciliationRule[]) => {
         const drafts: RuleImportDraft[] = rawRules.map(r => {
             const catMatch = categories.find(c => c.name.toLowerCase() === r.suggestedCategoryName?.toLowerCase());
@@ -84,8 +96,16 @@ const RulesPage: React.FC<RulesPageProps> = ({
             const locMatch = locations.find(l => l.name.toLowerCase() === r.suggestedLocationName?.toLowerCase());
             const typeMatch = transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase());
 
+            // Handle rule category matching
+            let mappedRuleCategoryId = 'rcat_other';
+            if (r.ruleCategory) {
+                const rcMatch = ruleCategories.find(rc => rc.name.toLowerCase() === r.ruleCategory?.toLowerCase());
+                if (rcMatch) mappedRuleCategoryId = rcMatch.id;
+            }
+
             return {
                 ...r,
+                ruleCategoryId: mappedRuleCategoryId,
                 isSelected: true,
                 mappingStatus: {
                     category: catMatch ? 'match' : (r.suggestedCategoryName ? 'create' : 'none'),
@@ -160,6 +180,31 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setSelectedRuleId(rule.id);
     };
 
+    const handleSaveRuleCat = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!newCatName.trim()) return;
+        onSaveRuleCategory({
+            id: editingCategoryId || generateUUID(),
+            name: newCatName.trim()
+        });
+        setNewCatName('');
+        setIsCreatingCategory(false);
+        setEditingCategoryId(null);
+    };
+
+    const handleDeleteCat = (id: string) => {
+        const affectedRules = rules.filter(r => r.ruleCategoryId === id);
+        if (affectedRules.length > 0) {
+            if (confirm(`This category contains ${affectedRules.length} rules. Delete anyway? They will be moved to 'Other'.`)) {
+                const migrated = affectedRules.map(r => ({ ...r, ruleCategoryId: 'rcat_other' }));
+                onSaveRules(migrated);
+                onDeleteRuleCategory(id);
+            }
+        } else {
+            onDeleteRuleCategory(id);
+        }
+    };
+
     if (isVerifyingImport) {
         return (
             <div className="h-full animate-fade-in">
@@ -210,25 +255,60 @@ const RulesPage: React.FC<RulesPageProps> = ({
             </div>
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* COLUMN 1: SCOPES */}
-                <div className="w-56 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col p-3 flex-shrink-0">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Filter Scopes</p>
+                {/* COLUMN 1: CATEGORIES */}
+                <div className="w-64 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col p-3 flex-shrink-0">
+                    <div className="flex justify-between items-center mb-4 px-2">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Rules Category</p>
+                        <button onClick={() => { setIsCreatingCategory(true); setEditingCategoryId(null); setNewCatName(''); }} className="p-1 hover:bg-slate-100 rounded text-indigo-600"><AddIcon className="w-4 h-4"/></button>
+                    </div>
+
+                    {isCreatingCategory && (
+                        <form onSubmit={handleSaveRuleCat} className="px-2 mb-4">
+                            <input 
+                                type="text" 
+                                value={newCatName} 
+                                onChange={e => setNewCatName(e.target.value)} 
+                                placeholder="Category Name" 
+                                className="w-full text-xs p-2 border rounded-lg focus:ring-1 focus:ring-indigo-500 mb-2"
+                                autoFocus
+                            />
+                            <div className="flex gap-2">
+                                <button type="submit" className="flex-1 bg-indigo-600 text-white text-[10px] font-black py-1 rounded">Save</button>
+                                <button type="button" onClick={() => setIsCreatingCategory(false)} className="flex-1 bg-slate-100 text-slate-500 text-[10px] font-black py-1 rounded">Cancel</button>
+                            </div>
+                        </form>
+                    )}
+
                     <div className="space-y-0.5 overflow-y-auto custom-scrollbar">
-                        {RULE_DOMAINS.map(domain => (
-                            <button 
-                                key={domain.id} 
-                                onClick={() => setSelectedDomain(domain.id)}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedDomain === domain.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
-                            >
-                                {domain.icon}
-                                <span>{domain.label}</span>
-                            </button>
+                        <button 
+                            onClick={() => setSelectedCategoryId('all')}
+                            className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedCategoryId === 'all' ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+                        >
+                            <ShieldCheckIcon className="w-4 h-4" />
+                            <span>All Rules</span>
+                        </button>
+                        {ruleCategories.map(rc => (
+                            <div key={rc.id} className="group flex items-center">
+                                <button 
+                                    onClick={() => setSelectedCategoryId(rc.id)}
+                                    className={`flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedCategoryId === rc.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+                                >
+                                    <FolderIcon className="w-4 h-4 text-slate-400" />
+                                    <span className="truncate">{rc.name}</span>
+                                </button>
+                                {!rc.isDefault && (
+                                    <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => { setEditingCategoryId(rc.id); setNewCatName(rc.name); setIsCreatingCategory(true); }} className="p-1.5 text-slate-300 hover:text-indigo-600"><EditIcon className="w-3 h-3"/></button>
+                                        <button onClick={() => handleDeleteCat(rc.id)} className="p-1.5 text-slate-300 hover:text-red-500"><TrashIcon className="w-3 h-3"/></button>
+                                    </div>
+                                )}
+                            </div>
                         ))}
                     </div>
                 </div>
 
                 {/* COLUMN 2: STREAM */}
-                <div className="w-80 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
+                <div className="w-96 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
                     <div className="p-3 border-b flex items-center gap-3 bg-slate-50 rounded-t-2xl">
                         <input 
                             type="checkbox" 
@@ -268,7 +348,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         />
                                         <div className="min-w-0">
                                             <p className={`text-xs font-bold truncate ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-700'}`}>{r.name}</p>
-                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{r.ruleCategory || 'standard'}</p>
+                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                                                {ruleCategories.find(rc => rc.id === r.ruleCategoryId)?.name || 'Other'}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
@@ -276,10 +358,25 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         )}
                     </div>
                     {bulkSelectedIds.size > 0 && (
-                        <div className="p-3 border-t bg-white rounded-b-2xl">
-                            <button onClick={handleBulkDelete} className="w-full py-2 bg-red-50 text-red-600 font-black rounded-xl text-[10px] uppercase shadow-sm flex items-center justify-center gap-2 hover:bg-red-100 transition-all">
-                                <TrashIcon className="w-3.5 h-3.5" /> Purge {bulkSelectedIds.size} Rules
+                        <div className="p-3 border-t bg-white rounded-b-2xl flex gap-2">
+                            <button onClick={handleBulkDelete} className="flex-1 py-2 bg-red-50 text-red-600 font-black rounded-xl text-[10px] uppercase shadow-sm flex items-center justify-center gap-2 hover:bg-red-100 transition-all">
+                                <TrashIcon className="w-3.5 h-3.5" /> Delete
                             </button>
+                            <div className="relative">
+                                <button onClick={() => setIsMoveModalOpen(!isMoveModalOpen)} className="w-full py-2 bg-indigo-50 text-indigo-600 font-black rounded-xl text-[10px] uppercase shadow-sm flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all px-4">
+                                    <ChevronRightIcon className="w-3.5 h-3.5" /> Move
+                                </button>
+                                {isMoveModalOpen && (
+                                    <div className="absolute bottom-full left-0 mb-2 w-48 bg-white shadow-2xl rounded-xl border border-slate-200 overflow-hidden z-50 animate-slide-up">
+                                        <div className="p-2 border-b bg-slate-50 text-[9px] font-black text-slate-400 uppercase">Target Category</div>
+                                        <div className="max-h-40 overflow-y-auto">
+                                            {ruleCategories.map(rc => (
+                                                <button key={rc.id} onClick={() => handleBulkMove(rc.id)} className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors">{rc.name}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>
@@ -298,6 +395,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             counterparties={counterparties}
                             locations={locations}
                             users={users}
+                            ruleCategories={ruleCategories}
+                            onSaveRuleCategory={onSaveRuleCategory}
                             transaction={activeRule ? { ...activeRule, description: activeRule.conditions[0]?.value || '' } as any : null}
                             onSaveCategory={onSaveCategory}
                             onSaveCounterparty={onSaveCounterparty}
@@ -374,7 +473,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             <div className="flex-1 p-8 space-y-8 bg-white overflow-y-auto custom-scrollbar">
                                 {importError && (
                                     <div className="p-4 bg-red-50 border-2 border-red-100 rounded-2xl flex items-start gap-3 animate-slide-up">
-                                        {/* Fixed: ExclamationTriangleIcon is now properly imported */}
                                         <ExclamationTriangleIcon className="w-5 h-5 text-red-600 flex-shrink-0" />
                                         <div>
                                             <p className="text-sm font-black text-red-800 uppercase">Verification Failed</p>

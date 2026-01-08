@@ -1,9 +1,13 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
-import type { RawTransaction, Account, Category, TransactionType, Counterparty, User, Transaction, ReconciliationRule, Tag, Location, BalanceEffect } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon } from './Icons';
+import type { RawTransaction, Account, Category, TransactionType, Counterparty, User, Transaction, ReconciliationRule, Tag, Location, BalanceEffect, RuleCategory } from '../types';
+// Add ChevronRightIcon to icons import
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, FolderIcon, ChevronRightIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
-import RuleModal from '../views/RuleModal';
+// Fix: Import RuleModal from local components directory instead of views, 
+// as components/RuleModal.tsx contains the ruleCategories prop definition required here.
+import RuleModal from './RuleModal';
 import { generateUUID } from '../utils';
 import SearchableSelect from './SearchableSelect';
 import EntityModal from './EntityModal';
@@ -27,6 +31,8 @@ interface ImportVerificationProps {
     locations: Location[];
     users: User[];
     tags: Tag[];
+    ruleCategories: RuleCategory[];
+    onSaveRuleCategory: (rc: RuleCategory) => void;
     onSaveRule: (rule: ReconciliationRule) => void;
     onSaveCategory: (category: Category) => void;
     onSaveCounterparty: (p: Counterparty) => void;
@@ -42,7 +48,7 @@ type SortKey = 'date' | 'description' | 'counterpartyId' | 'categoryId' | 'amoun
 type SortDirection = 'asc' | 'desc';
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
-    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, counterparties, locations, users, tags, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, existingTransactions, rules
+    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, counterparties, locations, users, tags, ruleCategories, onSaveRuleCategory, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, existingTransactions, rules
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [sortKey, setSortKey] = useState<SortKey>('date');
@@ -54,6 +60,9 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const [ruleTransactionContext, setRuleTransactionContext] = useState<Transaction | null>(null);
     const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
     const [activeTxForQuickAdd, setActiveTxForQuickAdd] = useState<string | null>(null);
+    
+    // Multiple Rules state
+    const [inspectingRulesTxId, setInspectingRulesTxId] = useState<string | null>(null);
 
     const typeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
     const ruleMap = useMemo(() => new Map(rules.map(r => [r.id, r])), [rules]);
@@ -109,6 +118,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 description: rule.conditions[0]?.value || txContext.description 
             } as any);
             setIsRuleModalOpen(true);
+            setInspectingRulesTxId(null);
         }
     };
 
@@ -124,6 +134,10 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setQuickAddType(null);
         setActiveTxForQuickAdd(null);
     };
+
+    const inspectingRulesTx = useMemo(() => {
+        return sortedTransactions.find(t => t.tempId === inspectingRulesTxId);
+    }, [sortedTransactions, inspectingRulesTxId]);
 
     return (
         <div className="space-y-2 flex flex-col h-full w-full min-h-0 overflow-hidden">
@@ -157,15 +171,16 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 <th className="px-2 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 border-b border-slate-300" onClick={() => requestSort('categoryId')}>Category</th>
                                 <th className="px-2 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Location</th>
                                 <th className="px-2 py-2 text-right text-[8px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 border-b border-slate-300" onClick={() => requestSort('amount')}>Amount</th>
-                                <th className="px-2 py-2 text-center text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Rule</th>
+                                <th className="px-2 py-2 text-center text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Rules</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-300 bg-white">
                             {sortedTransactions.map(tx => {
-                                const matchedRule = tx.appliedRuleId ? ruleMap.get(tx.appliedRuleId) : null;
+                                const appliedIds = tx.appliedRuleIds || (tx.appliedRuleId ? [tx.appliedRuleId] : []);
+                                const hasMultiple = appliedIds.length > 1;
                                 const type = typeMap.get(tx.typeId);
                                 const amountColor = type?.color || (type?.balanceEffect === 'incoming' ? 'text-green-600' : type?.balanceEffect === 'neutral' ? 'text-slate-400' : 'text-red-600');
-                                const rowClass = tx.isIgnored ? 'opacity-30 bg-slate-50' : matchedRule ? 'bg-emerald-50/60 hover:bg-emerald-50/80' : 'hover:bg-slate-50';
+                                const rowClass = tx.isIgnored ? 'opacity-30 bg-slate-50' : appliedIds.length > 0 ? 'bg-emerald-50/60 hover:bg-emerald-50/80' : 'hover:bg-slate-50';
 
                                 return (
                                     <tr key={tx.tempId} className={`transition-all ${rowClass}`}>
@@ -234,9 +249,18 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             {formatCurrency(tx.amount, type?.balanceEffect)}
                                         </td>
                                         <td className="px-1 py-1 text-center border-b border-slate-200">
-                                            {matchedRule ? (
-                                                <button onClick={() => handleOpenExistingRule(matchedRule.id, tx)} className="p-0.5 text-green-700 hover:scale-110 transition-transform" title="Rule Applied Automatically">
-                                                    <SparklesIcon className="w-3 h-3" />
+                                            {appliedIds.length > 0 ? (
+                                                <button 
+                                                    onClick={() => hasMultiple ? setInspectingRulesTxId(tx.tempId) : handleOpenExistingRule(appliedIds[0], tx)} 
+                                                    className="relative p-0.5 text-green-700 hover:scale-110 transition-transform group/rulebtn" 
+                                                    title={hasMultiple ? `${appliedIds.length} Rules Applied` : "Rule Applied"}
+                                                >
+                                                    <SparklesIcon className={`w-3 h-3 ${hasMultiple ? 'animate-pulse text-indigo-600' : ''}`} />
+                                                    {hasMultiple && (
+                                                        <span className="absolute -top-1.5 -right-1.5 bg-indigo-600 text-white text-[6px] font-black rounded-full w-2.5 h-2.5 flex items-center justify-center border border-white">
+                                                            {appliedIds.length}
+                                                        </span>
+                                                    )}
                                                 </button>
                                             ) : (
                                                 <button onClick={() => handleOpenRuleCreator(tx)} className="p-0.5 text-slate-200 hover:text-indigo-600 transition-colors"><WrenchIcon className="w-3 h-3" /></button>
@@ -250,10 +274,46 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 </div>
             </div>
 
+            {inspectingRulesTxId && inspectingRulesTx && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex justify-center items-center p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                            <div>
+                                <h3 className="text-xl font-black">Applied Rules</h3>
+                                <p className="text-[10px] text-slate-500 uppercase font-black">Layered Logic Inspection</p>
+                            </div>
+                            <button onClick={() => setInspectingRulesTxId(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6"/></button>
+                        </div>
+                        <div className="p-6 space-y-3">
+                            {inspectingRulesTx.appliedRuleIds?.map(rid => {
+                                const r = ruleMap.get(rid);
+                                return (
+                                    <button 
+                                        key={rid} 
+                                        onClick={() => handleOpenExistingRule(rid, inspectingRulesTx)}
+                                        className="w-full p-4 bg-white border-2 border-slate-100 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 transition-all flex justify-between items-center group"
+                                    >
+                                        <div className="text-left">
+                                            <p className="font-bold text-slate-800 group-hover:text-indigo-900">{r?.name || 'Deleted Rule'}</p>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{ruleCategories.find(rc => rc.id === r?.ruleCategoryId)?.name || 'Other'}</p>
+                                        </div>
+                                        <ChevronRightIcon className="w-5 h-5 text-slate-300 group-hover:text-indigo-500" />
+                                    </button>
+                                );
+                            })}
+                        </div>
+                        <div className="p-4 bg-slate-50 border-t flex justify-end">
+                            <button onClick={() => setInspectingRulesTxId(null)} className="px-6 py-2 bg-white border rounded-xl text-xs font-black">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {isRuleModalOpen && (
                 <RuleModal 
                     isOpen={isRuleModalOpen} onClose={() => setIsRuleModalOpen(false)} onSaveRule={(r) => { onSaveRule(r); setIsRuleModalOpen(false); }}
                     accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} counterparties={counterparties} locations={locations} users={users} transaction={ruleTransactionContext}
+                    ruleCategories={ruleCategories} onSaveRuleCategory={onSaveRuleCategory}
                     onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveTag={onSaveTag} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onAddTransactionType={onAddTransactionType}
                     onSaveAndRun={(r) => { onSaveRule(r); const updated = applyRulesToTransactions(transactions, [r], accounts); setTransactions(updated as VerifiableTransaction[]); setIsRuleModalOpen(false); }}
                     existingRules={rules}
