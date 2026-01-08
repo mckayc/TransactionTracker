@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, Transaction, AccountType, Account, Location } from '../types';
-import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, CloseIcon, BoxIcon, MapPinIcon, TrashIcon, CreditCardIcon, SearchCircleIcon } from '../components/Icons';
+import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, CloseIcon, BoxIcon, MapPinIcon, TrashIcon, CreditCardIcon, SearchCircleIcon, SparklesIcon } from '../components/Icons';
 import EntityEditor, { EntityType } from '../components/EntityEditor';
 
 interface ManagementHubProps {
@@ -48,7 +49,6 @@ const TreeNode: React.FC<{
 }> = ({ item, all, level, selectedId, onSelect, usageMap, expandedIds, onToggleExpand, isBulkSelected, onToggleBulk, searchFilter, onDelete }) => {
     const children = all.filter(x => x.parentId === item.id).sort((a,b) => a.name.localeCompare(b.name));
     
-    // If searching, we check if the item or any of its descendants match the filter
     const matchesSearch = item.name.toLowerCase().includes(searchFilter.toLowerCase());
     
     const hasVisibleChild = (node: any): boolean => {
@@ -136,6 +136,10 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
     const [searchFilter, setSearchFilter] = useState('');
+    
+    // Move Modal State
+    const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+    const [moveSearch, setMoveSearch] = useState('');
 
     const usageCounts = useMemo(() => {
         const counts = {
@@ -231,22 +235,13 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
         setBulkSelectedIds(new Set());
     };
 
-    const handleBulkMove = () => {
-        if (activeTab !== 'counterparties' || bulkSelectedIds.size === 0) return;
-        const newParent = prompt("Enter the ID or exact name of the new parent (or leave empty for root):");
-        const foundParent = counterparties.find(c => c.id === newParent || c.name.toLowerCase() === newParent?.toLowerCase());
-        const targetParentId = foundParent ? foundParent.id : (newParent === '' ? undefined : null);
-        
-        if (targetParentId === null) {
-            alert("Parent not found.");
-            return;
-        }
-
+    const handleConfirmMove = (targetParentId: string | undefined) => {
         const updates = counterparties.map(c => 
             bulkSelectedIds.has(c.id) ? { ...c, parentId: targetParentId } : c
         );
         onSaveCounterparties(updates);
         setBulkSelectedIds(new Set());
+        setIsMoveModalOpen(false);
     };
 
     const handleNew = () => {
@@ -275,6 +270,14 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
         }
         return currentList;
     }, [currentList, activeTab]);
+
+    const potentialParents = useMemo(() => {
+        // Prevent moving an item to one of the currently selected items (avoids circular references simply)
+        return counterparties
+            .filter(c => !bulkSelectedIds.has(c.id))
+            .filter(c => c.name.toLowerCase().includes(moveSearch.toLowerCase()))
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [counterparties, bulkSelectedIds, moveSearch]);
 
     const getPanelSubtitle = (type: EntityType) => {
         if (type === 'transactionTypes') return 'Transaction Types System Logic';
@@ -376,7 +379,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                                 <TrashIcon className="w-3 h-3" /> Delete {bulkSelectedIds.size}
                             </button>
                             {activeTab === 'counterparties' && (
-                                <button onClick={handleBulkMove} className="flex-1 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 shadow-sm flex items-center justify-center gap-2">
+                                <button onClick={() => { setMoveSearch(''); setIsMoveModalOpen(true); }} className="flex-1 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 shadow-sm flex items-center justify-center gap-2">
                                     <ChevronRightIcon className="w-3 h-3" /> Move Group
                                 </button>
                             )}
@@ -423,6 +426,72 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                     )}
                 </div>
             </div>
+
+            {/* In-App Move Modal */}
+            {isMoveModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4" onClick={() => setIsMoveModalOpen(false)}>
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-6 border-b flex justify-between items-center bg-indigo-600 text-white">
+                            <div className="flex items-center gap-3">
+                                <SparklesIcon className="w-6 h-6" />
+                                <div><h3 className="font-black text-lg">Select New Parent</h3><p className="text-[10px] text-indigo-200 uppercase font-bold">Batch Relocation</p></div>
+                            </div>
+                            <button onClick={() => setIsMoveModalOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-white"/></button>
+                        </div>
+                        
+                        <div className="p-4 bg-slate-50 border-b">
+                            <div className="relative">
+                                <input 
+                                    type="text" 
+                                    value={moveSearch} 
+                                    onChange={e => setMoveSearch(e.target.value)} 
+                                    placeholder="Search for a parent..." 
+                                    className="w-full pl-10 pr-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-bold focus:border-indigo-500 outline-none"
+                                    autoFocus
+                                />
+                                <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto max-h-96 p-2 custom-scrollbar bg-white">
+                            <button 
+                                onClick={() => handleConfirmMove(undefined)}
+                                className="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-indigo-50 text-left transition-all border border-transparent hover:border-indigo-100 group"
+                            >
+                                <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-white transition-colors text-slate-500"><ChevronRightIcon className="w-4 h-4"/></div>
+                                <div>
+                                    <p className="text-sm font-black text-slate-800">No Parent (Root)</p>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase">Move items to top level</p>
+                                </div>
+                            </button>
+                            
+                            {potentialParents.map(parent => (
+                                <button 
+                                    key={parent.id}
+                                    onClick={() => handleConfirmMove(parent.id)}
+                                    className="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-indigo-50 text-left transition-all border border-transparent hover:border-indigo-100 group"
+                                >
+                                    <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-white transition-colors text-indigo-400"><BoxIcon className="w-4 h-4"/></div>
+                                    <div>
+                                        <p className="text-sm font-black text-slate-800">{parent.name}</p>
+                                        <p className="text-[10px] text-slate-400 font-bold uppercase">ID: {parent.id.substring(0,8)}</p>
+                                    </div>
+                                </button>
+                            ))}
+                            
+                            {potentialParents.length === 0 && moveSearch && (
+                                <div className="p-12 text-center text-slate-400">
+                                    <p className="text-sm font-bold italic">No matching counterparties found.</p>
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="p-4 bg-slate-50 border-t flex justify-end">
+                            <button onClick={() => setIsMoveModalOpen(false)} className="px-6 py-2 text-sm font-bold text-slate-500 hover:text-slate-800">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
