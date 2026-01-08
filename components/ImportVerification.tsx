@@ -180,20 +180,21 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 const hasMultiple = appliedIds.length > 1;
                                 const type = typeMap.get(tx.typeId);
                                 const amountColor = type?.color || (type?.balanceEffect === 'incoming' ? 'text-green-600' : type?.balanceEffect === 'neutral' ? 'text-slate-400' : 'text-red-600');
-                                const rowClass = tx.isIgnored ? 'opacity-30 bg-slate-50' : appliedIds.length > 0 ? 'bg-emerald-50/60 hover:bg-emerald-50/80' : 'hover:bg-slate-50';
+                                // Darkened emerald background for matched rules: changed from bg-emerald-50/60 to bg-emerald-100/80
+                                const rowClass = tx.isIgnored ? 'opacity-30 bg-slate-50' : appliedIds.length > 0 ? 'bg-emerald-100/80 hover:bg-emerald-200/50' : 'hover:bg-slate-50';
 
                                 return (
                                     <tr key={tx.tempId} className={`transition-all ${rowClass}`}>
-                                        <td className="p-1.5 text-center border-b border-slate-200"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-3 w-3" /></td>
-                                        <td className="px-1.5 py-1 border-b border-slate-200">
+                                        <td className="p-1.5 text-center border-b border-slate-300"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-3 w-3" /></td>
+                                        <td className="px-1.5 py-1 border-b border-slate-300">
                                             {tx.conflictType === 'database' ? (
                                                 <span className="px-1 py-0.5 bg-amber-100 text-amber-700 text-[6px] font-black rounded uppercase flex items-center gap-0.5 w-max"><ExclamationTriangleIcon className="w-1.5 h-1.5" /> DUP</span>
                                             ) : (
                                                 <span className="px-1 py-0.5 bg-indigo-50 text-indigo-600 text-[6px] font-black rounded uppercase w-max">NEW</span>
                                             )}
                                         </td>
-                                        <td className="px-1.5 py-1 text-[9px] text-slate-500 font-mono border-b border-slate-200">{tx.date}</td>
-                                        <td className="px-1.5 py-1 border-b border-slate-200 max-w-[130px]">
+                                        <td className="px-1.5 py-1 text-[9px] text-slate-500 font-mono border-b border-slate-300">{tx.date}</td>
+                                        <td className="px-1.5 py-1 border-b border-slate-300 max-w-[130px]">
                                             <div className="flex flex-col min-w-0">
                                                 <span className="text-[10px] font-bold text-slate-800 truncate" title={tx.description}>{tx.description}</span>
                                                 {tx.originalDescription && tx.originalDescription !== tx.description && (
@@ -202,7 +203,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             </div>
                                         </td>
                                         
-                                        <td className="px-1 py-1 border-b border-slate-200 min-w-[90px]">
+                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[90px]">
                                             <SearchableSelect 
                                                 options={counterparties} 
                                                 value={tx.counterpartyId || ''} 
@@ -214,7 +215,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             />
                                         </td>
 
-                                        <td className="px-1 py-1 border-b border-slate-200 min-w-[70px]">
+                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[70px]">
                                             <SearchableSelect 
                                                 options={transactionTypes} 
                                                 value={tx.typeId} 
@@ -224,7 +225,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             />
                                         </td>
 
-                                        <td className="px-1 py-1 border-b border-slate-200 min-w-[90px]">
+                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[90px]">
                                             <SearchableSelect 
                                                 options={categories} 
                                                 value={tx.categoryId} 
@@ -235,7 +236,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             />
                                         </td>
 
-                                        <td className="px-1 py-1 border-b border-slate-200 min-w-[90px]">
+                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[90px]">
                                             <SearchableSelect 
                                                 options={locations} 
                                                 value={tx.locationId || ''} 
@@ -245,10 +246,10 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             />
                                         </td>
 
-                                        <td className={`px-2 py-1 text-right text-[10px] font-black font-mono border-b border-slate-200 whitespace-nowrap ${amountColor}`}>
+                                        <td className={`px-2 py-1 text-right text-[10px] font-black font-mono border-b border-slate-300 whitespace-nowrap ${amountColor}`}>
                                             {formatCurrency(tx.amount, type?.balanceEffect)}
                                         </td>
-                                        <td className="px-1 py-1 text-center border-b border-slate-200">
+                                        <td className="px-1 py-1 text-center border-b border-slate-300">
                                             {appliedIds.length > 0 ? (
                                                 <button 
                                                     onClick={() => hasMultiple ? setInspectingRulesTxId(tx.tempId) : handleOpenExistingRule(appliedIds[0], tx)} 
