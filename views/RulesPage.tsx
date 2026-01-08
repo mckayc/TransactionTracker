@@ -6,6 +6,7 @@ import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
 import { generateUUID } from '../utils';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 interface RulesPageProps {
     rules: ReconciliationRule[];
@@ -70,6 +71,10 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [newCatName, setNewCatName] = useState('');
     const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
 
+    // Confirmation Modals State
+    const [ruleToDeleteId, setRuleToDeleteId] = useState<string | null>(null);
+    const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const notify = (type: AppNotification['type'], message: string, description?: string) => {
@@ -90,12 +95,10 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const activeRule = useMemo(() => rules.find(r => r.id === selectedRuleId), [rules, selectedRuleId]);
 
     const handleBulkDelete = () => {
-        if (confirm(`Permanently delete ${bulkSelectedIds.size} selected rules?`)) {
-            bulkSelectedIds.forEach(id => onDeleteRule(id));
-            setBulkSelectedIds(new Set());
-            setSelectedRuleId(null);
-            notify('success', 'Rules Purged', `${bulkSelectedIds.size} logical records removed.`);
-        }
+        bulkSelectedIds.forEach(id => onDeleteRule(id));
+        setBulkSelectedIds(new Set());
+        setSelectedRuleId(null);
+        notify('success', 'Rules Purged', `${bulkSelectedIds.size} logical records removed.`);
     };
 
     const handleBulkMove = (targetCategoryId: string) => {
@@ -234,11 +237,10 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const handleDeleteRuleSingle = (id: string) => {
-        if (confirm("Delete this rule? This action cannot be undone.")) {
-            onDeleteRule(id);
-            if (selectedRuleId === id) setSelectedRuleId(null);
-            notify('info', 'Logic Discarded', 'The rule was removed from the engine.');
-        }
+        onDeleteRule(id);
+        if (selectedRuleId === id) setSelectedRuleId(null);
+        notify('info', 'Logic Discarded', 'The rule was removed from the engine.');
+        setRuleToDeleteId(null);
     }
 
     if (isVerifyingImport) {
@@ -434,7 +436,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                     </div>
                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button 
-                                            onClick={(e) => { e.stopPropagation(); handleDeleteRuleSingle(r.id); }}
+                                            onClick={(e) => { e.stopPropagation(); setRuleToDeleteId(r.id); }}
                                             className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg hover:bg-red-50"
                                         >
                                             <TrashIcon className="w-4 h-4" />
@@ -446,7 +448,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     </div>
                     {bulkSelectedIds.size > 0 && (
                         <div className="p-3 border-t bg-white rounded-b-2xl flex gap-2">
-                            <button onClick={handleBulkDelete} className="flex-1 py-2 bg-red-50 text-red-600 font-black rounded-xl text-[10px] uppercase shadow-sm flex items-center justify-center gap-2 hover:bg-red-100 transition-all">
+                            <button onClick={() => setIsBulkDeleteConfirmOpen(true)} className="flex-1 py-2 bg-red-50 text-red-600 font-black rounded-xl text-[10px] uppercase shadow-sm flex items-center justify-center gap-2 hover:bg-red-100 transition-all">
                                 <TrashIcon className="w-3.5 h-3.5" /> Delete
                             </button>
                             <div className="relative">
@@ -519,7 +521,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         <div className={`p-2 rounded-full ${
                             notification.type === 'success' ? 'bg-emerald-50' :
                             notification.type === 'warning' ? 'bg-amber-50' :
-                            notification.type === 'info' ? 'bg-indigo-50' :
                             'bg-indigo-50'
                         }`}>
                             {notification.type === 'success' ? <CheckCircleIcon className="w-5 h-5 text-emerald-600" /> : 
@@ -649,6 +650,22 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     </div>
                 </div>
             )}
+
+            <ConfirmationModal 
+                isOpen={!!ruleToDeleteId}
+                onClose={() => setRuleToDeleteId(null)}
+                onConfirm={() => ruleToDeleteId && handleDeleteRuleSingle(ruleToDeleteId)}
+                title="Discard Automation Logic?"
+                message={`You are removing "${rules.find(r => r.id === ruleToDeleteId)?.name}". Future ingestion of matching transactions will default to "Other" until a new rule is defined.`}
+            />
+
+            <ConfirmationModal 
+                isOpen={isBulkDeleteConfirmOpen}
+                onClose={() => setIsBulkDeleteConfirmOpen(false)}
+                onConfirm={handleBulkDelete}
+                title="Purge Selection?"
+                message={`Permanently delete ${bulkSelectedIds.size} selected automation rules from the engine? This will significantly impact future ledger ingestion automation.`}
+            />
         </div>
     );
 };
