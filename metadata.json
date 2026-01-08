@@ -1,5 +1,5 @@
 {
-  "name": "Transaction Tracker - Fix Import Verification - v0.3.60",
+  "name": "Transaction Tracker - Rule Importer - v0.3.61",
   "description": "High-performance normalized SQLite architecture for millions of financial records.",
   "requestFramePermissions": []
 }

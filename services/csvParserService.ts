@@ -5,6 +5,55 @@ import * as XLSX from 'xlsx';
 declare const pdfjsLib: any;
 
 /**
+ * Returns a CSV template string for rule imports with rich examples for AI/Users.
+ */
+export const generateRuleTemplate = (): string => {
+    const headers = [
+        'Rule Name',
+        'Rule Category',
+        'Match Field',
+        'Operator',
+        'Match Value',
+        'Set Category',
+        'Set Counterparty',
+        'Set Location',
+        'Set Type',
+        'Set User',
+        'Tags',
+        'Skip Import'
+    ];
+
+    const examples = [
+        ['Starbucks Morning', 'Dining', 'description', 'contains', 'STARBUCKS', 'Dining & Drinks', 'Starbucks', 'Seattle', 'Purchase', 'Primary User', 'coffee;morning', 'false'],
+        ['Amazon Cloud Services', 'Business', 'description', 'starts_with', 'AMZN MKTP', 'Software Subscription', 'Amazon Web Services', 'Cloud', 'Purchase', 'Primary User', 'saas;aws', 'false'],
+        ['Internal Salary Transfer', 'Transfer', 'description', 'contains', 'PAYROLL || SALARY', 'Income', 'Employer Corp', '', 'Income', 'Primary User', 'work;salary', 'false'],
+        ['Ignore Spam Fees', 'System', 'amount', 'less_than', '0.50', '', '', '', '', '', '', 'true'],
+        ['High Value Tech', 'Assets', 'amount', 'greater_than', '1000', 'Electronics', 'Apple Store', '', 'Investment', 'Primary User', 'asset;hardware', 'false']
+    ];
+
+    const rows = [headers, ...examples];
+    return rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
+};
+
+/**
+ * Validates if the provided lines look like a valid Rule Manifest.
+ */
+export const validateRuleFormat = (lines: string[]): { isValid: boolean; error?: string } => {
+    if (lines.length < 2) return { isValid: false, error: "File is empty or contains no data rows." };
+    const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(',') ? ',' : ';');
+    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    
+    const required = ['rule name', 'match field', 'operator', 'match value'];
+    const missing = required.filter(r => !header.includes(r));
+    
+    if (missing.length > 0) {
+        return { isValid: false, error: `Missing required columns: ${missing.join(', ')}` };
+    }
+    
+    return { isValid: true };
+};
+
+/**
  * Parses Rule Manifests for bulk ingestion
  * Updated to handle multiple OR conditions via pipe symbols
  */
@@ -65,7 +114,6 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
                 nextLogic: 'AND'
             }];
 
-        // Fixed: Use suggestedCounterpartyName instead of suggestedPayeeName/suggestedMerchantName
         const rule: ReconciliationRule = {
             id: generateUUID(),
             name: parts[colMap.name] || `Imported Rule ${i}`,

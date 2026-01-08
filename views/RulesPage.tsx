@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useRef } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft } from '../types';
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon } from '../components/Icons';
+// Fixed: Added ExclamationTriangleIcon to imports and removed non-existent InfoBubbleIcon
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
-import { parseRulesFromFile, parseRulesFromLines } from '../services/csvParserService';
+import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
 
 interface RulesPageProps {
     rules: ReconciliationRule[];
@@ -54,6 +55,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [pastedRules, setPastedRules] = useState('');
     const [importDrafts, setImportDrafts] = useState<RuleImportDraft[]>([]);
     const [isVerifyingImport, setIsVerifyingImport] = useState(false);
+    const [importError, setImportError] = useState<string | null>(null);
+    const [showInstructions, setShowInstructions] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const filteredRules = useMemo(() => {
@@ -97,28 +100,56 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setIsImportModalOpen(false);
     };
 
+    const handleDownloadTemplate = () => {
+        const csv = generateRuleTemplate();
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'finparser-rules-template.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+        setImportError(null);
         try {
+            const reader = new FileReader();
+            const text = await new Promise<string>((res) => {
+                reader.onload = () => res(reader.result as string);
+                reader.readAsText(file);
+            });
+            const lines = text.split('\n');
+            const validation = validateRuleFormat(lines);
+            if (!validation.isValid) {
+                setImportError(validation.error || "Invalid file format.");
+                return;
+            }
             const imported = await parseRulesFromFile(file);
             processDrafts(imported);
         } catch (err) {
-            alert("Failed to parse file. Ensure it is a valid Rule CSV.");
+            setImportError("Failed to parse file. Ensure it is a valid CSV.");
         }
     };
 
     const handlePasteSubmit = () => {
         if (!pastedRules.trim()) return;
+        setImportError(null);
         const lines = pastedRules.split('\n');
+        const validation = validateRuleFormat(lines);
+        if (!validation.isValid) {
+            setImportError(validation.error || "Malformed header or data.");
+            return;
+        }
         const imported = parseRulesFromLines(lines);
         processDrafts(imported);
         setPastedRules('');
     };
 
     const handleSaveRuleValidated = (rule: ReconciliationRule) => {
-        // Name uniqueness check is also performed in the modal, 
-        // but we double check here before calling the service.
         const duplicate = rules.find(r => r.name.toLowerCase() === rule.name.toLowerCase() && r.id !== rule.id);
         if (duplicate) {
             alert(`A rule with the name "${rule.name}" already exists. Please choose a unique name.`);
@@ -136,11 +167,10 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     drafts={importDrafts}
                     onCancel={() => setIsVerifyingImport(false)}
                     onFinalize={(finalRules) => {
-                        // Filter out rules that would cause name collisions
-                        const existingNames = new Set(rules.map(r => r.name.toLowerCase()));
-                        const uniqueFinals = finalRules.filter(fr => !existingNames.has(fr.name.toLowerCase()));
+                        const existingNamesSet = new Set(rules.map(r => r.name.toLowerCase()));
+                        const uniqueFinals = finalRules.filter(fr => !existingNamesSet.has(fr.name.toLowerCase()));
                         if (uniqueFinals.length < finalRules.length) {
-                            alert(`${finalRules.length - uniqueFinals.length} rules were skipped due to name collisions with existing logic.`);
+                            alert(`${finalRules.length - uniqueFinals.length} rules were skipped due to name collisions. Names must be unique.`);
                         }
                         onSaveRules(uniqueFinals);
                         setIsVerifyingImport(false);
@@ -156,6 +186,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     onSaveCounterparties={onSaveCounterparties}
                     onSaveLocation={onSaveLocation}
                     onSaveLocations={onSaveLocations}
+                    existingRules={rules}
                 />
             </div>
         );
@@ -169,7 +200,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     <p className="text-sm text-slate-500">Programmatic ingestion rules for the system ledger.</p>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={() => setIsImportModalOpen(true)} className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl shadow-sm hover:bg-slate-50 font-bold transition-all transform active:scale-95">
+                    <button onClick={() => { setIsImportModalOpen(true); setImportError(null); }} className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl shadow-sm hover:bg-slate-50 font-bold transition-all transform active:scale-95">
                         <CloudArrowUpIcon className="w-5 h-5 text-indigo-500" /> Import Rules
                     </button>
                     <button onClick={() => { setIsCreating(true); setSelectedRuleId(null); }} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 font-black transition-all transform active:scale-95">
@@ -280,7 +311,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <ShieldCheckIcon className="w-12 h-12 text-indigo-200" />
                             </div>
                             <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Logic Workbench</h3>
-                            <p className="text-slate-500 max-w-sm mt-4 font-medium leading-relaxed">Design rules to standardize your ledger automatically. Define criteria for descriptions, amounts, or accounts to auto-apply categories and entities.</p>
+                            <p className="text-slate-500 max-sm mt-4 font-medium leading-relaxed">Design rules to standardize your ledger automatically. Define criteria for descriptions, amounts, or accounts to auto-apply categories and entities.</p>
                             <button onClick={() => setIsCreating(true)} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Start Designing</button>
                         </div>
                     )}
@@ -289,53 +320,113 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
             {isImportModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex justify-center items-center p-4" onClick={() => setIsImportModalOpen(false)}>
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                             <div>
-                                <h3 className="text-xl font-black text-slate-800">Rule Ingestion</h3>
-                                <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-0.5">Bulk logic upload</p>
+                                <h3 className="text-xl font-black text-slate-800">Rule Ingestion Hub</h3>
+                                <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-0.5">Bulk automation logic upload</p>
                             </div>
-                            <button onClick={() => setIsImportModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    onClick={() => setShowInstructions(!showInstructions)}
+                                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase transition-all flex items-center gap-2 border-2 ${showInstructions ? 'bg-indigo-600 border-indigo-700 text-white' : 'bg-white border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                >
+                                    <InfoIcon className="w-4 h-4" /> Help
+                                </button>
+                                <button onClick={handleDownloadTemplate} className="px-4 py-2 bg-white border-2 border-slate-100 rounded-xl text-xs font-black uppercase text-indigo-600 hover:bg-indigo-50 transition-all flex items-center gap-2">
+                                    <DownloadIcon className="w-4 h-4" /> Template
+                                </button>
+                                <button onClick={() => setIsImportModalOpen(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                            </div>
                         </div>
 
-                        <div className="p-8 space-y-6">
-                            <div className="flex bg-slate-100 p-1 rounded-xl">
-                                <button onClick={() => setImportMethod('upload')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${importMethod === 'upload' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <UploadIcon className="w-4 h-4" /> File
-                                </button>
-                                <button onClick={() => setImportMethod('paste')} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${importMethod === 'paste' ? 'bg-white shadow text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <FileCodeIcon className="w-4 h-4" /> Text
-                                </button>
-                            </div>
-
-                            {importMethod === 'upload' ? (
-                                <div className="space-y-4">
-                                    <div 
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="border-2 border-dashed border-slate-200 rounded-2xl p-12 flex flex-col items-center justify-center text-center group hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer"
-                                    >
-                                        <CloudArrowUpIcon className="w-12 h-12 text-slate-300 group-hover:text-indigo-500 mb-4 transition-colors" />
-                                        <p className="text-sm font-bold text-slate-600">Select Rule CSV</p>
+                        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+                            {/* INSTRUCTIONS SIDEBAR */}
+                            {showInstructions && (
+                                <div className="w-full md:w-80 border-r border-slate-100 bg-slate-50 p-6 overflow-y-auto custom-scrollbar animate-slide-in-left">
+                                    <h4 className="text-xs font-black text-indigo-900 uppercase tracking-widest mb-4">Ingestion Protocols</h4>
+                                    <div className="space-y-6 text-xs text-slate-600 leading-relaxed font-medium">
+                                        <section>
+                                            <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Format Requirements</p>
+                                            <p>Upload a <strong>CSV</strong> file with headers. You can use our template to ensure AI generates compatible rows.</p>
+                                        </section>
+                                        <section>
+                                            <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Boolean Logic</p>
+                                            <p>Use <code className="bg-slate-200 px-1 rounded">||</code> (pipe) symbols in the "Match Value" column to create <strong>OR</strong> logic (e.g. <code className="bg-indigo-50 text-indigo-700 px-1 rounded">UBER || LYFT</code>).</p>
+                                        </section>
+                                        <section>
+                                            <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Match Fields</p>
+                                            <ul className="list-disc pl-4 space-y-1">
+                                                <li><strong>description</strong> (Default)</li>
+                                                <li><strong>amount</strong> (Use numeric values)</li>
+                                                <li><strong>accountId</strong> (Use system IDs)</li>
+                                            </ul>
+                                        </section>
+                                        <section>
+                                            <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Operators</p>
+                                            <p>Supported: <code className="text-indigo-600">contains</code>, <code className="text-indigo-600">starts_with</code>, <code className="text-indigo-600">equals</code>, <code className="text-indigo-600">less_than</code>, <code className="text-indigo-600">greater_than</code>.</p>
+                                        </section>
                                     </div>
-                                    <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    <textarea 
-                                        value={pastedRules}
-                                        onChange={e => setPastedRules(e.target.value)}
-                                        placeholder="Paste CSV rows..."
-                                        className="w-full h-64 p-4 font-mono text-[11px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 transition-all outline-none resize-none shadow-inner"
-                                    />
-                                    <button 
-                                        onClick={handlePasteSubmit}
-                                        disabled={!pastedRules.trim()}
-                                        className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl disabled:opacity-30"
-                                    >
-                                        Commit logic
-                                    </button>
                                 </div>
                             )}
+
+                            {/* MAIN UPLOAD AREA */}
+                            <div className="flex-1 p-8 space-y-8 bg-white overflow-y-auto custom-scrollbar">
+                                {importError && (
+                                    <div className="p-4 bg-red-50 border-2 border-red-100 rounded-2xl flex items-start gap-3 animate-slide-up">
+                                        {/* Fixed: ExclamationTriangleIcon is now properly imported */}
+                                        <ExclamationTriangleIcon className="w-5 h-5 text-red-600 flex-shrink-0" />
+                                        <div>
+                                            <p className="text-sm font-black text-red-800 uppercase">Verification Failed</p>
+                                            <p className="text-xs text-red-700 mt-1">{importError}</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex bg-slate-100 p-1 rounded-[1.25rem] w-full max-w-sm mx-auto">
+                                    <button onClick={() => { setImportMethod('upload'); setImportError(null); }} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${importMethod === 'upload' ? 'bg-white shadow-lg text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                        <UploadIcon className="w-4 h-4" /> File
+                                    </button>
+                                    <button onClick={() => { setImportMethod('paste'); setImportError(null); }} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${importMethod === 'paste' ? 'bg-white shadow-lg text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                        <FileCodeIcon className="w-4 h-4" /> Text
+                                    </button>
+                                </div>
+
+                                {importMethod === 'upload' ? (
+                                    <div className="space-y-6">
+                                        <div 
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="border-2 border-dashed border-slate-200 rounded-[2rem] p-20 flex flex-col items-center justify-center text-center group hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer shadow-inner bg-slate-50/20"
+                                        >
+                                            <CloudArrowUpIcon className="w-16 h-16 text-slate-300 group-hover:text-indigo-500 mb-6 transition-transform group-hover:-translate-y-2 duration-300" />
+                                            <p className="text-lg font-black text-slate-700">Drop Logic Manifest</p>
+                                            <p className="text-xs text-slate-400 mt-2 uppercase font-bold tracking-widest">CSV, Excel, or JSON accepted</p>
+                                        </div>
+                                        <input type="file" ref={fileInputRef} className="hidden" accept=".csv,.xlsx" onChange={handleFileUpload} />
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4 animate-fade-in">
+                                        <div className="relative">
+                                            <textarea 
+                                                value={pastedRules}
+                                                onChange={e => setPastedRules(e.target.value)}
+                                                placeholder={`Rule Name, Match Field, Operator, Match Value...\n"Taxi Service", "description", "contains", "Uber || Lyft"`}
+                                                className="w-full h-80 p-6 font-mono text-[11px] bg-slate-900 text-indigo-100 border-none rounded-[2rem] focus:ring-4 focus:ring-indigo-500/20 transition-all outline-none resize-none shadow-2xl"
+                                            />
+                                            <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[8px] font-black text-indigo-300 uppercase tracking-widest backdrop-blur-sm border border-white/5">
+                                                Raw Data Stream
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={handlePasteSubmit}
+                                            disabled={!pastedRules.trim()}
+                                            className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-200 disabled:opacity-30 transition-all active:scale-95"
+                                        >
+                                            Verify & Commit logic
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
