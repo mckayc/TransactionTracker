@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, Transaction, AccountType, Account, Location } from '../types';
 import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, CloseIcon, BoxIcon, MapPinIcon, TrashIcon, CreditCardIcon, SearchCircleIcon, SparklesIcon } from '../components/Icons';
@@ -42,11 +41,11 @@ const TreeNode: React.FC<{
     usageMap: Map<string, number>;
     expandedIds: Set<string>;
     onToggleExpand: (id: string) => void;
-    isBulkSelected: boolean;
+    bulkSelectedIds: Set<string>; // Changed from isBulkSelected: boolean
     onToggleBulk: (id: string) => void;
     searchFilter: string;
     onDelete: (id: string) => void;
-}> = ({ item, all, level, selectedId, onSelect, usageMap, expandedIds, onToggleExpand, isBulkSelected, onToggleBulk, searchFilter, onDelete }) => {
+}> = ({ item, all, level, selectedId, onSelect, usageMap, expandedIds, onToggleExpand, bulkSelectedIds, onToggleBulk, searchFilter, onDelete }) => {
     const children = all.filter(x => x.parentId === item.id).sort((a,b) => a.name.localeCompare(b.name));
     
     const matchesSearch = item.name.toLowerCase().includes(searchFilter.toLowerCase());
@@ -61,6 +60,7 @@ const TreeNode: React.FC<{
 
     const isExpanded = expandedIds.has(item.id) || !!searchFilter;
     const count = usageMap.get(item.id) || 0;
+    const isChecked = bulkSelectedIds.has(item.id);
     
     return (
         <div className="select-none">
@@ -72,7 +72,7 @@ const TreeNode: React.FC<{
                 <div className="flex items-center gap-3 overflow-hidden flex-1">
                     <input 
                         type="checkbox" 
-                        checked={isBulkSelected} 
+                        checked={isChecked} 
                         onClick={(e) => e.stopPropagation()} 
                         onChange={() => onToggleBulk(item.id)} 
                         className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -111,7 +111,7 @@ const TreeNode: React.FC<{
                     usageMap={usageMap}
                     expandedIds={expandedIds}
                     onToggleExpand={onToggleExpand}
-                    isBulkSelected={isBulkSelected}
+                    bulkSelectedIds={bulkSelectedIds}
                     onToggleBulk={onToggleBulk}
                     searchFilter={searchFilter}
                     onDelete={onDelete}
@@ -365,7 +365,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                                     usageMap={(usageCounts as any)[activeTab]}
                                     expandedIds={expandedIds}
                                     onToggleExpand={(id) => { const n = new Set(expandedIds); if(n.has(id)) n.delete(id); else n.add(id); setExpandedIds(n); }}
-                                    isBulkSelected={bulkSelectedIds.has(item.id)}
+                                    bulkSelectedIds={bulkSelectedIds}
                                     onToggleBulk={handleBulkToggle}
                                     searchFilter={searchFilter}
                                     onDelete={handleDeleteSingle}
@@ -430,7 +430,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
             {/* In-App Move Modal */}
             {isMoveModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4" onClick={() => setIsMoveModalOpen(false)}>
-                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b flex justify-between items-center bg-indigo-600 text-white">
                             <div className="flex items-center gap-3">
                                 <SparklesIcon className="w-6 h-6" />

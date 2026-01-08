@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon } from '../components/Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from '../components/RuleBuilder';
 import SearchableSelect from '../components/SearchableSelect';
@@ -27,10 +26,11 @@ interface RuleModalProps {
     onSaveUser?: (user: User) => void;
     onAddTransactionType?: (type: TransactionType) => void;
     onSaveAndRun?: (rule: ReconciliationRule) => void;
+    existingRules?: ReconciliationRule[];
 }
 
 const RuleModal: React.FC<RuleModalProps> = ({ 
-    isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transaction, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, onSaveAndRun
+    isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transaction, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, onSaveAndRun, existingRules = []
 }) => {
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
@@ -44,15 +44,27 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const [setDescription, setSetDescription] = useState('');
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
     const [skipImport, setSkipImport] = useState(false);
+    const [ruleId, setRuleId] = useState<string | null>(null);
 
     // Entity Quick Add State
     const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
+
+    const isDuplicateName = useMemo(() => {
+        const trimmed = name.trim().toLowerCase();
+        if (!trimmed) return false;
+        return existingRules.some(r => r.name.toLowerCase() === trimmed && r.id !== ruleId);
+    }, [name, existingRules, ruleId]);
 
     useEffect(() => {
         if (isOpen) {
             if (transaction) {
                 const ctx = transaction as any;
+                // If it's a rule being edited, it should have conditions or a specific flag
+                const isExistingRule = !!existingRules.find(r => r.id === ctx.id);
+                
+                setRuleId(isExistingRule ? ctx.id : generateUUID());
                 setName(ctx.name || (ctx.description ? `${ctx.description} Rule` : ''));
+                
                 const newConditions: RuleCondition[] = ctx.conditions ? [...ctx.conditions] : [
                     { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: ctx.description, nextLogic: 'AND' }
                 ];
@@ -66,6 +78,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 setAssignTagIds(new Set(ctx.tagIds || ctx.assignTagIds || []));
                 setSkipImport(!!ctx.skipImport);
             } else {
+                setRuleId(generateUUID());
                 setName('');
                 setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
                 setSetCategoryId('');
@@ -78,7 +91,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 setSkipImport(false);
             }
         }
-    }, [isOpen, transaction]);
+    }, [isOpen, transaction, existingRules]);
 
     const handleQuickAddSave = (type: EntityType, payload: any) => {
         switch (type) {
@@ -103,7 +116,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
     };
 
     const getRulePayload = (): ReconciliationRule => ({
-        id: transaction?.id === 'temp-context' ? generateUUID() : (transaction?.id || generateUUID()),
+        id: ruleId || generateUUID(),
         name: name.trim(),
         conditions,
         setCategoryId: setCategoryId || undefined,
@@ -119,11 +132,13 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const handleSave = (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!name.trim()) { alert('Rule Name is required.'); return; }
+        if (isDuplicateName) { alert('Rule Name must be unique.'); return; }
         onSaveRule(getRulePayload());
     };
 
     const handleSaveAndRun = () => {
         if (!name.trim()) { alert('Rule Name is required.'); return; }
+        if (isDuplicateName) { alert('Rule Name must be unique.'); return; }
         if (onSaveAndRun) onSaveAndRun(getRulePayload());
         else onSaveRule(getRulePayload());
     };
@@ -140,8 +155,8 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                     <button type="button" onClick={onClose} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200">Reset</button>
-                    <button onClick={handleSave} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-700 text-white rounded-xl shadow-md">Apply</button>
-                    <button onClick={handleSaveAndRun} className="px-8 py-2.5 text-xs font-black uppercase bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 flex items-center gap-2">
+                    <button onClick={handleSave} disabled={isDuplicateName || !name.trim()} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-700 text-white rounded-xl shadow-md disabled:opacity-30">Apply</button>
+                    <button onClick={handleSaveAndRun} disabled={isDuplicateName || !name.trim()} className="px-8 py-2.5 text-xs font-black uppercase bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 flex items-center gap-2 disabled:opacity-30">
                         <PlayIcon className="w-4 h-4" /> Commit & Execute
                     </button>
                 </div>
@@ -150,7 +165,19 @@ const RuleModal: React.FC<RuleModalProps> = ({
              <form onSubmit={handleSave} className="flex-1 p-8 space-y-10 overflow-y-auto bg-slate-50/20 custom-scrollbar pb-24">
                 <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Administrative Identity</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="System designation for this logic..." className="w-full p-4 bg-slate-50 border-none rounded-2xl focus:bg-white focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800 text-lg shadow-inner" required />
+                    <input 
+                        type="text" 
+                        value={name} 
+                        onChange={e => setName(e.target.value)} 
+                        placeholder="System designation for this logic..." 
+                        className={`w-full p-4 border-2 rounded-2xl focus:ring-0 font-bold text-lg shadow-inner transition-colors ${isDuplicateName ? 'border-red-300 bg-red-50 focus:border-red-500' : 'bg-slate-50 border-transparent focus:border-indigo-500'}`} 
+                        required 
+                    />
+                    {isDuplicateName && (
+                        <p className="text-red-500 text-[10px] font-black uppercase tracking-tight mt-2 flex items-center gap-1">
+                            <ExclamationTriangleIcon className="w-3 h-3" /> This identity is already registered in the ledger logic.
+                        </p>
+                    )}
                 </div>
                 
                 <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">

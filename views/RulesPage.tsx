@@ -116,6 +116,19 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setPastedRules('');
     };
 
+    const handleSaveRuleValidated = (rule: ReconciliationRule) => {
+        // Name uniqueness check is also performed in the modal, 
+        // but we double check here before calling the service.
+        const duplicate = rules.find(r => r.name.toLowerCase() === rule.name.toLowerCase() && r.id !== rule.id);
+        if (duplicate) {
+            alert(`A rule with the name "${rule.name}" already exists. Please choose a unique name.`);
+            return;
+        }
+        onSaveRule(rule);
+        setIsCreating(false);
+        setSelectedRuleId(rule.id);
+    };
+
     if (isVerifyingImport) {
         return (
             <div className="h-full animate-fade-in">
@@ -123,7 +136,13 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     drafts={importDrafts}
                     onCancel={() => setIsVerifyingImport(false)}
                     onFinalize={(finalRules) => {
-                        onSaveRules(finalRules);
+                        // Filter out rules that would cause name collisions
+                        const existingNames = new Set(rules.map(r => r.name.toLowerCase()));
+                        const uniqueFinals = finalRules.filter(fr => !existingNames.has(fr.name.toLowerCase()));
+                        if (uniqueFinals.length < finalRules.length) {
+                            alert(`${finalRules.length - uniqueFinals.length} rules were skipped due to name collisions with existing logic.`);
+                        }
+                        onSaveRules(uniqueFinals);
                         setIsVerifyingImport(false);
                     }}
                     categories={categories}
@@ -240,7 +259,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         <RuleModal 
                             isOpen={true} 
                             onClose={() => { setSelectedRuleId(null); setIsCreating(false); }} 
-                            onSaveRule={(r) => { onSaveRule(r); setIsCreating(false); setSelectedRuleId(r.id); }}
+                            onSaveRule={handleSaveRuleValidated}
                             accounts={accounts}
                             transactionTypes={transactionTypes}
                             categories={categories}
@@ -253,6 +272,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             onSaveCounterparty={onSaveCounterparty}
                             onSaveTag={onSaveTag}
                             onAddTransactionType={onAddTransactionType}
+                            existingRules={rules}
                         />
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
