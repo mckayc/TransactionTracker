@@ -1,4 +1,3 @@
-
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
@@ -7,7 +6,11 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
     if (!tx || !condition || !condition.field) return true;
 
     if (condition.field === 'description') {
-        txValue = (tx.description || '').toLowerCase();
+        // OPTION 1: The "Original Description" Anchor
+        // Always check against the original bank string if available. 
+        // This ensures cleanup rules (which modify tx.description) don't break 
+        // subsequent rules that rely on raw patterns (like location info or store numbers).
+        txValue = (tx.originalDescription || tx.description || '').toLowerCase();
         const condValue = String(condition.value || '').toLowerCase();
         switch (condition.operator) {
             case 'contains': return txValue.includes(condValue);
