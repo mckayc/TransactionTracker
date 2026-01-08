@@ -4,7 +4,7 @@
 
 /* Global Light Scheme Enforcement for UI Elements */
 input, select, textarea {
-  color-scheme: light;
+  color-scheme: light !important;
 }
 
 /* Fix flashing dropdown issue by ensuring backgrounds are consistent and transitions are clean */

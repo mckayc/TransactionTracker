@@ -49,7 +49,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
             {items.map((condition, index) => (
                 <div key={condition.id} className="relative">
                     {condition.type === 'group' ? (
-                        <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 shadow-inner">
+                        <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 shadow-sm">
                             <div className="flex justify-between items-center mb-4">
                                 <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
                                     <ShieldCheckIcon className="w-3 h-3" /> Logic Cluster
@@ -101,7 +101,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                     className="w-full p-2.5 text-xs border border-slate-200 rounded-xl bg-white font-medium transition-colors focus:border-indigo-500"
                                 >
                                     {['description', 'metadata', 'counterpartyId', 'locationId'].includes(condition.field!) && (
-                                        <><option value="contains">Contains</option><option value="does_not_contain">Doesn't Contain</option><option value="starts_with">Starts With</option><option value="ends_with">Ends With</option><option value="equals">Equals</option><option value="regex_match">Regex Match</option></>
+                                        <><option value="contains">Contains</option><option value="does_not_contain">Doesn't Contain</option><option value="starts_with">Starts With</option><option value="ends_with">Ends With</option><option value="equals">Equals</option><option value="regex_match">Regex Match</option><option value="exists">Key Exists</option></>
                                     )}
                                     {condition.field === 'amount' && (
                                         <><option value="equals">Equals</option><option value="greater_than">Greater Than</option><option value="less_than">Less Than</option></>
