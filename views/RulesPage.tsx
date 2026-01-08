@@ -1,10 +1,11 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory } from '../types';
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon } from '../components/Icons';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt } from '../types';
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
+import { forgeRulesWithCustomPrompt } from '../services/geminiService';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
 
@@ -43,6 +44,29 @@ interface AppNotification {
     description?: string;
 }
 
+const DEFAULT_FORGE_PROMPTS: RuleForgePrompt[] = [
+    {
+        id: 'forge-loc',
+        name: 'Location Geography Protocol',
+        prompt: 'Identify city and state patterns in the raw transaction descriptions. Generate rules that set the Location ID based on those patterns. Use "contains" operator. Only generate rules if a geographic location is likely.'
+    },
+    {
+        id: 'forge-norm',
+        name: 'Identity & Logic Normalizer',
+        prompt: 'Generate comprehensive rules for clean Descriptions, logical Categories, Transaction Types, and Counterparties. Standardize vendor names (e.g., remove store numbers) and categorize accurately for tax purposes.'
+    },
+    {
+        id: 'forge-subs',
+        name: 'Subscription Hunter Protocol',
+        prompt: 'Identify potential recurring monthly subscriptions or software services. Generate rules that assign them to a "Subscriptions" category and set appropriate recurring tags.'
+    },
+    {
+        id: 'forge-audit',
+        name: 'High-Value Integrity Audit',
+        prompt: 'Identify transactions exceeding $500 or unusual patterns. Create rules that assign "Review Required" or "Capital Expenditure" tags to these records.'
+    }
+];
+
 const RulesPage: React.FC<RulesPageProps> = ({ 
     rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser,
     ruleCategories, onSaveRuleCategory, onDeleteRuleCategory
@@ -59,13 +83,22 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
     // Import Flow State
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-    const [importMethod, setImportMethod] = useState<'upload' | 'paste'>('upload');
+    const [importMethod, setImportMethod] = useState<'upload' | 'paste' | 'ai'>('upload');
     const [pastedRules, setPastedRules] = useState('');
     const [importDrafts, setImportDrafts] = useState<RuleImportDraft[]>([]);
     const [isVerifyingImport, setIsVerifyingImport] = useState(false);
     const [importError, setImportError] = useState<string | null>(null);
     const [showInstructions, setShowInstructions] = useState(false);
     
+    // AI Forge State
+    const [forgePrompts, setForgePrompts] = useState<RuleForgePrompt[]>(DEFAULT_FORGE_PROMPTS);
+    const [selectedForgePromptId, setSelectedForgePromptId] = useState<string>(DEFAULT_FORGE_PROMPTS[1].id);
+    const [forgePromptText, setForgePromptText] = useState<string>(DEFAULT_FORGE_PROMPTS[1].prompt);
+    const [forgeData, setForgeData] = useState<string>('');
+    const [isForging, setIsForging] = useState(false);
+    const [forgeProgress, setForgeProgress] = useState<string>('');
+    const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+
     // Category management
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [newCatName, setNewCatName] = useState('');
@@ -198,6 +231,29 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setPastedRules('');
     };
 
+    const handleForgeAiSubmit = async () => {
+        if (!forgeData.trim() || !forgePromptText.trim() || isForging) return;
+        setIsForging(true);
+        setImportError(null);
+        try {
+            const forgedRules = await forgeRulesWithCustomPrompt(forgePromptText, forgeData, setForgeProgress);
+            processDrafts(forgedRules);
+        } catch (err: any) {
+            setImportError(err.message || "AI Forge failed. Neural Core error.");
+        } finally {
+            setIsForging(false);
+        }
+    };
+
+    const handleForgePromptSelect = (id: string) => {
+        const found = forgePrompts.find(p => p.id === id);
+        if (found) {
+            setSelectedForgePromptId(id);
+            setForgePromptText(found.prompt);
+            setIsEditingPrompt(false);
+        }
+    };
+
     const handleSaveRuleValidated = (rule: ReconciliationRule) => {
         const duplicate = rules.find(r => r.name.toLowerCase() === rule.name.toLowerCase() && r.id !== rule.id);
         if (duplicate) {
@@ -253,7 +309,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         const existingIdsSet = new Set(rules.map(r => r.id));
                         const existingNamesMap = new Map(rules.map(r => [r.name.toLowerCase(), r.id]));
                         
-                        // Separate rules into UPDATES (existing IDs) and NEW (unique names)
                         const rulesToSync: ReconciliationRule[] = [];
                         let skippedCount = 0;
 
@@ -261,15 +316,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             const nameLower = fr.name.toLowerCase();
                             const existingId = existingNamesMap.get(nameLower);
 
-                            // If it's a legitimate merge/update, it will have an ID matching the system
                             if (existingIdsSet.has(fr.id)) {
                                 rulesToSync.push(fr);
                             } 
-                            // If it has a matching name but different ID, it's a collision
                             else if (existingId && existingId !== fr.id) {
                                 skippedCount++;
                             }
-                            // Otherwise it's completely new
                             else {
                                 rulesToSync.push(fr);
                             }
@@ -311,7 +363,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     <p className="text-sm text-slate-500">Programmatic ingestion rules for the system ledger.</p>
                 </div>
                 <div className="flex gap-3">
-                    <button onClick={() => { setIsImportModalOpen(true); setImportError(null); }} className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl shadow-sm hover:bg-slate-50 font-bold transition-all transform active:scale-95">
+                    <button onClick={() => { setIsImportModalOpen(true); setImportError(null); setImportMethod('upload'); }} className="flex items-center gap-2 px-6 py-3 bg-white border-2 border-slate-100 text-slate-600 rounded-2xl shadow-sm hover:bg-slate-50 font-bold transition-all transform active:scale-95">
                         <CloudArrowUpIcon className="w-5 h-5 text-indigo-500" /> Import Rules
                     </button>
                     <button onClick={() => { setIsCreating(true); setSelectedRuleId(null); }} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-2xl shadow-lg hover:bg-indigo-700 font-black transition-all transform active:scale-95">
@@ -560,91 +612,153 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             </div>
                         </div>
 
-                        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-                            {/* INSTRUCTIONS SIDEBAR */}
-                            {showInstructions && (
-                                <div className="w-full md:w-80 border-r border-slate-100 bg-slate-50 p-6 overflow-y-auto custom-scrollbar animate-slide-in-left">
-                                    <h4 className="text-xs font-black text-indigo-900 uppercase tracking-widest mb-4">Ingestion Protocols</h4>
-                                    <div className="space-y-6 text-xs text-slate-600 leading-relaxed font-medium">
-                                        <section>
-                                            <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Format Requirements</p>
-                                            <p>Upload a <strong>CSV</strong> file with headers. You can use our template to ensure AI generates compatible rows.</p>
-                                        </section>
-                                        <section>
-                                            <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Boolean Logic</p>
-                                            <p>Use <code className="bg-slate-200 px-1 rounded">||</code> (pipe) symbols in the "Match Value" column to create <strong>OR</strong> logic (e.g. <code className="bg-indigo-50 text-indigo-700 px-1 rounded">UBER || LYFT</code>).</p>
-                                        </section>
-                                        <section>
-                                            <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Match Fields</p>
-                                            <ul className="list-disc pl-4 space-y-1">
-                                                <li><strong>description</strong> (Default)</li>
-                                                <li><strong>amount</strong> (Use numeric values)</li>
-                                                <li><strong>accountId</strong> (Use system IDs)</li>
-                                            </ul>
-                                        </section>
-                                        <section>
-                                            <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Operators</p>
-                                            <p>Supported: <code className="text-indigo-600">contains</code>, <code className="text-indigo-600">starts_with</code>, <code className="text-indigo-600">equals</code>, <code className="text-indigo-600">less_than</code>, <code className="text-indigo-600">greater_than</code>.</p>
-                                        </section>
-                                    </div>
-                                </div>
-                            )}
+                        <div className="flex-1 flex flex-col overflow-hidden">
+                            <div className="flex bg-slate-100 p-1.5 m-6 rounded-2xl w-max">
+                                <button onClick={() => { setImportMethod('upload'); setImportError(null); }} className={`flex items-center gap-2 px-6 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${importMethod === 'upload' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                    <UploadIcon className="w-4 h-4" /> File
+                                </button>
+                                <button onClick={() => { setImportMethod('paste'); setImportError(null); }} className={`flex items-center gap-2 px-6 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${importMethod === 'paste' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                    <FileCodeIcon className="w-4 h-4" /> Text
+                                </button>
+                                <button onClick={() => { setImportMethod('ai'); setImportError(null); }} className={`flex items-center gap-2 px-6 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${importMethod === 'ai' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
+                                    <RobotIcon className="w-4 h-4" /> AI Forge
+                                </button>
+                            </div>
 
-                            {/* MAIN UPLOAD AREA */}
-                            <div className="flex-1 p-8 space-y-8 bg-white overflow-y-auto custom-scrollbar">
-                                {importError && (
-                                    <div className="p-4 bg-red-50 border-2 border-red-100 rounded-2xl flex items-start gap-3 animate-slide-up">
-                                        <ExclamationTriangleIcon className="w-5 h-5 text-red-600 flex-shrink-0" />
-                                        <div>
-                                            <p className="text-sm font-black text-red-800 uppercase">Verification Failed</p>
-                                            <p className="text-xs text-red-700 mt-1">{importError}</p>
+                            <div className="flex-1 flex overflow-hidden">
+                                {/* INSTRUCTIONS SIDEBAR */}
+                                {showInstructions && (
+                                    <div className="w-full md:w-80 border-r border-slate-100 bg-slate-50 p-6 overflow-y-auto custom-scrollbar animate-slide-in-left">
+                                        <h4 className="text-xs font-black text-indigo-900 uppercase tracking-widest mb-4">Ingestion Protocols</h4>
+                                        <div className="space-y-6 text-xs text-slate-600 leading-relaxed font-medium">
+                                            <section>
+                                                <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Format Requirements</p>
+                                                <p>Upload a <strong>CSV</strong> file with headers. You can use our template to ensure AI generates compatible rows.</p>
+                                            </section>
+                                            <section>
+                                                <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">Boolean Logic</p>
+                                                <p>Use <code className="bg-slate-200 px-1 rounded">||</code> (pipe) symbols in the "Match Value" column to create <strong>OR</strong> logic.</p>
+                                            </section>
+                                            <section>
+                                                <p className="font-black text-slate-800 uppercase mb-2 text-[9px] tracking-tight">AI Forge</p>
+                                                <p>Select a protocol (e.g., Location Geography) and paste raw data. Gemini will synthesize rules automatically.</p>
+                                            </section>
                                         </div>
                                     </div>
                                 )}
 
-                                <div className="flex bg-slate-100 p-1 rounded-[1.25rem] w-full max-w-sm mx-auto">
-                                    <button onClick={() => { setImportMethod('upload'); setImportError(null); }} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${importMethod === 'upload' ? 'bg-white shadow-lg text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                                        <UploadIcon className="w-4 h-4" /> File
-                                    </button>
-                                    <button onClick={() => { setImportMethod('paste'); setImportError(null); }} className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-black uppercase tracking-widest rounded-xl transition-all ${importMethod === 'paste' ? 'bg-white shadow-lg text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                                        <FileCodeIcon className="w-4 h-4" /> Text
-                                    </button>
-                                </div>
-
-                                {importMethod === 'upload' ? (
-                                    <div className="space-y-6">
-                                        <div 
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className="border-2 border-dashed border-slate-200 rounded-[2rem] p-20 flex flex-col items-center justify-center text-center group hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer shadow-inner bg-slate-50/20"
-                                        >
-                                            <CloudArrowUpIcon className="w-16 h-16 text-slate-300 group-hover:text-indigo-500 mb-6 transition-transform group-hover:-translate-y-2 duration-300" />
-                                            <p className="text-lg font-black text-slate-700">Drop Logic Manifest</p>
-                                            <p className="text-xs text-slate-400 mt-2 uppercase font-bold tracking-widest">CSV, Excel, or JSON accepted</p>
-                                        </div>
-                                        <input type="file" ref={fileInputRef} className="hidden" accept=".csv,.xlsx" onChange={handleFileUpload} />
-                                    </div>
-                                ) : (
-                                    <div className="space-y-4 animate-fade-in">
-                                        <div className="relative">
-                                            <textarea 
-                                                value={pastedRules}
-                                                onChange={e => setPastedRules(e.target.value)}
-                                                placeholder={`Rule Name, Match Field, Operator, Match Value...\n"Taxi Service", "description", "contains", "Uber || Lyft"`}
-                                                className="w-full h-80 p-6 font-mono text-[11px] bg-slate-900 text-indigo-100 border-none rounded-[2rem] focus:ring-4 focus:ring-indigo-500/20 transition-all outline-none resize-none shadow-2xl"
-                                            />
-                                            <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[8px] font-black text-indigo-300 uppercase tracking-widest backdrop-blur-sm border border-white/5">
-                                                Raw Data Stream
+                                {/* MAIN CONTENT AREA */}
+                                <div className="flex-1 p-8 space-y-8 bg-white overflow-y-auto custom-scrollbar">
+                                    {importError && (
+                                        <div className="p-4 bg-red-50 border-2 border-red-100 rounded-2xl flex items-start gap-3 animate-slide-up">
+                                            <ExclamationTriangleIcon className="w-5 h-5 text-red-600 flex-shrink-0" />
+                                            <div>
+                                                <p className="text-sm font-black text-red-800 uppercase">Verification Failed</p>
+                                                <p className="text-xs text-red-700 mt-1">{importError}</p>
                                             </div>
                                         </div>
-                                        <button 
-                                            onClick={handlePasteSubmit}
-                                            disabled={!pastedRules.trim()}
-                                            className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-200 disabled:opacity-30 transition-all active:scale-95"
-                                        >
-                                            Verify & Commit logic
-                                        </button>
-                                    </div>
-                                )}
+                                    )}
+
+                                    {importMethod === 'upload' && (
+                                        <div className="space-y-6">
+                                            <div 
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="border-2 border-dashed border-slate-200 rounded-[2rem] p-20 flex flex-col items-center justify-center text-center group hover:border-indigo-400 hover:bg-indigo-50/30 transition-all cursor-pointer shadow-inner bg-slate-50/20"
+                                            >
+                                                <CloudArrowUpIcon className="w-16 h-16 text-slate-300 group-hover:text-indigo-500 mb-6 transition-transform group-hover:-translate-y-2 duration-300" />
+                                                <p className="text-lg font-black text-slate-700">Drop Logic Manifest</p>
+                                                <p className="text-xs text-slate-400 mt-2 uppercase font-bold tracking-widest">CSV, Excel, or JSON accepted</p>
+                                            </div>
+                                            <input type="file" ref={fileInputRef} className="hidden" accept=".csv,.xlsx" onChange={handleFileUpload} />
+                                        </div>
+                                    )}
+
+                                    {importMethod === 'paste' && (
+                                        <div className="space-y-4 animate-fade-in">
+                                            <div className="relative">
+                                                <textarea 
+                                                    value={pastedRules}
+                                                    onChange={e => setPastedRules(e.target.value)}
+                                                    placeholder={`Rule Name, Match Field, Operator, Match Value...\n"Taxi Service", "description", "contains", "Uber || Lyft"`}
+                                                    className="w-full h-80 p-6 font-mono text-[11px] bg-slate-900 text-indigo-100 border-none rounded-[2rem] focus:ring-4 focus:ring-indigo-500/20 transition-all outline-none resize-none shadow-2xl"
+                                                />
+                                                <div className="absolute top-4 right-4 flex items-center gap-2 px-3 py-1 bg-white/10 rounded-full text-[8px] font-black text-indigo-300 uppercase tracking-widest backdrop-blur-sm border border-white/5">
+                                                    Raw Data Stream
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={handlePasteSubmit}
+                                                disabled={!pastedRules.trim()}
+                                                className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-2xl shadow-indigo-200 disabled:opacity-30 transition-all active:scale-95"
+                                            >
+                                                Verify & Commit Logic
+                                            </button>
+                                        </div>
+                                    )}
+
+                                    {importMethod === 'ai' && (
+                                        <div className="space-y-6 animate-fade-in">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div className="space-y-3">
+                                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">1. Select Forge Protocol</label>
+                                                    <select 
+                                                        value={selectedForgePromptId}
+                                                        onChange={e => handleForgePromptSelect(e.target.value)}
+                                                        className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold bg-white focus:border-indigo-500 shadow-sm"
+                                                    >
+                                                        {forgePrompts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="space-y-3">
+                                                    <div className="flex justify-between items-center ml-1">
+                                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">2. Neural Instructions</label>
+                                                        <button 
+                                                            onClick={() => setIsEditingPrompt(!isEditingPrompt)}
+                                                            className="text-[9px] font-black text-indigo-600 uppercase hover:underline"
+                                                        >
+                                                            {isEditingPrompt ? 'LOCK PROMPT' : 'EDIT PROTOCOL'}
+                                                        </button>
+                                                    </div>
+                                                    <textarea 
+                                                        value={forgePromptText}
+                                                        onChange={e => setForgePromptText(e.target.value)}
+                                                        disabled={!isEditingPrompt}
+                                                        className={`w-full p-4 border-2 rounded-2xl text-xs font-medium leading-relaxed transition-all resize-none shadow-inner ${isEditingPrompt ? 'border-indigo-400 bg-indigo-50' : 'border-slate-50 bg-slate-50 text-slate-500'}`}
+                                                        rows={3}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">3. Source Transaction Data (CSV / Paste)</label>
+                                                <div className="relative">
+                                                    <textarea 
+                                                        value={forgeData}
+                                                        onChange={e => setForgeData(e.target.value)}
+                                                        placeholder="Paste your bank export or raw CSV rows here..."
+                                                        className="w-full h-64 p-6 font-mono text-[11px] bg-slate-900 text-indigo-100 border-none rounded-[2rem] focus:ring-4 focus:ring-indigo-500/20 transition-all outline-none resize-none shadow-2xl"
+                                                    />
+                                                    {isForging && (
+                                                        <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm rounded-[2rem] flex flex-col items-center justify-center text-center p-6 space-y-4">
+                                                            <div className="w-12 h-12 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
+                                                            <p className="text-sm font-black text-white uppercase tracking-widest">{forgeProgress || 'Synthesizing...'}</p>
+                                                            <p className="text-[10px] text-indigo-300 font-medium max-w-xs">Gemini is analyzing geographic and vendor patterns in your raw ledger data.</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <button 
+                                                onClick={handleForgeAiSubmit}
+                                                disabled={isForging || !forgeData.trim() || !forgePromptText.trim()}
+                                                className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl hover:bg-indigo-700 shadow-2xl shadow-indigo-200 disabled:opacity-30 transition-all active:scale-95 flex items-center justify-center gap-3"
+                                            >
+                                                <PlayIcon className="w-6 h-6" />
+                                                Ignite AI Rule Forge
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>

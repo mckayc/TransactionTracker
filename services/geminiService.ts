@@ -180,12 +180,10 @@ export const generateRulesFromData = async (
         const parsed = JSON.parse(response.text || '{"rules": []}');
         return (parsed.rules || []).filter(Boolean).map((r: any) => ({
             ...r,
-            // Fixed: Added generateUUID call which was missing an import
             id: generateUUID(),
             isAiDraft: true,
             conditions: (r.conditions || []).filter(Boolean).map((c: any) => ({ 
                 ...c, 
-                // Fixed: Added generateUUID call which was missing an import
                 id: generateUUID(), 
                 type: 'basic', 
                 nextLogic: 'AND' 
@@ -194,6 +192,90 @@ export const generateRulesFromData = async (
     } catch (e: any) {
         console.error("Gemini Rule Forge Error:", e);
         throw new Error(e.message || "Rule synthesis failed.");
+    }
+};
+
+export const forgeRulesWithCustomPrompt = async (
+    customPrompt: string,
+    data: string,
+    onProgress?: (msg: string) => void
+): Promise<ReconciliationRule[]> => {
+    const key = getApiKey();
+    if (!key) throw new Error("Missing API Key.");
+    onProgress?.("Igniting Neural Core...");
+    
+    const ai = new GoogleGenAI({ apiKey: key });
+    
+    const systemInstruction = `You are a Lead Financial Engineering AI. 
+    Analyze the provided raw transaction data based on the user's specific extraction protocol.
+    Your output MUST be a JSON array of rules for a reconciliation engine.
+    Rules should be atomic and precise.
+    PROTOCOL: ${customPrompt}`;
+
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            rules: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        name: { type: Type.STRING, description: "Display name of the rule" },
+                        conditions: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    field: { type: Type.STRING, enum: ["description", "amount", "accountId", "metadata"] },
+                                    operator: { type: Type.STRING, enum: ["contains", "equals", "starts_with", "ends_with"] },
+                                    value: { type: Type.STRING }
+                                },
+                                required: ["field", "operator", "value"]
+                            }
+                        },
+                        setDescription: { type: Type.STRING },
+                        suggestedCategoryName: { type: Type.STRING },
+                        suggestedCounterpartyName: { type: Type.STRING },
+                        suggestedLocationName: { type: Type.STRING },
+                        suggestedTypeName: { type: Type.STRING },
+                        suggestedTags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        skipImport: { type: Type.BOOLEAN }
+                    },
+                    required: ["name", "conditions"]
+                }
+            }
+        },
+        required: ['rules']
+    };
+
+    try {
+        const response = await ai.models.generateContent({
+            model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
+            contents: `RAW TRANSACTION DATA:\n${data}`,
+            config: { 
+                systemInstruction,
+                responseMimeType: 'application/json',
+                responseSchema: schema,
+                thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget || 0, 4000) }
+            }
+        });
+
+        const parsed = JSON.parse(response.text || '{"rules": []}');
+        onProgress?.("Normalization logic synthesized.");
+        return (parsed.rules || []).map((r: any) => ({
+            ...r,
+            id: generateUUID(),
+            isAiDraft: true,
+            conditions: (r.conditions || []).map((c: any) => ({ 
+                ...c, 
+                id: generateUUID(), 
+                type: 'basic', 
+                nextLogic: 'AND' 
+            }))
+        }));
+    } catch (e: any) {
+        console.error("Custom Rule Forge Error:", e);
+        throw new Error(e.message || "Synthesis failed.");
     }
 };
 

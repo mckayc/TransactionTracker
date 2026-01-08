@@ -273,10 +273,17 @@ export interface AiConfig {
     thinkingBudget?: number;
 }
 
+export interface RuleForgePrompt {
+    id: string;
+    name: string;
+    prompt: string;
+}
+
 export interface SystemSettings {
     backupConfig?: BackupConfig;
     dashboardWidgets?: DashboardWidget[];
     aiConfig?: AiConfig;
+    ruleForgePrompts?: RuleForgePrompt[];
 }
 
 export type ReportGroupBy = 'category' | 'counterparty' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';
