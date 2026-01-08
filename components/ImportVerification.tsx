@@ -1,12 +1,8 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Counterparty, User, Transaction, ReconciliationRule, Tag, Location, BalanceEffect, RuleCategory } from '../types';
-// Add ChevronRightIcon to icons import
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, FolderIcon, ChevronRightIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, FolderIcon, ChevronRightIcon, DatabaseIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
-// Fix: Import RuleModal from local components directory instead of views, 
-// as components/RuleModal.tsx contains the ruleCategories prop definition required here.
 import RuleModal from './RuleModal';
 import { generateUUID } from '../utils';
 import SearchableSelect from './SearchableSelect';
@@ -47,6 +43,59 @@ interface ImportVerificationProps {
 type SortKey = 'date' | 'description' | 'counterpartyId' | 'categoryId' | 'amount' | '';
 type SortDirection = 'asc' | 'desc';
 
+const RawDataDrawer: React.FC<{ tx: VerifiableTransaction | null; onClose: () => void; }> = ({ tx, onClose }) => {
+    if (!tx) return null;
+    const metadata = tx.metadata || {};
+    return (
+        <div className="fixed inset-0 z-[250] flex justify-end">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative w-full max-w-lg bg-slate-900 shadow-2xl flex flex-col h-full animate-slide-in-right">
+                <div className="p-6 border-b border-white/10 bg-slate-800 flex justify-between items-center">
+                    <div>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                            <DatabaseIcon className="w-5 h-5 text-indigo-400" />
+                            Entry Source Inspector
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Staging Record: {tx.tempId.substring(0, 8)}...</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+                    <div className="bg-indigo-900/20 border border-indigo-500/20 rounded-xl p-4 mb-4">
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">Extraction Summary</p>
+                        <div className="grid grid-cols-1 gap-4 text-sm">
+                            <div>
+                                <span className="text-slate-500 block text-[10px] uppercase">Normalized Description</span>
+                                <span className="text-white font-bold">{tx.description}</span>
+                            </div>
+                            <div>
+                                <span className="text-slate-500 block text-[10px] uppercase">Raw Bank String</span>
+                                <span className="text-white font-mono text-xs break-words">{tx.originalDescription || tx.description}</span>
+                            </div>
+                        </div>
+                    </div>
+                    {Object.entries(metadata).length > 0 ? (
+                        Object.entries(metadata).map(([k, v]) => (
+                            <div key={k} className="bg-white/5 border border-white/5 rounded-xl p-4">
+                                <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 tracking-wider">{k}</p>
+                                <p className="text-sm text-slate-100 font-medium break-words leading-relaxed">{String(v) || <em className="text-slate-700 italic">empty</em>}</p>
+                            </div>
+                        ))
+                    ) : (
+                        <div className="py-20 text-center">
+                            <InfoIcon className="w-12 h-12 text-slate-700 mx-auto mb-4" />
+                            <p className="text-slate-500 font-bold">No additional metadata found for this record.</p>
+                        </div>
+                    )}
+                </div>
+                <div className="p-4 bg-slate-800 border-t border-white/10">
+                    <button onClick={onClose} className="w-full py-3 bg-white/5 hover:bg-white/10 text-white text-xs font-black uppercase rounded-xl transition-all">Dismiss Inspector</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
     initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, counterparties, locations, users, tags, ruleCategories, onSaveRuleCategory, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, existingTransactions, rules
 }) => {
@@ -60,6 +109,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const [ruleTransactionContext, setRuleTransactionContext] = useState<Transaction | null>(null);
     const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
     const [activeTxForQuickAdd, setActiveTxForQuickAdd] = useState<string | null>(null);
+    const [inspectedTx, setInspectedTx] = useState<VerifiableTransaction | null>(null);
     
     // Multiple Rules state
     const [inspectingRulesTxId, setInspectingRulesTxId] = useState<string | null>(null);
@@ -179,7 +229,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 <th className="px-2 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 border-b border-slate-300" onClick={() => requestSort('categoryId')}>Category</th>
                                 <th className="px-2 py-2 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Location</th>
                                 <th className="px-2 py-2 text-right text-[8px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 border-b border-slate-300" onClick={() => requestSort('amount')}>Amount</th>
-                                <th className="px-2 py-2 text-center text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Rules</th>
+                                <th className="px-2 py-2 text-center text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Inspect</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-300 bg-white">
@@ -188,7 +238,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 const hasMultiple = appliedIds.length > 1;
                                 const type = typeMap.get(tx.typeId);
                                 const amountColor = type?.color || (type?.balanceEffect === 'incoming' ? 'text-green-600' : type?.balanceEffect === 'neutral' ? 'text-slate-400' : 'text-red-600');
-                                // Darkened emerald background for matched rules: changed from bg-emerald-50/60 to bg-emerald-100/80
                                 const rowClass = tx.isIgnored ? 'opacity-30 bg-slate-50' : appliedIds.length > 0 ? 'bg-emerald-100/80 hover:bg-emerald-200/50' : 'hover:bg-slate-50';
 
                                 return (
@@ -258,22 +307,32 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             {formatCurrency(tx.amount, type?.balanceEffect)}
                                         </td>
                                         <td className="px-1 py-1 text-center border-b border-slate-300">
-                                            {appliedIds.length > 0 ? (
+                                            <div className="flex items-center justify-center gap-1.5">
                                                 <button 
-                                                    onClick={() => hasMultiple ? setInspectingRulesTxId(tx.tempId) : handleOpenExistingRule(appliedIds[0], tx)} 
-                                                    className="relative p-0.5 text-green-700 hover:scale-110 transition-transform group/rulebtn" 
-                                                    title={hasMultiple ? `${appliedIds.length} Rules Applied` : "Rule Applied"}
+                                                    onClick={() => setInspectedTx(tx)}
+                                                    className="p-1 text-slate-300 hover:text-indigo-600 rounded transition-colors"
+                                                    title="View Original Source Data"
                                                 >
-                                                    <SparklesIcon className={`w-3 h-3 ${hasMultiple ? 'animate-pulse text-indigo-600' : ''}`} />
-                                                    {hasMultiple && (
-                                                        <span className="absolute -top-1.5 -right-1.5 bg-indigo-600 text-white text-[6px] font-black rounded-full w-2.5 h-2.5 flex items-center justify-center border border-white">
-                                                            {appliedIds.length}
-                                                        </span>
-                                                    )}
+                                                    <DatabaseIcon className="w-3.5 h-3.5" />
                                                 </button>
-                                            ) : (
-                                                <button onClick={() => handleOpenRuleCreator(tx)} className="p-0.5 text-slate-200 hover:text-indigo-600 transition-colors"><WrenchIcon className="w-3 h-3" /></button>
-                                            )}
+                                                <div className="h-3 w-px bg-slate-200" />
+                                                {appliedIds.length > 0 ? (
+                                                    <button 
+                                                        onClick={() => hasMultiple ? setInspectingRulesTxId(tx.tempId) : handleOpenExistingRule(appliedIds[0], tx)} 
+                                                        className="relative p-0.5 text-green-700 hover:scale-110 transition-transform group/rulebtn" 
+                                                        title={hasMultiple ? `${appliedIds.length} Rules Applied` : "Rule Applied"}
+                                                    >
+                                                        <SparklesIcon className={`w-3.5 h-3.5 ${hasMultiple ? 'animate-pulse text-indigo-600' : ''}`} />
+                                                        {hasMultiple && (
+                                                            <span className="absolute -top-1.5 -right-1.5 bg-indigo-600 text-white text-[6px] font-black rounded-full w-2.5 h-2.5 flex items-center justify-center border border-white">
+                                                                {appliedIds.length}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                ) : (
+                                                    <button onClick={() => handleOpenRuleCreator(tx)} className="p-0.5 text-slate-200 hover:text-indigo-600 transition-colors" title="Create Logic Rule"><WrenchIcon className="w-3.5 h-3.5" /></button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 );
@@ -282,6 +341,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     </table>
                 </div>
             </div>
+
+            <RawDataDrawer tx={inspectedTx} onClose={() => setInspectedTx(null)} />
 
             {inspectingRulesTxId && inspectingRulesTx && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[200] flex justify-center items-center p-4">
