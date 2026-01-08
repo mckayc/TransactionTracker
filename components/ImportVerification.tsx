@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { RawTransaction, Account, Category, TransactionType, Counterparty, User, Transaction, ReconciliationRule, Tag, Location } from '../types';
+import type { RawTransaction, Account, Category, TransactionType, Counterparty, User, Transaction, ReconciliationRule, Tag, Location, BalanceEffect } from '../types';
 import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
@@ -88,7 +88,12 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         });
     }, [transactions, sortKey, sortDirection]);
 
-    const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+    const formatCurrency = (val: number, effect?: BalanceEffect) => {
+        const formatted = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Math.abs(val));
+        if (effect === 'incoming') return `+ ${formatted}`;
+        if (effect === 'outgoing') return `- ${formatted}`;
+        return formatted;
+    };
     
     const handleOpenRuleCreator = (tx: RawTransaction) => {
         setRuleTransactionContext({ ...tx, id: 'temp-context' } as Transaction);
@@ -140,40 +145,48 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
             <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
                 <div className="overflow-auto flex-1 custom-scrollbar min-h-0">
-                    <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
+                    <table className="min-w-full divide-y divide-slate-300 border-separate border-spacing-0">
                         <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="p-2 w-10 text-center bg-slate-50 border-b border-slate-200">
+                                <th className="p-2 w-10 text-center bg-slate-50 border-b border-slate-300">
                                     <input type="checkbox" className="rounded text-indigo-600 h-3.5 w-3.5" checked={selectedIds.size === transactions.length && transactions.length > 0} onChange={() => setSelectedIds(selectedIds.size === transactions.length ? new Set() : new Set(transactions.map(t => t.tempId)))} />
                                 </th>
-                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Status</th>
-                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('date')}>Date</th>
-                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('description')}>Description</th>
-                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Counterparty</th>
-                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Type</th>
-                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('categoryId')}>Category</th>
-                                <th className="px-2 py-3 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-200" onClick={() => requestSort('amount')}>Amount</th>
-                                <th className="px-2 py-3 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Rule</th>
+                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Status</th>
+                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-300" onClick={() => requestSort('date')}>Date</th>
+                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-300" onClick={() => requestSort('description')}>Description</th>
+                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Counterparty</th>
+                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Type</th>
+                                <th className="px-2 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-300" onClick={() => requestSort('categoryId')}>Category</th>
+                                <th className="px-2 py-3 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest cursor-pointer hover:text-indigo-600 transition-colors border-b border-slate-300" onClick={() => requestSort('amount')}>Amount</th>
+                                <th className="px-2 py-3 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-300">Rule</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200 bg-white">
+                        <tbody className="divide-y divide-slate-300 bg-white">
                             {sortedTransactions.map(tx => {
                                 const matchedRule = tx.appliedRuleId ? ruleMap.get(tx.appliedRuleId) : null;
                                 const type = typeMap.get(tx.typeId);
-                                const amountColor = type?.balanceEffect === 'incoming' ? 'text-green-600' : type?.balanceEffect === 'neutral' ? 'text-slate-400' : 'text-red-600';
+                                
+                                // Color priority: Type assigned color > fallback effect color
+                                const amountColor = type?.color 
+                                    ? type.color 
+                                    : type?.balanceEffect === 'incoming' 
+                                        ? 'text-green-600' 
+                                        : type?.balanceEffect === 'neutral' 
+                                            ? 'text-slate-400' 
+                                            : 'text-red-600';
                                 
                                 const rowClass = tx.isIgnored 
                                     ? 'opacity-30 bg-slate-50' 
                                     : matchedRule 
-                                        ? 'bg-emerald-100/80 hover:bg-emerald-200/90' 
+                                        ? 'bg-emerald-200/50 hover:bg-emerald-200/70' 
                                         : 'hover:bg-slate-50';
 
                                 return (
                                     <tr key={tx.tempId} className={`transition-all ${rowClass}`}>
-                                        <td className="p-2 text-center border-b border-slate-200"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-3.5 w-3.5" /></td>
-                                        <td className="px-2 py-2 border-b border-slate-200">{tx.conflictType === 'database' ? (<span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[7px] font-black rounded uppercase flex items-center gap-1 w-max"><ExclamationTriangleIcon className="w-2 h-2" /> Exists</span>) : (<span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[7px] font-black rounded uppercase w-max">New</span>)}</td>
-                                        <td className="px-2 py-2 text-[10px] text-slate-500 font-mono border-b border-slate-200">{tx.date}</td>
-                                        <td className="px-2 py-2 border-b border-slate-200 max-w-[200px]">
+                                        <td className="p-2 text-center border-b border-slate-300"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-3.5 w-3.5" /></td>
+                                        <td className="px-2 py-2 border-b border-slate-300">{tx.conflictType === 'database' ? (<span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[7px] font-black rounded uppercase flex items-center gap-1 w-max"><ExclamationTriangleIcon className="w-2 h-2" /> Exists</span>) : (<span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[7px] font-black rounded uppercase w-max">New</span>)}</td>
+                                        <td className="px-2 py-2 text-[10px] text-slate-500 font-mono border-b border-slate-300">{tx.date}</td>
+                                        <td className="px-2 py-2 border-b border-slate-300 max-w-[200px]">
                                             <div className="flex flex-col min-w-0">
                                                 <span className="text-[12px] font-bold text-slate-700 truncate" title={tx.description}>{tx.description}</span>
                                                 {tx.originalDescription && tx.originalDescription !== tx.description && (
@@ -182,7 +195,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             </div>
                                         </td>
                                         
-                                        <td className="px-2 py-2 border-b border-slate-200 min-w-[160px]">
+                                        <td className="px-2 py-2 border-b border-slate-300 min-w-[160px]">
                                             <SearchableSelect 
                                                 options={counterparties} 
                                                 value={tx.counterpartyId || ''} 
@@ -194,7 +207,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             />
                                         </td>
 
-                                        <td className="px-2 py-2 border-b border-slate-200 min-w-[120px]">
+                                        <td className="px-2 py-2 border-b border-slate-300 min-w-[120px]">
                                             <SearchableSelect 
                                                 options={transactionTypes} 
                                                 value={tx.typeId} 
@@ -204,7 +217,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             />
                                         </td>
 
-                                        <td className="px-2 py-2 border-b border-slate-200 min-w-[160px]">
+                                        <td className="px-2 py-2 border-b border-slate-300 min-w-[160px]">
                                             <SearchableSelect 
                                                 options={categories} 
                                                 value={tx.categoryId} 
@@ -215,8 +228,10 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             />
                                         </td>
 
-                                        <td className={`px-2 py-2 text-right text-xs font-black font-mono border-b border-slate-200 ${amountColor}`}>{formatCurrency(tx.amount)}</td>
-                                        <td className="px-2 py-2 text-center border-b border-slate-200">
+                                        <td className={`px-2 py-2 text-right text-xs font-black font-mono border-b border-slate-300 whitespace-nowrap ${amountColor}`}>
+                                            {formatCurrency(tx.amount, type?.balanceEffect)}
+                                        </td>
+                                        <td className="px-2 py-2 text-center border-b border-slate-300">
                                             {matchedRule ? (
                                                 <button onClick={() => handleOpenExistingRule(matchedRule.id, tx)} className="p-1 text-green-700 hover:scale-110 transition-transform flex flex-col items-center gap-0.5" title="Rule Applied Automatically">
                                                     <SparklesIcon className="w-3.5 h-3.5" />
