@@ -95,11 +95,16 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         setIsRuleModalOpen(true);
     };
 
-    const handleOpenExistingRule = (ruleId: string) => {
+    const handleOpenExistingRule = (ruleId: string, txContext: VerifiableTransaction) => {
         const rule = ruleMap.get(ruleId);
         if (rule) {
-            // FIX: Pass the actual rule ID so the Modal recognizes it's an edit of an existing record
-            setRuleTransactionContext({ ...rule, id: rule.id, description: rule.conditions[0]?.value || '' } as any);
+            // MERGE: Keep Rule ID/Name but Transaction metadata for inspection
+            setRuleTransactionContext({ 
+                ...txContext,
+                ...rule, 
+                id: rule.id, 
+                description: rule.conditions[0]?.value || txContext.description 
+            } as any);
             setIsRuleModalOpen(true);
         }
     };
@@ -157,7 +162,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 const type = typeMap.get(tx.typeId);
                                 const amountColor = type?.balanceEffect === 'incoming' ? 'text-green-600' : type?.balanceEffect === 'neutral' ? 'text-slate-400' : 'text-red-600';
                                 
-                                // Dynamic row background: dim if ignored, light green if rule matched, standard hover otherwise
                                 const rowClass = tx.isIgnored 
                                     ? 'opacity-30 bg-slate-50' 
                                     : matchedRule 
@@ -214,7 +218,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         <td className={`px-2 py-2 text-right text-xs font-black font-mono border-b border-slate-100 ${amountColor}`}>{formatCurrency(tx.amount)}</td>
                                         <td className="px-2 py-2 text-center border-b border-slate-100">
                                             {matchedRule ? (
-                                                <button onClick={() => handleOpenExistingRule(matchedRule.id)} className="p-1 text-green-600 hover:scale-110 transition-transform flex flex-col items-center gap-0.5" title="Rule Applied Automatically">
+                                                <button onClick={() => handleOpenExistingRule(matchedRule.id, tx)} className="p-1 text-green-600 hover:scale-110 transition-transform flex flex-col items-center gap-0.5" title="Rule Applied Automatically">
                                                     <SparklesIcon className="w-3.5 h-3.5" />
                                                     <span className="text-[6px] font-black uppercase tracking-tighter">Applied</span>
                                                 </button>

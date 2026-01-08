@@ -153,6 +153,10 @@ const RuleModal: React.FC<RuleModalProps> = ({
         if (onSaveAndRun) onSaveAndRun(getRulePayload());
         else onSaveRule(getRulePayload());
     };
+
+    const hasMetadata = useMemo(() => {
+        return transaction && transaction.metadata && Object.keys(transaction.metadata).length > 0;
+    }, [transaction]);
     
     return (
         <div className="flex flex-col h-full bg-white overflow-hidden animate-fade-in">
@@ -190,17 +194,19 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                         {transaction.originalDescription || transaction.description}
                                     </p>
                                 </div>
-                                <button 
-                                    type="button" 
-                                    onClick={() => setShowMetadata(!showMetadata)}
-                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5"
-                                >
-                                    {showMetadata ? <CloseIcon className="w-3 h-3" /> : <InfoIcon className="w-3 h-3" />}
-                                    {showMetadata ? 'Hide Keys' : 'Inspect Meta'}
-                                </button>
+                                {hasMetadata && (
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setShowMetadata(!showMetadata)}
+                                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${showMetadata ? 'bg-indigo-600 text-white' : 'bg-white/10 hover:bg-white/20'}`}
+                                    >
+                                        {showMetadata ? <CloseIcon className="w-3 h-3" /> : <InfoIcon className="w-3 h-3" />}
+                                        {showMetadata ? 'Hide Keys' : 'Inspect Meta'}
+                                    </button>
+                                )}
                             </div>
 
-                            {showMetadata && transaction.metadata && (
+                            {showMetadata && hasMetadata && (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 animate-fade-in bg-black/20 p-4 rounded-2xl border border-white/5 shadow-inner">
                                     {Object.entries(transaction.metadata).map(([key, val]) => (
                                         <div key={key} className="bg-white/5 p-2 rounded-lg border border-white/5">
@@ -208,9 +214,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                             <p className="text-[10px] font-mono text-slate-300 truncate" title={String(val)}>{String(val)}</p>
                                         </div>
                                     ))}
-                                    {Object.keys(transaction.metadata).length === 0 && (
-                                        <p className="text-[10px] text-slate-500 italic p-4 col-span-full text-center">No metadata keys found for this reference.</p>
-                                    )}
                                 </div>
                             )}
                         </div>
