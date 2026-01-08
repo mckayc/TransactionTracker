@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo } from 'react';
 import type { ReconciliationRule, Category, Counterparty, Location, User, TransactionType, RuleImportDraft } from '../types';
-import { CheckCircleIcon, SlashIcon, ExclamationTriangleIcon, AddIcon, BoxIcon, TagIcon, MapPinIcon, UsersIcon, ShieldCheckIcon, CloseIcon, EditIcon } from './Icons';
+import { CheckCircleIcon, SlashIcon, ExclamationTriangleIcon, AddIcon, BoxIcon, TagIcon, MapPinIcon, UsersIcon, ShieldCheckIcon, CloseIcon, EditIcon, RepeatIcon } from './Icons';
 import { generateUUID } from '../utils';
 
 interface Props {
@@ -60,45 +61,69 @@ const RuleImportVerification: React.FC<Props> = ({
         for (const draft of selectedDrafts) {
             let finalRule = { ...draft };
 
-            if (draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
-                const normName = draft.suggestedCategoryName.toLowerCase().trim();
-                let catId = createdCats.get(normName);
-                if (!catId) {
-                    catId = generateUUID();
-                    const newCat: Category = { id: catId, name: draft.suggestedCategoryName.trim() };
-                    newCategories.push(newCat);
-                    createdCats.set(normName, catId);
-                }
-                finalRule.setCategoryId = catId;
-            }
+            // Logic to handle "Mergeable" rules
+            const existing = existingRules.find(r => r.name.toLowerCase() === draft.name.toLowerCase());
+            const isMergeCandidate = existing && 
+                (existing.setCategoryId === draft.setCategoryId || (draft.mappingStatus.category === 'match' && existing.setCategoryId === categories.find(c => c.name.toLowerCase() === draft.suggestedCategoryName?.toLowerCase())?.id));
 
-            if (draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
-                const normName = draft.suggestedCounterpartyName.toLowerCase().trim();
-                let cpId = createdCounterparties.get(normName);
-                if (!cpId) {
-                    cpId = generateUUID();
-                    const newCp: Counterparty = { id: cpId, name: draft.suggestedCounterpartyName.trim() };
-                    newCounterparties.push(newCp);
-                    createdCounterparties.set(normName, cpId);
+            if (isMergeCandidate && existing) {
+                // If the rule already exists and maps to the same category, merge the logic
+                // Merge conditions (simplified to assuming single text value merge for now)
+                const existingValues = existing.conditions.map(c => c.value).join(' || ');
+                const newValues = draft.conditions.map(c => c.value).join(' || ');
+                
+                // Construct a merged condition set
+                finalRule.id = existing.id; // Retain existing ID for overwrite/merge
+                finalRule.conditions = [{
+                    id: generateUUID(),
+                    type: 'basic',
+                    field: existing.conditions[0]?.field || 'description',
+                    operator: existing.conditions[0]?.operator || 'contains',
+                    value: `${existingValues} || ${newValues}`,
+                    nextLogic: 'AND'
+                }];
+            } else {
+                // Handle new entity creations only if not merging with an established identical rule
+                if (draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
+                    const normName = draft.suggestedCategoryName.toLowerCase().trim();
+                    let catId = createdCats.get(normName);
+                    if (!catId) {
+                        catId = generateUUID();
+                        const newCat: Category = { id: catId, name: draft.suggestedCategoryName.trim() };
+                        newCategories.push(newCat);
+                        createdCats.set(normName, catId);
+                    }
+                    finalRule.setCategoryId = catId;
                 }
-                finalRule.setCounterpartyId = cpId;
-            }
 
-            if (draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
-                const normName = draft.suggestedLocationName.toLowerCase().trim();
-                let locId = createdLocs.get(normName);
-                if (!locId) {
-                    locId = generateUUID();
-                    const newLoc: Location = { id: locId, name: draft.suggestedLocationName.trim() };
-                    newLocations.push(newLoc);
-                    createdLocs.set(normName, locId);
+                if (draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
+                    const normName = draft.suggestedCounterpartyName.toLowerCase().trim();
+                    let cpId = createdCounterparties.get(normName);
+                    if (!cpId) {
+                        cpId = generateUUID();
+                        const newCp: Counterparty = { id: cpId, name: draft.suggestedCounterpartyName.trim() };
+                        newCounterparties.push(newCp);
+                        createdCounterparties.set(normName, cpId);
+                    }
+                    finalRule.setCounterpartyId = cpId;
                 }
-                finalRule.setLocationId = locId;
-            }
 
-            if (draft.mappingStatus.type === 'create' && draft.suggestedTypeName) {
-                const matchedType = transactionTypes.find(t => t.name.toLowerCase() === draft.suggestedTypeName?.toLowerCase());
-                if (matchedType) finalRule.setTransactionTypeId = matchedType.id;
+                if (draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
+                    const normName = draft.suggestedLocationName.toLowerCase().trim();
+                    let locId = createdLocs.get(normName);
+                    if (!locId) {
+                        locId = generateUUID();
+                        const newLoc: Location = { id: locId, name: draft.suggestedLocationName.trim() };
+                        newLocations.push(newLoc);
+                        createdLocs.set(normName, locId);
+                    }
+                    finalRule.setLocationId = locId;
+                }
+
+                if (draft.mappingStatus.type === 'create' && draft.suggestedTypeName) {
+                    const matchedType = transactionTypes.find(t => t.name.toLowerCase() === draft.suggestedTypeName?.toLowerCase());
+                    if (matchedType) finalRule.setTransactionTypeId = matchedType.id;
+                }
             }
 
             const { isSelected, mappingStatus, suggestedCategoryName, suggestedCounterpartyName, suggestedLocationName, suggestedTypeName, suggestedTags, ...cleanRule } = finalRule as any;
@@ -112,7 +137,7 @@ const RuleImportVerification: React.FC<Props> = ({
         onFinalize(finalizedRules);
     };
 
-    const existingNames = useMemo(() => new Set(existingRules.map(r => r.name.toLowerCase())), [existingRules]);
+    const existingNames = useMemo(() => new Map(existingRules.map(r => [r.name.toLowerCase(), r])), [existingRules]);
 
     const stats = useMemo(() => {
         const sel = drafts.filter(d => d.isSelected);
@@ -126,9 +151,18 @@ const RuleImportVerification: React.FC<Props> = ({
                 if (d.mappingStatus.location === 'create') count++;
                 return acc + count;
             }, 0),
-            collisions: sel.filter(d => existingNames.has(d.name.toLowerCase())).length
+            collisions: sel.filter(d => {
+                const ex = existingNames.get(d.name.toLowerCase());
+                // True conflict only if name matches but targets differ
+                return ex && ex.setCategoryId !== d.setCategoryId;
+            }).length,
+            merges: sel.filter(d => {
+                const ex = existingNames.get(d.name.toLowerCase());
+                // Merge candidate if name matches AND target matches
+                return ex && (ex.setCategoryId === d.setCategoryId || d.suggestedCategoryName?.toLowerCase() === categories.find(c => c.id === ex.setCategoryId)?.name.toLowerCase());
+            }).length
         };
-    }, [drafts, existingNames]);
+    }, [drafts, existingNames, categories]);
 
     return (
         <div className="flex flex-col h-full space-y-4">
@@ -142,6 +176,12 @@ const RuleImportVerification: React.FC<Props> = ({
                         <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-0.5">New Entities</p>
                         <p className="text-2xl font-black text-emerald-400">+{stats.newEntities}</p>
                     </div>
+                    {stats.merges > 0 && (
+                         <div className="border-l border-white/10 pl-6">
+                            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Auto-Merges</p>
+                            <p className="text-2xl font-black text-indigo-400">{stats.merges}</p>
+                        </div>
+                    )}
                     {stats.collisions > 0 && (
                         <div className="border-l border-white/10 pl-6">
                             <p className="text-[9px] font-black text-amber-400 uppercase tracking-widest mb-0.5">Conflicts</p>
@@ -169,7 +209,10 @@ const RuleImportVerification: React.FC<Props> = ({
                         </thead>
                         <tbody className="divide-y divide-slate-200 bg-white">
                             {drafts.map(d => {
-                                const isCollision = existingNames.has(d.name.toLowerCase());
+                                const existingRule = existingNames.get(d.name.toLowerCase());
+                                const isMergeCandidate = existingRule && (existingRule.setCategoryId === d.setCategoryId || d.suggestedCategoryName?.toLowerCase() === categories.find(c => c.id === existingRule.setCategoryId)?.name.toLowerCase());
+                                const isCollision = existingRule && !isMergeCandidate;
+
                                 return (
                                     <tr key={d.id} className={`${d.isSelected ? '' : 'opacity-40 grayscale'} hover:bg-slate-50 transition-all`}>
                                         <td className="p-1.5 text-center border-b border-slate-100"><input type="checkbox" checked={d.isSelected} onChange={() => toggleSelection(d.id)} className="rounded text-indigo-600 h-3 w-3" /></td>
@@ -179,15 +222,19 @@ const RuleImportVerification: React.FC<Props> = ({
                                                     type="text" 
                                                     value={d.name} 
                                                     onChange={e => updateDraftField(d.id, 'name', e.target.value)}
-                                                    className={`w-full bg-transparent border-none focus:ring-1 focus:ring-indigo-500 rounded p-0.5 font-bold text-[10px] ${isCollision ? 'text-amber-600' : 'text-slate-800'}`}
+                                                    className={`w-full bg-transparent border-none focus:ring-1 focus:ring-indigo-500 rounded p-0.5 font-bold text-[10px] ${isCollision ? 'text-amber-600' : isMergeCandidate ? 'text-indigo-600' : 'text-slate-800'}`}
                                                 />
                                                 <EditIcon className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 text-slate-300 opacity-0 group-hover:opacity-100 pointer-events-none" />
                                             </div>
-                                            {isCollision && (
+                                            {isCollision ? (
                                                 <p className="text-[7px] font-black text-amber-500 uppercase mt-0.5 flex items-center gap-0.5">
                                                     <ExclamationTriangleIcon className="w-1.5 h-1.5" /> Conflict
                                                 </p>
-                                            )}
+                                            ) : isMergeCandidate ? (
+                                                <p className="text-[7px] font-black text-indigo-500 uppercase mt-0.5 flex items-center gap-0.5">
+                                                    <RepeatIcon className="w-1.5 h-1.5" /> Logical Merge
+                                                </p>
+                                            ) : null}
                                         </td>
                                         <td className="px-3 py-1.5 border-b border-slate-100">
                                             <select 
