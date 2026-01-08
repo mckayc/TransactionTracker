@@ -519,6 +519,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                         <div className={`p-2 rounded-full ${
                             notification.type === 'success' ? 'bg-emerald-50' :
                             notification.type === 'warning' ? 'bg-amber-50' :
+                            notification.type === 'info' ? 'bg-indigo-50' :
                             'bg-indigo-50'
                         }`}>
                             {notification.type === 'success' ? <CheckCircleIcon className="w-5 h-5 text-emerald-600" /> : 
