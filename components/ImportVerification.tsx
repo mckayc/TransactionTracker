@@ -1,10 +1,9 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Counterparty, User, Transaction, ReconciliationRule, Tag, Location } from '../types';
 import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
-import RuleModal from '../views/RuleModal';
+import RuleModal from './RuleModal';
 import { generateUUID } from '../utils';
 import SearchableSelect from './SearchableSelect';
 import EntityModal from './EntityModal';
@@ -255,6 +254,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                         setTransactions(updated as VerifiableTransaction[]);
                         setIsRuleModalOpen(false);
                     }}
+                    existingRules={rules}
                 />
             )}
 
