@@ -303,6 +303,8 @@ const App: React.FC = () => {
                             onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction}
                             onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)}
                             onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders)}
+                            ruleCategories={ruleCategories}
+                            onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories)}
                         />
                     )}
                     {currentView === 'transactions' && (
