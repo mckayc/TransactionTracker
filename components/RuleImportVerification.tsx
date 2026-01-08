@@ -280,6 +280,7 @@ const RuleImportVerification: React.FC<Props> = ({
                                                         value={d.suggestedCategoryName || ''}
                                                         onChange={e => updateDraftField(d.id, 'suggestedCategoryName', e.target.value)}
                                                         placeholder="CAT"
+                                                        title="Target Category Mapping"
                                                     />
                                                 )}
                                                 {d.suggestedCounterpartyName !== undefined && (
@@ -288,6 +289,7 @@ const RuleImportVerification: React.FC<Props> = ({
                                                         value={d.suggestedCounterpartyName || ''}
                                                         onChange={e => updateDraftField(d.id, 'suggestedCounterpartyName', e.target.value)}
                                                         placeholder="ENTITY"
+                                                        title="Target Counterparty/Entity Mapping"
                                                     />
                                                 )}
                                                 {d.suggestedLocationName !== undefined && (
@@ -296,6 +298,7 @@ const RuleImportVerification: React.FC<Props> = ({
                                                         value={d.suggestedLocationName || ''}
                                                         onChange={e => updateDraftField(d.id, 'suggestedLocationName', e.target.value)}
                                                         placeholder="LOC"
+                                                        title="Target Location Mapping"
                                                     />
                                                 )}
                                                 {d.skipImport && (

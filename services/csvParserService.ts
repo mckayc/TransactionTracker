@@ -15,6 +15,7 @@ export const generateRuleTemplate = (): string => {
         'Match Field',
         'Operator',
         'Match Value',
+        'Set Description',
         'Set Category',
         'Set Counterparty',
         'Set Location',
@@ -25,14 +26,14 @@ export const generateRuleTemplate = (): string => {
     ];
 
     const examples = [
-        ['Example1 - Category Descriptions', 'Description', 'description', 'contains', 'STARBUCKS || PEETS', 'Dining', 'Starbucks', '', 'Purchase', '', 'coffee;morning', 'false'],
-        ['Example2 - Category Users', 'User', 'description', 'contains', 'VERIZON', 'Utilities', 'Verizon Wireless', '', 'Purchase', 'Primary User', 'personal;monthly', 'false'],
-        ['Example3 - Category Location', 'Location', 'description', 'contains', 'SAFEWAY', 'Groceries', 'Safeway', 'Seattle, WA', 'Purchase', '', 'food;local', 'false'],
-        ['Example4 - Category Location', 'Location', 'description', 'contains', 'WHOLEFOODS', 'Groceries', 'Whole Foods', 'New York, NY', 'Purchase', '', 'organic', 'false'],
-        ['Example5 - Category Location', 'Location', 'description', 'contains', 'KROGER', 'Groceries', 'Kroger', 'Austin, TX', 'Purchase', '', 'supplies', 'false'],
-        ['Example6 - Global High Value', 'All', 'amount', 'greater_than', '5000', 'Capital Expenditure', '', '', 'Investment', '', 'high-value;audit', 'false'],
-        ['Example7 - Ignore Spam Fees', 'Other', 'amount', 'less_than', '0.50', '', '', '', '', '', '', 'true'],
-        ['Example8 - Description Match', 'Description', 'description', 'starts_with', 'AMZN MKTP', 'Software Subscription', 'Amazon Web Services', '', 'Purchase', '', 'saas;aws', 'false']
+        ['Example1 - Category Descriptions', 'Description', 'description', 'contains', 'STARBUCKS || PEETS', 'Starbucks Coffee', 'Dining', 'Starbucks', '', 'Purchase', '', 'coffee;morning', 'false'],
+        ['Example2 - Category Users', 'User', 'description', 'contains', 'VERIZON', 'Verizon Wireless Bill', 'Utilities', 'Verizon Wireless', '', 'Purchase', 'Primary User', 'personal;monthly', 'false'],
+        ['Example3 - Category Location', 'Location', 'description', 'contains', 'SAFEWAY', 'Safeway Grocery', 'Groceries', 'Safeway', 'Seattle, WA', 'Purchase', '', 'food;local', 'false'],
+        ['Example4 - Category Location', 'Location', 'description', 'contains', 'WHOLEFOODS', 'Whole Foods Market', 'Groceries', 'Whole Foods', 'New York, NY', 'Purchase', '', 'organic', 'false'],
+        ['Example5 - Category Location', 'Location', 'description', 'contains', 'KROGER', 'Kroger', 'Groceries', 'Kroger', 'Austin, TX', 'Purchase', '', 'supplies', 'false'],
+        ['Example6 - Global High Value', 'All', 'amount', 'greater_than', '5000', '', 'Capital Expenditure', '', '', 'Investment', '', 'high-value;audit', 'false'],
+        ['Example7 - Ignore Spam Fees', 'Other', 'amount', 'less_than', '0.50', '', '', '', '', '', '', '', 'true'],
+        ['Example8 - Description Match', 'Description', 'description', 'starts_with', 'AMZN MKTP', 'Amazon Web Services', 'Software Subscription', 'Amazon Web Services', '', 'Purchase', '', 'saas;aws', 'false']
     ];
 
     const rows = [headers, ...examples];
@@ -74,6 +75,7 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         field: header.findIndex(h => h === 'match field' || h === 'field'),
         operator: header.findIndex(h => h === 'operator'),
         value: header.findIndex(h => h === 'match value' || h === 'value'),
+        setDesc: header.findIndex(h => h === 'set description' || h === 'display description' || h === 'clean description'),
         setCategory: header.findIndex(h => h === 'set category' || h === 'category match'),
         setPayee: header.findIndex(h => h === 'set payee' || h === 'payee' || h === 'merchant' || h === 'counterparty'),
         setCounterparty: header.findIndex(h => h === 'set counterparty' || h === 'counterparty'),
@@ -120,6 +122,7 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
             name: parts[colMap.name] || `Imported Rule ${i}`,
             ruleCategory: parts[colMap.category] || 'Other',
             conditions: conditions,
+            setDescription: colMap.setDesc > -1 ? parts[colMap.setDesc] : undefined,
             suggestedCategoryName: parts[colMap.setCategory],
             suggestedCounterpartyName: parts[colMap.setCounterparty] || parts[colMap.setPayee],
             suggestedLocationName: parts[colMap.setLocation],
