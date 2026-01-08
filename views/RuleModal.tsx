@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
 import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon } from '../components/Icons';
@@ -178,6 +177,47 @@ const RuleModal: React.FC<RuleModalProps> = ({
             </div>
             
              <form onSubmit={handleSave} className="flex-1 p-8 space-y-10 overflow-y-auto bg-slate-50/20 custom-scrollbar pb-24">
+                {/* SOURCE CONTEXT PANEL */}
+                {transaction && (
+                    <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden">
+                        <div className="relative z-10 space-y-6">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 flex items-center gap-2">
+                                        <DatabaseIcon className="w-3 h-3" /> Source Entry Reference
+                                    </h4>
+                                    <p className="text-lg font-black tracking-tight leading-tight">
+                                        {transaction.originalDescription || transaction.description}
+                                    </p>
+                                </div>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowMetadata(!showMetadata)}
+                                    className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5"
+                                >
+                                    {showMetadata ? <CloseIcon className="w-3 h-3" /> : <InfoIcon className="w-3 h-3" />}
+                                    {showMetadata ? 'Hide Keys' : 'Inspect Meta'}
+                                </button>
+                            </div>
+
+                            {showMetadata && transaction.metadata && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 animate-fade-in bg-black/20 p-4 rounded-2xl border border-white/5 shadow-inner">
+                                    {Object.entries(transaction.metadata).map(([key, val]) => (
+                                        <div key={key} className="bg-white/5 p-2 rounded-lg border border-white/5">
+                                            <p className="text-[8px] font-black text-indigo-300 uppercase tracking-widest truncate">{key}</p>
+                                            <p className="text-[10px] font-mono text-slate-300 truncate" title={String(val)}>{String(val)}</p>
+                                        </div>
+                                    ))}
+                                    {Object.keys(transaction.metadata).length === 0 && (
+                                        <p className="text-[10px] text-slate-500 italic p-4 col-span-full text-center">No metadata keys found for this reference.</p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        <SparklesIcon className="absolute -right-8 -top-8 w-48 h-48 opacity-[0.03] text-indigo-400 pointer-events-none" />
+                    </div>
+                )}
+
                 <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm relative">
                     {isExistingRule && !isCollision && (
                         <div className="absolute -top-3 right-8 px-3 py-1 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-full border border-indigo-200 flex items-center gap-1 shadow-sm">
@@ -240,7 +280,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                 <SearchableSelect label="Set Category" options={categories} value={setCategoryId} onChange={setSetCategoryId} isHierarchical onAddNew={() => setQuickAddType('categories')} />
                                 <SearchableSelect label="Set Counterparty" options={counterparties} value={setCounterpartyId} onChange={setSetCounterpartyId} isHierarchical onAddNew={() => setQuickAddType('counterparties')} />
-                                {/* Fix: pass setSetUserId (function) instead of setUserId (string) to onChange */}
                                 <SearchableSelect label="Assign User" options={users} value={setUserId} onChange={setSetUserId} onAddNew={() => setQuickAddType('users')} />
                                 <SearchableSelect label="Assign Location" options={locations} value={setLocationId} onChange={setSetLocationId} onAddNew={() => setQuickAddType('locations')} />
                                 <SearchableSelect label="Change Tx Type" options={transactionTypes} value={setTransactionTypeId} onChange={setSetTransactionTypeId} onAddNew={() => setQuickAddType('transactionTypes')} />

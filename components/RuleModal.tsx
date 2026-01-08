@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
 import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon } from './Icons';
@@ -185,8 +184,8 @@ const RuleModal: React.FC<RuleModalProps> = ({
             </div>
             
              <form onSubmit={handleSave} className="flex-1 p-8 space-y-10 overflow-y-auto bg-slate-50/20 custom-scrollbar pb-24">
-                {/* SOURCE CONTEXT PANEL */}
-                {transaction && !isExistingRule && (
+                {/* SOURCE CONTEXT PANEL - Now visible even for existing rules if context is passed */}
+                {transaction && (
                     <div className="bg-slate-900 rounded-[2rem] p-6 text-white shadow-xl relative overflow-hidden">
                         <div className="relative z-10 space-y-6">
                             <div className="flex justify-between items-start">
@@ -216,9 +215,13 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                             <p className="text-[10px] font-mono text-slate-300 truncate" title={String(val)}>{String(val)}</p>
                                         </div>
                                     ))}
+                                    {Object.keys(transaction.metadata).length === 0 && (
+                                        <p className="text-[10px] text-slate-500 italic p-4 col-span-full text-center">No metadata keys found for this reference.</p>
+                                    )}
                                 </div>
                             )}
                         </div>
+                        <SparklesIcon className="absolute -right-8 -top-8 w-48 h-48 opacity-[0.03] text-indigo-400 pointer-events-none" />
                     </div>
                 )}
 
@@ -286,7 +289,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                 <SearchableSelect label="Set Counterparty" options={counterparties} value={setCounterpartyId} onChange={setSetCounterpartyId} isHierarchical onAddNew={() => setQuickAddType('counterparties')} />
                                 <SearchableSelect label="Assign User" options={users} value={setUserId} onChange={setSetUserId} onAddNew={() => setQuickAddType('users')} />
                                 <SearchableSelect label="Assign Location" options={locations} value={setLocationId} onChange={setSetLocationId} onAddNew={() => setQuickAddType('locations')} />
-                                {/* Fix: pass setSetTransactionTypeId (function) instead of setTransactionTypeId (string) to onChange */}
                                 <SearchableSelect label="Change Tx Type" options={transactionTypes} value={setTransactionTypeId} onChange={setSetTransactionTypeId} onAddNew={() => setQuickAddType('transactionTypes')} />
 
                                 <div className="col-span-1 md:col-span-3 pt-6 border-t border-slate-100">
