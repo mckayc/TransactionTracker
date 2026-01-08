@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, BusinessNote, Location, AccountType, AiConfig } from '../types';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, BusinessNote, Location, AccountType, AiConfig, BackupConfig } from '../types';
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, BugIcon, RepeatIcon, PlayIcon, MapPinIcon, UsersIcon, StethoscopeIcon, TrashIcon, CopyIcon, DatabaseIcon, ChevronDownIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
@@ -109,6 +109,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [diagnostics, setDiagnostics] = useState<any>(null);
     const [isDiagnosing, setIsDiagnosing] = useState(false);
     const [copyState, setCopyState] = useState<'idle' | 'success' | 'error'>('idle');
+
+    // Backup Settings Local State
+    const [backupFreq, setBackupFreq] = useState<BackupConfig['frequency']>(systemSettings.backupConfig?.frequency || 'never');
+    const [retentionCount, setRetentionCount] = useState(systemSettings.backupConfig?.retentionCount || 5);
 
     const runDiagnostics = async () => {
         setIsDiagnosing(true);
@@ -227,24 +231,27 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         onUpdateSystemSettings({ ...systemSettings, aiConfig: next });
     };
 
+    const handleUpdateBackupSettings = (freq: BackupConfig['frequency'], count: number) => {
+        setBackupFreq(freq);
+        setRetentionCount(count);
+        onUpdateSystemSettings({
+            ...systemSettings,
+            backupConfig: {
+                frequency: freq,
+                retentionCount: count,
+                lastBackupDate: systemSettings.backupConfig?.lastBackupDate
+            }
+        });
+    };
+
     const [exportSelection, setExportSelection] = useState<Set<string>>(new Set(Object.keys(ENTITY_LABELS)));
     const [purgeSelection, setPurgeSelection] = useState<Set<string>>(new Set());
 
     const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
     const [restoreData, setRestoreData] = useState<any>(null);
-    const [restoreSelection, setRestoreSelection] = useState<Set<string>>(new Set());
+    const [restoreSelection, setRestoreSelection] = Set<string>(new Set());
     
     const [isPurging, setIsPurging] = useState(false);
-    
-    const [backupFreq, setBackupFreq] = useState<'daily' | 'weekly' | 'monthly' | 'never'>('never');
-    const [retentionCount, setRetentionCount] = useState(5);
-
-    useEffect(() => {
-        if (systemSettings.backupConfig) {
-            setBackupFreq(systemSettings.backupConfig.frequency);
-            setRetentionCount(systemSettings.backupConfig.retentionCount);
-        }
-    }, [systemSettings]);
 
     const dataHealthSummary = useMemo(() => {
         const totalSize = businessDocuments.reduce((acc, doc) => acc + (doc.size || 0), 0);
@@ -404,16 +411,56 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
             </Section>
 
-            <Section title="Maintenance Hub" variant="info">
+            <Section title="Institutional Continuity" variant="info">
+                <div className="bg-indigo-50 p-8 rounded-[2.5rem] border-2 border-indigo-100 flex flex-col md:flex-row items-center gap-8 shadow-inner">
+                    <div className="p-5 bg-indigo-600 rounded-[1.5rem] text-white shadow-xl shadow-indigo-200"><ShieldCheckIcon className="w-10 h-10" /></div>
+                    <div className="flex-1">
+                        <h3 className="text-2xl font-black text-indigo-900">Automated Preservation</h3>
+                        <p className="text-sm text-indigo-700 mt-1 max-w-lg leading-relaxed">Ensure system durability by enabling scheduled snapshots. Backups are stored locally in your <code>/app/data/config</code> directory.</p>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Schedule Frequency</label>
+                                <select 
+                                    value={backupFreq} 
+                                    onChange={e => handleUpdateBackupSettings(e.target.value as any, retentionCount)}
+                                    className="w-full font-bold text-sm bg-white border-indigo-200 text-indigo-900"
+                                >
+                                    <option value="daily">Daily Snapshot</option>
+                                    <option value="weekly">Weekly Preservation</option>
+                                    <option value="monthly">Monthly Archive</option>
+                                    <option value="never">Manual Preservation Only</option>
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Retention Threshold</label>
+                                <div className="flex items-center gap-3">
+                                    <input 
+                                        type="number" 
+                                        min="1" 
+                                        max="50" 
+                                        value={retentionCount} 
+                                        onChange={e => handleUpdateBackupSettings(backupFreq, parseInt(e.target.value) || 1)}
+                                        className="w-24 font-bold text-sm bg-white border-indigo-200 text-indigo-900" 
+                                    />
+                                    <span className="text-xs text-indigo-600 font-medium">Historical Versions</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </Section>
+
+            <Section title="Maintenance Hub">
                 <div className="space-y-6">
-                    <div className="flex flex-col md:flex-row items-start gap-6 p-6 bg-indigo-50 border-2 border-indigo-100 rounded-[2.5rem] shadow-inner">
-                        <div className="p-5 bg-indigo-600 rounded-[1.5rem] text-white shadow-xl shadow-indigo-200"><StethoscopeIcon className="w-10 h-10" /></div>
+                    <div className="flex flex-col md:flex-row items-start gap-6 p-6 bg-slate-50 border border-slate-200 rounded-[2.5rem] shadow-sm">
+                        <div className="p-5 bg-slate-800 rounded-[1.5rem] text-white shadow-xl"><StethoscopeIcon className="w-10 h-10" /></div>
                         <div className="flex-1">
-                            <h3 className="text-xl font-black text-indigo-900">System Doctor & Diagnostics</h3>
-                            <p className="text-sm text-indigo-700 mt-1 leading-relaxed">Probe the SQLite engine. If features fail, use Force Repair to normalize column names and consolidate legacy tables.</p>
+                            <h3 className="text-xl font-black text-slate-800">System Doctor & Diagnostics</h3>
+                            <p className="text-sm text-slate-600 mt-1 leading-relaxed">Probe the SQLite engine. If features fail, use Force Repair to normalize column names and consolidate legacy tables.</p>
                             <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
                                 {diagnostics?.tables?.map((t: any) => (
-                                    <div key={t.table} className={`p-3 rounded-xl border flex flex-col gap-1 ${t.rowCount > 0 ? 'bg-white border-indigo-200' : 'bg-red-50 border-red-200 animate-pulse'}`}>
+                                    <div key={t.table} className={`p-3 rounded-xl border flex flex-col gap-1 ${t.rowCount > 0 ? 'bg-white border-slate-200' : 'bg-red-50 border-red-200 animate-pulse'}`}>
                                         <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{t.table}</p>
                                         <p className={`text-lg font-black ${t.rowCount > 0 ? 'text-indigo-600' : 'text-red-600'}`}>{t.rowCount}</p>
                                         <p className="text-[8px] font-bold text-slate-400 uppercase">Records</p>
@@ -425,7 +472,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             <button onClick={handleRepairSystem} disabled={isRepairing} className="w-full px-8 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50">
                                 {isRepairing ? <RepeatIcon className="w-4 h-4 animate-spin" /> : <PlayIcon className="w-4 h-4" />} Force Repair
                             </button>
-                            <button onClick={copySupportManifesto} disabled={isDiagnosing} className={`w-full px-8 py-3 font-black rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm border ${copyState === 'success' ? 'bg-emerald-500 border-emerald-600 text-white' : copyState === 'error' ? 'bg-red-500 border-red-600 text-white' : 'bg-white border-indigo-200 text-indigo-700 hover:bg-indigo-50'}`}>
+                            <button onClick={copySupportManifesto} disabled={isDiagnosing} className={`w-full px-8 py-3 font-black rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm border ${copyState === 'success' ? 'bg-emerald-500 border-emerald-600 text-white' : copyState === 'error' ? 'bg-red-500 border-red-600 text-white' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}>
                                 {copyState === 'success' ? <CheckCircleIcon className="w-4 h-4" /> : copyState === 'error' ? <ExclamationTriangleIcon className="w-4 h-4" /> : <CopyIcon className="w-4 h-4" />} {copyState === 'success' ? 'Copied!' : copyState === 'error' ? 'Failed' : 'Copy Manifesto'}
                             </button>
                         </div>
@@ -433,7 +480,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 </div>
             </Section>
 
-            <Section title="Data Management & Backup">
+            <Section title="Manual Data Export">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                     <div className="space-y-6">
                         <div className="flex items-center gap-3 border-b border-slate-100 pb-3"><DownloadIcon className="w-6 h-6 text-indigo-600" /><h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Institutional Export</h3></div>

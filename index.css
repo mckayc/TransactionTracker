@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Global Light Scheme Enforcement for UI Elements */
+/* Force light color-scheme on inputs to fix black dropdown artifacts */
 input, select, textarea {
   color-scheme: light !important;
 }

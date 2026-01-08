@@ -194,6 +194,9 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                             <p className="text-[10px] font-mono text-slate-300 truncate" title={String(val)}>{String(val)}</p>
                                         </div>
                                     ))}
+                                    {Object.keys(transaction.metadata).length === 0 && (
+                                        <p className="text-[10px] text-slate-500 italic p-4 col-span-full text-center">No metadata keys found for this record.</p>
+                                    )}
                                 </div>
                             )}
                         </div>
