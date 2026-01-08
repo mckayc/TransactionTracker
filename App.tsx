@@ -294,6 +294,9 @@ const App: React.FC = () => {
                             onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules)}
                             onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
                             onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
+                            // Pass missing onSaveLocation and onSaveUser to ImportPage
+                            onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations)}
+                            onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
                             onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
                             onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
                             onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction}
@@ -368,7 +371,7 @@ const App: React.FC = () => {
                             onSaveTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
                             onDeleteTransactionType={(id) => setTransactionTypes(prev => { const next = prev.filter(t => t && t.id !== id); api.save('transactionTypes', next).catch(console.error); return next; })}
                             onSaveAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes)}
-                            onDeleteAccountType={(id) => setAccountTypes(prev => { const next = prev.filter(t => t && t.id !== id); api.save('accountTypes', next).catch(console.error); return next; })}
+                            onDeleteAccountType={(id) => setAccountTypes(prev => { const next = prev.filter(at => at && at.id !== id); api.save('accountTypes', next).catch(console.error); return next; })}
                         />
                     )}
                     {currentView === 'reports' && (

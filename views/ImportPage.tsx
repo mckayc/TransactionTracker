@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
@@ -35,6 +36,9 @@ interface ImportPageProps {
   onSaveRule: (rule: ReconciliationRule) => void;
   onSaveCategory: (category: Category) => void;
   onSaveCounterparty: (p: Counterparty) => void;
+  // Added missing onSaveLocation and onSaveUser props to interface
+  onSaveLocation: (location: Location) => void;
+  onSaveUser: (user: User) => void;
   onSaveTag: (tag: Tag) => void;
   onAddTransactionType: (type: TransactionType) => void;
   onUpdateTransaction: (transaction: Transaction) => void;
@@ -42,7 +46,10 @@ interface ImportPageProps {
 }
 
 const ImportPage: React.FC<ImportPageProps> = ({ 
-    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, counterparties, locations, users, transactionTypes, accountTypes, onSaveCategory, onSaveCounterparty, onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule, onAddAccount 
+    onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, counterparties, locations, users, transactionTypes, accountTypes, onSaveCategory, onSaveCounterparty, 
+    // Destructure new props
+    onSaveLocation, onSaveUser,
+    onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule, onAddAccount 
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -346,7 +353,8 @@ const ImportPage: React.FC<ImportPageProps> = ({
             <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
                 {appState === 'verifying_import' ? (
                     <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                        <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} counterparties={counterparties} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
+                        {/* Pass onSaveLocation and onSaveUser to ImportVerification */}
+                        <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} counterparties={counterparties} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} />
                     </div>
                 ) : appState === 'post_import_edit' ? (
                     <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-0 h-full">
