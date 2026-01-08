@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon } from './Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
 import SearchableSelect from './SearchableSelect';
@@ -50,19 +50,29 @@ const RuleModal: React.FC<RuleModalProps> = ({
     // Entity Quick Add State
     const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
 
+    // Determines if this is a collision with OTHER rules.
     const isDuplicateName = useMemo(() => {
         const trimmed = name.trim().toLowerCase();
         if (!trimmed) return false;
+        // Check if another rule (different ID) has this name
         return existingRules.some(r => r.name.toLowerCase() === trimmed && r.id !== ruleId);
     }, [name, existingRules, ruleId]);
+
+    const isExistingRule = useMemo(() => {
+        if (!ruleId) return false;
+        return existingRules.some(r => r.id === ruleId);
+    }, [ruleId, existingRules]);
 
     useEffect(() => {
         if (isOpen) {
             if (transaction) {
                 const ctx = transaction as any;
-                const isExistingRule = !!existingRules.find(r => r.id === ctx.id);
                 
-                setRuleId(isExistingRule ? ctx.id : generateUUID());
+                // If the transaction object has an ID that matches a system rule, or is an explicit ID
+                const potentialId = ctx.id && ctx.id !== 'temp-context' ? ctx.id : null;
+                const matchInSystem = potentialId ? existingRules.find(r => r.id === potentialId) : null;
+                
+                setRuleId(potentialId || generateUUID());
                 setName(ctx.name || (ctx.description ? `${ctx.description} Rule` : ''));
                 
                 const newConditions: RuleCondition[] = ctx.conditions ? [...ctx.conditions] : [
@@ -155,9 +165,12 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                     <button type="button" onClick={onClose} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200">Reset</button>
-                    <button onClick={handleSave} disabled={isDuplicateName || !name.trim()} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-700 text-white rounded-xl shadow-md disabled:opacity-30">Apply</button>
+                    <button onClick={handleSave} disabled={isDuplicateName || !name.trim()} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-700 text-white rounded-xl shadow-md disabled:opacity-30">
+                        {isExistingRule ? 'Overwrite' : 'Apply'}
+                    </button>
                     <button onClick={handleSaveAndRun} disabled={isDuplicateName || !name.trim()} className="px-8 py-2.5 text-xs font-black uppercase bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 flex items-center gap-2 disabled:opacity-30">
-                        <PlayIcon className="w-4 h-4" /> Commit & Execute
+                        <PlayIcon className="w-4 h-4" /> 
+                        {isExistingRule ? 'Update & Execute' : 'Commit & Execute'}
                     </button>
                 </div>
             </div>
@@ -204,7 +217,12 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     </div>
                 )}
 
-                <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm relative">
+                    {isExistingRule && (
+                        <div className="absolute -top-3 right-8 px-3 py-1 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded-full border border-amber-200 flex items-center gap-1 shadow-sm">
+                            <ShieldCheckIcon className="w-2.5 h-2.5" /> Logical Revision
+                        </div>
+                    )}
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Administrative Identity</label>
                     <input 
                         type="text" 
@@ -216,7 +234,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     />
                     {isDuplicateName && (
                         <p className="text-red-500 text-[10px] font-black uppercase tracking-tight mt-2 flex items-center gap-1">
-                            <ExclamationTriangleIcon className="w-3 h-3" /> This identity is already registered in the ledger logic.
+                            <ExclamationTriangleIcon className="w-3 h-3" /> This identity is already registered to a different ledger rule.
                         </p>
                     )}
                 </div>

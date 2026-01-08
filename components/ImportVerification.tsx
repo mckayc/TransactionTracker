@@ -98,7 +98,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const handleOpenExistingRule = (ruleId: string) => {
         const rule = ruleMap.get(ruleId);
         if (rule) {
-            setRuleTransactionContext({ ...rule, id: 'temp-context', description: rule.conditions[0]?.value || '' } as any);
+            // FIX: Pass the actual rule ID so the Modal recognizes it's an edit of an existing record
+            setRuleTransactionContext({ ...rule, id: rule.id, description: rule.conditions[0]?.value || '' } as any);
             setIsRuleModalOpen(true);
         }
     };
