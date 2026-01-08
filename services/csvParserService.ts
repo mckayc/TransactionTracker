@@ -6,6 +6,7 @@ declare const pdfjsLib: any;
 
 /**
  * Returns a CSV template string for rule imports with rich examples for AI/Users.
+ * Updated to include all filter scopes as examples.
  */
 export const generateRuleTemplate = (): string => {
     const headers = [
@@ -24,11 +25,12 @@ export const generateRuleTemplate = (): string => {
     ];
 
     const examples = [
-        ['Starbucks Morning', 'Dining', 'description', 'contains', 'STARBUCKS', 'Dining & Drinks', 'Starbucks', 'Seattle', 'Purchase', 'Primary User', 'coffee;morning', 'false'],
-        ['Amazon Cloud Services', 'Business', 'description', 'starts_with', 'AMZN MKTP', 'Software Subscription', 'Amazon Web Services', 'Cloud', 'Purchase', 'Primary User', 'saas;aws', 'false'],
-        ['Internal Salary Transfer', 'Transfer', 'description', 'contains', 'PAYROLL || SALARY', 'Income', 'Employer Corp', '', 'Income', 'Primary User', 'work;salary', 'false'],
-        ['Ignore Spam Fees', 'System', 'amount', 'less_than', '0.50', '', '', '', '', '', '', 'true'],
-        ['High Value Tech', 'Assets', 'amount', 'greater_than', '1000', 'Electronics', 'Apple Store', '', 'Investment', 'Primary User', 'asset;hardware', 'false']
+        ['Global High Value', 'all', 'amount', 'greater_than', '5000', 'Capital Expenditure', '', '', 'Investment', '', 'high-value;audit', 'false'],
+        ['Coffee Shop Rule', 'description', 'description', 'contains', 'STARBUCKS || PEETS', 'Dining', 'Starbucks', 'Seattle', 'Purchase', 'Primary User', 'coffee;morning', 'false'],
+        ['Amazon Cloud Services', 'counterpartyId', 'description', 'starts_with', 'AMZN MKTP', 'Software Subscription', 'Amazon Web Services', 'Cloud', 'Purchase', 'Primary User', 'saas;aws', 'false'],
+        ['Local Grocery Tax', 'locationId', 'amount', 'less_than', '5', 'Groceries', 'Whole Foods', 'New York', 'Purchase', '', 'tax-deductible', 'false'],
+        ['Personal Phone Bill', 'userId', 'description', 'contains', 'VERIZON', 'Utilities', 'Verizon Wireless', '', 'Purchase', 'Primary User', 'personal;monthly', 'false'],
+        ['Ignore Spam Fees', 'all', 'amount', 'less_than', '0.50', '', '', '', '', '', '', 'true']
     ];
 
     const rows = [headers, ...examples];
@@ -117,7 +119,7 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         const rule: ReconciliationRule = {
             id: generateUUID(),
             name: parts[colMap.name] || `Imported Rule ${i}`,
-            ruleCategory: parts[colMap.category] || 'description',
+            ruleCategory: parts[colMap.category] || 'all',
             conditions: conditions,
             suggestedCategoryName: parts[colMap.setCategory],
             suggestedCounterpartyName: parts[colMap.setCounterparty] || parts[colMap.setPayee] || parts[colMap.setMerchant],
@@ -245,6 +247,7 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     credit: lowerHeaders.findIndex(p => p.includes('credit') || p.includes('deposit')),
     debit: lowerHeaders.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdrawal')),
     category: lowerHeaders.findIndex(p => p.includes('category')),
+    location: lowerHeaders.findIndex(p => p.includes('location') || p.includes('city') || p.includes('place')),
     type: lowerHeaders.findIndex(p => p.includes('type'))
   };
 
@@ -307,6 +310,7 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
       category: colMap.category > -1 ? parts[colMap.category] : 'Uncategorized',
       accountId: accountId,
       typeId: isIncome ? incomeType.id : expenseType.id,
+      location: colMap.location > -1 ? parts[colMap.location] : undefined,
       sourceFilename: sourceName,
       metadata
     });

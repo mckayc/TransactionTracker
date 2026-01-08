@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
 import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon } from '../components/Icons';
@@ -29,12 +30,22 @@ interface RuleModalProps {
     existingRules?: ReconciliationRule[];
 }
 
+const RULE_SCOPES = [
+    { id: 'all', name: 'Global Rule (Matches All Fields)' },
+    { id: 'description', name: 'Description Filter' },
+    { id: 'counterpartyId', name: 'Entity / Counterparty Filter' },
+    { id: 'locationId', name: 'Location Filter' },
+    { id: 'userId', name: 'User / Ledger Filter' },
+    { id: 'tagIds', name: 'Taxonomy / Tag Filter' }
+];
+
 const RuleModal: React.FC<RuleModalProps> = ({ 
     isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transaction, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, onSaveAndRun, existingRules = []
 }) => {
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
     const [showMetadata, setShowMetadata] = useState(false);
+    const [ruleScope, setRuleScope] = useState('all');
     
     // Resolution state
     const [setCategoryId, setSetCategoryId] = useState('');
@@ -77,6 +88,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 
                 setRuleId(potentialId);
                 setName(ctx.name || (ctx.description ? `${ctx.description} Rule` : ''));
+                setRuleScope(ctx.ruleCategory || 'all');
                 
                 const newConditions: RuleCondition[] = ctx.conditions ? [...ctx.conditions] : [
                     { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: ctx.description, nextLogic: 'AND' }
@@ -93,6 +105,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
             } else {
                 setRuleId(generateUUID());
                 setName('');
+                setRuleScope('all');
                 setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
                 setSetCategoryId('');
                 setSetCounterpartyId('');
@@ -131,6 +144,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const getRulePayload = (): ReconciliationRule => ({
         id: isCollision ? collidingRule.id : ruleId,
         name: name.trim(),
+        ruleCategory: ruleScope,
         conditions,
         setCategoryId: setCategoryId || undefined,
         setCounterpartyId: setCounterpartyId || undefined,
@@ -222,26 +236,39 @@ const RuleModal: React.FC<RuleModalProps> = ({
                         </div>
                     )}
 
-                    <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm relative">
-                        {isExistingRule && !isCollision && (
-                            <div className="absolute -top-3 right-8 px-3 py-1 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-full border border-indigo-200 flex items-center gap-1 shadow-sm">
-                                <ShieldCheckIcon className="w-2.5 h-2.5" /> Persistent Logic
-                            </div>
-                        )}
-                        {isCollision && (
-                            <div className="absolute -top-3 right-8 px-3 py-1 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded-full border border-amber-200 flex items-center gap-1 shadow-sm">
-                                <ExclamationTriangleIcon className="w-2.5 h-2.5" /> Identity Overlap: Will Overwrite Existing
-                            </div>
-                        )}
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Administrative Identity</label>
-                        <input 
-                            type="text" 
-                            value={name} 
-                            onChange={e => setName(e.target.value)} 
-                            placeholder="System designation for this logic..." 
-                            className={`w-full p-4 border-2 rounded-2xl focus:ring-0 font-bold text-lg shadow-inner transition-colors ${isCollision ? 'border-amber-300 bg-amber-50 focus:border-amber-500' : 'bg-slate-50 border-transparent focus:border-indigo-500'}`} 
-                            required 
-                        />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm relative">
+                            {isExistingRule && !isCollision && (
+                                <div className="absolute -top-3 right-8 px-3 py-1 bg-indigo-100 text-indigo-700 text-[9px] font-black uppercase rounded-full border border-indigo-200 flex items-center gap-1 shadow-sm">
+                                    <ShieldCheckIcon className="w-2.5 h-2.5" /> Persistent Logic
+                                </div>
+                            )}
+                            {isCollision && (
+                                <div className="absolute -top-3 right-8 px-3 py-1 bg-amber-100 text-amber-700 text-[9px] font-black uppercase rounded-full border border-amber-200 flex items-center gap-1 shadow-sm">
+                                    <ExclamationTriangleIcon className="w-2.5 h-2.5" /> Identity Overlap: Will Overwrite Existing
+                                </div>
+                            )}
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Administrative Identity</label>
+                            <input 
+                                type="text" 
+                                value={name} 
+                                onChange={e => setName(e.target.value)} 
+                                placeholder="System designation for this logic..." 
+                                className={`w-full p-4 border-2 rounded-2xl focus:ring-0 font-bold text-lg shadow-inner transition-colors ${isCollision ? 'border-amber-300 bg-amber-50 focus:border-amber-500' : 'bg-slate-50 border-transparent focus:border-indigo-500'}`} 
+                                required 
+                            />
+                        </div>
+
+                        <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Rule Application Scope</label>
+                            <SearchableSelect 
+                                options={RULE_SCOPES}
+                                value={ruleScope}
+                                onChange={setRuleScope}
+                                placeholder="Select scope..."
+                                className="w-full"
+                            />
+                        </div>
                     </div>
                     
                     <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
@@ -286,6 +313,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                     <SearchableSelect label="Set Counterparty" options={counterparties} value={setCounterpartyId} onChange={setSetCounterpartyId} isHierarchical onAddNew={() => setQuickAddType('counterparties')} />
                                     <SearchableSelect label="Assign User" options={users} value={setUserId} onChange={setSetUserId} onAddNew={() => setQuickAddType('users')} />
                                     <SearchableSelect label="Assign Location" options={locations} value={setLocationId} onChange={setSetLocationId} onAddNew={() => setQuickAddType('locations')} />
+                                    {/* Fix: use setSetTransactionTypeId setter instead of setTransactionTypeId state value */}
                                     <SearchableSelect label="Change Tx Type" options={transactionTypes} value={setTransactionTypeId} onChange={setSetTransactionTypeId} onAddNew={() => setQuickAddType('transactionTypes')} />
 
                                     <div className="col-span-1 md:col-span-3 pt-6 border-t border-slate-100">

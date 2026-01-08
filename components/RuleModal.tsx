@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
 import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon } from './Icons';
@@ -293,6 +294,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                     <SearchableSelect label="Set Counterparty" options={counterparties} value={setCounterpartyId} onChange={setSetCounterpartyId} isHierarchical onAddNew={() => setQuickAddType('counterparties')} />
                                     <SearchableSelect label="Assign User" options={users} value={setUserId} onChange={setSetUserId} onAddNew={() => setQuickAddType('users')} />
                                     <SearchableSelect label="Assign Location" options={locations} value={setLocationId} onChange={setSetLocationId} onAddNew={() => setQuickAddType('locations')} />
+                                    {/* Fix: use setSetTransactionTypeId setter instead of setTransactionTypeId state value */}
                                     <SearchableSelect label="Change Tx Type" options={transactionTypes} value={setTransactionTypeId} onChange={setSetTransactionTypeId} onAddNew={() => setQuickAddType('transactionTypes')} />
 
                                     <div className="col-span-1 md:col-span-3 pt-6 border-t border-slate-100">
