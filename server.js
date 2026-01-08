@@ -153,6 +153,7 @@ const createTables = () => {
         CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT, color TEXT);
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
+        CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
         CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, name TEXT, city TEXT, state TEXT, country TEXT);
         CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
         CREATE TABLE IF NOT EXISTS rule_categories (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
@@ -228,10 +229,11 @@ const ensureSeedData = () => {
             console.log("[DB] Seeding default rule categories...");
             const insertRuleCat = db.prepare("INSERT INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)");
             db.transaction(() => {
-                insertRuleCat.run('rcat_all', 'All', 1);
+                insertRuleCat.run('rcat_all', 'All', 0);
                 insertRuleCat.run('rcat_desc', 'Description', 0);
                 insertRuleCat.run('rcat_loc', 'Location', 0);
                 insertRuleCat.run('rcat_user', 'User', 0);
+                insertRuleCat.run('rcat_manual', 'Manual Rule', 1);
                 insertRuleCat.run('rcat_other', 'Other', 0);
             })();
         }

@@ -302,6 +302,14 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                     </button>
                                 );
                             })}
+                            
+                            <button 
+                                onClick={() => handleOpenRuleCreator(inspectingRulesTx)}
+                                className="w-full p-4 border-2 border-dashed border-slate-200 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 transition-all flex items-center justify-center gap-2 group"
+                            >
+                                <AddIcon className="w-5 h-5 text-slate-300 group-hover:text-indigo-500" />
+                                <span className="text-xs font-black text-slate-400 group-hover:text-indigo-600 uppercase tracking-widest">Add Additional Rule</span>
+                            </button>
                         </div>
                         <div className="p-4 bg-slate-50 border-t flex justify-end">
                             <button onClick={() => setInspectingRulesTxId(null)} className="px-6 py-2 bg-white border rounded-xl text-xs font-black">Close</button>

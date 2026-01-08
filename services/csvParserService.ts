@@ -59,7 +59,7 @@ export const validateRuleFormat = (lines: string[]): { isValid: boolean; error?:
 
 /**
  * Parses Rule Manifests for bulk ingestion
- * Updated to handle multiple OR conditions via pipe symbols
+ * Updated to handle multiple OR conditions via pipe symbols and improved header detection.
  */
 export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     const rules: ReconciliationRule[] = [];
@@ -69,20 +69,19 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
     
     const colMap = {
-        name: header.indexOf('rule name'),
-        category: header.indexOf('rule category'),
-        field: header.indexOf('match field'),
-        operator: header.indexOf('operator'),
-        value: header.indexOf('match value'),
-        setCategory: header.indexOf('set category'),
-        setPayee: header.indexOf('set payee'),
-        setMerchant: header.indexOf('set merchant'),
-        setCounterparty: header.indexOf('set counterparty'),
-        setLocation: header.indexOf('set location'),
-        setType: header.indexOf('set type'),
-        setUser: header.indexOf('set user'),
-        setTags: header.indexOf('tags'),
-        skip: header.indexOf('skip import')
+        name: header.findIndex(h => h === 'rule name' || h === 'name'),
+        category: header.findIndex(h => h === 'rule category' || h === 'category'),
+        field: header.findIndex(h => h === 'match field' || h === 'field'),
+        operator: header.findIndex(h => h === 'operator'),
+        value: header.findIndex(h => h === 'match value' || h === 'value'),
+        setCategory: header.findIndex(h => h === 'set category' || h === 'category match'),
+        setPayee: header.findIndex(h => h === 'set payee' || h === 'payee' || h === 'merchant' || h === 'counterparty'),
+        setCounterparty: header.findIndex(h => h === 'set counterparty' || h === 'counterparty'),
+        setLocation: header.findIndex(h => h === 'set location' || h === 'location' || h === 'place'),
+        setType: header.findIndex(h => h === 'set type' || h === 'type'),
+        setUser: header.findIndex(h => h === 'set user' || h === 'user'),
+        setTags: header.findIndex(h => h === 'tags' || h === 'labels'),
+        skip: header.findIndex(h => h === 'skip import' || h === 'skip')
     };
 
     for (let i = 1; i < lines.length; i++) {
@@ -122,7 +121,7 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
             ruleCategory: parts[colMap.category] || 'Other',
             conditions: conditions,
             suggestedCategoryName: parts[colMap.setCategory],
-            suggestedCounterpartyName: parts[colMap.setCounterparty] || parts[colMap.setPayee] || parts[colMap.setMerchant],
+            suggestedCounterpartyName: parts[colMap.setCounterparty] || parts[colMap.setPayee],
             suggestedLocationName: parts[colMap.setLocation],
             suggestedTypeName: parts[colMap.setType],
             suggestedUserName: parts[colMap.setUser],

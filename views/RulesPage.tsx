@@ -123,7 +123,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             const typeMatch = transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase());
 
             // Handle rule category matching
-            let mappedRuleCategoryId = 'rcat_other';
+            let mappedRuleCategoryId = 'rcat_manual';
             if (r.ruleCategory) {
                 const rcMatch = ruleCategories.find(rc => rc.name.toLowerCase() === r.ruleCategory?.toLowerCase());
                 if (rcMatch) mappedRuleCategoryId = rcMatch.id;
@@ -232,6 +232,14 @@ const RulesPage: React.FC<RulesPageProps> = ({
             onDeleteRuleCategory(id);
         }
     };
+
+    const handleDeleteRuleSingle = (id: string) => {
+        if (confirm("Delete this rule? This action cannot be undone.")) {
+            onDeleteRule(id);
+            if (selectedRuleId === id) setSelectedRuleId(null);
+            notify('info', 'Logic Discarded', 'The rule was removed from the engine.');
+        }
+    }
 
     if (isVerifyingImport) {
         return (
@@ -387,7 +395,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </span>
                             )}
                         </div>
-                        <div className="relative flex-1">
+                        <div className="relative">
                             <input type="text" placeholder="Search rules..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
                             <SearchCircleIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                         </div>
@@ -403,9 +411,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 <div 
                                     key={r.id} 
                                     onClick={() => { setSelectedRuleId(r.id); setIsCreating(false); }} 
-                                    className={`p-3 rounded-xl cursor-pointer flex justify-between items-center transition-all border-2 ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'} ${bulkSelectedIds.has(r.id) ? 'ring-1 ring-indigo-200' : ''}`}
+                                    className={`p-3 rounded-xl cursor-pointer flex justify-between items-center transition-all border-2 group ${selectedRuleId === r.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-transparent hover:bg-slate-50'} ${bulkSelectedIds.has(r.id) ? 'ring-1 ring-indigo-200' : ''}`}
                                 >
-                                    <div className="flex items-center gap-3 overflow-hidden">
+                                    <div className="flex items-center gap-3 overflow-hidden flex-1">
                                         <input 
                                             type="checkbox" 
                                             className="w-4 h-4 rounded border-slate-300 text-indigo-600 flex-shrink-0"
@@ -417,12 +425,20 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                 setBulkSelectedIds(n);
                                             }}
                                         />
-                                        <div className="min-w-0">
+                                        <div className="min-w-0 flex-1">
                                             <p className={`text-xs font-bold truncate ${selectedRuleId === r.id ? 'text-indigo-900' : 'text-slate-700'}`}>{r.name}</p>
                                             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
                                                 {ruleCategories.find(rc => rc.id === r.ruleCategoryId)?.name || 'Other'}
                                             </p>
                                         </div>
+                                    </div>
+                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteRuleSingle(r.id); }}
+                                            className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg hover:bg-red-50"
+                                        >
+                                            <TrashIcon className="w-4 h-4" />
+                                        </button>
                                     </div>
                                 </div>
                             ))
@@ -460,6 +476,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 isOpen={true} 
                                 onClose={() => { setSelectedRuleId(null); setIsCreating(false); }} 
                                 onSaveRule={handleSaveRuleValidated}
+                                onDeleteRule={(id) => { onDeleteRule(id); setSelectedRuleId(null); setIsCreating(false); notify('info', 'Logic Removed', 'The rule was deleted.'); }}
                                 accounts={accounts}
                                 transactionTypes={transactionTypes}
                                 categories={categories}
@@ -496,6 +513,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     <div className={`px-6 py-4 rounded-[2rem] shadow-2xl flex items-center gap-4 border min-w-[320px] backdrop-blur-md ${
                         notification.type === 'success' ? 'bg-emerald-900/90 border-emerald-500 text-white' :
                         notification.type === 'warning' ? 'bg-amber-900/90 border-amber-500 text-white' :
+                        notification.type === 'info' ? 'bg-indigo-900/90 border-indigo-500 text-white' :
                         'bg-slate-900/90 border-white/10 text-white'
                     }`}>
                         <div className={`p-2 rounded-full ${

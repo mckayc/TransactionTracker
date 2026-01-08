@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User, RuleCategory } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon, FolderIcon } from './Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon, FolderIcon, TrashIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
 import SearchableSelect from './SearchableSelect';
@@ -12,6 +12,7 @@ interface RuleModalProps {
     isOpen: boolean;
     onClose: () => void;
     onSaveRule: (rule: ReconciliationRule) => void;
+    onDeleteRule?: (id: string) => void;
     accounts: Account[];
     transactionTypes: TransactionType[];
     categories: Category[];
@@ -33,12 +34,13 @@ interface RuleModalProps {
 }
 
 const RuleModal: React.FC<RuleModalProps> = ({ 
-    isOpen, onClose, onSaveRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transaction, ruleCategories, onSaveRuleCategory, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, onSaveAndRun, existingRules = []
+    isOpen, onClose, onSaveRule, onDeleteRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transaction, ruleCategories, onSaveRuleCategory, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, onSaveAndRun, existingRules = []
 }) => {
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
     const [showMetadata, setShowMetadata] = useState(false);
-    const [ruleCategoryId, setRuleCategoryId] = useState('rcat_other');
+    // Use manual category as default for manual creation
+    const [ruleCategoryId, setRuleCategoryId] = useState('rcat_manual');
     
     // Resolution state
     const [setCategoryId, setSetCategoryId] = useState('');
@@ -81,7 +83,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 
                 setRuleId(potentialId);
                 setName(ctx.name || (ctx.description ? `${ctx.description} Rule` : ''));
-                setRuleCategoryId(ctx.ruleCategoryId || 'rcat_other');
+                setRuleCategoryId(ctx.ruleCategoryId || 'rcat_manual');
                 
                 const newConditions: RuleCondition[] = ctx.conditions ? [...ctx.conditions] : [
                     { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: ctx.description, nextLogic: 'AND' }
@@ -98,7 +100,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
             } else {
                 setRuleId(generateUUID());
                 setName('');
-                setRuleCategoryId('rcat_other');
+                setRuleCategoryId('rcat_manual');
                 setConditions([{ id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: '', nextLogic: 'AND' }]);
                 setSetCategoryId('');
                 setSetCounterpartyId('');
@@ -139,6 +141,13 @@ const RuleModal: React.FC<RuleModalProps> = ({
             if (newSet.has(tagId)) newSet.delete(tagId); else newSet.add(tagId);
             return newSet;
         });
+    };
+
+    const handleDelete = () => {
+        if (onDeleteRule && ruleId && confirm("Are you sure you want to delete this rule?")) {
+            onDeleteRule(ruleId);
+            onClose();
+        }
     };
 
     const getRulePayload = (): ReconciliationRule => ({
@@ -184,6 +193,11 @@ const RuleModal: React.FC<RuleModalProps> = ({
                         <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1">Design automated ledger logic</p>
                     </div>
                     <div className="flex items-center gap-2">
+                        {isExistingRule && (
+                            <button type="button" onClick={handleDelete} className="px-5 py-2.5 text-xs font-black uppercase bg-red-50 text-red-600 rounded-xl hover:bg-red-100 flex items-center gap-2 mr-2">
+                                <TrashIcon className="w-4 h-4" /> Delete
+                            </button>
+                        )}
                         <button type="button" onClick={onClose} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200">Cancel</button>
                         <button onClick={handleSave} disabled={!name.trim()} className={`px-5 py-2.5 text-xs font-black uppercase rounded-xl shadow-md transition-all ${isCollision ? 'bg-amber-600 text-white hover:bg-amber-700' : 'bg-slate-700 text-white hover:bg-slate-800'}`}>
                             {primaryLabel}
@@ -339,7 +353,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 </form>
 
                 {quickAddType === 'ruleCategory' ? (
-                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
                         <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden p-8 animate-slide-up">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-xl font-black">New Rule Category</h3>
