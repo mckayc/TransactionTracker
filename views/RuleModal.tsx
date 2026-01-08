@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
 import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon } from '../components/Icons';
@@ -122,19 +123,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
         if (onSaveAndRun) onSaveAndRun(getRulePayload());
         else onSaveRule(getRulePayload());
     };
-
-    const QuickAddLabel = ({ label, onAdd }: { label: string, onAdd: () => void }) => (
-        <div className="flex justify-between items-center mb-1 ml-1">
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
-            <button 
-                type="button" 
-                onClick={onAdd}
-                className="text-[9px] font-black text-indigo-500 uppercase hover:text-indigo-700 transition-colors flex items-center gap-1"
-            >
-                <AddIcon className="w-2.5 h-2.5" /> Add New
-            </button>
-        </div>
-    );
     
     return (
         <div className="flex flex-col h-full bg-white overflow-hidden animate-fade-in">
@@ -183,48 +171,43 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     
                     {!skipImport ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            <div className="space-y-1">
-                                <QuickAddLabel label="Set Category" onAdd={() => setQuickAddType('categories')} />
-                                <SearchableSelect 
-                                    options={categories} 
-                                    value={setCategoryId} 
-                                    onChange={setSetCategoryId} 
-                                    isHierarchical 
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <QuickAddLabel label="Set Counterparty" onAdd={() => setQuickAddType('counterparties')} />
-                                <SearchableSelect 
-                                    options={counterparties} 
-                                    value={setCounterpartyId} 
-                                    onChange={setSetCounterpartyId} 
-                                    isHierarchical 
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <QuickAddLabel label="Assign User" onAdd={() => setQuickAddType('users')} />
-                                <SearchableSelect 
-                                    options={users} 
-                                    value={setUserId} 
-                                    onChange={setSetUserId} 
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <QuickAddLabel label="Assign Location" onAdd={() => setQuickAddType('locations')} />
-                                <SearchableSelect 
-                                    options={locations} 
-                                    value={setLocationId} 
-                                    onChange={setSetLocationId} 
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <QuickAddLabel label="Change Tx Type" onAdd={() => setQuickAddType('transactionTypes')} />
-                                <SearchableSelect 
-                                    options={transactionTypes} 
-                                    value={setTransactionTypeId} 
-                                    onChange={setSetTransactionTypeId} 
-                                />
-                            </div>
+                            <SearchableSelect 
+                                label="Set Category" 
+                                options={categories} 
+                                value={setCategoryId} 
+                                onChange={setSetCategoryId} 
+                                isHierarchical 
+                                onAddNew={() => setQuickAddType('categories')}
+                            />
+                            <SearchableSelect 
+                                label="Set Counterparty" 
+                                options={counterparties} 
+                                value={setCounterpartyId} 
+                                onChange={setSetCounterpartyId} 
+                                isHierarchical 
+                                onAddNew={() => setQuickAddType('counterparties')}
+                            />
+                            <SearchableSelect 
+                                label="Assign User" 
+                                options={users} 
+                                value={setUserId} 
+                                onChange={setSetUserId} 
+                                onAddNew={() => setQuickAddType('users')}
+                            />
+                            <SearchableSelect 
+                                label="Assign Location" 
+                                options={locations} 
+                                value={setLocationId} 
+                                onChange={setSetLocationId} 
+                                onAddNew={() => setQuickAddType('locations')}
+                            />
+                            <SearchableSelect 
+                                label="Change Tx Type" 
+                                options={transactionTypes} 
+                                value={setTransactionTypeId} 
+                                onChange={setSetTransactionTypeId} 
+                                onAddNew={() => setQuickAddType('transactionTypes')}
+                            />
 
                             <div className="col-span-1 md:col-span-3 pt-6 border-t border-slate-100">
                                 <div className="flex items-center justify-between mb-4 px-1">

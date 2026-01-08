@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useMemo } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, BalanceEffect, Location } from '../types';
 import { generateUUID } from '../utils';
 import { SaveIcon, CloseIcon } from './Icons';
+import SearchableSelect from './SearchableSelect';
 
 export type EntityType = 'categories' | 'tags' | 'counterparties' | 'locations' | 'users' | 'transactionTypes' | 'accountTypes' | 'accounts';
 
@@ -71,7 +73,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             setAccountTypeId(accountTypes[0]?.id || '');
             setUserId(users.find(u => u.isDefault)?.id || users[0]?.id || '');
             setBalanceEffect('outgoing');
-            setColor(type === 'transactionTypes' ? 'text-rose-600' : 'bg-slate-100 text-slate-800');
+            setColor(type === 'transactionTypes' ? 'text-rose-600' : 'bg-slate-50 text-slate-600');
         }
     }, [type, initialId, categories, tags, counterparties, locations, users, transactionTypes, accountTypes, accounts]);
 
@@ -89,6 +91,12 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
         }
         onSave(type, payload);
     };
+
+    const parentOptions = useMemo(() => {
+        if (type === 'categories') return categories.filter(c => c.id !== initialId);
+        if (type === 'counterparties') return counterparties.filter(c => c.id !== initialId);
+        return [];
+    }, [type, categories, counterparties, initialId]);
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full relative">
@@ -167,24 +175,26 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
 
                     {(type === 'categories' || type === 'counterparties') && (
                         <div className="space-y-1">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Parent Hierarchy</label>
-                            <select value={parentId} onChange={e => setParentId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 bg-white">
-                                <option value="">-- No Parent (Root) --</option>
-                                {(type === 'categories' ? categories : counterparties)
-                                    .filter(x => x.id !== initialId)
-                                    .sort((a,b) => a.name.localeCompare(b.name))
-                                    .map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
-                            </select>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Parent Hierarchy</label>
+                            <SearchableSelect 
+                                options={parentOptions} 
+                                value={parentId} 
+                                onChange={setParentId} 
+                                isHierarchical 
+                                placeholder="-- No Parent (Root) --"
+                            />
                         </div>
                     )}
 
                     {type === 'counterparties' && (
                         <div className="space-y-1">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Default Ledger Assignment</label>
-                            <select value={userId} onChange={e => setUserId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-2xl font-bold text-slate-700 bg-white">
-                                <option value="">-- Global System Default --</option>
-                                {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                            </select>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Default Ledger Assignment</label>
+                            <SearchableSelect 
+                                options={users} 
+                                value={userId} 
+                                onChange={setUserId} 
+                                placeholder="-- Global System Default --"
+                            />
                         </div>
                     )}
 

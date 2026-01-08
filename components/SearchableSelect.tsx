@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDownIcon, SearchCircleIcon, CloseIcon } from './Icons';
+import { ChevronDownIcon, SearchCircleIcon, CloseIcon, AddIcon } from './Icons';
 
 interface Option {
     id: string;
@@ -51,6 +52,15 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                 });
             };
             buildTree();
+
+            // Handle orphans or items that might have invalid parentIds
+            const handledIds = new Set(result.map(r => r.id));
+            const orphans = options.filter(o => !handledIds.has(o.id));
+            if (orphans.length > 0) {
+                orphans.sort((a, b) => a.name.localeCompare(b.name)).forEach(o => {
+                    result.push({ ...o, level: 0 });
+                });
+            }
         } else {
             result = [...options].sort((a, b) => a.name.localeCompare(b.name));
         }
@@ -65,7 +75,20 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
 
     return (
         <div className={`relative ${className}`} ref={containerRef}>
-            {label && <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">{label}</label>}
+            {label && (
+                <div className="flex justify-between items-center mb-1 ml-1">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</label>
+                    {onAddNew && (
+                        <button 
+                            type="button" 
+                            onClick={onAddNew}
+                            className="text-[9px] font-black text-indigo-500 uppercase hover:text-indigo-700 transition-colors"
+                        >
+                            + Add New
+                        </button>
+                    )}
+                </div>
+            )}
             
             <div 
                 onClick={() => setIsOpen(!isOpen)}
@@ -110,24 +133,38 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
                         {onAddNew && (
                             <button 
                                 onClick={(e) => { e.stopPropagation(); setIsOpen(false); onAddNew(); }}
-                                className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-md active:scale-95 flex-shrink-0"
+                                className="p-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all shadow-md active:scale-95 flex-shrink-0 flex items-center justify-center"
+                                title="Create New"
                             >
-                                <SearchCircleIcon className="w-4 h-4 rotate-45" />
+                                <AddIcon className="w-4 h-4" />
                             </button>
                         )}
                     </div>
                     <div className="flex-1 overflow-y-auto p-1 custom-scrollbar">
                         {processedOptions.length === 0 ? (
-                            <div className="p-8 text-center text-slate-400 text-xs italic">No results found</div>
+                            <div className="p-8 text-center flex flex-col items-center gap-2">
+                                <p className="text-slate-400 text-xs italic">No results found</p>
+                                {onAddNew && (
+                                    <button 
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setIsOpen(false); onAddNew(); }}
+                                        className="text-xs font-bold text-indigo-600 hover:underline"
+                                    >
+                                        Create "{search}"?
+                                    </button>
+                                )}
+                            </div>
                         ) : (
                             processedOptions.map(opt => (
                                 <div 
                                     key={opt.id}
                                     onClick={(e) => { e.stopPropagation(); onChange(opt.id); setIsOpen(false); }}
                                     className={`px-3 py-2.5 rounded-xl cursor-pointer text-sm font-medium transition-all flex items-center gap-2 ${value === opt.id ? 'bg-indigo-50 text-indigo-900 shadow-inner' : 'text-slate-700 hover:bg-slate-50'}`}
-                                    style={{ paddingLeft: opt.level ? `${opt.level * 20 + 12}px` : '12px' }}
+                                    style={{ paddingLeft: opt.level ? `${opt.level * 16 + 12}px` : '12px' }}
                                 >
-                                    {isHierarchical && opt.level && opt.level > 0 && <span className="text-slate-300">⌞</span>}
+                                    {isHierarchical && opt.level !== undefined && opt.level > 0 && (
+                                        <span className="text-slate-300 mr-1 opacity-50">⌞</span>
+                                    )}
                                     <span className="truncate">{opt.name}</span>
                                 </div>
                             ))
