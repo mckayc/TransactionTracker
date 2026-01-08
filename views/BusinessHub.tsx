@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { BusinessNote, Transaction, Account, Category, BusinessProfile, BusinessInfo, TaxInfo } from '../types';
 import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, UsersIcon, BoxIcon, InfoIcon, RobotIcon, CopyIcon, FileTextIcon } from '../components/Icons';
@@ -395,7 +394,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
         } catch (e) {
             setAiResponse("I encountered an error processing your structural query. Check your API key.");
         } finally {
-            setIsGenerating(false);
+            setIsAiLoading(false);
         }
     };
 
