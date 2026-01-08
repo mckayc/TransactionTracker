@@ -25,10 +25,10 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
         const metadataValue = tx.metadata?.[key];
         
         if (condition.operator === 'exists') {
-            return metadataValue !== undefined && metadataValue !== null && metadataValue.trim() !== '';
+            return metadataValue !== undefined && metadataValue !== null && String(metadataValue).trim() !== '';
         }
 
-        txValue = (metadataValue || '').toLowerCase();
+        txValue = String(metadataValue || '').toLowerCase();
         const condValue = String(condition.value || '').toLowerCase();
         switch (condition.operator) {
             case 'contains': return txValue.includes(condValue);
@@ -50,18 +50,26 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
         }
     } else if (condition.field === 'accountId') {
         const txAccountId = tx.accountId || '';
-        
         if (condition.operator === 'equals') {
             return txAccountId === String(condition.value);
         } else {
             const account = (accounts || []).filter(Boolean).find(a => a && a.id === txAccountId);
             const accountName = (account?.name || '').toLowerCase();
             const condValue = String(condition.value || '').toLowerCase();
-            
             if (condition.operator === 'contains') return accountName.includes(condValue);
             if (condition.operator === 'does_not_contain') return !accountName.includes(condValue);
             return false;
         }
+    } else if (condition.field === 'counterpartyId') {
+        txValue = tx.counterpartyId || '';
+        const condValue = String(condition.value || '');
+        if (condition.operator === 'equals') return txValue === condValue;
+        return false;
+    } else if (condition.field === 'locationId') {
+        txValue = tx.locationId || '';
+        const condValue = String(condition.value || '');
+        if (condition.operator === 'equals') return txValue === condValue;
+        return false;
     }
     return false;
 };

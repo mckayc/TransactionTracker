@@ -1,4 +1,3 @@
-
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -307,6 +306,7 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     transactions.push({
       date: formatDate(parsedDate),
       description: toTitleCase(cleanedDesc),
+      originalDescription: rawDesc, // Anchor the original bank string
       amount: amount,
       category: colMap.category > -1 ? parts[colMap.category] : 'Uncategorized',
       accountId: accountId,
