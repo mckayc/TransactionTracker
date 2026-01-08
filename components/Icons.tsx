@@ -9,7 +9,7 @@ import {
     ChevronRight, ChevronLeft, ChevronDown, ExternalLink, Heart, Printer, 
     ShieldCheck, Scissors, UsersRound, Puzzle, Box, BarChart3, ArrowRight,
     Youtube, Video, TrendingUp, Slash, Bug, Database, FileCode, MapPin,
-    Trash, List, Type, ArrowUp, ArrowDown, Stethoscope
+    Trash, List, Type, ArrowUp, ArrowDown, Stethoscope, Workflow
 } from 'lucide-react';
 
 export const UploadIcon = Upload;
@@ -84,4 +84,6 @@ export const TypeIcon = Type;
 export const ArrowUpIcon = ArrowUp;
 export const ArrowDownIcon = ArrowDown;
 export const StethoscopeIcon = Stethoscope;
+// Added Workflow icon export to fix missing export error
+export const WorkflowIcon = Workflow;
 export { DollarSign };
