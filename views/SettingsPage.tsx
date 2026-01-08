@@ -249,7 +249,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
     const [restoreData, setRestoreData] = useState<any>(null);
-    const [restoreSelection, setRestoreSelection] = Set<string>(new Set());
+    const [restoreSelection, setRestoreSelection] = useState<Set<string>>(new Set());
     
     const [isPurging, setIsPurging] = useState(false);
 
@@ -305,9 +305,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const handleFinalRestore = async () => {
         if (!restoreData) return;
         if (!confirm("Proceed with data restoration? This will overwrite existing records for the selected entities.")) return;
-        for (const key of Array.from(restoreSelection)) {
-            const data = restoreData[key];
-            if (data) await api.save(key, data);
+        const keysToRestore = Array.from(restoreSelection);
+        for (const key of keysToRestore) {
+            const data = (restoreData as any)[key];
+            if (data) await api.save(key as string, data);
             else if (key === 'files_meta') {
                 if (restoreData.businessDocuments) await api.save('businessDocuments', restoreData.businessDocuments);
                 if (restoreData.documentFolders) await api.save('documentFolders', restoreData.documentFolders);
