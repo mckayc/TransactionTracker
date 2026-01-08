@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import type { ReconciliationRule, Category, Counterparty, Location, User, TransactionType, RuleImportDraft } from '../types';
 import { CheckCircleIcon, SlashIcon, ExclamationTriangleIcon, AddIcon, BoxIcon, TagIcon, MapPinIcon, UsersIcon, ShieldCheckIcon, CloseIcon, EditIcon, RepeatIcon, WorkflowIcon, InfoIcon, DatabaseIcon, ChevronRightIcon, ArrowRightIcon, SparklesIcon } from './Icons';
@@ -21,14 +22,19 @@ interface Props {
     existingRules: ReconciliationRule[];
 }
 
-const RULE_SCOPES = [
-    { id: 'all', name: 'Global' },
-    { id: 'description', name: 'Description' },
-    { id: 'counterpartyId', name: 'Entity' },
-    { id: 'locationId', name: 'Location' },
-    { id: 'userId', name: 'User' },
-    { id: 'tagIds', name: 'Taxonomy' }
-];
+/**
+ * Normalizes and merges multiple condition strings into a single unique OR-chain.
+ * e.g. "OREM UT || SALT LAKE" merged with "OREM UT" -> "OREM UT || SALT LAKE"
+ */
+const mergePatternsUniquely = (existing: string, incoming: string): string => {
+    const existingTokens = existing.split(/\s*\|\|\s*/).map(t => t.trim()).filter(Boolean);
+    const incomingTokens = incoming.split(/\s*\|\|\s*/).map(t => t.trim()).filter(Boolean);
+    
+    // Create a Set for uniqueness, case-insensitive comparison would be better but Set is simple start
+    // We'll normalize to Upper for the set comparison if they look like bank strings
+    const uniqueTokens = new Set([...existingTokens, ...incomingTokens]);
+    return Array.from(uniqueTokens).join(' || ');
+};
 
 const LogicForecastDrawer: React.FC<{ 
     draft: RuleImportDraft; 
@@ -43,22 +49,22 @@ const LogicForecastDrawer: React.FC<{
         (draft.mappingStatus.category === 'match' && existingRule.setCategoryId === categories.find(c => c.name.toLowerCase() === draft.suggestedCategoryName?.toLowerCase())?.id)
     );
 
+    const mergedPatternPreview = useMemo(() => {
+        if (!existingRule) return '';
+        const existing = existingRule.conditions.map(c => c.value).join(' || ');
+        const incoming = draft.conditions.map(c => c.value).join(' || ');
+        return mergePatternsUniquely(existing, incoming);
+    }, [existingRule, draft]);
+
     const resolveEntity = (field: 'category' | 'counterparty' | 'location') => {
         const status = draft.mappingStatus[field];
         let sourceName = '';
-        let matchedName = 'None';
         
         if (field === 'category') sourceName = draft.suggestedCategoryName || '';
         if (field === 'counterparty') sourceName = draft.suggestedCounterpartyName || '';
         if (field === 'location') sourceName = draft.suggestedLocationName || '';
 
         if (!sourceName) return null;
-
-        if (status === 'match') {
-            if (field === 'category') matchedName = categories.find(c => c.name.toLowerCase() === sourceName.toLowerCase())?.name || sourceName;
-            if (field === 'counterparty') matchedName = payees.find(p => p.name.toLowerCase() === sourceName.toLowerCase())?.name || sourceName;
-            if (field === 'location') matchedName = locations.find(l => l.name.toLowerCase() === sourceName.toLowerCase())?.name || sourceName;
-        }
 
         return (
             <div className="bg-white border border-slate-100 p-4 rounded-2xl flex items-center justify-between shadow-sm">
@@ -94,10 +100,10 @@ const LogicForecastDrawer: React.FC<{
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
                     {/* MERGE LOGIC PREVIEW */}
-                    {isMerge && (
+                    {isMerge && existingRule && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-2 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full w-max text-[10px] font-black uppercase tracking-widest">
-                                <RepeatIcon className="w-3 h-3" /> Synthesis Strategy: Concatenation
+                                <RepeatIcon className="w-3 h-3" /> Synthesis Strategy: Intelligent Set Merge
                             </div>
                             <div className="bg-slate-900 rounded-3xl p-6 text-white space-y-6 shadow-xl border border-indigo-500/20">
                                 <div className="space-y-2">
@@ -113,7 +119,7 @@ const LogicForecastDrawer: React.FC<{
                                         </code>
                                     </div>
                                     <div className="flex justify-center">
-                                        <div className="px-4 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase">Merge Operator (OR)</div>
+                                        <div className="px-4 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase">Uniqueness Reconciliation</div>
                                     </div>
                                     <div className="space-y-2">
                                         <p className="text-[9px] font-black text-indigo-400 uppercase">Incoming Pattern</p>
@@ -124,9 +130,9 @@ const LogicForecastDrawer: React.FC<{
                                 </div>
 
                                 <div className="pt-6 border-t border-white/10 space-y-2">
-                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Resulting Engine Logic</p>
+                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Resulting Engine Logic (De-duplicated)</p>
                                     <code className="block p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-sm font-mono text-emerald-300">
-                                        {existingRule.conditions.map(c => c.value).join(' || ')} <span className="text-white font-black">||</span> {draft.conditions.map(c => c.value).join(' || ')}
+                                        {mergedPatternPreview}
                                     </code>
                                 </div>
                             </div>
@@ -151,7 +157,7 @@ const LogicForecastDrawer: React.FC<{
                             <h4 className="font-black text-sm uppercase">Verification Protocol</h4>
                          </div>
                          <p className="text-xs text-amber-700 leading-relaxed font-medium">
-                            If this rule is a <strong className="text-amber-900">Logical Merge</strong>, the administrative name will be kept from the original rule, and the new search criteria will be appended. If you want to keep them separate, rename the incoming rule logic in the staging table.
+                            The system now uses <strong className="text-amber-900">Set-Based Reconciliation</strong>. If the incoming search string already exists in the target rule, it will be skipped during merge to prevent redundant processing cycles.
                          </p>
                     </div>
                 </div>
@@ -202,8 +208,9 @@ const RuleImportVerification: React.FC<Props> = ({
             );
 
             if (isMergeCandidate && existing) {
-                const existingValues = existing.conditions.map(c => c.value).join(' || ');
-                const newValues = draft.conditions.map(c => c.value).join(' || ');
+                const existingValue = existing.conditions.map(c => c.value).join(' || ');
+                const newValue = draft.conditions.map(c => c.value).join(' || ');
+                const mergedValue = mergePatternsUniquely(existingValue, newValue);
                 
                 finalRule.id = existing.id;
                 finalRule.conditions = [{
@@ -211,7 +218,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     type: 'basic',
                     field: existing.conditions[0]?.field || 'description',
                     operator: existing.conditions[0]?.operator || 'contains',
-                    value: `${existingValues} || ${newValues}`,
+                    value: mergedValue,
                     nextLogic: 'AND'
                 }];
             } else {

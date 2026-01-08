@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings } from '../types';
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon } from '../components/Icons';
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
@@ -80,7 +80,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
     const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
 
-    // Added missing state variables for rule category management and confirmation modals
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
     const [newCatName, setNewCatName] = useState('');
@@ -99,10 +98,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [importError, setImportError] = useState<string | null>(null);
     const [showInstructions, setShowInstructions] = useState(false);
     
-    // AI Forge State
+    // AI Forge State - Full CRUD support
     const forgePrompts = useMemo(() => {
-        const custom = systemSettings.ruleForgePrompts || [];
-        return [...DEFAULT_FORGE_PROMPTS, ...custom];
+        // If settings has prompts, use only those. If not, use defaults.
+        return systemSettings.ruleForgePrompts && systemSettings.ruleForgePrompts.length > 0
+            ? systemSettings.ruleForgePrompts
+            : DEFAULT_FORGE_PROMPTS;
     }, [systemSettings.ruleForgePrompts]);
 
     const [selectedForgePromptId, setSelectedForgePromptId] = useState<string>(DEFAULT_FORGE_PROMPTS[1].id);
@@ -162,7 +163,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
             const locMatch = locations.find(l => l.name.toLowerCase() === r.suggestedLocationName?.toLowerCase());
             const typeMatch = transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase());
 
-            // Handle rule category matching - Default to manual rule if creating
             let mappedRuleCategoryId = 'rcat_manual';
             if (r.ruleCategory) {
                 const rcMatch = ruleCategories.find(rc => rc.name.toLowerCase() === r.ruleCategory?.toLowerCase());
@@ -259,20 +259,20 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const handleSaveProtocolToLibrary = () => {
-        const currentCustom = systemSettings.ruleForgePrompts || [];
-        const isDefault = DEFAULT_FORGE_PROMPTS.some(p => p.id === selectedForgePromptId);
+        // Protocols are now saved directly into the user settings
+        const currentPrompts = [...forgePrompts];
+        const idx = currentPrompts.findIndex(p => p.id === selectedForgePromptId);
         
-        if (isDefault) {
-            // Can't edit defaults directly, create a new one
-            setNewPromptName(`${forgePrompts.find(p => p.id === selectedForgePromptId)?.name} (Custom)`);
-            setIsNewPromptModalOpen(true);
-            return;
+        if (idx > -1) {
+            currentPrompts[idx] = { ...currentPrompts[idx], prompt: forgePromptText };
+        } else {
+            // New protocol
+            currentPrompts.push({ id: generateUUID(), name: newPromptName || 'New Protocol', prompt: forgePromptText });
         }
 
-        const nextCustom = currentCustom.map(p => p.id === selectedForgePromptId ? { ...p, prompt: forgePromptText } : p);
-        onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: nextCustom });
+        onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: currentPrompts });
         setIsEditingPrompt(false);
-        notify('success', 'Protocol Updated', 'The custom protocol instructions have been saved.');
+        notify('success', 'Protocol Updated', 'The protocol instructions have been saved to your institutional library.');
     };
 
     const handleCreateNewProtocol = () => {
@@ -282,7 +282,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             name: newPromptName.trim(),
             prompt: forgePromptText
         };
-        const nextCustom = [...(systemSettings.ruleForgePrompts || []), newPrompt];
+        const nextCustom = [...forgePrompts, newPrompt];
         onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: nextCustom });
         setSelectedForgePromptId(newPrompt.id);
         setIsNewPromptModalOpen(false);
@@ -291,21 +291,29 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const handleDeleteProtocol = (id: string) => {
-        const isDefault = DEFAULT_FORGE_PROMPTS.some(p => p.id === id);
-        if (isDefault) {
-            notify('warning', 'Locked Protocol', 'System default protocols cannot be removed.');
-            return;
-        }
         if (!confirm("Remove this protocol from your library?")) return;
         
-        const nextCustom = (systemSettings.ruleForgePrompts || []).filter(p => p.id !== id);
+        const nextCustom = forgePrompts.filter(p => p.id !== id);
         onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: nextCustom });
         
-        // Switch to a default after deletion
-        const fallback = DEFAULT_FORGE_PROMPTS[1];
-        setSelectedForgePromptId(fallback.id);
-        setForgePromptText(fallback.prompt);
-        notify('info', 'Protocol Removed', 'The custom protocol has been deleted.');
+        // Pick the first remaining as fallback
+        if (nextCustom.length > 0) {
+            setSelectedForgePromptId(nextCustom[0].id);
+            setForgePromptText(nextCustom[0].prompt);
+        } else {
+            // Revert to hardcoded if everything deleted (automatic system recovery)
+            setSelectedForgePromptId(DEFAULT_FORGE_PROMPTS[1].id);
+            setForgePromptText(DEFAULT_FORGE_PROMPTS[1].prompt);
+        }
+        notify('info', 'Protocol Removed', 'The protocol has been purged from your library.');
+    };
+
+    const handleRestoreDefaultProtocols = () => {
+        if (!confirm("Restore all system default protocols? This will overwrite your custom changes to the defaults.")) return;
+        onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: DEFAULT_FORGE_PROMPTS });
+        setSelectedForgePromptId(DEFAULT_FORGE_PROMPTS[1].id);
+        setForgePromptText(DEFAULT_FORGE_PROMPTS[1].prompt);
+        notify('success', 'Library Restored', 'System default protocols have been re-instantiated.');
     };
 
     const handleSaveRuleValidated = (rule: ReconciliationRule) => {
@@ -759,10 +767,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                     <div className="flex justify-between items-center ml-1">
                                                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">1. Select Forge Protocol</label>
                                                         <div className="flex gap-2">
+                                                            <button onClick={handleRestoreDefaultProtocols} className="p-1 hover:bg-slate-100 rounded text-slate-400" title="Restore Defaults"><RepeatIcon className="w-4 h-4"/></button>
                                                             <button onClick={() => { setNewPromptName(''); setIsNewPromptModalOpen(true); }} className="p-1 hover:bg-slate-100 rounded text-indigo-600" title="New Protocol"><AddIcon className="w-4 h-4"/></button>
-                                                            {!DEFAULT_FORGE_PROMPTS.some(p => p.id === selectedForgePromptId) && (
-                                                                <button onClick={() => handleDeleteProtocol(selectedForgePromptId)} className="p-1 hover:bg-red-50 rounded text-red-500" title="Delete Protocol"><TrashIcon className="w-4 h-4"/></button>
-                                                            )}
+                                                            <button onClick={() => handleDeleteProtocol(selectedForgePromptId)} className="p-1 hover:bg-red-50 rounded text-red-500" title="Delete Protocol"><TrashIcon className="w-4 h-4"/></button>
                                                         </div>
                                                     </div>
                                                     <select 
@@ -770,7 +777,15 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                         onChange={e => handleForgePromptSelect(e.target.value)}
                                                         className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold bg-white focus:border-indigo-500 shadow-sm"
                                                     >
-                                                        {forgePrompts.map(p => <option key={p.id} value={p.id}>{p.name}{DEFAULT_FORGE_PROMPTS.some(dp => dp.id === p.id) ? ' (System)' : ''}</option>)}
+                                                        {forgePrompts.map(p => {
+                                                            const isDefaultMatch = DEFAULT_FORGE_PROMPTS.find(dp => dp.id === p.id);
+                                                            const isModified = isDefaultMatch && isDefaultMatch.prompt !== p.prompt;
+                                                            return (
+                                                                <option key={p.id} value={p.id}>
+                                                                    {p.name} {isDefaultMatch && !isModified ? '(System)' : isModified ? '(Modified)' : ''}
+                                                                </option>
+                                                            );
+                                                        })}
                                                     </select>
                                                 </div>
                                                 <div className="space-y-3">
