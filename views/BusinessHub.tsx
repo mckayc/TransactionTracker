@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { BusinessNote, Transaction, Account, Category, BusinessProfile, BusinessInfo, TaxInfo } from '../types';
 import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, UsersIcon, BoxIcon, InfoIcon, RobotIcon, CopyIcon, FileTextIcon } from '../components/Icons';
@@ -142,7 +143,7 @@ const BlockEditor: React.FC<{
 }> = ({ initialBlocks, onChange, noteId }) => {
     const [internalBlocks, setInternalBlocks] = useState<ContentBlock[]>(initialBlocks);
     const [focusedId, setFocusedId] = useState<string | null>(null);
-    const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+    const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastNoteId = useRef<string>(noteId);
 
     useEffect(() => {
@@ -394,7 +395,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
         } catch (e) {
             setAiResponse("I encountered an error processing your structural query. Check your API key.");
         } finally {
-            setIsAiLoading(false);
+            setIsGenerating(false);
         }
     };
 
@@ -414,7 +415,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
             <div className="flex-1 min-h-0 overflow-hidden pb-10">
                 {activeTab === 'identity' && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full">
-                        <div className="lg:col-span-2 space-y-6 overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="lg:col-span-2 space-y-6 overflow-y-auto pr-2 custom-scrollbar border-b border-slate-100">
                             <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-8">
                                 <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
                                     <ShieldCheckIcon className="w-6 h-6 text-indigo-600" />
@@ -612,7 +613,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                         <NotesIcon className="w-12 h-12 text-indigo-200" />
                                     </div>
                                     <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Workbench</h3>
-                                    <p className="text-slate-500 max-w-sm mt-4 font-medium leading-relaxed">Select an entry from the stream to begin documenting institutional logic or managing development debt.</p>
+                                    <p className="text-slate-500 max-sm mt-4 font-medium leading-relaxed">Select an entry from the stream to begin documenting institutional logic or managing development debt.</p>
                                     <button onClick={handleCreateNote} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Start New Log</button>
                                 </div>
                             )}
