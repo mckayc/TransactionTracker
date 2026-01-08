@@ -156,12 +156,27 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                 const matchedRule = tx.appliedRuleId ? ruleMap.get(tx.appliedRuleId) : null;
                                 const type = typeMap.get(tx.typeId);
                                 const amountColor = type?.balanceEffect === 'incoming' ? 'text-green-600' : type?.balanceEffect === 'neutral' ? 'text-slate-400' : 'text-red-600';
+                                
+                                // Dynamic row background: dim if ignored, light green if rule matched, standard hover otherwise
+                                const rowClass = tx.isIgnored 
+                                    ? 'opacity-30 bg-slate-50' 
+                                    : matchedRule 
+                                        ? 'bg-emerald-50/60 hover:bg-emerald-100/70' 
+                                        : 'hover:bg-slate-50';
+
                                 return (
-                                    <tr key={tx.tempId} className={`transition-all ${tx.isIgnored ? 'opacity-30 bg-slate-50' : 'hover:bg-slate-50'}`}>
+                                    <tr key={tx.tempId} className={`transition-all ${rowClass}`}>
                                         <td className="p-2 text-center border-b border-slate-100"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-3.5 w-3.5" /></td>
                                         <td className="px-2 py-2 border-b border-slate-100">{tx.conflictType === 'database' ? (<span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[7px] font-black rounded uppercase flex items-center gap-1 w-max"><ExclamationTriangleIcon className="w-2 h-2" /> Exists</span>) : (<span className="px-1.5 py-0.5 bg-indigo-50 text-indigo-600 text-[7px] font-black rounded uppercase w-max">New</span>)}</td>
                                         <td className="px-2 py-2 text-[10px] text-slate-500 font-mono border-b border-slate-100">{tx.date}</td>
-                                        <td className="px-2 py-2 text-[12px] font-bold text-slate-700 truncate max-w-[150px] border-b border-slate-100">{tx.description}</td>
+                                        <td className="px-2 py-2 border-b border-slate-100 max-w-[200px]">
+                                            <div className="flex flex-col min-w-0">
+                                                <span className="text-[12px] font-bold text-slate-700 truncate" title={tx.description}>{tx.description}</span>
+                                                {tx.originalDescription && tx.originalDescription !== tx.description && (
+                                                    <span className="text-[9px] text-slate-400 font-mono truncate uppercase tracking-tighter" title={tx.originalDescription}>{tx.originalDescription}</span>
+                                                )}
+                                            </div>
+                                        </td>
                                         
                                         <td className="px-2 py-2 border-b border-slate-100 min-w-[160px]">
                                             <SearchableSelect 
@@ -197,7 +212,16 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                         </td>
 
                                         <td className={`px-2 py-2 text-right text-xs font-black font-mono border-b border-slate-100 ${amountColor}`}>{formatCurrency(tx.amount)}</td>
-                                        <td className="px-2 py-2 text-center border-b border-slate-100">{matchedRule ? (<button onClick={() => handleOpenExistingRule(matchedRule.id)} className="p-1 text-green-600 hover:scale-110 transition-transform"><SparklesIcon className="w-3.5 h-3.5" /></button>) : (<button onClick={() => handleOpenRuleCreator(tx)} className="p-1 text-slate-300 hover:text-indigo-600 transition-colors"><WrenchIcon className="w-3.5 h-3.5" /></button>)}</td>
+                                        <td className="px-2 py-2 text-center border-b border-slate-100">
+                                            {matchedRule ? (
+                                                <button onClick={() => handleOpenExistingRule(matchedRule.id)} className="p-1 text-green-600 hover:scale-110 transition-transform flex flex-col items-center gap-0.5" title="Rule Applied Automatically">
+                                                    <SparklesIcon className="w-3.5 h-3.5" />
+                                                    <span className="text-[6px] font-black uppercase tracking-tighter">Applied</span>
+                                                </button>
+                                            ) : (
+                                                <button onClick={() => handleOpenRuleCreator(tx)} className="p-1 text-slate-300 hover:text-indigo-600 transition-colors"><WrenchIcon className="w-3.5 h-3.5" /></button>
+                                            )}
+                                        </td>
                                     </tr>
                                 );
                             })}

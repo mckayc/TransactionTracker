@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon } from '../components/Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from '../components/RuleBuilder';
 import SearchableSelect from '../components/SearchableSelect';
@@ -41,6 +41,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const [setLocationId, setSetLocationId] = useState('');
     const [setUserId, setSetUserId] = useState('');
     const [setTransactionTypeId, setSetTransactionTypeId] = useState('');
+    const [setDescription, setSetDescription] = useState('');
     const [assignTagIds, setAssignTagIds] = useState<Set<string>>(new Set());
     const [skipImport, setSkipImport] = useState(false);
 
@@ -61,6 +62,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 setSetLocationId(ctx.locationId || ctx.setLocationId || '');
                 setSetUserId(ctx.userId || ctx.setUserId || '');
                 setSetTransactionTypeId(ctx.typeId || ctx.setTransactionTypeId || '');
+                setSetDescription(ctx.setDescription || '');
                 setAssignTagIds(new Set(ctx.tagIds || ctx.assignTagIds || []));
                 setSkipImport(!!ctx.skipImport);
             } else {
@@ -71,6 +73,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 setSetLocationId('');
                 setSetUserId('');
                 setSetTransactionTypeId('');
+                setSetDescription('');
                 setAssignTagIds(new Set());
                 setSkipImport(false);
             }
@@ -108,6 +111,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
         setLocationId: setLocationId || undefined,
         setUserId: setUserId || undefined,
         setTransactionTypeId: setTransactionTypeId || undefined,
+        setDescription: setDescription.trim() || undefined,
         assignTagIds: assignTagIds.size > 0 ? Array.from(assignTagIds) : undefined,
         skipImport
     });
@@ -170,55 +174,71 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     </div>
                     
                     {!skipImport ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            <SearchableSelect 
-                                label="Set Category" 
-                                options={categories} 
-                                value={setCategoryId} 
-                                onChange={setSetCategoryId} 
-                                isHierarchical 
-                                onAddNew={() => setQuickAddType('categories')}
-                            />
-                            <SearchableSelect 
-                                label="Set Counterparty" 
-                                options={counterparties} 
-                                value={setCounterpartyId} 
-                                onChange={setSetCounterpartyId} 
-                                isHierarchical 
-                                onAddNew={() => setQuickAddType('counterparties')}
-                            />
-                            <SearchableSelect 
-                                label="Assign User" 
-                                options={users} 
-                                value={setUserId} 
-                                onChange={setSetUserId} 
-                                onAddNew={() => setQuickAddType('users')}
-                            />
-                            <SearchableSelect 
-                                label="Assign Location" 
-                                options={locations} 
-                                value={setLocationId} 
-                                onChange={setSetLocationId} 
-                                onAddNew={() => setQuickAddType('locations')}
-                            />
-                            <SearchableSelect 
-                                label="Change Tx Type" 
-                                options={transactionTypes} 
-                                value={setTransactionTypeId} 
-                                onChange={setSetTransactionTypeId} 
-                                onAddNew={() => setQuickAddType('transactionTypes')}
-                            />
+                        <div className="space-y-8">
+                            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-3">
+                                <label className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    <TypeIcon className="w-3.5 h-3.5 text-indigo-500" /> Cleanup Display Description
+                                </label>
+                                <input 
+                                    type="text" 
+                                    value={setDescription} 
+                                    onChange={e => setSetDescription(e.target.value)} 
+                                    placeholder="Normalize to: e.g. Joe's Coffee Shop" 
+                                    className="w-full p-3 bg-white border-2 border-slate-100 rounded-xl font-bold text-slate-700 focus:border-indigo-500 outline-none shadow-sm"
+                                />
+                                <p className="text-[10px] text-slate-400 italic ml-1">The original bank string will be archived in the 'originalDescription' field.</p>
+                            </div>
 
-                            <div className="col-span-1 md:col-span-3 pt-6 border-t border-slate-100">
-                                <div className="flex items-center justify-between mb-4 px-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Institutional Tags</label>
-                                    <button type="button" onClick={() => setQuickAddType('tags')} className="text-[9px] font-black text-indigo-500 uppercase hover:underline">Register New Tag</button>
-                                </div>
-                                <div className="flex flex-wrap gap-2 p-4 border-2 border-slate-50 rounded-[2rem] bg-slate-50/50 shadow-inner">
-                                    {tags.map(tag => (
-                                        <button key={tag.id} type="button" onClick={() => toggleTag(tag.id)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border-2 transition-all ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-600 shadow-md scale-105' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200'}`}>{tag.name}</button>
-                                    ))}
-                                    {tags.length === 0 && <p className="text-xs text-slate-300 italic p-2">No tags registered in system.</p>}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                <SearchableSelect 
+                                    label="Set Category" 
+                                    options={categories} 
+                                    value={setCategoryId} 
+                                    onChange={setSetCategoryId} 
+                                    isHierarchical 
+                                    onAddNew={() => setQuickAddType('categories')}
+                                />
+                                <SearchableSelect 
+                                    label="Set Counterparty" 
+                                    options={counterparties} 
+                                    value={setCounterpartyId} 
+                                    onChange={setSetCounterpartyId} 
+                                    isHierarchical 
+                                    onAddNew={() => setQuickAddType('counterparties')}
+                                />
+                                <SearchableSelect 
+                                    label="Assign User" 
+                                    options={users} 
+                                    value={setUserId} 
+                                    onChange={setSetUserId} 
+                                    onAddNew={() => setQuickAddType('users')}
+                                />
+                                <SearchableSelect 
+                                    label="Assign Location" 
+                                    options={locations} 
+                                    value={setLocationId} 
+                                    onChange={setSetLocationId} 
+                                    onAddNew={() => setQuickAddType('locations')}
+                                />
+                                <SearchableSelect 
+                                    label="Change Tx Type" 
+                                    options={transactionTypes} 
+                                    value={setTransactionTypeId} 
+                                    onChange={setSetTransactionTypeId} 
+                                    onAddNew={() => setQuickAddType('transactionTypes')}
+                                />
+
+                                <div className="col-span-1 md:col-span-3 pt-6 border-t border-slate-100">
+                                    <div className="flex items-center justify-between mb-4 px-1">
+                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Institutional Tags</label>
+                                        <button type="button" onClick={() => setQuickAddType('tags')} className="text-[9px] font-black text-indigo-500 uppercase hover:underline">Register New Tag</button>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 p-4 border-2 border-slate-50 rounded-[2rem] bg-slate-50/50 shadow-inner">
+                                        {tags.map(tag => (
+                                            <button key={tag.id} type="button" onClick={() => toggleTag(tag.id)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border-2 transition-all ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-600 shadow-md scale-105' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200'}`}>{tag.name}</button>
+                                        ))}
+                                        {tags.length === 0 && <p className="text-xs text-slate-300 italic p-2">No tags registered in system.</p>}
+                                    </div>
                                 </div>
                             </div>
                         </div>

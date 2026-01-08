@@ -114,6 +114,7 @@ export interface ReconciliationRule {
     setLocationId?: string;
     setUserId?: string;
     setTransactionTypeId?: string;
+    setDescription?: string;
     assignTagIds?: string[];
     skipImport?: boolean;
     isAiDraft?: boolean;

@@ -1,3 +1,4 @@
+
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
@@ -105,6 +106,11 @@ export const applyRulesToTransactions = (
   return rawTransactions.filter(Boolean).map(tx => {
     let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string } = { ...tx };
     
+    // Ensure originalDescription is captured before any potential modification
+    if (!modifiedTx.originalDescription) {
+        modifiedTx.originalDescription = modifiedTx.description;
+    }
+
     for (const rule of safeRules) {
       if (matchesRule(modifiedTx, rule, accounts)) {
         modifiedTx.appliedRuleId = rule.id;
@@ -125,6 +131,9 @@ export const applyRulesToTransactions = (
         }
         if (rule.setTransactionTypeId) {
           modifiedTx.typeId = rule.setTransactionTypeId;
+        }
+        if (rule.setDescription) {
+          modifiedTx.description = rule.setDescription;
         }
         if (rule.assignTagIds && rule.assignTagIds.length > 0) {
             const currentTags = new Set(modifiedTx.tagIds || []);
@@ -152,6 +161,11 @@ export const findMatchingTransactions = (
       const updatedTx = { ...tx };
       let changed = false;
 
+      // Ensure originalDescription exists
+      if (!updatedTx.originalDescription) {
+          updatedTx.originalDescription = updatedTx.description;
+      }
+
       if (rule.setCategoryId && updatedTx.categoryId !== rule.setCategoryId) {
         updatedTx.categoryId = rule.setCategoryId;
         changed = true;
@@ -170,6 +184,10 @@ export const findMatchingTransactions = (
       }
       if (rule.setTransactionTypeId && updatedTx.typeId !== rule.setTransactionTypeId) {
         updatedTx.typeId = rule.setTransactionTypeId;
+        changed = true;
+      }
+      if (rule.setDescription && updatedTx.description !== rule.setDescription) {
+        updatedTx.description = rule.setDescription;
         changed = true;
       }
       if (rule.assignTagIds && rule.assignTagIds.length > 0) {

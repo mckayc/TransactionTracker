@@ -4,11 +4,14 @@ import type { Transaction, RawTransaction, DuplicatePair } from '../types';
 /**
  * Generates a consistent, unique ID for a transaction based on its core properties.
  * This is used to detect and prevent duplicate entries.
+ * Updated to use originalDescription as the primary anchor for consistency.
  */
 export const generateTransactionId = (tx: RawTransaction): string => {
   // Use a predictable order for the key
   const date = tx.date || '';
-  const desc = (tx.description || '').trim().toLowerCase();
+  // CRITICAL: Always use originalDescription if available for ID generation.
+  // This ensures that applying a rule to clean up a description doesn't change the transaction's ID.
+  const desc = (tx.originalDescription || tx.description || '').trim().toLowerCase();
   const amt = typeof tx.amount === 'number' ? tx.amount.toFixed(2) : '0.00';
   const acct = tx.accountId || '';
   
@@ -20,12 +23,13 @@ export const generateTransactionId = (tx: RawTransaction): string => {
 /**
  * Generates a robust signature for detecting duplicates even if metadata has changed.
  * Includes: Date, Amount, Normalized Description, and Account.
+ * Updated to use originalDescription to avoid "ghost duplicates" caused by cleaned strings.
  */
 export const getTransactionSignature = (tx: Transaction | RawTransaction): string => {
     const date = tx.date;
     const amount = typeof tx.amount === 'number' ? Math.abs(tx.amount).toFixed(2) : '0.00';
-    // Normalized description: lowercase, trimmed, remove common noise like IDs if possible
-    let desc = (tx.description || '').trim().toLowerCase();
+    // Normalized description: use original bank string to ensure stability
+    let desc = (tx.originalDescription || tx.description || '').trim().toLowerCase();
     // Strip common bank noise to increase match probability
     desc = desc.replace(/id nbr:.*$/i, '').replace(/[\s\-_]+/g, ' ').trim();
     
