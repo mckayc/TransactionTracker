@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo, useRef } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt } from '../types';
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon } from '../components/Icons';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings } from '../types';
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
@@ -35,6 +35,8 @@ interface RulesPageProps {
     ruleCategories: RuleCategory[];
     onSaveRuleCategory: (rc: RuleCategory) => void;
     onDeleteRuleCategory: (id: string) => void;
+    systemSettings: SystemSettings;
+    onUpdateSystemSettings: (s: SystemSettings) => void;
 }
 
 interface AppNotification {
@@ -69,7 +71,7 @@ const DEFAULT_FORGE_PROMPTS: RuleForgePrompt[] = [
 
 const RulesPage: React.FC<RulesPageProps> = ({ 
     rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser,
-    ruleCategories, onSaveRuleCategory, onDeleteRuleCategory
+    ruleCategories, onSaveRuleCategory, onDeleteRuleCategory, systemSettings, onUpdateSystemSettings
 }) => {
     const [selectedCategoryId, setSelectedCategoryId] = useState('all');
     const [searchTerm, setSearchTerm] = useState('');
@@ -77,6 +79,13 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [isCreating, setIsCreating] = useState(false);
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
     const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+
+    // Added missing state variables for rule category management and confirmation modals
+    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+    const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+    const [newCatName, setNewCatName] = useState('');
+    const [ruleToDeleteId, setRuleToDeleteId] = useState<string | null>(null);
+    const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
 
     // Notification State
     const [notification, setNotification] = useState<AppNotification | null>(null);
@@ -91,24 +100,19 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [showInstructions, setShowInstructions] = useState(false);
     
     // AI Forge State
-    const [forgePrompts, setForgePrompts] = useState<RuleForgePrompt[]>(DEFAULT_FORGE_PROMPTS);
+    const forgePrompts = useMemo(() => {
+        const custom = systemSettings.ruleForgePrompts || [];
+        return [...DEFAULT_FORGE_PROMPTS, ...custom];
+    }, [systemSettings.ruleForgePrompts]);
+
     const [selectedForgePromptId, setSelectedForgePromptId] = useState<string>(DEFAULT_FORGE_PROMPTS[1].id);
     const [forgePromptText, setForgePromptText] = useState<string>(DEFAULT_FORGE_PROMPTS[1].prompt);
     const [forgeData, setForgeData] = useState<string>('');
     const [isForging, setIsForging] = useState(false);
     const [forgeProgress, setForgeProgress] = useState<string>('');
     const [isEditingPrompt, setIsEditingPrompt] = useState(false);
-
-    // Category management
-    const [isCreatingCategory, setIsCreatingCategory] = useState(false);
-    const [newCatName, setNewCatName] = useState('');
-    const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
-
-    // Confirmation Modals State
-    const [ruleToDeleteId, setRuleToDeleteId] = useState<string | null>(null);
-    const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
-
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isNewPromptModalOpen, setIsNewPromptModalOpen] = useState(false);
+    const [newPromptName, setNewPromptName] = useState('');
 
     const notify = (type: AppNotification['type'], message: string, description?: string) => {
         const id = generateUUID();
@@ -254,6 +258,56 @@ const RulesPage: React.FC<RulesPageProps> = ({
         }
     };
 
+    const handleSaveProtocolToLibrary = () => {
+        const currentCustom = systemSettings.ruleForgePrompts || [];
+        const isDefault = DEFAULT_FORGE_PROMPTS.some(p => p.id === selectedForgePromptId);
+        
+        if (isDefault) {
+            // Can't edit defaults directly, create a new one
+            setNewPromptName(`${forgePrompts.find(p => p.id === selectedForgePromptId)?.name} (Custom)`);
+            setIsNewPromptModalOpen(true);
+            return;
+        }
+
+        const nextCustom = currentCustom.map(p => p.id === selectedForgePromptId ? { ...p, prompt: forgePromptText } : p);
+        onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: nextCustom });
+        setIsEditingPrompt(false);
+        notify('success', 'Protocol Updated', 'The custom protocol instructions have been saved.');
+    };
+
+    const handleCreateNewProtocol = () => {
+        if (!newPromptName.trim()) return;
+        const newPrompt: RuleForgePrompt = {
+            id: generateUUID(),
+            name: newPromptName.trim(),
+            prompt: forgePromptText
+        };
+        const nextCustom = [...(systemSettings.ruleForgePrompts || []), newPrompt];
+        onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: nextCustom });
+        setSelectedForgePromptId(newPrompt.id);
+        setIsNewPromptModalOpen(false);
+        setIsEditingPrompt(false);
+        notify('success', 'Protocol Registered', `"${newPromptName}" is now in your neural library.`);
+    };
+
+    const handleDeleteProtocol = (id: string) => {
+        const isDefault = DEFAULT_FORGE_PROMPTS.some(p => p.id === id);
+        if (isDefault) {
+            notify('warning', 'Locked Protocol', 'System default protocols cannot be removed.');
+            return;
+        }
+        if (!confirm("Remove this protocol from your library?")) return;
+        
+        const nextCustom = (systemSettings.ruleForgePrompts || []).filter(p => p.id !== id);
+        onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: nextCustom });
+        
+        // Switch to a default after deletion
+        const fallback = DEFAULT_FORGE_PROMPTS[1];
+        setSelectedForgePromptId(fallback.id);
+        setForgePromptText(fallback.prompt);
+        notify('info', 'Protocol Removed', 'The custom protocol has been deleted.');
+    };
+
     const handleSaveRuleValidated = (rule: ReconciliationRule) => {
         const duplicate = rules.find(r => r.name.toLowerCase() === rule.name.toLowerCase() && r.id !== rule.id);
         if (duplicate) {
@@ -298,6 +352,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
         notify('info', 'Logic Discarded', 'The rule was removed from the engine.');
         setRuleToDeleteId(null);
     }
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     if (isVerifyingImport) {
         return (
@@ -700,24 +756,42 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         <div className="space-y-6 animate-fade-in">
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                 <div className="space-y-3">
-                                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">1. Select Forge Protocol</label>
+                                                    <div className="flex justify-between items-center ml-1">
+                                                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">1. Select Forge Protocol</label>
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => { setNewPromptName(''); setIsNewPromptModalOpen(true); }} className="p-1 hover:bg-slate-100 rounded text-indigo-600" title="New Protocol"><AddIcon className="w-4 h-4"/></button>
+                                                            {!DEFAULT_FORGE_PROMPTS.some(p => p.id === selectedForgePromptId) && (
+                                                                <button onClick={() => handleDeleteProtocol(selectedForgePromptId)} className="p-1 hover:bg-red-50 rounded text-red-500" title="Delete Protocol"><TrashIcon className="w-4 h-4"/></button>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                     <select 
                                                         value={selectedForgePromptId}
                                                         onChange={e => handleForgePromptSelect(e.target.value)}
                                                         className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold bg-white focus:border-indigo-500 shadow-sm"
                                                     >
-                                                        {forgePrompts.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                        {forgePrompts.map(p => <option key={p.id} value={p.id}>{p.name}{DEFAULT_FORGE_PROMPTS.some(dp => dp.id === p.id) ? ' (System)' : ''}</option>)}
                                                     </select>
                                                 </div>
                                                 <div className="space-y-3">
                                                     <div className="flex justify-between items-center ml-1">
                                                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">2. Neural Instructions</label>
-                                                        <button 
-                                                            onClick={() => setIsEditingPrompt(!isEditingPrompt)}
-                                                            className="text-[9px] font-black text-indigo-600 uppercase hover:underline"
-                                                        >
-                                                            {isEditingPrompt ? 'LOCK PROMPT' : 'EDIT PROTOCOL'}
-                                                        </button>
+                                                        <div className="flex gap-2">
+                                                            {isEditingPrompt && (
+                                                                <button 
+                                                                    onClick={handleSaveProtocolToLibrary}
+                                                                    className="flex items-center gap-1 text-[9px] font-black text-emerald-600 uppercase hover:underline"
+                                                                >
+                                                                    <SaveIcon className="w-3 h-3" /> Save to Library
+                                                                </button>
+                                                            )}
+                                                            <button 
+                                                                onClick={() => setIsEditingPrompt(!isEditingPrompt)}
+                                                                className="text-[9px] font-black text-indigo-600 uppercase hover:underline"
+                                                            >
+                                                                {isEditingPrompt ? 'Cancel Edit' : 'Edit Protocol'}
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                     <textarea 
                                                         value={forgePromptText}
@@ -759,6 +833,40 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                         </div>
                                     )}
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isNewPromptModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden p-8 animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-black">Register New Protocol</h3>
+                            <button onClick={() => setIsNewPromptModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1">Protocol Name</label>
+                                <input 
+                                    type="text" 
+                                    value={newPromptName}
+                                    onChange={e => setNewPromptName(e.target.value)}
+                                    placeholder="e.g. Amazon Specialist" 
+                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold"
+                                    autoFocus
+                                />
+                            </div>
+                            <div className="flex gap-4 pt-2">
+                                <button onClick={() => setIsNewPromptModalOpen(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black">Cancel</button>
+                                <button 
+                                    onClick={handleCreateNewProtocol}
+                                    disabled={!newPromptName.trim()}
+                                    className="flex-[2] py-4 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 disabled:opacity-50"
+                                >
+                                    Register Protocol
+                                </button>
                             </div>
                         </div>
                     </div>

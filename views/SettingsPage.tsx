@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, BusinessNote, Location, AccountType, AiConfig, BackupConfig } from '../types';
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, SettingsIcon, TableIcon, TagIcon, CreditCardIcon, TasksIcon, LightBulbIcon, BarChartIcon, DownloadIcon, RobotIcon, WrenchIcon, SparklesIcon, ChecklistIcon, HeartIcon, BoxIcon, YoutubeIcon, InfoIcon, SortIcon, BugIcon, RepeatIcon, PlayIcon, MapPinIcon, UsersIcon, StethoscopeIcon, TrashIcon, CopyIcon, DatabaseIcon, ChevronDownIcon } from '../components/Icons';
@@ -42,11 +43,10 @@ interface SettingsPageProps {
 }
 
 const MODEL_OPTIONS = [
-    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Performant)', tier: 'Standard', desc: 'Cutting-edge speed and high reliability for ledger sorting.' },
-    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Analytical)', tier: 'Advanced', desc: 'Superior reasoning for complex financial roadmap synthesis.' },
-    { id: 'gemini-2.5-pro-preview', label: 'Gemini 2.5 Pro (Deep Reasoning)', tier: 'Advanced', desc: 'Powerful logic from the 2.5 series, great for multi-step strategy.' },
-    { id: 'gemini-2.5-flash-preview', label: 'Gemini 2.5 Flash (Balanced)', tier: 'Standard', desc: 'Fast, efficient, and capable 2.5 series model.' },
-    { id: 'gemini-flash-lite-latest', label: 'Gemini Flash Lite (Efficient)', tier: 'Standard', desc: 'Optimized for low-latency basic text extraction.' }
+    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Fastest)', tier: 'Standard', desc: 'Cutting-edge speed and high reliability for ledger sorting and categorization.' },
+    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Deep Analysis)', tier: 'Advanced', desc: 'Superior reasoning for complex financial roadmap synthesis and multi-step strategy.' },
+    { id: 'gemini-flash-latest', label: 'Gemini Flash 2.5 (Stable)', tier: 'Standard', desc: 'The most reliable recent Flash model for consistent data extraction.' },
+    { id: 'gemini-flash-lite-latest', label: 'Gemini Flash Lite (Efficient)', tier: 'Standard', desc: 'Optimized for low-latency basic text extraction and simple classification.' }
 ];
 
 const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warning?: string }> = {

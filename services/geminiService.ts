@@ -13,17 +13,11 @@ let currentAiConfig: AiConfig = {
 
 /**
  * Validates and updates the current AI configuration.
- * Aggressively sanitizes model strings to prevent 404 errors from legacy or incorrect naming conventions.
+ * Uses strict model naming from the developer guidelines to prevent 404 errors.
  */
 export const updateGeminiConfig = (config: AiConfig) => {
     const sanitizeModel = (modelId: string | undefined, fallback: string) => {
         if (!modelId || modelId === 'undefined' || modelId === 'null') return fallback;
-        
-        // Safety fix for the 404 error reported: 2.5 series models are currently '-preview', not '-latest'
-        if (modelId.includes('gemini-2.5-flash-latest')) return 'gemini-2.5-flash-preview';
-        if (modelId.includes('gemini-2.5-pro-latest')) return 'gemini-2.5-pro-preview';
-        if (modelId.includes('gemini-2.5-flash-lite-latest')) return 'gemini-flash-lite-latest';
-        
         return modelId;
     };
 
@@ -86,7 +80,7 @@ export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, 
         console.error("Gemini Handshake Failure:", e);
         // Clean up common error messages for the user
         let msg = e.message || "Unknown error";
-        if (msg.includes("404")) msg = `Model '${model}' not found. Please select a valid Gemini 3 or 2.5 model in Settings.`;
+        if (msg.includes("404")) msg = `Model '${model}' not found or is restricted. Please select a verified Gemini 3 or Flash-latest model in Settings.`;
         if (msg.includes("403")) msg = "API Key restricted or invalid. Check your Google AI Studio project permissions.";
         
         return { success: false, message: `Engine Error: ${msg}` };

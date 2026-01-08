@@ -355,6 +355,8 @@ const App: React.FC = () => {
                             ruleCategories={ruleCategories}
                             onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories)}
                             onDeleteRuleCategory={(id) => setRuleCategories(prev => { const next = prev.filter(rc => rc && rc.id !== id); api.save('ruleCategories', next).catch(console.error); return next; })}
+                            systemSettings={systemSettings}
+                            onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)}
                         />
                     )}
                     {currentView === 'management' && (
