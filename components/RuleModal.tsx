@@ -50,18 +50,23 @@ const RuleModal: React.FC<RuleModalProps> = ({
     // Entity Quick Add State
     const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
 
-    // Determines if this is a collision with OTHER rules.
+    // Determines if this name belongs to ANOTHER rule already in the system.
     const isDuplicateName = useMemo(() => {
         const trimmed = name.trim().toLowerCase();
-        if (!trimmed) return false;
+        if (!trimmed || !ruleId) return false;
         // Check if another rule (different ID) has this name
-        return existingRules.some(r => r.name.toLowerCase() === trimmed && r.id !== ruleId);
+        return existingRules.some(r => r.name.toLowerCase() === trimmed && String(r.id) !== String(ruleId));
     }, [name, existingRules, ruleId]);
 
     const isExistingRule = useMemo(() => {
         if (!ruleId) return false;
-        return existingRules.some(r => r.id === ruleId);
+        return existingRules.some(r => String(r.id) === String(ruleId));
     }, [ruleId, existingRules]);
+
+    // Validation state for UI
+    const isReady = useMemo(() => {
+        return !!name.trim() && !isDuplicateName && ruleId !== null;
+    }, [name, isDuplicateName, ruleId]);
 
     useEffect(() => {
         if (isOpen) {
@@ -70,7 +75,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 
                 // If the transaction object has an ID that matches a system rule, or is an explicit ID
                 const potentialId = ctx.id && ctx.id !== 'temp-context' ? ctx.id : null;
-                const matchInSystem = potentialId ? existingRules.find(r => r.id === potentialId) : null;
                 
                 setRuleId(potentialId || generateUUID());
                 setName(ctx.name || (ctx.description ? `${ctx.description} Rule` : ''));
@@ -142,13 +146,13 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const handleSave = (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!name.trim()) { alert('Rule Name is required.'); return; }
-        if (isDuplicateName) { alert('Rule Name must be unique.'); return; }
+        if (isDuplicateName) { alert('Rule Name must be unique and not conflict with existing rules.'); return; }
         onSaveRule(getRulePayload());
     };
 
     const handleSaveAndRun = () => {
         if (!name.trim()) { alert('Rule Name is required.'); return; }
-        if (isDuplicateName) { alert('Rule Name must be unique.'); return; }
+        if (isDuplicateName) { alert('Rule Name must be unique and not conflict with existing rules.'); return; }
         if (onSaveAndRun) onSaveAndRun(getRulePayload());
         else onSaveRule(getRulePayload());
     };
@@ -165,10 +169,10 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 </div>
                 <div className="flex items-center gap-2">
                     <button type="button" onClick={onClose} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200">Reset</button>
-                    <button onClick={handleSave} disabled={isDuplicateName || !name.trim()} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-700 text-white rounded-xl shadow-md disabled:opacity-30">
+                    <button onClick={handleSave} disabled={!isReady} className="px-5 py-2.5 text-xs font-black uppercase bg-slate-700 text-white rounded-xl shadow-md disabled:opacity-30">
                         {isExistingRule ? 'Overwrite' : 'Apply'}
                     </button>
-                    <button onClick={handleSaveAndRun} disabled={isDuplicateName || !name.trim()} className="px-8 py-2.5 text-xs font-black uppercase bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 flex items-center gap-2 disabled:opacity-30">
+                    <button onClick={handleSaveAndRun} disabled={!isReady} className="px-8 py-2.5 text-xs font-black uppercase bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 flex items-center gap-2 disabled:opacity-30">
                         <PlayIcon className="w-4 h-4" /> 
                         {isExistingRule ? 'Update & Execute' : 'Commit & Execute'}
                     </button>
