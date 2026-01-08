@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon } from '../components/Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from '../components/RuleBuilder';
 import SearchableSelect from '../components/SearchableSelect';
@@ -181,10 +181,18 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 </div>
                 
                 <div className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">1</div>
-                        Observation Criteria
-                    </h3>
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px]">1</div>
+                            Observation Criteria
+                        </h3>
+                        {transaction?.originalDescription && (
+                            <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-full border border-slate-100 shadow-inner max-w-[50%]">
+                                <InfoIcon className="w-3 h-3 text-slate-400" />
+                                <span className="text-[9px] font-black text-slate-500 uppercase truncate">Context: <span className="font-mono text-indigo-500">{transaction.originalDescription}</span></span>
+                            </div>
+                        )}
+                    </div>
                     <RuleBuilder items={conditions} onChange={setConditions} accounts={accounts} />
                 </div>
                 
@@ -260,7 +268,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Attach Institutional Tags</label>
                                         <button type="button" onClick={() => setQuickAddType('tags')} className="text-[9px] font-black text-indigo-500 uppercase hover:underline">Register New Tag</button>
                                     </div>
-                                    <div className="flex flex-wrap gap-2 p-4 border-2 border-slate-50 rounded-[2rem] bg-slate-50/50 shadow-inner">
+                                    <div className="flex wrap gap-2 p-4 border-2 border-slate-50 rounded-[2rem] bg-slate-50/50 shadow-inner">
                                         {tags.map(tag => (
                                             <button key={tag.id} type="button" onClick={() => toggleTag(tag.id)} className={`px-4 py-1.5 rounded-full text-[10px] font-black uppercase border-2 transition-all ${assignTagIds.has(tag.id) ? tag.color + ' border-indigo-600 shadow-md scale-105' : 'bg-white text-slate-400 border-slate-100 hover:border-indigo-200'}`}>{tag.name}</button>
                                         ))}

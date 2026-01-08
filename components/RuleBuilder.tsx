@@ -73,7 +73,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                 <select 
                                     value={condition.field} 
                                     onChange={(e) => handleUpdateCondition(index, 'field', e.target.value)}
-                                    className="w-full p-2.5 text-xs border rounded-xl bg-slate-50 font-black text-indigo-900 border-none shadow-inner"
+                                    className="w-full p-2.5 text-xs border border-slate-200 rounded-xl bg-slate-50 font-black text-indigo-900 transition-colors focus:border-indigo-500"
                                 >
                                     <option value="description">Description</option>
                                     <option value="amount">Amount</option>
@@ -90,7 +90,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                     value={condition.metadataKey || ''} 
                                     onChange={(e) => handleUpdateCondition(index, 'metadataKey', e.target.value)}
                                     placeholder="Column Name"
-                                    className="w-full p-2.5 text-xs border rounded-xl font-bold bg-slate-50"
+                                    className="w-full p-2.5 text-xs border border-slate-200 rounded-xl font-bold bg-slate-50 focus:border-indigo-500"
                                 />
                             </div>
 
@@ -98,7 +98,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                 <select 
                                     value={condition.operator} 
                                     onChange={(e) => handleUpdateCondition(index, 'operator', e.target.value)}
-                                    className="w-full p-2.5 text-xs border rounded-xl bg-slate-50 font-medium border-none shadow-inner"
+                                    className="w-full p-2.5 text-xs border border-slate-200 rounded-xl bg-slate-50 font-medium transition-colors focus:border-indigo-500"
                                 >
                                     {['description', 'metadata', 'counterpartyId', 'locationId'].includes(condition.field!) && (
                                         <><option value="contains">Contains</option><option value="does_not_contain">Doesn't Contain</option><option value="starts_with">Starts With</option><option value="ends_with">Ends With</option><option value="equals">Equals</option><option value="regex_match">Regex Match</option></>
@@ -117,7 +117,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                     <select 
                                         value={condition.value} 
                                         onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
-                                        className="w-full p-2.5 text-xs border rounded-xl font-bold bg-slate-50 border-none shadow-inner"
+                                        className="w-full p-2.5 text-xs border border-slate-200 rounded-xl font-bold bg-slate-50 transition-colors focus:border-indigo-500"
                                     >
                                         <option value="">Select Account...</option>
                                         {[...accounts].sort((a,b) => a.name.localeCompare(b.name)).map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
@@ -128,7 +128,7 @@ const RuleBuilder: React.FC<RuleBuilderProps> = ({ items, onChange, accounts, de
                                         value={condition.value} 
                                         onChange={(e) => handleUpdateCondition(index, 'value', e.target.value)}
                                         placeholder="Comparison value..."
-                                        className="w-full p-2.5 text-xs border rounded-xl font-bold bg-slate-50 border-none shadow-inner"
+                                        className="w-full p-2.5 text-xs border border-slate-200 rounded-xl font-bold bg-slate-50 transition-colors focus:border-indigo-500"
                                     />
                                 )}
                             </div>

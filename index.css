@@ -16,6 +16,12 @@ select, input[type='text'], input[type='date'], input[type='number'], textarea {
   transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out, background-color 0.2s;
 }
 
+/* Ensure dropdown options are always legible regardless of OS theme */
+option {
+  background-color: #ffffff;
+  color: #1e293b;
+}
+
 /* Remove default highlight/flash on some browsers */
 select:focus, input:focus, textarea:focus {
   outline: none !important;
