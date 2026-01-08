@@ -63,17 +63,22 @@ const RuleImportVerification: React.FC<Props> = ({
 
             // Logic to handle "Mergeable" rules
             const existing = existingRules.find(r => r.name.toLowerCase() === draft.name.toLowerCase());
-            const isMergeCandidate = existing && 
-                (existing.setCategoryId === draft.setCategoryId || (draft.mappingStatus.category === 'match' && existing.setCategoryId === categories.find(c => c.name.toLowerCase() === draft.suggestedCategoryName?.toLowerCase())?.id));
+            
+            // A rule is mergeable if it has the exact same TARGET (Category) 
+            // This prevents logical collisions where two different rules share a name
+            const isMergeCandidate = existing && (
+                existing.setCategoryId === draft.setCategoryId || 
+                (draft.mappingStatus.category === 'match' && existing.setCategoryId === categories.find(c => c.name.toLowerCase() === draft.suggestedCategoryName?.toLowerCase())?.id)
+            );
 
             if (isMergeCandidate && existing) {
                 // If the rule already exists and maps to the same category, merge the logic
-                // Merge conditions (simplified to assuming single text value merge for now)
+                // Merge conditions by joining values with OR logic (||)
                 const existingValues = existing.conditions.map(c => c.value).join(' || ');
                 const newValues = draft.conditions.map(c => c.value).join(' || ');
                 
                 // Construct a merged condition set
-                finalRule.id = existing.id; // Retain existing ID for overwrite/merge
+                finalRule.id = existing.id; // CRITICAL: Use existing ID to trigger UPDATE in the DB
                 finalRule.conditions = [{
                     id: generateUUID(),
                     type: 'basic',
@@ -153,8 +158,8 @@ const RuleImportVerification: React.FC<Props> = ({
             }, 0),
             collisions: sel.filter(d => {
                 const ex = existingNames.get(d.name.toLowerCase());
-                // True conflict only if name matches but targets differ
-                return ex && ex.setCategoryId !== d.setCategoryId;
+                // True conflict ONLY if name matches but target category differs (logical discrepancy)
+                return ex && ex.setCategoryId !== d.setCategoryId && d.suggestedCategoryName?.toLowerCase() !== categories.find(c => c.id === ex.setCategoryId)?.name.toLowerCase();
             }).length,
             merges: sel.filter(d => {
                 const ex = existingNames.get(d.name.toLowerCase());
@@ -228,7 +233,7 @@ const RuleImportVerification: React.FC<Props> = ({
                                             </div>
                                             {isCollision ? (
                                                 <p className="text-[7px] font-black text-amber-500 uppercase mt-0.5 flex items-center gap-0.5">
-                                                    <ExclamationTriangleIcon className="w-1.5 h-1.5" /> Conflict
+                                                    <ExclamationTriangleIcon className="w-1.5 h-1.5" /> Collision
                                                 </p>
                                             ) : isMergeCandidate ? (
                                                 <p className="text-[7px] font-black text-indigo-500 uppercase mt-0.5 flex items-center gap-0.5">

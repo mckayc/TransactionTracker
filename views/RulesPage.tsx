@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory } from '../types';
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon } from '../components/Icons';
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
@@ -35,6 +35,13 @@ interface RulesPageProps {
     onDeleteRuleCategory: (id: string) => void;
 }
 
+interface AppNotification {
+    id: string;
+    type: 'success' | 'error' | 'warning' | 'info';
+    message: string;
+    description?: string;
+}
+
 const RulesPage: React.FC<RulesPageProps> = ({ 
     rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser,
     ruleCategories, onSaveRuleCategory, onDeleteRuleCategory
@@ -45,6 +52,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [isCreating, setIsCreating] = useState(false);
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
     const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+
+    // Notification State
+    const [notification, setNotification] = useState<AppNotification | null>(null);
 
     // Import Flow State
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
@@ -62,6 +72,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    const notify = (type: AppNotification['type'], message: string, description?: string) => {
+        const id = generateUUID();
+        setNotification({ id, type, message, description });
+        setTimeout(() => setNotification(prev => prev?.id === id ? null : prev), 5000);
+    };
+
     // Filter rules by category and search
     const filteredRules = useMemo(() => {
         let list = rules.filter(r => r.name.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -78,6 +94,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             bulkSelectedIds.forEach(id => onDeleteRule(id));
             setBulkSelectedIds(new Set());
             setSelectedRuleId(null);
+            notify('success', 'Rules Purged', `${bulkSelectedIds.size} logical records removed.`);
         }
     };
 
@@ -87,6 +104,15 @@ const RulesPage: React.FC<RulesPageProps> = ({
         onSaveRules(updatedRules);
         setBulkSelectedIds(new Set());
         setIsMoveModalOpen(false);
+        notify('success', 'Logic Repositioned', `${updatedRules.length} rules moved to new cluster.`);
+    };
+
+    const toggleSelectAll = () => {
+        if (bulkSelectedIds.size === filteredRules.length && filteredRules.length > 0) {
+            setBulkSelectedIds(new Set());
+        } else {
+            setBulkSelectedIds(new Set(filteredRules.map(r => r.id)));
+        }
     };
 
     const processDrafts = (rawRules: ReconciliationRule[]) => {
@@ -172,12 +198,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const handleSaveRuleValidated = (rule: ReconciliationRule) => {
         const duplicate = rules.find(r => r.name.toLowerCase() === rule.name.toLowerCase() && r.id !== rule.id);
         if (duplicate) {
-            alert(`A rule with the name "${rule.name}" already exists. Please choose a unique name.`);
-            return;
+            notify('warning', 'Name Collision', `A rule named "${rule.name}" already exists. Using Overwrite protocol.`);
         }
         onSaveRule(rule);
         setIsCreating(false);
         setSelectedRuleId(rule.id);
+        notify('success', 'Logic Committed', `Rule "${rule.name}" has been synchronized.`);
     };
 
     const handleSaveRuleCat = (e: React.FormEvent) => {
@@ -190,6 +216,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setNewCatName('');
         setIsCreatingCategory(false);
         setEditingCategoryId(null);
+        notify('success', 'Cluster Registered', `New category "${newCatName}" is ready.`);
     };
 
     const handleDeleteCat = (id: string) => {
@@ -199,6 +226,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 const migrated = affectedRules.map(r => ({ ...r, ruleCategoryId: 'rcat_other' }));
                 onSaveRules(migrated);
                 onDeleteRuleCategory(id);
+                notify('info', 'Cluster Dissolved', `${migrated.length} rules re-routed to default.`);
             }
         } else {
             onDeleteRuleCategory(id);
@@ -212,13 +240,39 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     drafts={importDrafts}
                     onCancel={() => setIsVerifyingImport(false)}
                     onFinalize={(finalRules) => {
-                        const existingNamesSet = new Set(rules.map(r => r.name.toLowerCase()));
-                        const uniqueFinals = finalRules.filter(fr => !existingNamesSet.has(fr.name.toLowerCase()));
-                        if (uniqueFinals.length < finalRules.length) {
-                            alert(`${finalRules.length - uniqueFinals.length} rules were skipped due to name collisions. Names must be unique.`);
-                        }
-                        onSaveRules(uniqueFinals);
+                        const existingIdsSet = new Set(rules.map(r => r.id));
+                        const existingNamesMap = new Map(rules.map(r => [r.name.toLowerCase(), r.id]));
+                        
+                        // Separate rules into UPDATES (existing IDs) and NEW (unique names)
+                        const rulesToSync: ReconciliationRule[] = [];
+                        let skippedCount = 0;
+
+                        finalRules.forEach(fr => {
+                            const nameLower = fr.name.toLowerCase();
+                            const existingId = existingNamesMap.get(nameLower);
+
+                            // If it's a legitimate merge/update, it will have an ID matching the system
+                            if (existingIdsSet.has(fr.id)) {
+                                rulesToSync.push(fr);
+                            } 
+                            // If it has a matching name but different ID, it's a collision
+                            else if (existingId && existingId !== fr.id) {
+                                skippedCount++;
+                            }
+                            // Otherwise it's completely new
+                            else {
+                                rulesToSync.push(fr);
+                            }
+                        });
+
+                        onSaveRules(rulesToSync);
                         setIsVerifyingImport(false);
+                        
+                        if (skippedCount > 0) {
+                            notify('warning', 'Ingestion Collision', `${skippedCount} rules were skipped due to name collisions. Names must be unique.`);
+                        } else {
+                            notify('success', 'Ingestion Complete', `${rulesToSync.length} rules successfully committed to engine.`);
+                        }
                     }}
                     categories={categories}
                     payees={counterparties}
@@ -237,8 +291,10 @@ const RulesPage: React.FC<RulesPageProps> = ({
         );
     }
 
+    const isAllSelected = bulkSelectedIds.size === filteredRules.length && filteredRules.length > 0;
+
     return (
-        <div className="h-full flex flex-col gap-6">
+        <div className="h-full flex flex-col gap-6 relative">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight">Automation Engine</h1>
@@ -309,13 +365,28 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
                 {/* COLUMN 2: STREAM */}
                 <div className="w-96 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
-                    <div className="p-3 border-b flex items-center gap-3 bg-slate-50 rounded-t-2xl">
-                        <input 
-                            type="checkbox" 
-                            className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                            checked={bulkSelectedIds.size === filteredRules.length && filteredRules.length > 0}
-                            onChange={() => setBulkSelectedIds(bulkSelectedIds.size === filteredRules.length ? new Set() : new Set(filteredRules.map(r => r.id)))}
-                        />
+                    <div className="p-3 border-b flex flex-col gap-3 bg-slate-50 rounded-t-2xl">
+                        <div className="flex items-center justify-between px-1">
+                            <div className="flex items-center gap-3">
+                                <input 
+                                    type="checkbox" 
+                                    className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                    checked={isAllSelected}
+                                    onChange={toggleSelectAll}
+                                />
+                                <button 
+                                    onClick={toggleSelectAll}
+                                    className="text-[10px] font-black text-slate-500 uppercase tracking-widest hover:text-indigo-600 transition-colors"
+                                >
+                                    {isAllSelected ? 'Deselect All' : 'Select All'}
+                                </button>
+                            </div>
+                            {bulkSelectedIds.size > 0 && (
+                                <span className="text-[10px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full animate-pulse">
+                                    {bulkSelectedIds.size} SELECTED
+                                </span>
+                            )}
+                        </div>
                         <div className="relative flex-1">
                             <input type="text" placeholder="Search rules..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
                             <SearchCircleIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
@@ -384,29 +455,31 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 {/* COLUMN 3: EDITOR */}
                 <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden relative">
                     {(selectedRuleId || isCreating) ? (
-                        <RuleModal 
-                            isOpen={true} 
-                            onClose={() => { setSelectedRuleId(null); setIsCreating(false); }} 
-                            onSaveRule={handleSaveRuleValidated}
-                            accounts={accounts}
-                            transactionTypes={transactionTypes}
-                            categories={categories}
-                            tags={tags}
-                            counterparties={counterparties}
-                            locations={locations}
-                            users={users}
-                            ruleCategories={ruleCategories}
-                            onSaveRuleCategory={onSaveRuleCategory}
-                            transaction={activeRule ? { ...activeRule, description: activeRule.conditions[0]?.value || '' } as any : null}
-                            onSaveCategory={onSaveCategory}
-                            onSaveCounterparty={onSaveCounterparty}
-                            onSaveTag={onSaveTag}
-                            onAddTransactionType={onAddTransactionType}
-                            existingRules={rules}
-                        />
+                        <div className="flex flex-col h-full animate-fade-in bg-white">
+                            <RuleModal 
+                                isOpen={true} 
+                                onClose={() => { setSelectedRuleId(null); setIsCreating(false); }} 
+                                onSaveRule={handleSaveRuleValidated}
+                                accounts={accounts}
+                                transactionTypes={transactionTypes}
+                                categories={categories}
+                                tags={tags}
+                                counterparties={counterparties}
+                                locations={locations}
+                                users={users}
+                                ruleCategories={ruleCategories}
+                                onSaveRuleCategory={onSaveRuleCategory}
+                                transaction={activeRule ? { ...activeRule, description: activeRule.conditions[0]?.value || '' } as any : null}
+                                onSaveCategory={onSaveCategory}
+                                onSaveCounterparty={onSaveCounterparty}
+                                onSaveTag={onSaveTag}
+                                onAddTransactionType={onAddTransactionType}
+                                existingRules={rules}
+                            />
+                        </div>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
-                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle">
+                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-2xl border border-slate-100 mb-8 animate-bounce-subtle">
                                 <ShieldCheckIcon className="w-12 h-12 text-indigo-200" />
                             </div>
                             <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Logic Workbench</h3>
@@ -416,6 +489,34 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     )}
                 </div>
             </div>
+
+            {/* In-App Notification Toast */}
+            {notification && (
+                <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] animate-slide-up">
+                    <div className={`px-6 py-4 rounded-[2rem] shadow-2xl flex items-center gap-4 border min-w-[320px] backdrop-blur-md ${
+                        notification.type === 'success' ? 'bg-emerald-900/90 border-emerald-500 text-white' :
+                        notification.type === 'warning' ? 'bg-amber-900/90 border-amber-500 text-white' :
+                        'bg-slate-900/90 border-white/10 text-white'
+                    }`}>
+                        <div className={`p-2 rounded-full ${
+                            notification.type === 'success' ? 'bg-emerald-50' :
+                            notification.type === 'warning' ? 'bg-amber-50' :
+                            'bg-indigo-50'
+                        }`}>
+                            {notification.type === 'success' ? <CheckCircleIcon className="w-5 h-5 text-emerald-600" /> : 
+                             notification.type === 'warning' ? <ExclamationTriangleIcon className="w-5 h-5 text-amber-600" /> : 
+                             <InfoIcon className="w-5 h-5 text-indigo-600" />}
+                        </div>
+                        <div>
+                            <p className="text-sm font-black tracking-tight">{notification.message}</p>
+                            {notification.description && <p className="text-[10px] font-bold text-white/60 uppercase">{notification.description}</p>}
+                        </div>
+                        <button onClick={() => setNotification(null)} className="ml-auto p-1 hover:bg-white/10 rounded-full transition-colors">
+                            <CloseIcon className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {isImportModalOpen && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex justify-center items-center p-4" onClick={() => setIsImportModalOpen(false)}>
