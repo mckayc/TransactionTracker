@@ -72,10 +72,18 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         const processed = initialTransactions.filter(t => Math.abs(t.amount) > 0.001).map(tx => {
             const sig = getTransactionSignature(tx);
             const conflict = dbSigs.has(sig) ? 'database' : null;
-            return { ...tx, conflictType: conflict as any, isIgnored: tx.isIgnored || !!conflict };
+            
+            // Auto-match locations by string if ID is missing but string is present
+            let finalLocationId = tx.locationId;
+            if (!finalLocationId && tx.location) {
+                const match = locations.find(l => l.name.toLowerCase() === tx.location?.toLowerCase());
+                if (match) finalLocationId = match.id;
+            }
+
+            return { ...tx, locationId: finalLocationId, conflictType: conflict as any, isIgnored: tx.isIgnored || !!conflict };
         });
         setTransactions(processed);
-    }, [initialTransactions, existingTransactions]);
+    }, [initialTransactions, existingTransactions, locations]);
 
     const handleUpdate = (txId: string, field: keyof VerifiableTransaction, value: any) => {
         setTransactions(prev => prev.map(tx => tx.tempId === txId ? { ...tx, [field]: value } : tx));
@@ -241,7 +249,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                                 options={locations} 
                                                 value={tx.locationId || ''} 
                                                 onChange={val => handleUpdate(tx.tempId, 'locationId', val)}
-                                                placeholder="Loc..."
+                                                placeholder={tx.location || "Loc..."}
                                                 onAddNew={() => { setActiveTxForQuickAdd(tx.tempId); setQuickAddType('locations'); }}
                                             />
                                         </td>
@@ -324,7 +332,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} counterparties={counterparties} locations={locations} users={users} transaction={ruleTransactionContext}
                     ruleCategories={ruleCategories} onSaveRuleCategory={onSaveRuleCategory}
                     onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveTag={onSaveTag} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onAddTransactionType={onAddTransactionType}
-                    onSaveAndRun={(r) => { onSaveRule(r); const updated = applyRulesToTransactions(transactions, [r], accounts); setTransactions(updated as VerifiableTransaction[]); setIsRuleModalOpen(false); }}
+                    onSaveAndRun={(r) => { onSaveRule(r); const updated = applyRulesToTransactions(transactions, [rules.filter(Boolean), r].flat(), accounts); setTransactions(updated as VerifiableTransaction[]); setIsRuleModalOpen(false); }}
                     existingRules={rules}
                 />
             )}

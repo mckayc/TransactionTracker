@@ -153,7 +153,6 @@ const createTables = () => {
         CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT, color TEXT);
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
-        CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
         CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, name TEXT, city TEXT, state TEXT, country TEXT);
         CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
         CREATE TABLE IF NOT EXISTS rule_categories (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
@@ -225,18 +224,21 @@ const ensureSeedData = () => {
         }
         
         const ruleCatCount = db.prepare("SELECT COUNT(*) as count FROM rule_categories").get().count;
-        if (ruleCatCount === 0) {
-            console.log("[DB] Seeding default rule categories...");
-            const insertRuleCat = db.prepare("INSERT INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)");
-            db.transaction(() => {
-                insertRuleCat.run('rcat_all', 'All', 0);
-                insertRuleCat.run('rcat_desc', 'Description', 0);
-                insertRuleCat.run('rcat_loc', 'Location', 0);
-                insertRuleCat.run('rcat_user', 'User', 0);
-                insertRuleCat.run('rcat_manual', 'Manual Rule', 1);
-                insertRuleCat.run('rcat_other', 'Other', 0);
-            })();
-        }
+        // Seed new Manual Rule default
+        console.log("[DB] Verifying rule categories...");
+        const insertRuleCat = db.prepare("INSERT OR REPLACE INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)");
+        db.transaction(() => {
+            // Remove 'rcat_all' as a selectable category if it exists
+            db.prepare("DELETE FROM rule_categories WHERE id = ?").run('rcat_all');
+            
+            insertRuleCat.run('rcat_desc', 'Description', 0);
+            insertRuleCat.run('rcat_loc', 'Location', 0);
+            insertRuleCat.run('rcat_manual', 'Manual Rule', 1);
+            insertRuleCat.run('rcat_other', 'Other', 0);
+            
+            // Clean up legacy rcat_user if it was seeded
+            db.prepare("DELETE FROM rule_categories WHERE id = ?").run('rcat_user');
+        })();
 
         const accountTypeCount = db.prepare("SELECT COUNT(*) as count FROM account_types").get().count;
         if (accountTypeCount === 0) {

@@ -77,7 +77,7 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         setCategory: header.findIndex(h => h === 'set category' || h === 'category match'),
         setPayee: header.findIndex(h => h === 'set payee' || h === 'payee' || h === 'merchant' || h === 'counterparty'),
         setCounterparty: header.findIndex(h => h === 'set counterparty' || h === 'counterparty'),
-        setLocation: header.findIndex(h => h === 'set location' || h === 'location' || h === 'place'),
+        setLocation: header.findIndex(h => h === 'set location' || h === 'location' || h === 'place' || h === 'city' || h === 'address'),
         setType: header.findIndex(h => h === 'set type' || h === 'type'),
         setUser: header.findIndex(h => h === 'set user' || h === 'user'),
         setTags: header.findIndex(h => h === 'tags' || h === 'labels'),
@@ -246,7 +246,7 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     credit: lowerHeaders.findIndex(p => p.includes('credit') || p.includes('deposit')),
     debit: lowerHeaders.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdrawal')),
     category: lowerHeaders.findIndex(p => p.includes('category')),
-    location: lowerHeaders.findIndex(p => p.includes('location') || p.includes('city') || p.includes('place')),
+    location: lowerHeaders.findIndex(p => p.includes('location') || p.includes('city') || p.includes('place') || p.includes('address')),
     type: lowerHeaders.findIndex(p => p.includes('type'))
   };
 

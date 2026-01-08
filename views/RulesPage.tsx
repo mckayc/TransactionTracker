@@ -122,7 +122,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             const locMatch = locations.find(l => l.name.toLowerCase() === r.suggestedLocationName?.toLowerCase());
             const typeMatch = transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase());
 
-            // Handle rule category matching
+            // Handle rule category matching - Default to manual rule if creating
             let mappedRuleCategoryId = 'rcat_manual';
             if (r.ruleCategory) {
                 const rcMatch = ruleCategories.find(rc => rc.name.toLowerCase() === r.ruleCategory?.toLowerCase());
