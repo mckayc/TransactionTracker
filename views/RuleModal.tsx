@@ -50,20 +50,30 @@ const RuleModal: React.FC<RuleModalProps> = ({
     // Entity Quick Add State
     const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
 
+    const normId = (id: any) => String(id || '').trim().toLowerCase();
+
     const isDuplicateName = useMemo(() => {
-        const trimmed = name.trim().toLowerCase();
-        if (!trimmed || !ruleId) return false;
-        // Ensure comparison is safe by casting to string and ensuring ruleId is matched
-        return existingRules.some(r => r.name.toLowerCase() === trimmed && String(r.id) !== String(ruleId));
+        const trimmedName = name.trim().toLowerCase();
+        if (!trimmedName || !ruleId) return false;
+        
+        const activeId = normId(ruleId);
+        return existingRules.some(r => 
+            r.name.toLowerCase() === trimmedName && 
+            normId(r.id) !== activeId
+        );
     }, [name, existingRules, ruleId]);
 
     const isExistingRule = useMemo(() => {
         if (!ruleId) return false;
-        return existingRules.some(r => String(r.id) === String(ruleId));
+        const activeId = normId(ruleId);
+        return existingRules.some(r => normId(r.id) === activeId);
     }, [ruleId, existingRules]);
 
     const isReady = useMemo(() => {
-        return !!name.trim() && !isDuplicateName && ruleId !== null;
+        const hasTitle = !!name.trim();
+        const noCollision = !isDuplicateName;
+        const hasId = ruleId !== null;
+        return hasTitle && noCollision && hasId;
     }, [name, isDuplicateName, ruleId]);
 
     useEffect(() => {
@@ -101,7 +111,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 setSkipImport(false);
             }
         }
-    }, [isOpen, transaction, existingRules]);
+    }, [isOpen, transaction]);
 
     const handleQuickAddSave = (type: EntityType, payload: any) => {
         switch (type) {
@@ -142,13 +152,13 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const handleSave = (e?: React.FormEvent) => {
         if (e) e.preventDefault();
         if (!name.trim()) { alert('Rule Name is required.'); return; }
-        if (isDuplicateName) { alert('Rule Name must be unique.'); return; }
+        if (isDuplicateName) { alert('A different rule already uses this name. Identity must be unique.'); return; }
         onSaveRule(getRulePayload());
     };
 
     const handleSaveAndRun = () => {
         if (!name.trim()) { alert('Rule Name is required.'); return; }
-        if (isDuplicateName) { alert('Rule Name must be unique.'); return; }
+        if (isDuplicateName) { alert('A different rule already uses this name. Identity must be unique.'); return; }
         if (onSaveAndRun) onSaveAndRun(getRulePayload());
         else onSaveRule(getRulePayload());
     };
@@ -234,7 +244,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                     />
                     {isDuplicateName && (
                         <p className="text-red-500 text-[10px] font-black uppercase tracking-tight mt-2 flex items-center gap-1">
-                            <ExclamationTriangleIcon className="w-3 h-3" /> This identity is already registered in the ledger logic.
+                            <ExclamationTriangleIcon className="w-3 h-3" /> Identity collision with a different record.
                         </p>
                     )}
                 </div>
