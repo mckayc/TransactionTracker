@@ -351,7 +351,7 @@ app.post('/api/transactions/batch', (req, res) => {
                 counterparty_id, location_id, user_id, location, notes, original_description, 
                 source_filename, link_group_id, is_parent, parent_transaction_id, 
                 is_completed, metadata
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
         const tagClear = db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?");
         const tagInsert = db.prepare("INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)");
