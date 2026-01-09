@@ -1,26 +1,33 @@
 
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
+/**
+ * Collapses multiple spaces into a single space and trims.
+ * Essential for matching messy bank data.
+ */
+const normalizeText = (text: string): string => {
+    return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+};
+
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
-    let txValue: any;
-    
     if (!tx || !condition || !condition.field) return true;
 
-    // Helper to evaluate a single value against the tx field
+    // Helper to evaluate a single token against the tx field
     const checkValue = (actualValue: string, expectedValue: string): boolean => {
-        const val = actualValue.toLowerCase();
-        const expected = expectedValue.toLowerCase().trim();
-        if (!expected) return false;
+        const normActual = normalizeText(actualValue);
+        const normExpected = normalizeText(expectedValue);
+        
+        if (!normExpected) return false;
 
         switch (condition.operator) {
-            case 'contains': return val.includes(expected);
-            case 'does_not_contain': return !val.includes(expected);
-            case 'equals': return val === expected;
-            case 'starts_with': return val.startsWith(expected);
-            case 'ends_with': return val.endsWith(expected);
+            case 'contains': return normActual.includes(normExpected);
+            case 'does_not_contain': return !normActual.includes(normExpected);
+            case 'equals': return normActual === normExpected;
+            case 'starts_with': return normActual.startsWith(normExpected);
+            case 'ends_with': return normActual.endsWith(normExpected);
             case 'regex_match': 
                 try {
-                    return new RegExp(expected, 'i').test(actualValue);
+                    return new RegExp(expectedValue.trim(), 'i').test(actualValue);
                 } catch (e) {
                     return false;
                 }
@@ -29,18 +36,18 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
     };
 
     if (condition.field === 'description') {
-        txValue = (tx.originalDescription || tx.description || '');
+        const txValue = (tx.originalDescription || tx.description || '');
         const condValue = String(condition.value || '');
         
         // Handle inline OR logic: split by ||
         const tokens = condValue.split(/\s*\|\|\s*/).filter(Boolean);
         if (tokens.length <= 1) return checkValue(txValue, condValue);
         
-        // If it's a "does_not_contain", it must not contain ANY of the tokens (Logical AND NOT)
+        // Logical NOT check: Must not contain ANY of the tokens
         if (condition.operator === 'does_not_contain') {
             return tokens.every(token => checkValue(txValue, token));
         }
-        // Otherwise, it's a logical OR: match any
+        // Logical OR: match any token
         return tokens.some(token => checkValue(txValue, token));
 
     } else if (condition.field === 'metadata') {
@@ -51,7 +58,7 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
             return metadataValue !== undefined && metadataValue !== null && String(metadataValue).trim() !== '';
         }
 
-        txValue = String(metadataValue || '');
+        const txValue = String(metadataValue || '');
         const condValue = String(condition.value || '');
         const tokens = condValue.split(/\s*\|\|\s*/).filter(Boolean);
         
@@ -76,20 +83,18 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
         if (condition.operator === 'equals') {
             return txAccountId === String(condition.value);
         } else {
-            const account = (accounts || []).filter(Boolean).find(a => a && a.id === txAccountId);
-            const accountName = (account?.name || '').toLowerCase();
-            const condValue = String(condition.value || '').toLowerCase();
-            if (condition.operator === 'contains') return accountName.includes(condValue);
-            if (condition.operator === 'does_not_contain') return !accountName.includes(condValue);
-            return false;
+            const account = (accounts || []).find(a => a && a.id === txAccountId);
+            const accountName = account?.name || '';
+            const condValue = String(condition.value || '');
+            return checkValue(accountName, condValue);
         }
     } else if (condition.field === 'counterpartyId') {
-        txValue = tx.counterpartyId || '';
+        const txValue = tx.counterpartyId || '';
         const condValue = String(condition.value || '');
         if (condition.operator === 'equals') return txValue === condValue;
         return false;
     } else if (condition.field === 'locationId') {
-        txValue = tx.locationId || '';
+        const txValue = tx.locationId || '';
         const condValue = String(condition.value || '');
         if (condition.operator === 'equals') return txValue === condValue;
         return false;
@@ -200,7 +205,6 @@ export const findMatchingTransactions = (
       const updatedTx = { ...tx };
       let changed = false;
 
-      // Ensure originalDescription exists
       if (!updatedTx.originalDescription) {
           updatedTx.originalDescription = updatedTx.description;
       }

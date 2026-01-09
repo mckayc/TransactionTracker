@@ -25,14 +25,17 @@ interface Props {
 
 /**
  * Normalizes and merges multiple condition strings into a single unique OR-chain.
- * Squashes internal whitespace to ensure 'WORD  A' matches 'WORD A'.
+ * - Collapses multiple spaces into one.
+ * - Compares case-insensitively.
+ * - Returns a clean string with unique tokens joined by ||.
  */
 const mergePatternsUniquely = (existing: string, incoming: string): string => {
-    // Normalization helper: squash multiple spaces and trim
+    // Normalization helper: squash multiple spaces, trim, lowercase
     const normalize = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
     
-    const existingTokens = existing.split(/\s*\|\|\s*/).map(t => t.trim()).filter(Boolean);
-    const incomingTokens = incoming.split(/\s*\|\|\s*/).map(t => t.trim()).filter(Boolean);
+    // Split by common delimiters and filter empty strings
+    const existingTokens = existing.split(/\s*\|\|\s*|\s*\|\s*/).map(t => t.trim()).filter(Boolean);
+    const incomingTokens = incoming.split(/\s*\|\|\s*|\s*\|\s*/).map(t => t.trim()).filter(Boolean);
     
     const seenNormalized = new Set<string>();
     const result: string[] = [];
@@ -41,7 +44,7 @@ const mergePatternsUniquely = (existing: string, incoming: string): string => {
         const norm = normalize(token);
         if (!seenNormalized.has(norm)) {
             seenNormalized.add(norm);
-            // We use a slightly cleaned version (squashed spaces) but keep original-ish casing for the result
+            // We use the cleaned version (squashed spaces) for the actual result
             result.push(token.replace(/\s+/g, ' ').trim());
         }
     });
@@ -132,7 +135,7 @@ const LogicForecastDrawer: React.FC<{
                                         </code>
                                     </div>
                                     <div className="flex justify-center">
-                                        <div className="px-4 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase">De-duplication Check</div>
+                                        <div className="px-4 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase">Logical Uniqueness Check</div>
                                     </div>
                                     <div className="space-y-2">
                                         <p className="text-[9px] font-black text-indigo-400 uppercase">Incoming Pattern</p>
@@ -143,7 +146,7 @@ const LogicForecastDrawer: React.FC<{
                                 </div>
 
                                 <div className="pt-6 border-t border-white/10 space-y-2">
-                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Resulting Engine Logic (Cleaned Result)</p>
+                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Resulting Engine Logic (De-duplicated)</p>
                                     <code className="block p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-sm font-mono text-emerald-300">
                                         {mergedPatternPreview}
                                     </code>
@@ -170,7 +173,7 @@ const LogicForecastDrawer: React.FC<{
                             <h4 className="font-black text-sm uppercase">Verification Protocol</h4>
                          </div>
                          <p className="text-xs text-amber-700 leading-relaxed font-medium">
-                            The system now uses <strong className="text-amber-900">Logical De-duplication</strong>. If an incoming search pattern already exists in the target rule (even if spacing differs), it will not be appended. This maintains optimal engine performance.
+                            The system now uses <strong className="text-amber-900">Whitespace Normalization</strong>. If an incoming search pattern already exists (regardless of extra spaces or casing), it will not be duplicated.
                          </p>
                     </div>
                 </div>

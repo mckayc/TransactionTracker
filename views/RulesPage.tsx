@@ -98,7 +98,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [importError, setImportError] = useState<string | null>(null);
     const [showInstructions, setShowInstructions] = useState(false);
     
-    // AI Forge State
+    // AI Forge State - Full CRUD support
     const forgePrompts = useMemo(() => {
         // If settings has prompts, use only those. If not, use defaults.
         return systemSettings.ruleForgePrompts && systemSettings.ruleForgePrompts.length > 0
@@ -163,7 +163,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
             const locMatch = locations.find(l => l.name.toLowerCase() === r.suggestedLocationName?.toLowerCase());
             const typeMatch = transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase());
 
-            // Handle rule category matching - Default to manual rule if creating
             let mappedRuleCategoryId = 'rcat_manual';
             if (r.ruleCategory) {
                 const rcMatch = ruleCategories.find(rc => rc.name.toLowerCase() === r.ruleCategory?.toLowerCase());
@@ -295,11 +294,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
         const nextCustom = forgePrompts.filter(p => p.id !== id);
         onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: nextCustom });
         
-        // Switch to a default or first available after deletion
+        // Pick the first remaining as fallback
         if (nextCustom.length > 0) {
             setSelectedForgePromptId(nextCustom[0].id);
             setForgePromptText(nextCustom[0].prompt);
         } else {
+            // Revert to hardcoded if everything deleted (automatic system recovery)
             setSelectedForgePromptId(DEFAULT_FORGE_PROMPTS[1].id);
             setForgePromptText(DEFAULT_FORGE_PROMPTS[1].prompt);
         }
