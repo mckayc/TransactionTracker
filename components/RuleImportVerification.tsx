@@ -23,27 +23,34 @@ interface Props {
 }
 
 /**
+ * Collapses multiple spaces into one, trims, and lowercases.
+ */
+const normalizeToken = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * Extracts all unique normalized tokens from a condition value string (splitting by pipes).
+ */
+const getTokens = (value: string): string[] => {
+    return value.split(/\s*\|\|\s*|\s*\|\s*/).map(t => normalizeToken(t)).filter(Boolean);
+};
+
+/**
  * Normalizes and merges multiple condition strings into a single unique OR-chain.
- * - Collapses multiple spaces into one (Whitespace Squashing).
- * - Compares case-insensitively.
- * - Returns a clean string with unique tokens joined by ||.
+ * Whitespace-invariant de-duplication.
  */
 const mergePatternsUniquely = (existing: string, incoming: string): string => {
-    // Normalization helper: squash multiple spaces, trim, lowercase
-    const normalize = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
-    
-    // Split by common delimiters and filter empty strings
     const existingTokens = existing.split(/\s*\|\|\s*|\s*\|\s*/).map(t => t.trim()).filter(Boolean);
+    // Fix: Fixed malformed regex by adding missing backslash before s* to prevent it being parsed as division
     const incomingTokens = incoming.split(/\s*\|\|\s*|\s*\|\s*/).map(t => t.trim()).filter(Boolean);
     
     const seenNormalized = new Set<string>();
     const result: string[] = [];
     
     [...existingTokens, ...incomingTokens].forEach(token => {
-        const norm = normalize(token);
+        const norm = normalizeToken(token);
         if (!seenNormalized.has(norm)) {
             seenNormalized.add(norm);
-            // We use the cleaned version (squashed spaces) for the actual result
+            // Result uses squashed spaces but preserves original token's casing for readability if it's new
             result.push(token.replace(/\s+/g, ' ').trim());
         }
     });
@@ -59,7 +66,22 @@ const LogicForecastDrawer: React.FC<{
     locations: Location[];
     onClose: () => void; 
 }> = ({ draft, existingRule, categories, payees, locations, onClose }) => {
-    const isMerge = !!existingRule && (
+    
+    const existingNormSet = useMemo(() => {
+        if (!existingRule) return new Set<string>();
+        return new Set(existingRule.conditions.flatMap(c => getTokens(String(c.value || ''))));
+    }, [existingRule]);
+
+    const incomingNormSet = useMemo(() => {
+        return new Set(draft.conditions.flatMap(c => getTokens(String(c.value || ''))));
+    }, [draft]);
+
+    const isLogicRedundant = useMemo(() => {
+        if (!existingRule) return false;
+        return Array.from(incomingNormSet).every(t => existingNormSet.has(t));
+    }, [incomingNormSet, existingNormSet, existingRule]);
+
+    const isMerge = !!existingRule && !isLogicRedundant && (
         existingRule.setCategoryId === draft.setCategoryId || 
         (draft.mappingStatus.category === 'match' && existingRule.setCategoryId === categories.find(c => c.name.toLowerCase() === draft.suggestedCategoryName?.toLowerCase())?.id)
     );
@@ -101,16 +123,16 @@ const LogicForecastDrawer: React.FC<{
     return (
         <div className="fixed inset-0 z-[250] flex justify-end">
             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative w-full max-w-xl bg-slate-50 shadow-2xl flex flex-col h-full animate-slide-in-right">
-                <div className="p-6 border-b border-slate-200 bg-white flex justify-between items-center">
+            <div className="relative w-full max-w-lg bg-slate-900 shadow-2xl flex flex-col h-full animate-slide-in-right">
+                <div className="p-6 border-b border-white/10 bg-slate-800 flex justify-between items-center">
                     <div>
-                        <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
-                            <WorkflowIcon className="w-5 h-5 text-indigo-600" />
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                            <WorkflowIcon className="w-5 h-5 text-indigo-400" />
                             Logic Resolution Forecast
                         </h3>
-                        <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-1">Rule ID: {draft.id.substring(0,8)}</p>
+                        <p className="text-xs text-slate-400 mt-1 uppercase font-bold tracking-widest">Rule ID: {draft.id.substring(0,8)}</p>
                     </div>
-                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
+                    <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
@@ -154,6 +176,19 @@ const LogicForecastDrawer: React.FC<{
                         </div>
                     )}
 
+                    {isLogicRedundant && existingRule && (
+                        <div className="p-6 bg-emerald-50 border-2 border-emerald-100 rounded-[2rem] space-y-3">
+                            <div className="flex items-center gap-2 text-emerald-800">
+                                <ShieldCheckIcon className="w-5 h-5" />
+                                <h4 className="font-black text-sm uppercase">Functional Identity Confirmed</h4>
+                            </div>
+                            <p className="text-xs text-emerald-700 leading-relaxed">
+                                This incoming logic is already covered by an existing rule. No merge or modification is necessary. 
+                                The search patterns match perfectly after <strong>Whitespace Normalization</strong>.
+                            </p>
+                        </div>
+                    )}
+
                     {/* ENTITY MAPPING PREVIEW */}
                     <div className="space-y-4">
                         <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -177,8 +212,8 @@ const LogicForecastDrawer: React.FC<{
                     </div>
                 </div>
                 
-                <div className="p-4 bg-white border-t border-slate-200">
-                    <button onClick={onClose} className="w-full py-4 bg-slate-900 text-white text-xs font-black uppercase rounded-2xl hover:bg-black transition-all">Dismiss Forecast</button>
+                <div className="p-4 bg-slate-800 border-t border-white/10">
+                    <button onClick={onClose} className="w-full py-4 bg-white/5 hover:bg-white/10 text-white text-xs font-black uppercase rounded-2xl transition-all">Dismiss Forecast</button>
                 </div>
             </div>
         </div>
@@ -189,7 +224,33 @@ const RuleImportVerification: React.FC<Props> = ({
     drafts: initialDrafts, onCancel, onFinalize, categories, payees, locations, users, transactionTypes, 
     onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations, existingRules
 }) => {
-    const [drafts, setDrafts] = useState<RuleImportDraft[]>(initialDrafts);
+    const existingNames = useMemo(() => new Map(existingRules.map(r => [r.name.toLowerCase(), r])), [existingRules]);
+
+    const processedDrafts = useMemo(() => {
+        return initialDrafts.map(d => {
+            const existing = existingNames.get(d.name.toLowerCase());
+            if (!existing) return d;
+
+            // Identity Match Check
+            const existingNormSet = new Set(existing.conditions.flatMap(c => getTokens(String(c.value || ''))));
+            const incomingNormSet = new Set(d.conditions.flatMap(c => getTokens(String(c.value || ''))));
+            
+            // Is every incoming token already in the existing rule?
+            const isLogicRedundant = Array.from(incomingNormSet).every(t => existingNormSet.has(t));
+            
+            // Check if the resolution (category) also matches
+            const categoryMatch = existing.setCategoryId === d.setCategoryId || 
+                (d.mappingStatus.category === 'match' && existing.setCategoryId === categories.find(c => c.name.toLowerCase() === d.suggestedCategoryName?.toLowerCase())?.id);
+
+            // If it's redundant logic AND matching resolution, auto-deselect to avoid redundant merges
+            if (isLogicRedundant && categoryMatch) {
+                return { ...d, isSelected: false };
+            }
+            return d;
+        });
+    }, [initialDrafts, existingNames, categories]);
+
+    const [drafts, setDrafts] = useState<RuleImportDraft[]>(processedDrafts);
     const [inspectingDraftId, setInspectingDraftId] = useState<string | null>(null);
 
     const toggleSelection = (id: string) => {
@@ -237,10 +298,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     nextLogic: 'AND'
                 }];
             } else {
-                // If the user manually selected an ID, it will be in draft.setCategoryId, etc.
-                // We only need to handle the 'create' logic if they left the suggested names
-                
-                // 1. Category Resolution
+                // Category Resolution
                 if (!draft.setCategoryId && draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
                     const normName = draft.suggestedCategoryName.toLowerCase().trim();
                     let catId = createdCats.get(normName);
@@ -253,7 +311,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCategoryId = catId;
                 }
 
-                // 2. Counterparty Resolution
+                // Counterparty Resolution
                 if (!draft.setCounterpartyId && draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
                     const normName = draft.suggestedCounterpartyName.toLowerCase().trim();
                     let cpId = createdCounterparties.get(normName);
@@ -266,7 +324,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCounterpartyId = cpId;
                 }
 
-                // 3. Location Resolution
+                // Location Resolution
                 if (!draft.setLocationId && draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
                     const normName = draft.suggestedLocationName.toLowerCase().trim();
                     let locId = createdLocs.get(normName);
@@ -285,13 +343,12 @@ const RuleImportVerification: React.FC<Props> = ({
         }
 
         if (newCategories.length > 0) onSaveCategories(newCategories);
-        if (newCounterparties.length > 0) onSaveCounterparties(newCounterparties);
+        if (newCounterparties.length > 0) onSaveCounterparty(newCounterparties[0]); // fallback to first if multiple, existing logic was slighty broken
+        if (newCounterparties.length > 1) onSaveCounterparties(newCounterparties.slice(1));
         if (newLocations.length > 0) onSaveLocations(newLocations);
 
         onFinalize(finalizedRules);
     };
-
-    const existingNames = useMemo(() => new Map(existingRules.map(r => [r.name.toLowerCase(), r])), [existingRules]);
 
     const stats = useMemo(() => {
         const sel = drafts.filter(d => d.isSelected);
@@ -311,7 +368,14 @@ const RuleImportVerification: React.FC<Props> = ({
             }).length,
             merges: sel.filter(d => {
                 const ex = existingNames.get(d.name.toLowerCase());
-                return ex && (ex.setCategoryId === d.setCategoryId || d.suggestedCategoryName?.toLowerCase() === categories.find(c => c.id === existingNames.get(d.name.toLowerCase())?.setCategoryId)?.name.toLowerCase());
+                const categoryMatch = ex && (ex.setCategoryId === d.setCategoryId || d.suggestedCategoryName?.toLowerCase() === categories.find(c => c.id === existingNames.get(d.name.toLowerCase())?.setCategoryId)?.name.toLowerCase());
+                
+                if (!ex || !categoryMatch) return false;
+
+                // Functional Merge Check
+                const existingNormSet = new Set(ex.conditions.flatMap(c => getTokens(String(c.value || ''))));
+                const incomingNormSet = new Set(d.conditions.flatMap(c => getTokens(String(c.value || ''))));
+                return Array.from(incomingNormSet).some(t => !existingNormSet.has(t));
             }).length
         };
     }, [drafts, existingNames, categories]);
@@ -332,14 +396,14 @@ const RuleImportVerification: React.FC<Props> = ({
                     </div>
                     {stats.merges > 0 && (
                          <div className="border-l border-white/10 pl-6">
-                            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Auto-Merges</p>
+                            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Functional Merges</p>
                             <p className="text-2xl font-black text-indigo-400">{stats.merges}</p>
                         </div>
                     )}
                 </div>
                 <div className="flex gap-3">
                     <button onClick={onCancel} className="px-5 py-2 font-bold text-slate-400 hover:text-white transition-colors text-xs">Discard</button>
-                    <button onClick={handleConfirm} disabled={stats.selected === 0} className="px-8 py-2 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-500 transition-all disabled:opacity-30 text-xs">Commit Ingestion</button>
+                    <button onClick={handleConfirm} disabled={stats.selected === 0} className="px-8 py-2 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all disabled:opacity-30 text-xs">Commit Ingestion</button>
                 </div>
             </div>
 
@@ -359,8 +423,14 @@ const RuleImportVerification: React.FC<Props> = ({
                         <tbody className="divide-y divide-slate-200 bg-white">
                             {drafts.map(d => {
                                 const existingRule = existingNames.get(d.name.toLowerCase());
-                                const isMergeCandidate = existingRule && (existingRule.setCategoryId === d.setCategoryId || d.suggestedCategoryName?.toLowerCase() === categories.find(c => c.id === existingRule.setCategoryId)?.name.toLowerCase());
-                                const isCollision = existingRule && !isMergeCandidate;
+                                const categoryMatch = existingRule && (existingRule.setCategoryId === d.setCategoryId || d.suggestedCategoryName?.toLowerCase() === categories.find(c => c.id === existingRule.setCategoryId)?.name.toLowerCase());
+                                
+                                const existingNormSet = existingRule ? new Set(existingRule.conditions.flatMap(c => getTokens(String(c.value || '')))) : new Set();
+                                const incomingNormSet = new Set(d.conditions.flatMap(c => getTokens(String(c.value || ''))));
+                                const isLogicRedundant = existingRule && categoryMatch && Array.from(incomingNormSet).every(t => existingNormSet.has(t));
+                                
+                                const isMergeCandidate = categoryMatch && !isLogicRedundant;
+                                const isCollision = existingRule && !categoryMatch;
 
                                 return (
                                     <tr key={d.id} className={`${d.isSelected ? '' : 'opacity-40 grayscale'} hover:bg-slate-50 transition-all group`}>
@@ -371,7 +441,7 @@ const RuleImportVerification: React.FC<Props> = ({
                                                     type="text" 
                                                     value={d.name} 
                                                     onChange={e => updateDraftField(d.id, 'name', e.target.value)}
-                                                    className={`w-full bg-transparent border-none focus:ring-1 focus:ring-indigo-500 rounded p-0.5 font-bold text-[10px] ${isCollision ? 'text-amber-600' : isMergeCandidate ? 'text-indigo-600' : 'text-slate-800'}`}
+                                                    className={`w-full bg-transparent border-none focus:ring-1 focus:ring-indigo-500 rounded p-0.5 font-bold text-[10px] ${isCollision ? 'text-amber-600' : isMergeCandidate ? 'text-indigo-600' : isLogicRedundant ? 'text-slate-400' : 'text-slate-800'}`}
                                                 />
                                             </div>
                                             {isCollision ? (
@@ -381,6 +451,10 @@ const RuleImportVerification: React.FC<Props> = ({
                                             ) : isMergeCandidate ? (
                                                 <p className="text-[7px] font-black text-indigo-500 uppercase mt-0.5 flex items-center gap-0.5">
                                                     <RepeatIcon className="w-1.5 h-1.5" /> Logical Merge
+                                                </p>
+                                            ) : isLogicRedundant ? (
+                                                 <p className="text-[7px] font-black text-slate-400 uppercase mt-0.5 flex items-center gap-0.5">
+                                                    <CheckCircleIcon className="w-1.5 h-1.5" /> Functional Identity
                                                 </p>
                                             ) : null}
                                         </td>

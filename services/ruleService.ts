@@ -1,8 +1,9 @@
+
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 /**
- * Normalization helper: Collapses multiple spaces into one, trims, and lowercases.
- * Essential for comparing inconsistent bank data.
+ * Collapses multiple spaces into a single space, trims, and lowercases.
+ * This ensures that 'WORD   A' and 'WORD A' are treated as identical logic tokens.
  */
 const normalizeText = (text: string): string => {
     return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -11,7 +12,7 @@ const normalizeText = (text: string): string => {
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
     if (!tx || !condition || !condition.field) return true;
 
-    // Helper to evaluate a single string token against the transaction field
+    // Helper to evaluate a single token against the tx field
     const checkValue = (actualValue: string, expectedValue: string): boolean => {
         const normActual = normalizeText(actualValue);
         const normExpected = normalizeText(expectedValue);
@@ -38,15 +39,15 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
         const txValue = (tx.originalDescription || tx.description || '');
         const condValue = String(condition.value || '');
         
-        // Handle inline OR logic: split by || delimiter
+        // Handle inline OR logic: split by ||
         const tokens = condValue.split(/\s*\|\|\s*/).filter(Boolean);
         if (tokens.length <= 1) return checkValue(txValue, condValue);
         
-        // Logical NOT check: Must not contain ANY of the tokens (AND NOT)
+        // Logical NOT check: Must not contain ANY of the tokens (Logical AND NOT)
         if (condition.operator === 'does_not_contain') {
             return tokens.every(token => checkValue(txValue, token));
         }
-        // Functional Boolean OR: true if ANY token matches the transaction
+        // Logical OR: match any token in the group
         return tokens.some(token => checkValue(txValue, token));
 
     } else if (condition.field === 'metadata') {
