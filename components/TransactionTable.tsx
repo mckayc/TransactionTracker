@@ -199,19 +199,57 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         else { setSortKey(key); setSortDir('desc'); }
     };
 
+    const SortIndicator = ({ activeKey }: { activeKey: SortKey }) => {
+        if (sortKey !== activeKey) return <SortIcon className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100" />;
+        return <SortIcon className={`w-3 h-3 text-indigo-500 ${sortDir === 'asc' ? 'rotate-180' : ''}`} />;
+    };
+
     return (
         <div className="w-full flex flex-col min-h-0 h-full relative">
             <div className="overflow-auto flex-1 custom-scrollbar min-h-0">
                 <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
                     <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
                         <tr>
-                            {showCheckboxes && <th className="p-4 w-12 border-b bg-slate-50"><input type="checkbox" onChange={onToggleSelectAll} className="rounded text-indigo-600" /></th>}
-                            {visibleColumns.has('date') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:text-indigo-600" onClick={() => handleHeaderClick('date')}>Date</th>}
-                            {visibleColumns.has('description') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:text-indigo-600" onClick={() => handleHeaderClick('description')}>Description</th>}
-                            {visibleColumns.has('counterparty') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Counterparty</th>}
-                            {visibleColumns.has('category') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Category</th>}
-                            {visibleColumns.has('account') && <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Account</th>}
-                            {visibleColumns.has('amount') && <th className="px-4 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:text-indigo-600" onClick={() => handleHeaderClick('amount')}>Amount</th>}
+                            {showCheckboxes && (
+                                <th className="p-4 w-12 border-b bg-slate-50">
+                                    <input 
+                                        type="checkbox" 
+                                        onChange={onToggleSelectAll} 
+                                        checked={selectedTxIds.size === transactions.length && transactions.length > 0}
+                                        className="rounded text-indigo-600 cursor-pointer" 
+                                    />
+                                </th>
+                            )}
+                            {visibleColumns.has('date') && (
+                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('date')}>
+                                    <div className="flex items-center gap-1">Date <SortIndicator activeKey="date" /></div>
+                                </th>
+                            )}
+                            {visibleColumns.has('description') && (
+                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('description')}>
+                                    <div className="flex items-center gap-1">Description <SortIndicator activeKey="description" /></div>
+                                </th>
+                            )}
+                            {visibleColumns.has('counterparty') && (
+                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('counterpartyId')}>
+                                    <div className="flex items-center gap-1">Entity <SortIndicator activeKey="counterpartyId" /></div>
+                                </th>
+                            )}
+                            {visibleColumns.has('category') && (
+                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('categoryId')}>
+                                    <div className="flex items-center gap-1">Category <SortIndicator activeKey="categoryId" /></div>
+                                </th>
+                            )}
+                            {visibleColumns.has('account') && (
+                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('accountId')}>
+                                    <div className="flex items-center gap-1">Account <SortIndicator activeKey="accountId" /></div>
+                                </th>
+                            )}
+                            {visibleColumns.has('amount') && (
+                                <th className="px-4 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('amount')}>
+                                    <div className="flex items-center justify-end gap-1">Amount <SortIndicator activeKey="amount" /></div>
+                                </th>
+                            )}
                             {visibleColumns.has('actions') && <th className="px-4 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Actions</th>}
                         </tr>
                     </thead>
@@ -219,9 +257,10 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         {displayItems.map((item) => {
                             if (item.type === 'single') {
                                 const tx = item.tx;
+                                const isSelected = selectedTxIds.has(tx.id);
                                 return (
-                                    <tr key={tx.id} className="hover:bg-slate-50/80 transition-colors group">
-                                        {showCheckboxes && <td className="p-4 text-center"><input type="checkbox" checked={selectedTxIds.has(tx.id)} onChange={() => onToggleSelection?.(tx.id)} className="rounded text-indigo-600" /></td>}
+                                    <tr key={tx.id} className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-indigo-50/50' : ''}`}>
+                                        {showCheckboxes && <td className="p-4 text-center"><input type="checkbox" checked={isSelected} onChange={() => onToggleSelection?.(tx.id)} className="rounded text-indigo-600 cursor-pointer" /></td>}
                                         {visibleColumns.has('date') && <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">{tx.date}</td>}
                                         {visibleColumns.has('description') && (
                                             <td className="px-4 py-3">
@@ -280,7 +319,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                         </tr>
                                         {isExpanded && item.children.map(child => (
                                             <tr key={child.id} className="bg-white/50 border-l-4 border-l-indigo-200 group">
-                                                {showCheckboxes && <td className="p-4 text-center"><input type="checkbox" checked={selectedTxIds.has(child.id)} onChange={() => onToggleSelection?.(child.id)} className="rounded text-indigo-600" /></td>}
+                                                {showCheckboxes && <td className="p-4 text-center"><input type="checkbox" checked={selectedTxIds.has(child.id)} onChange={() => onToggleSelection?.(child.id)} className="rounded text-indigo-600 cursor-pointer" /></td>}
                                                 {visibleColumns.has('date') && <td className="px-4 py-2 text-[10px] font-mono text-slate-400 pl-8">{child.date}</td>}
                                                 {visibleColumns.has('description') && <td className="px-4 py-2 pl-12"><div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-slate-200"></div><span className="text-xs font-bold text-slate-600">{child.description}</span></div></td>}
                                                 {visibleColumns.has('counterparty') && <td className="px-4 py-2 text-xs text-slate-400">{counterpartyMap.get(child.counterpartyId || '')}</td>}
