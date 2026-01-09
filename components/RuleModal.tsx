@@ -40,7 +40,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const [name, setName] = useState('');
     const [conditions, setConditions] = useState<RuleCondition[]>([]);
     const [showMetadata, setShowMetadata] = useState(false);
-    // Use manual category as default for manual creation
     const [ruleCategoryId, setRuleCategoryId] = useState('rcat_manual');
     
     // Resolution state
@@ -59,11 +58,13 @@ const RuleModal: React.FC<RuleModalProps> = ({
 
     const normId = (id: any) => String(id || '').trim().toLowerCase();
 
+    // Detect if the current modal state represents an existing rule in the system
     const activeRuleInSystem = useMemo(() => {
         const id = normId(ruleId);
         return existingRules.find(r => normId(r.id) === id);
     }, [ruleId, existingRules]);
 
+    // Detect if the chosen name collides with another rule (preventing unintended duplicates)
     const collidingRule = useMemo(() => {
         const trimmedName = name.trim().toLowerCase();
         if (!trimmedName) return null;
@@ -80,6 +81,8 @@ const RuleModal: React.FC<RuleModalProps> = ({
     useEffect(() => {
         if (isOpen) {
             if (transaction) {
+                // If transaction.id is 'temp-context', it's a new rule seeded from a transaction.
+                // Otherwise, it's an existing rule being edited.
                 const ctx = transaction as any;
                 const potentialId = ctx.id && ctx.id !== 'temp-context' ? ctx.id : generateUUID();
                 
@@ -147,13 +150,15 @@ const RuleModal: React.FC<RuleModalProps> = ({
 
     const handleDelete = () => {
         if (onDeleteRule && ruleId) {
-            onDeleteRule(ruleId);
+            // Prioritize actual ID from rule if available
+            const targetId = activeRuleInSystem?.id || ruleId;
+            onDeleteRule(targetId);
             onClose();
         }
     };
 
     const getRulePayload = (): ReconciliationRule => ({
-        id: isCollision ? collidingRule.id : ruleId,
+        id: isCollision ? collidingRule!.id : ruleId,
         name: name.trim(),
         ruleCategoryId,
         conditions,
