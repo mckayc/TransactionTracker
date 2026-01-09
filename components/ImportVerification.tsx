@@ -204,7 +204,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 <div className="flex items-center gap-3">
                     <div className="p-2 bg-indigo-50 rounded-lg"><TableIcon className="w-4 h-4 text-indigo-600" /></div>
                     <div>
-                        <h2 className="text-md font-black text-slate-800 tracking-tight">Verify Ingestion</h2>
+                        <h2 className="text-md font-black text-slate-800 tracking-tight">Verify Import</h2>
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{transactions.length} items • {transactions.filter(t => t.conflictType === 'database').length} duplicates</p>
                     </div>
                 </div>

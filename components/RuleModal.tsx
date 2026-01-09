@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User, RuleCategory } from '../types';
-import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon, FolderIcon, TrashIcon } from './Icons';
+import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon, TrashIcon } from './Icons';
 import { generateUUID } from '../utils';
 import RuleBuilder from './RuleBuilder';
 import SearchableSelect from './SearchableSelect';
@@ -91,7 +91,8 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 setRuleCategoryId(ctx.ruleCategoryId || 'rcat_manual');
                 
                 const newConditions: RuleCondition[] = ctx.conditions ? [...ctx.conditions] : [
-                    { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: ctx.description, nextLogic: 'AND' }
+                    { id: generateUUID(), type: 'basic', field: 'description', operator: 'contains', value: ctx.description, nextLogic: 'AND' },
+                    { id: generateUUID(), type: 'basic', field: 'accountId', operator: 'equals', value: ctx.accountId, nextLogic: 'AND' }
                 ];
                 setConditions(newConditions);
                 setSetCategoryId(ctx.categoryId || ctx.setCategoryId || '');
@@ -150,9 +151,8 @@ const RuleModal: React.FC<RuleModalProps> = ({
 
     const handleDelete = () => {
         if (onDeleteRule && ruleId) {
-            // Prioritize actual ID from rule if available
-            const targetId = activeRuleInSystem?.id || ruleId;
-            onDeleteRule(targetId);
+            // Logic is already confirmed via ConfirmationModal, browser confirm() is redundant
+            onDeleteRule(ruleId);
             onClose();
         }
     };

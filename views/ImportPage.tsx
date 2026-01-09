@@ -196,7 +196,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
     <div className="space-y-6 h-full flex flex-col">
       <div className="flex justify-between items-center flex-shrink-0 px-1">
         <div>
-            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Ledger Ingestion</h1>
+            <h1 className="text-3xl font-black text-slate-800 tracking-tight">Ledger Verification</h1>
             <p className="text-sm text-slate-500">Bring your records into the local system.</p>
         </div>
       </div>
