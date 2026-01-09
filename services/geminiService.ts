@@ -207,8 +207,9 @@ export const forgeRulesWithCustomPrompt = async (
     Your output MUST be a JSON array of rules for a reconciliation engine.
     Rules should be atomic and precise.
     
-    CRITICAL: For each rule, suggest a Transaction Type name. 
-    You MUST prioritize these existing system types if they fit: [${typeNames}].
+    CRITICAL: For each rule, you MUST provide a suggestedTypeName. 
+    You MUST pick the most appropriate type name from this list of existing system types: [${typeNames}].
+    If no specific type fits, default to the most logical one (e.g., Purchase for expenses).
     
     PROTOCOL: ${customPrompt}`;
 
@@ -237,11 +238,11 @@ export const forgeRulesWithCustomPrompt = async (
                         suggestedCategoryName: { type: Type.STRING },
                         suggestedCounterpartyName: { type: Type.STRING },
                         suggestedLocationName: { type: Type.STRING },
-                        suggestedTypeName: { type: Type.STRING, description: "The name of the transaction type (e.g. Purchase, Income)" },
+                        suggestedTypeName: { type: Type.STRING, description: "The exact name of the transaction type from the provided list" },
                         suggestedTags: { type: Type.ARRAY, items: { type: Type.STRING } },
                         skipImport: { type: Type.BOOLEAN }
                     },
-                    required: ["name", "conditions"]
+                    required: ["name", "conditions", "suggestedTypeName"]
                 }
             }
         },

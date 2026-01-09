@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import type { ReconciliationRule, Category, Counterparty, Location, User, TransactionType, RuleImportDraft, Tag, ImportBatchStats } from '../types';
 import { CheckCircleIcon, SlashIcon, ExclamationTriangleIcon, AddIcon, BoxIcon, TagIcon, MapPinIcon, UsersIcon, ShieldCheckIcon, CloseIcon, EditIcon, RepeatIcon, WorkflowIcon, InfoIcon, DatabaseIcon, ChevronRightIcon, ArrowRightIcon, SparklesIcon, TypeIcon, ListIcon, ChecklistIcon, UserGroupIcon } from './Icons';
@@ -30,7 +31,6 @@ const getTokens = (value: string): string[] => {
     return value.split(/\s*\|\|\s*|\s*\|\s*/).map(t => normalizeToken(t)).filter(Boolean);
 };
 
-// Fix: Corrected malformed regex that caused division error and split logic inconsistencies
 const mergePatternsUniquely = (existing: string, incoming: string): string => {
     const existingTokens = existing.split(/\s*\|\|\s*|\s*\|\s*/).map(t => t.trim()).filter(Boolean);
     const incomingTokens = incoming.split(/\s*\|\|\s*|\s*\|\s*/).map(t => t.trim()).filter(Boolean);
@@ -202,6 +202,7 @@ const RuleImportVerification: React.FC<Props> = ({
 
     return (
         <div className="flex flex-col h-full space-y-4">
+            {/* Batch Statistics Header */}
             <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center flex-shrink-0 relative overflow-hidden">
                 <div className="relative z-10 flex gap-10">
                     <div>

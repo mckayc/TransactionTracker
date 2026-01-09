@@ -156,6 +156,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         const drafts: RuleImportDraft[] = rawRules.map(r => {
             const existing = existingNames.get(r.name.toLowerCase());
             const catMatch = categories.find(c => c.name.toLowerCase() === r.suggestedCategoryName?.toLowerCase());
+            const typeMatch = transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase());
             
             // Logic state evaluation
             let state: RuleImportDraft['mappingStatus']['logicalState'] = 'new';
@@ -175,19 +176,21 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 else state = 'conflict';
             }
 
-            // Coverage Calculation (Mock for now, would ideally run real logic)
-            const coverage = rows.filter(row => row.toLowerCase().includes(r.conditions[0]?.value?.toLowerCase() || 'impossible_match')).length;
+            // Coverage Calculation (Count matching rows in sample)
+            const matchValue = r.conditions[0]?.value?.toLowerCase() || '';
+            const coverage = rows.filter(row => row.toLowerCase().includes(matchValue)).length;
 
             return {
                 ...r,
                 ruleCategoryId: r.ruleCategoryId || 'rcat_manual',
                 isSelected: state !== 'identity',
                 coverageCount: coverage,
+                setTransactionTypeId: typeMatch?.id || undefined, // Map matched ID here!
                 mappingStatus: {
                     category: catMatch ? 'match' : (r.suggestedCategoryName ? 'create' : 'none'),
                     counterparty: counterparties.find(p => p.name.toLowerCase() === r.suggestedCounterpartyName?.toLowerCase()) ? 'match' : (r.suggestedCounterpartyName ? 'create' : 'none'),
                     location: locations.find(l => l.name.toLowerCase() === r.suggestedLocationName?.toLowerCase()) ? 'match' : (r.suggestedLocationName ? 'create' : 'none'),
-                    type: transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase()) ? 'match' : (r.suggestedTypeName ? 'create' : 'none'),
+                    type: typeMatch ? 'match' : (r.suggestedTypeName ? 'create' : 'none'),
                     logicalState: state
                 }
             } as RuleImportDraft;
@@ -241,6 +244,21 @@ const RulesPage: React.FC<RulesPageProps> = ({
             processDrafts(imported);
         } catch (err) {
             setImportError("Failed to parse file. Ensure it is a valid CSV.");
+        }
+    };
+
+    const handleForgeFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        try {
+            const reader = new FileReader();
+            const text = await new Promise<string>((res) => {
+                reader.onload = () => res(reader.result as string);
+                reader.readAsText(file);
+            });
+            setForgeData(text);
+        } catch (err) {
+            alert("Failed to read file.");
         }
     };
 
@@ -319,6 +337,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const forgeFileInputRef = useRef<HTMLInputElement>(null);
     const existingNames = useMemo(() => new Map(rules.map(r => [r.name.toLowerCase(), r])), [rules]);
 
     // Render Fullscreen Import Hub
@@ -440,8 +459,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                         placeholder="Drop a bank CSV or paste raw ledger data here..."
                                                     />
                                                     <div className="absolute top-4 right-4 flex gap-2">
-                                                        <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 backdrop-blur-md transition-all">Upload Sample</button>
+                                                        <button onClick={() => forgeFileInputRef.current?.click()} className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest border border-white/10 backdrop-blur-md transition-all">Upload Sample</button>
                                                         {forgeData && <button onClick={() => setForgeData('')} className="p-2 bg-red-500/20 text-red-400 rounded-xl hover:bg-red-500/40 border border-red-500/20"><CloseIcon className="w-4 h-4"/></button>}
+                                                        <input type="file" ref={forgeFileInputRef} className="hidden" accept=".csv,.txt" onChange={handleForgeFileUpload} />
                                                     </div>
                                                 </div>
 
