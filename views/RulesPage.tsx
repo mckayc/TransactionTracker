@@ -196,8 +196,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const processDrafts = (rawRules: ReconciliationRule[]) => {
         const rows = (importMethod === 'ai' ? forgeData : pastedRules).split('\n').filter(l => l.trim());
         const totalRows = rows.length;
+        const existingNames = new Map(rules.map(r => [r.name.toLowerCase(), r]));
         
-        let existingRuleCount = 0;
+        let newRuleCount = 0;
         let synthesisCount = 0;
 
         const drafts: RuleImportDraft[] = rawRules.map(r => {
@@ -207,27 +208,31 @@ const RulesPage: React.FC<RulesPageProps> = ({
             const payeeMatch = r.suggestedCounterpartyName ? counterparties.find(p => p.name.toLowerCase() === r.suggestedCounterpartyName?.toLowerCase()) : null;
             const locMatch = r.suggestedLocationName ? locations.find(l => l.name.toLowerCase() === r.suggestedLocationName?.toLowerCase()) : null;
             
-            // Logic state evaluation
+            // Logical state evaluation
             let state: RuleImportDraft['mappingStatus']['logicalState'] = 'new';
             if (existing) {
-                existingRuleCount++;
                 const existingVal = existing.conditions[0]?.value || '';
                 const incomingVal = r.conditions[0]?.value || '';
                 const tokensE = new Set(String(existingVal).split('||').map(t => t.trim().toLowerCase()));
                 const tokensI = new Set(String(incomingVal).split('||').map(t => t.trim().toLowerCase()));
                 
-                const isIdentical = tokensI.size === tokensE.size && Array.from(tokensI).every(t => tokensE.has(t));
-                if (isIdentical) state = 'identity';
-                else if (existing.setCategoryId === (r.setCategoryId || catMatch?.id)) {
+                const isIdenticalLogic = tokensI.size === tokensE.size && Array.from(tokensI).every(t => tokensE.has(t));
+                const targetCategoryId = r.setCategoryId || catMatch?.id;
+
+                if (isIdenticalLogic) {
+                    state = 'identity';
+                } else if (!targetCategoryId || existing.setCategoryId === targetCategoryId) {
                     state = 'synthesis';
                     synthesisCount++;
+                } else {
+                    state = 'conflict';
                 }
-                else state = 'conflict';
+            } else {
+                newRuleCount++;
             }
 
             // Coverage Calculation (Count matching rows in sample)
             const matchValue = r.conditions[0]?.value?.toLowerCase() || '';
-            const dataToEvaluate = importMethod === 'ai' ? forgeData : pastedRules;
             const coverage = rows.filter(row => row.toLowerCase().includes(matchValue)).length;
 
             return {
@@ -235,7 +240,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 ruleCategoryId: importMethod === 'ai' ? (activeForgePrompt.ruleCategoryId || 'rcat_other') : (r.ruleCategoryId || 'rcat_manual'),
                 isSelected: state !== 'identity',
                 coverageCount: coverage,
-                setTransactionTypeId: typeMatch?.id || undefined,
+                setTransactionTypeId: typeMatch?.id || r.setTransactionTypeId,
                 mappingStatus: {
                     category: catMatch ? 'match' : (r.suggestedCategoryName ? 'create' : 'none'),
                     counterparty: payeeMatch ? 'match' : (r.suggestedCounterpartyName ? 'create' : 'none'),
@@ -253,7 +258,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setBatchStats({
             rowsEvaluated: totalRows,
             rowsCovered: coveredCount,
-            rulesCreated: drafts.length - existingRuleCount,
+            rulesCreated: newRuleCount,
             rulesMerged: synthesisCount
         });
 
@@ -387,7 +392,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const forgeFileInputRef = useRef<HTMLInputElement>(null);
-    const existingNames = useMemo(() => new Map(rules.map(r => [r.name.toLowerCase(), r])), [rules]);
 
     // Render Fullscreen Import Hub
     if (isImportHubOpen) {

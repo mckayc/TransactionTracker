@@ -3,7 +3,6 @@ import React, { useState, useMemo } from 'react';
 import type { ReconciliationRule, Category, Counterparty, Location, User, TransactionType, RuleImportDraft, Tag, ImportBatchStats } from '../types';
 import { CheckCircleIcon, SlashIcon, ExclamationTriangleIcon, AddIcon, BoxIcon, TagIcon, MapPinIcon, UsersIcon, ShieldCheckIcon, CloseIcon, EditIcon, RepeatIcon, WorkflowIcon, InfoIcon, DatabaseIcon, ChevronRightIcon, ArrowRightIcon, SparklesIcon, TypeIcon, ListIcon, ChecklistIcon, UserGroupIcon } from './Icons';
 import { generateUUID } from '../utils';
-import SearchableSelect from './SearchableSelect';
 
 interface Props {
     drafts: RuleImportDraft[];
@@ -71,99 +70,127 @@ const LogicForecastDrawer: React.FC<{
         return Array.from(incomingNormSet).every(t => existingNormSet.has(t));
     }, [incomingNormSet, existingNormSet, existingRule]);
 
-    const isMerge = !!existingRule && !isLogicRedundant && (
-        existingRule.setCategoryId === draft.setCategoryId || 
-        (draft.mappingStatus.category === 'match' && existingRule.setCategoryId === categories.find(c => c.name.toLowerCase() === draft.suggestedCategoryName?.toLowerCase())?.id)
-    );
+    const isMerge = draft.mappingStatus.logicalState === 'synthesis';
 
     const mergedPatternPreview = useMemo(() => {
         if (!existingRule) return '';
-        const existing = existingRule.conditions.map(c => c.value).join(' || ');
-        const incoming = draft.conditions.map(c => c.value).join(' || ');
-        return mergePatternsUniquely(existing, incoming);
+        const existingPattern = existingRule.conditions.map(c => c.value).join(' || ');
+        const incomingPattern = draft.conditions.map(c => c.value).join(' || ');
+        return mergePatternsUniquely(existingPattern, incomingPattern);
     }, [existingRule, draft]);
 
-    const getFieldStatus = (field: keyof ReconciliationRule, mappingStatus?: string): 'update' | 'keep' | 'create' | 'skip' => {
-        if (field === 'skipImport' && draft.skipImport) return 'skip';
-        if (draft[field]) return 'update';
-        if (mappingStatus === 'create' || mappingStatus === 'match') return 'update';
-        return 'keep';
+    const getCompareValue = (type: 'cat' | 'entity' | 'type', source: 'existing' | 'incoming') => {
+        const target = source === 'existing' ? existingRule : draft;
+        if (!target) return '--';
+        
+        if (type === 'cat') {
+            const id = target.setCategoryId;
+            return categories.find(c => c.id === id)?.name || (source === 'incoming' ? draft.suggestedCategoryName : null) || '--';
+        }
+        if (type === 'entity') {
+            const id = target.setCounterpartyId;
+            return payees.find(p => p.id === id)?.name || (source === 'incoming' ? draft.suggestedCounterpartyName : null) || '--';
+        }
+        if (type === 'type') {
+            const id = target.setTransactionTypeId;
+            return transactionTypes.find(t => t.id === id)?.name || (source === 'incoming' ? draft.suggestedTypeName : null) || '--';
+        }
+        return '--';
     };
 
     return (
         <div className="fixed inset-0 z-[300] flex justify-end">
             <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
-            <div className="relative w-full max-w-2xl bg-slate-50 shadow-2xl flex flex-col h-full animate-slide-in-right border-l border-white/10">
+            <div className="relative w-full max-w-3xl bg-slate-50 shadow-2xl flex flex-col h-full animate-slide-in-right border-l border-white/10">
                 <div className="p-6 border-b border-slate-200 bg-white flex justify-between items-center shadow-sm">
                     <div>
                         <h3 className="text-xl font-black text-slate-800 flex items-center gap-2">
                             <WorkflowIcon className="w-5 h-5 text-indigo-600" />
                             Synthesis Forecast
                         </h3>
-                        <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-1">Rule ID: {draft.id.substring(0,12)}</p>
+                        <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1">Comparing Logic Patterns</p>
                     </div>
                     <button onClick={onClose} className="p-2 text-slate-300 hover:text-slate-600 rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar pb-24">
+                    {/* Logic Pattern Comparison */}
                     <div className="space-y-4">
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                            <SparklesIcon className="w-3 h-3" /> Pattern Resolution
+                            <SparklesIcon className="w-3 h-3" /> Logic String Synthesis
                         </h4>
-                        {isMerge ? (
-                            <div className="bg-slate-900 rounded-[2rem] p-6 text-white space-y-6 shadow-xl border border-indigo-500/20">
-                                <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                                    <CheckCircleIcon className="w-3 h-3" /> Resulting Logic (Merged)
-                                </p>
-                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs font-mono text-emerald-300 break-words leading-relaxed">
-                                    {mergedPatternPreview}
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Current System Logic</p>
+                                <div className="p-4 bg-white border-2 border-slate-100 rounded-2xl text-xs font-mono text-slate-400 italic">
+                                    {existingRule ? existingRule.conditions.map(c => c.value).join(' || ') : 'NO RECORD'}
                                 </div>
                             </div>
-                        ) : (
-                            <div className="p-6 bg-white border-2 border-slate-100 rounded-[2rem] space-y-2 shadow-sm">
-                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Active Pattern</p>
-                                <div className="p-4 bg-slate-50 rounded-2xl text-xs font-mono text-slate-600 border border-slate-100 break-words">
+                            <div className="space-y-2">
+                                <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest ml-1">Incoming Logic Proposal</p>
+                                <div className="p-4 bg-indigo-50 border-2 border-indigo-100 rounded-2xl text-xs font-mono text-indigo-700 font-bold">
                                     {draft.conditions.map(c => c.value).join(' || ')}
                                 </div>
+                            </div>
+                        </div>
+
+                        {isMerge && (
+                            <div className="bg-slate-900 rounded-[2rem] p-6 text-white space-y-4 shadow-xl border border-indigo-500/20">
+                                <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                                    <CheckCircleIcon className="w-3 h-3" /> Resulting Logic (Synthesized Merge)
+                                </p>
+                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs font-mono text-emerald-300 break-words leading-relaxed font-black">
+                                    {mergedPatternPreview}
+                                </div>
+                                <p className="text-[10px] text-slate-400 italic">The system will combine both sets of unique tokens into a single rule while preserving your targeting settings.</p>
                             </div>
                         )}
                     </div>
 
+                    {/* Field Mapping Comparison */}
                     <div className="space-y-4">
                         <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                            <BoxIcon className="w-3 h-3" /> Impact Simulation
+                            <BoxIcon className="w-3 h-3" /> Target Comparison
                         </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <ForecastFieldRow label="Cleanup Description" value={draft.setDescription} status={getFieldStatus('setDescription')} icon={<TypeIcon className="w-4 h-4" />} />
-                            <ForecastFieldRow label="Category" value={draft.suggestedCategoryName} status={draft.mappingStatus.category === 'create' ? 'create' : getFieldStatus('setCategoryId')} icon={<TagIcon className="w-4 h-4" />} />
-                            <ForecastFieldRow label="Counterparty" value={draft.suggestedCounterpartyName} status={draft.mappingStatus.counterparty === 'create' ? 'create' : getFieldStatus('setCounterpartyId')} icon={<UsersIcon className="w-4 h-4" />} />
-                            <ForecastFieldRow label="Transaction Type" value={draft.suggestedTypeName} status={draft.mappingStatus.type === 'create' ? 'create' : getFieldStatus('setTransactionTypeId')} icon={<ChecklistIcon className="w-4 h-4" />} />
+                        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden">
+                            <table className="min-w-full divide-y divide-slate-100 text-xs">
+                                <thead className="bg-slate-50 font-black text-slate-400 uppercase text-[9px]">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left">Property</th>
+                                        <th className="px-4 py-3 text-left">Current System</th>
+                                        <th className="px-4 py-3 text-left">Incoming Draft</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 font-bold">
+                                    <tr>
+                                        <td className="px-4 py-4 text-slate-400 uppercase text-[9px]">Target Category</td>
+                                        <td className="px-4 py-4 text-slate-500">{getCompareValue('cat', 'existing')}</td>
+                                        <td className="px-4 py-4 text-indigo-600">{getCompareValue('cat', 'incoming')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-4 py-4 text-slate-400 uppercase text-[9px]">Counterparty</td>
+                                        <td className="px-4 py-4 text-slate-500">{getCompareValue('entity', 'existing')}</td>
+                                        <td className="px-4 py-4 text-indigo-600">{getCompareValue('entity', 'incoming')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-4 py-4 text-slate-400 uppercase text-[9px]">Tx Type</td>
+                                        <td className="px-4 py-4 text-slate-500">{getCompareValue('type', 'existing')}</td>
+                                        <td className="px-4 py-4 text-indigo-600">{getCompareValue('type', 'incoming')}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-4 py-4 text-slate-400 uppercase text-[9px]">Cleanup Memo</td>
+                                        <td className="px-4 py-4 text-slate-500 truncate max-w-[150px]">{existingRule?.setDescription || '--'}</td>
+                                        <td className="px-4 py-4 text-indigo-600 truncate max-w-[150px]">{draft.setDescription || '--'}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
                 
-                <div className="p-4 bg-white border-t border-slate-200">
-                    <button onClick={onClose} className="w-full py-4 bg-slate-900 text-white text-xs font-black uppercase rounded-2xl hover:bg-black transition-all">Dismiss Forecast</button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
-const ForecastFieldRow: React.FC<{ label: string, value?: string, status: 'update' | 'keep' | 'create' | 'skip', icon: React.ReactNode }> = ({ label, value, status, icon }) => {
-    const colors = {
-        update: 'text-indigo-600 bg-indigo-50 border-indigo-100',
-        keep: 'text-slate-400 bg-slate-50 border-slate-100',
-        create: 'text-emerald-600 bg-emerald-50 border-emerald-100',
-        skip: 'text-red-600 bg-red-50 border-red-100'
-    };
-    return (
-        <div className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all ${colors[status]}`}>
-            <div className="flex items-center gap-3">
-                <div className="opacity-70">{icon}</div>
-                <div>
-                    <p className="text-[8px] font-black uppercase tracking-widest opacity-60">{label}</p>
-                    <p className="text-xs font-black">{value || 'No Change'}</p>
+                <div className="p-4 bg-white border-t border-slate-200 shadow-lg">
+                    <button onClick={onClose} className="w-full py-4 bg-slate-900 text-white text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-black transition-all active:scale-95 shadow-xl">Dismiss Forecast</button>
                 </div>
             </div>
         </div>
@@ -172,21 +199,17 @@ const ForecastFieldRow: React.FC<{ label: string, value?: string, status: 'updat
 
 const StateBadge: React.FC<{ state?: RuleImportDraft['mappingStatus']['logicalState'] }> = ({ state }) => {
     const config = {
-        new: { label: 'New', color: 'bg-blue-100 text-blue-700', info: 'Completely unique detection logic and name.' },
-        identity: { label: 'Identity', color: 'bg-emerald-100 text-emerald-700', info: 'Logic exactly matches an existing system rule.' },
-        synthesis: { label: 'Synthesis', color: 'bg-violet-100 text-violet-700', info: 'Name matches, but expands existing detection logic.' },
-        conflict: { label: 'Conflict', color: 'bg-amber-100 text-amber-700', info: 'Name matches but targets a different category or entity.' },
-        redundant: { label: 'Redundant', color: 'bg-slate-100 text-slate-500', info: 'Logic is covered by another rule in this batch.' }
+        new: { label: 'New', color: 'bg-blue-100 text-blue-700', icon: <AddIcon className="w-2.5 h-2.5" /> },
+        identity: { label: 'Identity', color: 'bg-emerald-100 text-emerald-700', icon: <CheckCircleIcon className="w-2.5 h-2.5" /> },
+        synthesis: { label: 'Synthesis', color: 'bg-violet-100 text-violet-700', icon: <WorkflowIcon className="w-2.5 h-2.5" /> },
+        conflict: { label: 'Conflict', color: 'bg-amber-100 text-amber-700', icon: <ExclamationTriangleIcon className="w-2.5 h-2.5" /> },
+        redundant: { label: 'Redundant', color: 'bg-slate-100 text-slate-500', icon: <SlashIcon className="w-2.5 h-2.5" /> }
     };
     const c = config[state || 'new'];
     return (
-        <div className="relative group/badge inline-block">
-            <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter cursor-help shadow-sm border border-black/5 ${c.color}`}>{c.label}</span>
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-900 text-white rounded-lg text-[10px] opacity-0 translate-y-2 pointer-events-none group-hover/badge:opacity-100 group-hover/badge:translate-y-0 transition-all z-50 text-center font-bold">
-                {c.info}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900"></div>
-            </div>
-        </div>
+        <span className={`px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-tighter flex items-center gap-1.5 shadow-sm border border-black/5 ${c.color}`}>
+            {c.icon} {c.label}
+        </span>
     );
 };
 
@@ -196,9 +219,18 @@ const RuleImportVerification: React.FC<Props> = ({
 }) => {
     const [inspectingDraftId, setInspectingDraftId] = useState<string | null>(null);
     const existingNames = useMemo(() => new Map(existingRules.map(r => [r.name.toLowerCase(), r])), [existingRules]);
-    const inspectingDraft = useMemo(() => drafts.find(d => d.id === inspectingDraftId), [drafts, inspectingDraftId]);
+    
+    const [selectionSet, setSelectionSet] = useState<Set<string>>(new Set(drafts.filter(d => d.isSelected).map(d => d.id)));
 
-    const activeDrafts = drafts.filter(d => d.isSelected);
+    const toggleSelection = (id: string) => {
+        const next = new Set(selectionSet);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        setSelectionSet(next);
+    };
+
+    const finalDrafts = useMemo(() => {
+        return drafts.map(d => ({ ...d, isSelected: selectionSet.has(d.id) }));
+    }, [drafts, selectionSet]);
 
     return (
         <div className="flex flex-col h-full space-y-4">
@@ -226,7 +258,7 @@ const RuleImportVerification: React.FC<Props> = ({
                 </div>
                 <div className="relative z-10 flex gap-3">
                     <button onClick={onCancel} className="px-6 py-2 font-black text-slate-400 hover:text-white transition-colors text-xs uppercase">Discard Batch</button>
-                    <button onClick={() => onFinalize(drafts.filter(d => d.isSelected))} disabled={activeDrafts.length === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-900/20 transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
+                    <button onClick={() => onFinalize(finalDrafts.filter(d => d.isSelected))} disabled={selectionSet.size === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-900/20 transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
                 </div>
                 <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-10 text-indigo-400 pointer-events-none" />
             </div>
@@ -236,7 +268,14 @@ const RuleImportVerification: React.FC<Props> = ({
                     <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
                         <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                             <tr>
-                                <th className="p-4 w-12 bg-slate-50 border-b border-slate-200"></th>
+                                <th className="p-4 w-12 bg-slate-50 border-b border-slate-200">
+                                    <input 
+                                        type="checkbox" 
+                                        className="rounded text-indigo-600 h-4 w-4" 
+                                        checked={selectionSet.size === drafts.length && drafts.length > 0} 
+                                        onChange={() => setSelectionSet(selectionSet.size === drafts.length ? new Set() : new Set(drafts.map(d => d.id)))} 
+                                    />
+                                </th>
                                 <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">State</th>
                                 <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Logic Identity</th>
                                 <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Category</th>
@@ -248,9 +287,14 @@ const RuleImportVerification: React.FC<Props> = ({
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {drafts.map(d => (
-                                <tr key={d.id} className={`${d.isSelected ? '' : 'opacity-40 grayscale'} hover:bg-indigo-50/20 transition-all group`}>
+                                <tr key={d.id} className={`${selectionSet.has(d.id) ? '' : 'opacity-40 grayscale'} hover:bg-indigo-50/20 transition-all group`}>
                                     <td className="p-4 text-center border-b border-slate-50">
-                                        <input type="checkbox" checked={d.isSelected} onChange={() => {}} className="rounded text-indigo-600 h-4 w-4" />
+                                        <input 
+                                            type="checkbox" 
+                                            checked={selectionSet.has(d.id)} 
+                                            onChange={() => toggleSelection(d.id)} 
+                                            className="rounded text-indigo-600 h-4 w-4 cursor-pointer" 
+                                        />
                                     </td>
                                     <td className="px-4 py-4 border-b border-slate-50">
                                         <StateBadge state={d.mappingStatus.logicalState} />
@@ -289,10 +333,10 @@ const RuleImportVerification: React.FC<Props> = ({
                 </div>
             </div>
 
-            {inspectingDraftId && inspectingDraft && (
+            {inspectingDraftId && (
                 <LogicForecastDrawer 
-                    draft={inspectingDraft}
-                    existingRule={existingNames.get(inspectingDraft.name.toLowerCase())}
+                    draft={drafts.find(d => d.id === inspectingDraftId)!}
+                    existingRule={existingNames.get(drafts.find(d => d.id === inspectingDraftId)!.name.toLowerCase())}
                     categories={categories}
                     payees={payees}
                     locations={locations}
