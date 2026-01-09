@@ -109,7 +109,6 @@ const App: React.FC = () => {
             setContentLinks((data.contentLinks || []).filter(Boolean));
             setSystemSettings(data.systemSettings || {});
             
-            // Sync Gemini settings
             if (data.systemSettings?.aiConfig) {
                 updateGeminiConfig(data.systemSettings.aiConfig);
             }
@@ -157,7 +156,7 @@ const App: React.FC = () => {
         }
     };
 
-    const bulkUpdateData = async (key: string, newItems: any[], setter: Function) => {
+    const bulkUpdateData = async (key: string, newItems: any[], setter: Function, currentList: any[]) => {
         try {
             if (!Array.isArray(newItems)) {
                 throw new Error(`bulkUpdateData expected array for '${key}', got ${typeof newItems}`);
@@ -165,32 +164,16 @@ const App: React.FC = () => {
 
             console.log(`[APP] Bulk updating ${newItems.length} items for key: ${key}`);
             
-            setter((prev: any[]) => {
-                const current = Array.isArray(prev) ? prev.filter(Boolean) : [];
-                const next = [...current];
-                
-                newItems.filter(Boolean).forEach((item, itemIdx) => {
-                    if (!item || typeof item !== 'object') {
-                        console.warn(`[APP] Ignoring malformed bulk item at index ${itemIdx} for ${key}`);
-                        return;
-                    }
-                    
-                    const itemID = item.id;
-                    if (itemID === undefined) {
-                        console.error(`[APP] Critical: item at index ${itemIdx} for ${key} has no ID property. Full item:`, item);
-                        return;
-                    }
-                    
-                    const idx = next.findIndex(x => x && x.id === itemID);
-                    if (idx > -1) next[idx] = item;
-                    else next.push(item);
-                });
-                
-                api.save(key, next).catch(e => console.error(`[APP] Async bulk save error for ${key}:`, e));
-                return next;
+            const next = [...currentList];
+            newItems.filter(Boolean).forEach((item) => {
+                if (!item || typeof item !== 'object' || !item.id) return;
+                const idx = next.findIndex(x => x && x.id === item.id);
+                if (idx > -1) next[idx] = item;
+                else next.push(item);
             });
             
-            if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
+            // Execute mutation with sync guarantee
+            await updateData(key, next, setter);
         } catch (e) {
             console.error(`[APP] Bulk update crashed for key '${key}':`, e);
         }
@@ -199,15 +182,13 @@ const App: React.FC = () => {
     const handleTransactionsAdded = async (newTxs: Transaction[], newCategories: Category[] = []) => {
         try {
             if (newCategories.length > 0) {
-                setCategories(prev => {
-                    const next = [...prev.filter(Boolean), ...newCategories.filter(Boolean)];
-                    api.save('categories', next);
-                    return next;
-                });
+                const nextCategories = [...categories.filter(Boolean), ...newCategories.filter(Boolean)];
+                await updateData('categories', nextCategories, setCategories);
             }
             console.log(`[APP] Committing ${newTxs.length} new transactions to DB...`);
             await api.saveTransactions(newTxs.filter(Boolean));
             loadCoreData(false);
+            if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
         } catch (e) {
             console.error("[APP] Transaction ingestion failure:", e);
             alert("Ledger save failed. See logs.");
@@ -215,13 +196,17 @@ const App: React.FC = () => {
     };
 
     const handleUpdateTransaction = async (tx: Transaction) => {
-        setTransactions(prev => prev.map(t => t && t.id === tx.id ? tx : t));
+        const next = transactions.map(t => t && t.id === tx.id ? tx : t);
+        setTransactions(next);
         await api.saveTransactions([tx]);
+        if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
     };
 
     const handleDeleteTransaction = async (id: string) => {
-        setTransactions(prev => prev.filter(t => t && t.id !== id));
+        const next = transactions.filter(t => t && t.id !== id);
+        setTransactions(next);
         await api.deleteTransaction(id);
+        if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
     };
 
     if (loadError) return (
@@ -276,7 +261,6 @@ const App: React.FC = () => {
                 </header>
                 <div className="flex-1 overflow-y-auto p-4 md:p-8 relative custom-scrollbar bg-slate-50/50">
                     {currentView === 'dashboard' && (
-                        /* Added missing financialPlan prop to Dashboard */
                         <Dashboard 
                             transactions={transactions} 
                             savedReports={savedReports} 
@@ -296,20 +280,20 @@ const App: React.FC = () => {
                             categories={categories} tags={tags} transactionTypes={transactionTypes}
                             rules={rules} counterparties={counterparties} locations={locations} users={users}
                             documentFolders={documentFolders} onTransactionsAdded={handleTransactionsAdded}
-                            onAddAccount={(a) => bulkUpdateData('accounts', [a], setAccounts)}
-                            onAddAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes)}
-                            onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules)}
-                            onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
-                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
-                            onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations)}
-                            onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
-                            onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
-                            onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
+                            onAddAccount={(a) => bulkUpdateData('accounts', [a], setAccounts, accounts)}
+                            onAddAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes, accountTypes)}
+                            onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules, rules)}
+                            onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories, categories)}
+                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties, counterparties)}
+                            onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations, locations)}
+                            onSaveUser={(u) => bulkUpdateData('users', [u], setUsers, users)}
+                            onSaveTag={(t) => bulkUpdateData('tags', [t], setTags, tags)}
+                            onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)}
                             onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction}
-                            onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)}
-                            onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders)}
+                            onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments, businessDocuments)}
+                            onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders, documentFolders)}
                             ruleCategories={ruleCategories}
-                            onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories)}
+                            onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories, ruleCategories)}
                         />
                     )}
                     {currentView === 'transactions' && (
@@ -317,49 +301,49 @@ const App: React.FC = () => {
                             accounts={accounts} categories={categories} tags={tags} 
                             transactionTypes={transactionTypes} counterparties={counterparties} users={users}
                             onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction}
-                            onDeleteTransactions={async (ids) => { setTransactions(prev => prev.filter(t => t && !ids.includes(t.id))); for(const id of ids) await api.deleteTransaction(id); }}
+                            onDeleteTransactions={async (ids) => { setTransactions(prev => prev.filter(t => t && !ids.includes(t.id))); for(const id of ids) await api.deleteTransaction(id); if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED'); }}
                             onAddTransaction={(tx) => handleTransactionsAdded([tx])}
-                            onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules)}
-                            onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
-                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
-                            onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
-                            onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
-                            onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports)}
+                            onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules, rules)}
+                            onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories, categories)}
+                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties, counterparties)}
+                            onSaveTag={(t) => bulkUpdateData('tags', [t], setTags, tags)}
+                            onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)}
+                            onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports, savedReports)}
                         />
                     )}
                     {currentView === 'calendar' && (
                         <CalendarPage 
                             transactions={transactions} tasks={tasks} templates={templates} scheduledEvents={scheduledEvents}
                             taskCompletions={taskCompletions} accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} users={users}
-                            onAddEvent={(e) => bulkUpdateData('scheduledEvents', [e], setScheduledEvents)}
+                            onAddEvent={(e) => bulkUpdateData('scheduledEvents', [e], setScheduledEvents, scheduledEvents)}
                             onUpdateTransaction={handleUpdateTransaction} onAddTransaction={(tx) => handleTransactionsAdded([tx])}
                             onToggleTaskCompletion={async (d, eid, tid) => { const next = {...taskCompletions, [`${d}_${eid}_${tid}`]: !taskCompletions[`${d}_${eid}_${tid}`]}; updateData('taskCompletions', next, setTaskCompletions); }}
-                            onToggleTask={(id) => setTaskCompletions(prev => ({...prev, [id]: !prev[id]}))} 
-                            onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks)}
+                            onToggleTask={(id) => { const next = {...taskCompletions, [id]: !taskCompletions[id]}; updateData('taskCompletions', next, setTaskCompletions); }} 
+                            onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks, tasks)}
                             transactionTypes={transactionTypes}
                         />
                     )}
                     {currentView === 'rules' && (
                         <RulesPage 
                             rules={rules} 
-                            onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules)}
-                            onSaveRules={(rs) => bulkUpdateData('reconciliationRules', rs, setRules)}
-                            onDeleteRule={(id) => setRules(prev => { const next = prev.filter(r => r && r.id !== id); api.save('reconciliationRules', next).catch(console.error); return next; })}
+                            onSaveRule={(r) => bulkUpdateData('reconciliationRules', [r], setRules, rules)}
+                            onSaveRules={(rs) => bulkUpdateData('reconciliationRules', rs, setRules, rules)}
+                            onDeleteRule={(id) => { const next = rules.filter(r => r && r.id !== id); updateData('reconciliationRules', next, setRules); }}
                             accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} counterparties={counterparties} 
                             locations={locations} users={users} transactions={transactions}
                             onUpdateTransactions={(txs) => handleTransactionsAdded(txs)}
-                            onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
-                            onSaveCategories={(cs) => bulkUpdateData('categories', cs, setCategories)}
-                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
-                            onSaveCounterparties={(ps) => bulkUpdateData('counterparties', ps, setCounterparties)}
-                            onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations)}
-                            onSaveLocations={(ls) => bulkUpdateData('locations', ls, setLocations)}
-                            onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
-                            onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
-                            onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
+                            onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories, categories)}
+                            onSaveCategories={(cs) => bulkUpdateData('categories', cs, setCategories, categories)}
+                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties, counterparties)}
+                            onSaveCounterparties={(ps) => bulkUpdateData('counterparties', ps, setCounterparties, counterparties)}
+                            onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations, locations)}
+                            onSaveLocations={(ls) => bulkUpdateData('locations', ls, setLocations, locations)}
+                            onSaveTag={(t) => bulkUpdateData('tags', [t], setTags, tags)}
+                            onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)}
+                            onSaveUser={(u) => bulkUpdateData('users', [u], setUsers, users)}
                             ruleCategories={ruleCategories}
-                            onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories)}
-                            onDeleteRuleCategory={(id) => setRuleCategories(prev => { const next = prev.filter(rc => rc && rc.id !== id); api.save('ruleCategories', next).catch(console.error); return next; })}
+                            onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories, ruleCategories)}
+                            onDeleteRuleCategory={(id) => { const next = ruleCategories.filter(rc => rc && rc.id !== id); updateData('ruleCategories', next, setRuleCategories); }}
                             systemSettings={systemSettings}
                             onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)}
                         />
@@ -368,23 +352,23 @@ const App: React.FC = () => {
                         <ManagementHub 
                             transactions={transactions} accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} 
                             locations={locations} users={users} transactionTypes={transactionTypes} accountTypes={accountTypes}
-                            onSaveAccount={(a) => bulkUpdateData('accounts', [a], setAccounts)}
-                            onDeleteAccount={(id) => setAccounts(prev => { const next = prev.filter(x => x && x.id !== id); api.save('accounts', next).catch(console.error); return next; })}
-                            onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)}
-                            onDeleteCategory={(id) => setCategories(prev => { const next = prev.filter(c => c && c.id !== id); api.save('categories', next).catch(console.error); return next; })}
-                            onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)}
-                            onDeleteTag={(id) => setTags(prev => { const next = prev.filter(t => t && t.id !== id); api.save('tags', next).catch(console.error); return next; })}
-                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)}
-                            onDeleteCounterparty={(id) => setCounterparties(prev => { const next = prev.filter(p => p && p.id !== id); api.save('counterparties', next).catch(console.error); return next; })}
-                            onSaveCounterparties={(ps) => bulkUpdateData('counterparties', ps, setCounterparties)}
-                            onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations)}
-                            onDeleteLocation={(id) => setLocations(prev => { const next = prev.filter(l => l && l.id !== id); api.save('locations', next).catch(console.error); return next; })}
-                            onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)}
-                            onDeleteUser={(id) => setUsers(prev => { const next = prev.filter(u => u && u.id !== id); api.save('users', next).catch(console.error); return next; })}
-                            onSaveTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
-                            onDeleteTransactionType={(id) => setTransactionTypes(prev => { const next = prev.filter(t => t && t.id !== id); api.save('transactionTypes', next).catch(console.error); return next; })}
-                            onSaveAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes)}
-                            onDeleteAccountType={(id) => setAccountTypes(prev => { const next = prev.filter(at => at && at.id !== id); api.save('accountTypes', next).catch(console.error); return next; })}
+                            onSaveAccount={(a) => bulkUpdateData('accounts', [a], setAccounts, accounts)}
+                            onDeleteAccount={(id) => { const next = accounts.filter(x => x && x.id !== id); updateData('accounts', next, setAccounts); }}
+                            onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories, categories)}
+                            onDeleteCategory={(id) => { const next = categories.filter(c => c && c.id !== id); updateData('categories', next, setCategories); }}
+                            onSaveTag={(t) => bulkUpdateData('tags', [t], setTags, tags)}
+                            onDeleteTag={(id) => { const next = tags.filter(t => t && t.id !== id); updateData('tags', next, setTags); }}
+                            onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties, counterparties)}
+                            onDeleteCounterparty={(id) => { const next = counterparties.filter(p => p && p.id !== id); updateData('counterparties', next, setCounterparties); }}
+                            onSaveCounterparties={(ps) => bulkUpdateData('counterparties', ps, setCounterparties, counterparties)}
+                            onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations, locations)}
+                            onDeleteLocation={(id) => { const next = locations.filter(l => l && l.id !== id); updateData('locations', next, setLocations); }}
+                            onSaveUser={(u) => bulkUpdateData('users', [u], setUsers, users)}
+                            onDeleteUser={(id) => { const next = users.filter(u => u && u.id !== id); updateData('users', next, setUsers); }}
+                            onSaveTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)}
+                            onDeleteTransactionType={(id) => { const next = transactionTypes.filter(t => t && t.id !== id); updateData('transactionTypes', next, setTransactionTypes); }}
+                            onSaveAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes, accountTypes)}
+                            onDeleteAccountType={(id) => { const next = accountTypes.filter(at => at && at.id !== id); updateData('accountTypes', next, setAccountTypes); }}
                         />
                     )}
                     {currentView === 'reports' && (
@@ -401,19 +385,21 @@ const App: React.FC = () => {
                                 updateData('savedDateRanges', newVal, setSavedDateRanges);
                             }}
                             amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics}
-                            onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports)}
+                            onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports, savedReports)}
                         />
                     )}
                     {currentView === 'settings' && (
                         <SettingsPage 
-                            transactions={transactions} transactionTypes={transactionTypes} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)}
-                            onRemoveTransactionType={(id) => setTransactionTypes(prev => { const next = prev.filter(x => x && x.id !== id); api.save('transactionTypes', next).catch(console.error); return next; })}
+                            transactions={transactions} transactionTypes={transactionTypes} 
+                            onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)}
+                            onRemoveTransactionType={(id) => { const next = transactionTypes.filter(x => x && x.id !== id); updateData('transactionTypes', next, setTransactionTypes); }}
                             systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)}
                             accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} rules={rules}
                             templates={templates} scheduledEvents={scheduledEvents} tasks={tasks} taskCompletions={taskCompletions}
                             users={users} businessProfile={businessProfile} businessNotes={businessNotes} documentFolders={documentFolders}
-                            businessDocuments={businessDocuments} onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)}
-                            onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders)}
+                            businessDocuments={businessDocuments} 
+                            onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments, businessDocuments)}
+                            onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders, documentFolders)}
                             savedReports={savedReports} savedDateRanges={savedDateRanges} amazonMetrics={amazonMetrics} amazonVideos={amazonVideos}
                             youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels} financialGoals={financialGoals} 
                             financialPlan={financialPlan} contentLinks={contentLinks}
@@ -422,12 +408,12 @@ const App: React.FC = () => {
                     )}
                     {currentView === 'tasks' && (
                         <TasksPage 
-                            tasks={tasks} onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks)}
-                            onDeleteTask={(id) => setTasks(prev => { const next = prev.filter(t => t && t.id !== id); api.save('tasks', next).catch(console.error); return next; })}
-                            onToggleTask={(id) => setTasks(prev => { const next = prev.map(t => t && t.id === id ? {...t, isCompleted: !t.isCompleted} : t); api.save('tasks', next).catch(console.error); return next; })}
+                            tasks={tasks} onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks, tasks)}
+                            onDeleteTask={(id) => { const next = tasks.filter(t => t && t.id !== id); updateData('tasks', next, setTasks); }}
+                            onToggleTask={(id) => { const next = tasks.map(t => t && t.id === id ? {...t, isCompleted: !t.isCompleted} : t); updateData('tasks', next, setTasks); }}
                             templates={templates} scheduledEvents={scheduledEvents}
-                            onSaveTemplate={(t) => bulkUpdateData('templates', [t], setTemplates)}
-                            onRemoveTemplate={(id) => setTemplates(prev => { const next = prev.filter(t => t && t.id !== id); api.save('templates', next).catch(console.error); return next; })}
+                            onSaveTemplate={(t) => bulkUpdateData('templates', [t], setTemplates, templates)}
+                            onRemoveTemplate={(id) => { const next = templates.filter(t => t && t.id !== id); updateData('templates', next, setTemplates); }}
                             categories={categories}
                         />
                     )}
@@ -442,10 +428,10 @@ const App: React.FC = () => {
                     {currentView === 'documents' && (
                         <DocumentsPage 
                             documents={businessDocuments} folders={documentFolders} 
-                            onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)}
-                            onRemoveDocument={(id) => setBusinessDocuments(prev => { const next = prev.filter(d => d && d.id !== id); api.save('businessDocuments', next).catch(console.error); return next; })}
-                            onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders)}
-                            onDeleteFolder={(id) => setDocumentFolders(prev => { const next = prev.filter(f => f && f.id !== id); api.save('documentFolders', next).catch(console.error); return next; })}
+                            onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments, businessDocuments)}
+                            onRemoveDocument={(id) => { const next = businessDocuments.filter(d => d && d.id !== id); updateData('businessDocuments', next, setBusinessDocuments); }}
+                            onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders, documentFolders)}
+                            onDeleteFolder={(id) => { const next = documentFolders.filter(f => f && f.id !== id); updateData('documentFolders', next, setDocumentFolders); }}
                         />
                     )}
                     {currentView === 'plan' && (
@@ -459,18 +445,22 @@ const App: React.FC = () => {
                     {currentView === 'integrations' && <IntegrationsPage onNavigate={setCurrentView} />}
                     {currentView === 'integration-amazon' && (
                         <AmazonIntegration 
-                            metrics={amazonMetrics} onAddMetrics={(m) => bulkUpdateData('amazonMetrics', m, setAmazonMetrics)}
-                            onDeleteMetrics={(ids) => setAmazonMetrics(prev => { const next = prev.filter(m => m && !ids.includes(m.id)); api.save('amazonMetrics', next).catch(console.error); return next; })}
-                            videos={amazonVideos} onAddVideos={(v) => bulkUpdateData('amazonVideos', v, setAmazonVideos)}
-                            onDeleteVideos={(ids) => setAmazonVideos(prev => { const next = prev.filter(v => v && !ids.includes(v.id)); api.save('amazonVideos', next).catch(console.error); return next; })}
+                            metrics={amazonMetrics} 
+                            onAddMetrics={(m) => bulkUpdateData('amazonMetrics', m, setAmazonMetrics, amazonMetrics)}
+                            onDeleteMetrics={(ids) => { const next = amazonMetrics.filter(m => m && !ids.includes(m.id)); updateData('amazonMetrics', next, setAmazonMetrics); }}
+                            videos={amazonVideos} 
+                            onAddVideos={(v) => bulkUpdateData('amazonVideos', v, setAmazonVideos, amazonVideos)}
+                            onDeleteVideos={(ids) => { const next = amazonVideos.filter(v => v && !ids.includes(v.id)); updateData('amazonVideos', next, setAmazonVideos); }}
                         />
                     )}
                     {currentView === 'integration-youtube' && (
                         <YouTubeIntegration 
-                            metrics={youtubeMetrics} onAddMetrics={(m) => bulkUpdateData('youtubeMetrics', m, setYouTubeMetric)}
-                            onDeleteMetrics={(ids) => setYouTubeMetric(prev => { const next = prev.filter(m => m && !ids.includes(m.id)); api.save('youtubeMetrics', next).catch(console.error); return next; })}
-                            channels={youtubeChannels} onSaveChannel={(c) => bulkUpdateData('youtubeChannels', [c], setYouTubeChannels)}
-                            onDeleteChannel={(id) => setYouTubeChannels(prev => { const next = prev.filter(c => c && c.id !== id); api.save('youtubeChannels', next).catch(console.error); return next; })}
+                            metrics={youtubeMetrics} 
+                            onAddMetrics={(m) => bulkUpdateData('youtubeMetrics', m, setYouTubeMetric, youtubeMetrics)}
+                            onDeleteMetrics={(ids) => { const next = youtubeMetrics.filter(m => m && !ids.includes(m.id)); updateData('youtubeMetrics', next, setYouTubeMetric); }}
+                            channels={youtubeChannels} 
+                            onSaveChannel={(c) => bulkUpdateData('youtubeChannels', [c], setYouTubeChannels, youtubeChannels)}
+                            onDeleteChannel={(id) => { const next = youtubeChannels.filter(c => c && c.id !== id); updateData('youtubeChannels', next, setYouTubeChannels); }}
                         />
                     )}
                     {currentView === 'integration-content-hub' && (
