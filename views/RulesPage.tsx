@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings } from '../types';
 import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon, ListIcon } from '../components/Icons';
@@ -182,7 +183,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 coverageCount: 0, // In real app, we would run logic here
                 mappingStatus: {
                     category: catMatch ? 'match' : (r.suggestedCategoryName ? 'create' : 'none'),
-                    // Fixed: 'payees' was undefined, replaced with 'counterparties' prop
                     counterparty: counterparties.find(p => p.name.toLowerCase() === r.suggestedCounterpartyName?.toLowerCase()) ? 'match' : (r.suggestedCounterpartyName ? 'create' : 'none'),
                     location: locations.find(l => l.name.toLowerCase() === r.suggestedLocationName?.toLowerCase()) ? 'match' : (r.suggestedLocationName ? 'create' : 'none'),
                     type: transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase()) ? 'match' : (r.suggestedTypeName ? 'create' : 'none'),
@@ -286,7 +286,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
         notify('success', 'Protocol Registered', `"${newPromptName}" added.`);
     };
 
-    // Added missing 'handleDeleteProtocol' function to manage Forge logic templates
     const handleDeleteProtocol = (id: string) => {
         const currentPrompts = (systemSettings.ruleForgePrompts && systemSettings.ruleForgePrompts.length > 0)
             ? systemSettings.ruleForgePrompts
