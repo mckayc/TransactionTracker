@@ -288,6 +288,7 @@ export interface RuleForgePrompt {
     id: string;
     name: string;
     prompt: string;
+    ruleCategoryId?: string;
     fields?: {
         description?: FieldRequirement;
         category?: FieldRequirement;

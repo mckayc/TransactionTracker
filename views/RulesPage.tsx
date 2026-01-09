@@ -51,18 +51,21 @@ const DEFAULT_FORGE_PROMPTS: RuleForgePrompt[] = [
         id: 'forge-loc',
         name: 'Location Geography Protocol',
         prompt: 'Identify city and state patterns in the raw transaction descriptions. Name the rule "Location - City, ST". Only generate rules if a geographic location is likely.',
+        ruleCategoryId: 'rcat_loc',
         fields: { location: 'required', category: 'omit', type: 'omit' }
     },
     {
         id: 'forge-norm',
         name: 'Identity & Logic Normalizer',
         prompt: 'Generate comprehensive rules for clean Descriptions, logical Categories, Transaction Types, and Counterparties. Standardize vendor names and categorize accurately for tax purposes.',
+        ruleCategoryId: 'rcat_desc',
         fields: { description: 'required', category: 'required', counterparty: 'required', type: 'required' }
     },
     {
         id: 'forge-subs',
         name: 'Subscription Hunter Protocol',
         prompt: 'Identify potential recurring monthly subscriptions. Assign them to a "Subscriptions" category.',
+        ruleCategoryId: 'rcat_desc',
         fields: { category: 'required', tags: 'optional' }
     }
 ];
@@ -229,7 +232,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
             return {
                 ...r,
-                ruleCategoryId: r.ruleCategoryId || 'rcat_manual',
+                ruleCategoryId: importMethod === 'ai' ? (activeForgePrompt.ruleCategoryId || 'rcat_other') : (r.ruleCategoryId || 'rcat_manual'),
                 isSelected: state !== 'identity',
                 coverageCount: coverage,
                 setTransactionTypeId: typeMatch?.id || undefined,
@@ -349,7 +352,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
     const handleCreateNewProtocol = () => {
         if (!newPromptName.trim()) return;
-        const newPrompt: RuleForgePrompt = { id: generateUUID(), name: newPromptName.trim(), prompt: '', fields: {} };
+        const newPrompt: RuleForgePrompt = { id: generateUUID(), name: newPromptName.trim(), prompt: '', ruleCategoryId: 'rcat_other', fields: {} };
         onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: [...forgePrompts, newPrompt] });
         setSelectedForgePromptId(newPrompt.id);
         setIsNewPromptModalOpen(false);
@@ -581,6 +584,18 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                 <div className="space-y-4">
                                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fields to Edit</label>
                                                     <div className="space-y-2">
+                                                        <div className="p-3 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 flex items-center gap-2">
+                                                                <FolderIcon className="w-3.5 h-3.5 text-indigo-400" /> Target Logic Folder
+                                                            </label>
+                                                            <select 
+                                                                value={activeForgePrompt.ruleCategoryId || 'rcat_other'}
+                                                                onChange={e => updateCurrentProtocol({ ruleCategoryId: e.target.value })}
+                                                                className="w-full text-xs font-bold border-none bg-slate-50 rounded-xl focus:ring-0 p-2"
+                                                            >
+                                                                {ruleCategories.map(rc => <option key={rc.id} value={rc.id}>{rc.name}</option>)}
+                                                            </select>
+                                                        </div>
                                                         <FieldController label="Categories" value={activeForgePrompt.fields?.category} onChange={v => updateFieldRequirement('category', v)} icon={<TagIcon className="w-4 h-4"/>} />
                                                         <FieldController label="Counterparties" value={activeForgePrompt.fields?.counterparty} onChange={v => updateFieldRequirement('counterparty', v)} icon={<UsersIcon className="w-4 h-4"/>} />
                                                         <FieldController label="Tags" value={activeForgePrompt.fields?.tags} onChange={v => updateFieldRequirement('tags', v)} icon={<RepeatIcon className="w-4 h-4"/>} />
@@ -769,7 +784,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 </div>
 
                 {/* COLUMN 2: STREAM */}
-                <div className="w-96 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
+                <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0">
                     <div className="p-3 border-b flex flex-col gap-3 bg-slate-50 rounded-t-2xl">
                         <div className="flex items-center justify-between px-1">
                             <div className="flex items-center gap-3">
