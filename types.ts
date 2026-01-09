@@ -148,6 +148,13 @@ export interface RuleImportDraft extends ReconciliationRule {
     };
 }
 
+export interface ImportBatchStats {
+    rowsEvaluated: number;
+    rowsCovered: number;
+    rulesCreated: number;
+    rulesMerged: number;
+}
+
 export type TaskPriority = 'low' | 'medium' | 'high';
 
 export interface TaskItem {

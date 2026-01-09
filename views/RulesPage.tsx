@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings } from '../types';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings, ImportBatchStats } from '../types';
 import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon, ListIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
@@ -78,13 +78,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
-    const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
-
+    
+    // UI State
     const [isCreatingCategory, setIsCreatingCategory] = useState(false);
     const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
     const [newCatName, setNewCatName] = useState('');
     const [ruleToDeleteId, setRuleToDeleteId] = useState<string | null>(null);
-    const [isBulkDeleteConfirmOpen, setIsBulkDeleteConfirmOpen] = useState(false);
 
     // Fullscreen View State
     const [isImportHubOpen, setIsImportHubOpen] = useState(false);
@@ -98,7 +97,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [importDrafts, setImportDrafts] = useState<RuleImportDraft[]>([]);
     const [isVerifyingImport, setIsVerifyingImport] = useState(false);
     const [importError, setImportError] = useState<string | null>(null);
-    const [showInstructions, setShowInstructions] = useState(false);
+    const [batchStats, setBatchStats] = useState<ImportBatchStats | null>(null);
     
     // AI Forge State
     const forgePrompts = useMemo(() => {
@@ -139,15 +138,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
         notify('success', 'Rules Purged', `${bulkSelectedIds.size} logical records removed.`);
     };
 
-    const handleBulkMove = (targetCategoryId: string) => {
-        const rulesToUpdate = rules.filter(r => bulkSelectedIds.has(r.id));
-        const updatedRules = rulesToUpdate.map(r => ({ ...r, ruleCategoryId: targetCategoryId }));
-        onSaveRules(updatedRules);
-        setBulkSelectedIds(new Set());
-        setIsMoveModalOpen(false);
-        notify('success', 'Logic Repositioned', `${updatedRules.length} rules moved to new cluster.`);
-    };
-
     const toggleSelectAll = () => {
         if (bulkSelectedIds.size === filteredRules.length && filteredRules.length > 0) {
             setBulkSelectedIds(new Set());
@@ -157,7 +147,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const processDrafts = (rawRules: ReconciliationRule[]) => {
-        const lines = forgeData.split('\n').filter(l => l.trim()).length;
+        const rows = forgeData.split('\n').filter(l => l.trim());
+        const totalRows = rows.length;
+        
+        let existingRuleCount = 0;
+        let synthesisCount = 0;
+
         const drafts: RuleImportDraft[] = rawRules.map(r => {
             const existing = existingNames.get(r.name.toLowerCase());
             const catMatch = categories.find(c => c.name.toLowerCase() === r.suggestedCategoryName?.toLowerCase());
@@ -165,6 +160,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             // Logic state evaluation
             let state: RuleImportDraft['mappingStatus']['logicalState'] = 'new';
             if (existing) {
+                existingRuleCount++;
                 const existingVal = existing.conditions[0]?.value || '';
                 const incomingVal = r.conditions[0]?.value || '';
                 const tokensE = new Set(String(existingVal).split('||').map(t => t.trim().toLowerCase()));
@@ -172,15 +168,21 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 
                 const isIdentical = tokensI.size === tokensE.size && Array.from(tokensI).every(t => tokensE.has(t));
                 if (isIdentical) state = 'identity';
-                else if (existing.setCategoryId === (r.setCategoryId || catMatch?.id)) state = 'synthesis';
+                else if (existing.setCategoryId === (r.setCategoryId || catMatch?.id)) {
+                    state = 'synthesis';
+                    synthesisCount++;
+                }
                 else state = 'conflict';
             }
+
+            // Coverage Calculation (Mock for now, would ideally run real logic)
+            const coverage = rows.filter(row => row.toLowerCase().includes(r.conditions[0]?.value?.toLowerCase() || 'impossible_match')).length;
 
             return {
                 ...r,
                 ruleCategoryId: r.ruleCategoryId || 'rcat_manual',
                 isSelected: state !== 'identity',
-                coverageCount: 0, // In real app, we would run logic here
+                coverageCount: coverage,
                 mappingStatus: {
                     category: catMatch ? 'match' : (r.suggestedCategoryName ? 'create' : 'none'),
                     counterparty: counterparties.find(p => p.name.toLowerCase() === r.suggestedCounterpartyName?.toLowerCase()) ? 'match' : (r.suggestedCounterpartyName ? 'create' : 'none'),
@@ -190,6 +192,18 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 }
             } as RuleImportDraft;
         });
+
+        const coveredCount = rows.filter(row => 
+            drafts.some(d => row.toLowerCase().includes(d.conditions[0]?.value?.toLowerCase() || 'impossible_match'))
+        ).length;
+
+        setBatchStats({
+            rowsEvaluated: totalRows,
+            rowsCovered: coveredCount,
+            rulesCreated: drafts.length - existingRuleCount,
+            rulesMerged: synthesisCount
+        });
+
         setImportDrafts(drafts);
         setIsVerifyingImport(true);
         setIsImportHubOpen(true);
@@ -230,26 +244,12 @@ const RulesPage: React.FC<RulesPageProps> = ({
         }
     };
 
-    const handlePasteSubmit = () => {
-        if (!pastedRules.trim()) return;
-        setImportError(null);
-        const lines = pastedRules.split('\n');
-        const validation = validateRuleFormat(lines);
-        if (!validation.isValid) {
-            setImportError(validation.error || "Malformed header or data.");
-            return;
-        }
-        const imported = parseRulesFromLines(lines);
-        processDrafts(imported);
-        setPastedRules('');
-    };
-
     const handleForgeAiSubmit = async () => {
         if (!forgeData.trim() || !forgePromptText.trim() || isForging) return;
         setIsForging(true);
         setImportError(null);
         try {
-            const forgedRules = await forgeRulesWithCustomPrompt(forgePromptText, forgeData, setForgeProgress);
+            const forgedRules = await forgeRulesWithCustomPrompt(forgePromptText, forgeData, transactionTypes, setForgeProgress);
             processDrafts(forgedRules);
         } catch (err: any) {
             setImportError(err.message || "AI Forge failed. Neural Core error.");
@@ -370,15 +370,13 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             onSaveLocation={onSaveLocation}
                             onSaveLocations={onSaveLocations}
                             existingRules={rules}
+                            batchStats={batchStats}
                         />
                     ) : (
                         <div className="flex-1 bg-white rounded-[2.5rem] shadow-xl border border-slate-200 overflow-hidden flex flex-col">
                             <div className="flex bg-slate-50 border-b p-2">
                                 <button onClick={() => setImportMethod('upload')} className={`flex items-center gap-2 px-8 py-3 text-xs font-black uppercase tracking-widest rounded-2xl transition-all ${importMethod === 'upload' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}>
                                     <UploadIcon className="w-4 h-4" /> Manifest Upload
-                                </button>
-                                <button onClick={() => setImportMethod('paste')} className={`flex items-center gap-2 px-8 py-3 text-xs font-black uppercase tracking-widest rounded-2xl transition-all ${importMethod === 'paste' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-500 hover:text-slate-700'}`}>
-                                    <FileCodeIcon className="w-4 h-4" /> Logic Streaming
                                 </button>
                                 <button onClick={() => setImportMethod('ai')} className={`flex items-center gap-2 px-8 py-3 text-xs font-black uppercase tracking-widest rounded-2xl transition-all ${importMethod === 'ai' ? 'bg-white shadow-md text-indigo-600' : 'text-slate-400 hover:text-slate-700'}`}>
                                     <RobotIcon className="w-4 h-4" /> AI Rule Forge
@@ -404,26 +402,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                 <DownloadIcon className="w-4 h-4" /> Download Manifest Template
                                             </button>
                                         </div>
-                                    </div>
-                                )}
-
-                                {importMethod === 'paste' && (
-                                    <div className="max-w-5xl mx-auto space-y-6">
-                                        <div className="bg-slate-900 rounded-[2.5rem] p-2 shadow-2xl">
-                                            <textarea 
-                                                value={pastedRules}
-                                                onChange={e => setPastedRules(e.target.value)}
-                                                className="w-full h-[400px] bg-transparent border-none focus:ring-0 p-8 text-indigo-200 font-mono text-xs leading-relaxed resize-none"
-                                                placeholder={`"Rule Name","Match Field","Operator","Match Value","Set Category"\n"AWS Monthly","description","contains","AMZN MKTP","Software"`}
-                                            />
-                                        </div>
-                                        <button 
-                                            onClick={handlePasteSubmit}
-                                            disabled={!pastedRules.trim()}
-                                            className="w-full py-5 bg-indigo-600 text-white font-black rounded-[2rem] hover:bg-indigo-700 shadow-xl shadow-indigo-100 disabled:opacity-30 transition-all active:scale-95"
-                                        >
-                                            Synthesize Provided Logic
-                                        </button>
                                     </div>
                                 )}
 

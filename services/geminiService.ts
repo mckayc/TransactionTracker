@@ -192,6 +192,7 @@ export const generateRulesFromData = async (
 export const forgeRulesWithCustomPrompt = async (
     customPrompt: string,
     data: string,
+    transactionTypes: TransactionType[],
     onProgress?: (msg: string) => void
 ): Promise<ReconciliationRule[]> => {
     const key = getApiKey();
@@ -200,10 +201,15 @@ export const forgeRulesWithCustomPrompt = async (
     
     const ai = new GoogleGenAI({ apiKey: key });
     
+    const typeNames = transactionTypes.map(t => t.name).join(', ');
     const systemInstruction = `You are a Lead Financial Engineering AI. 
     Analyze the provided raw transaction data based on the user's specific extraction protocol.
     Your output MUST be a JSON array of rules for a reconciliation engine.
     Rules should be atomic and precise.
+    
+    CRITICAL: For each rule, suggest a Transaction Type name. 
+    You MUST prioritize these existing system types if they fit: [${typeNames}].
+    
     PROTOCOL: ${customPrompt}`;
 
     const schema = {
@@ -231,7 +237,7 @@ export const forgeRulesWithCustomPrompt = async (
                         suggestedCategoryName: { type: Type.STRING },
                         suggestedCounterpartyName: { type: Type.STRING },
                         suggestedLocationName: { type: Type.STRING },
-                        suggestedTypeName: { type: Type.STRING },
+                        suggestedTypeName: { type: Type.STRING, description: "The name of the transaction type (e.g. Purchase, Income)" },
                         suggestedTags: { type: Type.ARRAY, items: { type: Type.STRING } },
                         skipImport: { type: Type.BOOLEAN }
                     },

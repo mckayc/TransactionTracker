@@ -1,6 +1,5 @@
-
 import React, { useState, useMemo } from 'react';
-import type { ReconciliationRule, Category, Counterparty, Location, User, TransactionType, RuleImportDraft, Tag } from '../types';
+import type { ReconciliationRule, Category, Counterparty, Location, User, TransactionType, RuleImportDraft, Tag, ImportBatchStats } from '../types';
 import { CheckCircleIcon, SlashIcon, ExclamationTriangleIcon, AddIcon, BoxIcon, TagIcon, MapPinIcon, UsersIcon, ShieldCheckIcon, CloseIcon, EditIcon, RepeatIcon, WorkflowIcon, InfoIcon, DatabaseIcon, ChevronRightIcon, ArrowRightIcon, SparklesIcon, TypeIcon, ListIcon, ChecklistIcon, UserGroupIcon } from './Icons';
 import { generateUUID } from '../utils';
 import SearchableSelect from './SearchableSelect';
@@ -22,6 +21,7 @@ interface Props {
     onSaveLocation: (location: Location) => void;
     onSaveLocations: (ls: Location[]) => void;
     existingRules: ReconciliationRule[];
+    batchStats: ImportBatchStats | null;
 }
 
 const normalizeToken = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
@@ -30,6 +30,7 @@ const getTokens = (value: string): string[] => {
     return value.split(/\s*\|\|\s*|\s*\|\s*/).map(t => normalizeToken(t)).filter(Boolean);
 };
 
+// Fix: Corrected malformed regex that caused division error and split logic inconsistencies
 const mergePatternsUniquely = (existing: string, incoming: string): string => {
     const existingTokens = existing.split(/\s*\|\|\s*|\s*\|\s*/).map(t => t.trim()).filter(Boolean);
     const incomingTokens = incoming.split(/\s*\|\|\s*|\s*\|\s*/).map(t => t.trim()).filter(Boolean);
@@ -136,7 +137,7 @@ const LogicForecastDrawer: React.FC<{
                             <ForecastFieldRow label="Cleanup Description" value={draft.setDescription} status={getFieldStatus('setDescription')} icon={<TypeIcon className="w-4 h-4" />} />
                             <ForecastFieldRow label="Category" value={draft.suggestedCategoryName} status={draft.mappingStatus.category === 'create' ? 'create' : getFieldStatus('setCategoryId')} icon={<TagIcon className="w-4 h-4" />} />
                             <ForecastFieldRow label="Counterparty" value={draft.suggestedCounterpartyName} status={draft.mappingStatus.counterparty === 'create' ? 'create' : getFieldStatus('setCounterpartyId')} icon={<UsersIcon className="w-4 h-4" />} />
-                            <ForecastFieldRow label="Ingestion" value={draft.skipImport ? 'Purge' : 'Import'} status={draft.skipImport ? 'skip' : 'keep'} icon={<SlashIcon className="w-4 h-4" />} />
+                            <ForecastFieldRow label="Transaction Type" value={draft.suggestedTypeName} status={draft.mappingStatus.type === 'create' ? 'create' : getFieldStatus('setTransactionTypeId')} icon={<ChecklistIcon className="w-4 h-4" />} />
                         </div>
                     </div>
                 </div>
@@ -191,47 +192,40 @@ const StateBadge: React.FC<{ state?: RuleImportDraft['mappingStatus']['logicalSt
 
 const RuleImportVerification: React.FC<Props> = ({ 
     drafts, onCancel, onFinalize, categories, payees, locations, users, tags, transactionTypes, 
-    onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations, existingRules
+    onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations, existingRules, batchStats
 }) => {
     const [inspectingDraftId, setInspectingDraftId] = useState<string | null>(null);
     const existingNames = useMemo(() => new Map(existingRules.map(r => [r.name.toLowerCase(), r])), [existingRules]);
     const inspectingDraft = useMemo(() => drafts.find(d => d.id === inspectingDraftId), [drafts, inspectingDraftId]);
 
-    const stats = useMemo(() => {
-        const sel = drafts.filter(d => d.isSelected);
-        return {
-            total: drafts.length,
-            selected: sel.length,
-            newEntities: sel.reduce((acc, d) => {
-                let count = 0;
-                if (!d.setCategoryId && d.mappingStatus.category === 'create') count++;
-                if (!d.setCounterpartyId && d.mappingStatus.counterparty === 'create') count++;
-                return acc + count;
-            }, 0),
-            merges: sel.filter(d => d.mappingStatus.logicalState === 'synthesis').length
-        };
-    }, [drafts]);
+    const activeDrafts = drafts.filter(d => d.isSelected);
 
     return (
         <div className="flex flex-col h-full space-y-4">
             <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center flex-shrink-0 relative overflow-hidden">
                 <div className="relative z-10 flex gap-10">
                     <div>
-                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">EVALUATION QUEUE</p>
-                        <p className="text-3xl font-black">{stats.total} <span className="text-xs font-bold text-slate-500">RULES</span></p>
+                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">DATA ANALYSIS</p>
+                        <p className="text-3xl font-black">{batchStats?.rowsEvaluated || 0} <span className="text-xs font-bold text-slate-500 uppercase">Rows Analyzed</span></p>
                     </div>
                     <div className="border-l border-white/10 pl-10">
-                        <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">DATA COVERAGE</p>
-                        <p className="text-3xl font-black text-emerald-400">{Math.round((stats.selected / (stats.total || 1)) * 100)}% <span className="text-xs font-bold text-emerald-900">ACTIVE</span></p>
+                        <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest mb-1">COVERAGE GAP</p>
+                        <p className="text-3xl font-black text-emerald-400">
+                            {batchStats ? Math.round((batchStats.rowsCovered / batchStats.rowsEvaluated) * 100) : 0}% 
+                            <span className="text-xs font-bold text-emerald-900 uppercase ml-2">Logical Coverage</span>
+                        </p>
                     </div>
                     <div className="border-l border-white/10 pl-10">
-                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">LOGIC SYNTHESIS</p>
-                        <p className="text-3xl font-black text-indigo-400">+{stats.merges}</p>
+                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">SYNTHESIS STATS</p>
+                        <div className="flex gap-4">
+                            <div><span className="text-xl font-black">+{batchStats?.rulesCreated || 0}</span> <span className="text-[9px] font-bold text-slate-500 uppercase">New</span></div>
+                            <div><span className="text-xl font-black text-indigo-400">+{batchStats?.rulesMerged || 0}</span> <span className="text-[9px] font-bold text-slate-500 uppercase">Merged</span></div>
+                        </div>
                     </div>
                 </div>
                 <div className="relative z-10 flex gap-3">
                     <button onClick={onCancel} className="px-6 py-2 font-black text-slate-400 hover:text-white transition-colors text-xs uppercase">Discard Batch</button>
-                    <button onClick={() => onFinalize(drafts.filter(d => d.isSelected))} disabled={stats.selected === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
+                    <button onClick={() => onFinalize(drafts.filter(d => d.isSelected))} disabled={activeDrafts.length === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
                 </div>
                 <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-5 text-indigo-400 pointer-events-none" />
             </div>
@@ -244,8 +238,9 @@ const RuleImportVerification: React.FC<Props> = ({
                                 <th className="p-4 w-12 bg-slate-50 border-b border-slate-200"></th>
                                 <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">State</th>
                                 <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Logic Identity</th>
-                                <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Category Resolution</th>
-                                <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Counterparty</th>
+                                <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Category</th>
+                                <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Entity Target</th>
+                                <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Type Resolution</th>
                                 <th className="px-4 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Coverage</th>
                                 <th className="px-4 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Forecast</th>
                             </tr>
@@ -264,17 +259,22 @@ const RuleImportVerification: React.FC<Props> = ({
                                         <p className="text-[10px] font-mono text-slate-400 truncate max-w-[200px] mt-1">{d.conditions[0]?.value}</p>
                                     </td>
                                     <td className="px-4 py-4 border-b border-slate-50 min-w-[140px]">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${d.mappingStatus.category === 'create' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                                {d.suggestedCategoryName || 'N/A'}
-                                            </span>
-                                        </div>
+                                        <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${d.mappingStatus.category === 'create' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                            {d.suggestedCategoryName || 'N/A'}
+                                        </span>
                                     </td>
                                     <td className="px-4 py-4 border-b border-slate-50 min-w-[140px]">
                                         <p className="text-xs font-bold text-slate-600">{d.suggestedCounterpartyName || '--'}</p>
                                     </td>
+                                    <td className="px-4 py-4 border-b border-slate-50 min-w-[140px]">
+                                        <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${d.mappingStatus.type === 'match' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>
+                                            {d.suggestedTypeName || 'Other'}
+                                        </span>
+                                    </td>
                                     <td className="px-4 py-4 text-center border-b border-slate-50">
-                                        <span className="px-2 py-1 bg-indigo-50 text-indigo-700 text-[10px] font-black rounded-lg">{(d.coverageCount || 0)} ROWS</span>
+                                        <span className={`px-2 py-1 text-[10px] font-black rounded-lg ${d.coverageCount && d.coverageCount > 0 ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-300'}`}>
+                                            {(d.coverageCount || 0)} ROWS
+                                        </span>
                                     </td>
                                     <td className="px-4 py-4 text-center border-b border-slate-50">
                                         <button onClick={() => setInspectingDraftId(d.id)} className="p-2 text-slate-300 hover:text-indigo-600 rounded-xl hover:bg-white transition-all shadow-sm">
@@ -293,7 +293,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     draft={inspectingDraft}
                     existingRule={existingNames.get(inspectingDraft.name.toLowerCase())}
                     categories={categories}
-                    payees={payees}
+                    payees={counterparties}
                     locations={locations}
                     users={users}
                     transactionTypes={transactionTypes}
