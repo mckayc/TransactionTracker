@@ -202,15 +202,15 @@ export const forgeRulesWithCustomPrompt = async (
     const ai = new GoogleGenAI({ apiKey: key });
     
     const typeNames = transactionTypes.map(t => t.name).join(', ');
-    const systemInstruction = `You are a Lead Financial Engineering AI. 
-    Analyze the provided raw transaction data based on the user's specific extraction protocol.
-    Your output MUST be a JSON array of rules for a reconciliation engine.
-    Rules should be atomic and precise.
-    
-    CRITICAL: For each rule, you MUST provide a suggestedTypeName. 
-    You MUST pick the most appropriate type name from this list of existing system types: [${typeNames}].
-    If no specific type fits, default to the most logical one (e.g., Purchase for expenses).
-    
+    const systemInstruction = `You are a Logic Compiler for a Financial Reconciliation Engine. 
+    Your strict objective is to interpret the provided RAW TRANSACTION DATA and generate JSON Rules based EXCLUSIVELY on the USER PROTOCOL instructions.
+
+    CRITICAL CONSTRAINTS:
+    1. If the USER PROTOCOL explicitly states to NOT edit, suggest, or include certain fields, you MUST OMIT those fields from the resulting JSON objects.
+    2. If the protocol asks for only one field (e.g., Location), do not include suggestedCategoryName or suggestedTypeName.
+    3. You have access to these existing system transaction types: [${typeNames}]. Only suggest them if the protocol allows type modification.
+    4. Follow the USER PROTOCOL literally. It is your master instruction set.
+
     PROTOCOL: ${customPrompt}`;
 
     const schema = {
@@ -221,7 +221,7 @@ export const forgeRulesWithCustomPrompt = async (
                 items: {
                     type: Type.OBJECT,
                     properties: {
-                        name: { type: Type.STRING, description: "Display name of the rule" },
+                        name: { type: Type.STRING, description: "Display name of the rule based on protocol naming requirements" },
                         conditions: {
                             type: Type.ARRAY,
                             items: {
@@ -238,11 +238,11 @@ export const forgeRulesWithCustomPrompt = async (
                         suggestedCategoryName: { type: Type.STRING },
                         suggestedCounterpartyName: { type: Type.STRING },
                         suggestedLocationName: { type: Type.STRING },
-                        suggestedTypeName: { type: Type.STRING, description: "The exact name of the transaction type from the provided list" },
+                        suggestedTypeName: { type: Type.STRING, description: "The exact name of the transaction type from the provided list, IF allowed by protocol" },
                         suggestedTags: { type: Type.ARRAY, items: { type: Type.STRING } },
                         skipImport: { type: Type.BOOLEAN }
                     },
-                    required: ["name", "conditions", "suggestedTypeName"]
+                    required: ["name", "conditions"]
                 }
             }
         },

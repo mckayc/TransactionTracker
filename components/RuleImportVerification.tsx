@@ -203,7 +203,7 @@ const RuleImportVerification: React.FC<Props> = ({
     return (
         <div className="flex flex-col h-full space-y-4">
             {/* Batch Statistics Header */}
-            <div className="bg-slate-900 text-white p-6 rounded-[2.5rem] shadow-xl flex justify-between items-center flex-shrink-0 relative overflow-hidden">
+            <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white p-6 rounded-[2.5rem] shadow-2xl flex justify-between items-center flex-shrink-0 relative overflow-hidden">
                 <div className="relative z-10 flex gap-10">
                     <div>
                         <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">DATA ANALYSIS</p>
@@ -226,9 +226,9 @@ const RuleImportVerification: React.FC<Props> = ({
                 </div>
                 <div className="relative z-10 flex gap-3">
                     <button onClick={onCancel} className="px-6 py-2 font-black text-slate-400 hover:text-white transition-colors text-xs uppercase">Discard Batch</button>
-                    <button onClick={() => onFinalize(drafts.filter(d => d.isSelected))} disabled={activeDrafts.length === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
+                    <button onClick={() => onFinalize(drafts.filter(d => d.isSelected))} disabled={activeDrafts.length === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-900/20 transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
                 </div>
-                <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-5 text-indigo-400 pointer-events-none" />
+                <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-10 text-indigo-400 pointer-events-none" />
             </div>
 
             <div className="flex-1 overflow-hidden border-2 border-slate-200 rounded-[2.5rem] bg-white flex flex-col shadow-sm">
