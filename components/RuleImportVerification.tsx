@@ -359,7 +359,7 @@ const RuleImportVerification: React.FC<Props> = ({
         }
 
         if (newCategories.length > 0) onSaveCategories(newCategories);
-        if (newCounterparties.length > 0) onSaveCounterparty(newCounterparties);
+        if (newCounterparties.length > 0) onSaveCounterparties(newCounterparties);
         if (newLocations.length > 0) onSaveLocations(newLocations);
         onFinalize(finalizedRules);
     };
@@ -436,6 +436,7 @@ const RuleImportVerification: React.FC<Props> = ({
                                 const existingNormSet = existingRule ? new Set(existingRule.conditions.flatMap(c => getTokens(String(c.value || '')))) : new Set();
                                 const incomingNormSet = new Set(d.conditions.flatMap(c => getTokens(String(c.value || ''))));
                                 const isLogicRedundant = existingRule && categoryMatch && Array.from(incomingNormSet).every(t => existingNormSet.has(t));
+                                
                                 const isMergeCandidate = categoryMatch && !isLogicRedundant;
                                 const isCollision = existingRule && !categoryMatch;
 
