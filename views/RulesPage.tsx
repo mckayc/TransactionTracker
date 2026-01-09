@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings, ImportBatchStats, FieldRequirement } from '../types';
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon, ListIcon, DatabaseIcon, WorkflowIcon, SlashIcon, TypeIcon, ChecklistIcon, UsersIcon } from '../components/Icons';
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon, ListIcon, DatabaseIcon, WorkflowIcon, SlashIcon, TypeIcon, ChecklistIcon, UsersIcon, CopyIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
@@ -152,6 +152,58 @@ const RulesPage: React.FC<RulesPageProps> = ({
         const id = generateUUID();
         setNotification({ id, type, message, description });
         setTimeout(() => setNotification(prev => prev?.id === id ? null : prev), 5000);
+    };
+
+    const handleCopyForExternalAi = () => {
+        const template = generateRuleTemplate();
+        const fields = activeForgePrompt.fields || {};
+        
+        const prompt = `You are a Senior Financial Systems Architect.
+Your task is to take the provided RAW TRANSACTION DATA and use the CSV TEMPLATE structure provided below to generate a new CSV file containing normalization and categorization rules.
+
+### CSV TEMPLATE STRUCTURE
+${template}
+
+### DIRECTIVES & PROTOCOL
+${activeForgePrompt.prompt || 'Analyze patterns and categorize appropriately.'}
+
+### FIELD REQUIREMENTS
+- Normalization (Clean Description): ${fields.description || 'optional'}
+- Category Assignment: ${fields.category || 'optional'}
+- Counterparty Identity: ${fields.counterparty || 'optional'}
+- Geographic Location: ${fields.location || 'optional'}
+- Transaction Type: ${fields.type || 'optional'}
+- Organizational Tags: ${fields.tags || 'optional'}
+- Ingestion Filtering (Skip): ${fields.skip || 'optional'}
+
+### RAW TRANSACTION DATA
+${forgeData || '[Please paste transaction data here for the AI to analyze]'}
+
+Please output ONLY the resulting CSV content. Do not include conversational text.`.trim();
+
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(prompt).then(() => {
+                notify('success', 'Prompt Copied', 'External AI instructions ready in clipboard.');
+            }).catch(() => {
+                alert("Clipboard access failed.");
+            });
+        } else {
+            const textArea = document.createElement("textarea");
+            textArea.value = prompt;
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const successful = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            if (successful) {
+                notify('success', 'Prompt Copied', 'External AI instructions ready in clipboard.');
+            } else {
+                alert("Manual copy required.");
+            }
+        }
     };
 
     const filteredRules = useMemo(() => {
@@ -617,11 +669,18 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                                 </div>
                                             </div>
 
-                                            <div className="absolute bottom-0 left-0 right-0 p-6 bg-white/80 backdrop-blur-md border-t border-slate-100">
+                                            <div className="absolute bottom-0 left-0 right-0 p-6 bg-white/80 backdrop-blur-md border-t border-slate-100 flex gap-3">
+                                                <button 
+                                                    onClick={handleCopyForExternalAi}
+                                                    className="flex-1 py-4 bg-white border-2 border-slate-100 text-slate-600 font-black rounded-2xl shadow-sm hover:bg-slate-50 transition-all flex items-center justify-center gap-2 text-xs active:scale-95 group"
+                                                >
+                                                    <CopyIcon className="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform" />
+                                                    Copy for External AI
+                                                </button>
                                                 <button 
                                                     onClick={handleForgeAiSubmit}
                                                     disabled={isForging || !forgeData.trim()}
-                                                    className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 text-xs active:scale-95 disabled:opacity-30 group"
+                                                    className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-3 text-xs active:scale-95 disabled:opacity-30 group"
                                                 >
                                                     {isForging ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin" /> : <PlayIcon className="w-4 h-4 group-hover:scale-125 transition-transform" />}
                                                     {isForging ? forgeProgress : 'Generate Rules'}
@@ -957,6 +1016,24 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             ))}
                         </div>
                         <button onClick={() => setIsBulkMoveModalOpen(false)} className="w-full py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
+                    </div>
+                </div>
+            )}
+
+            {notification && (
+                <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[250] animate-slide-up">
+                    <div className={`px-6 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 ${
+                        notification.type === 'success' ? 'bg-slate-900 text-white border-white/10' :
+                        notification.type === 'error' ? 'bg-rose-600 text-white border-rose-500' :
+                        'bg-white text-slate-800 border-slate-200'
+                    }`}>
+                        <div className={`${notification.type === 'success' ? 'bg-indigo-500' : 'bg-white/20'} rounded-full p-1`}>
+                            {notification.type === 'success' ? <CheckCircleIcon className="w-4 h-4 text-white" /> : <ExclamationTriangleIcon className="w-4 h-4" />}
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold tracking-tight">{notification.message}</p>
+                            {notification.description && <p className="text-[10px] opacity-70 font-medium">{notification.description}</p>}
+                        </div>
                     </div>
                 </div>
             )}
