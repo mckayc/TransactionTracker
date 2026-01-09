@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings } from '../types';
 import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon } from '../components/Icons';
@@ -402,6 +401,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
                     payees={counterparties}
                     locations={locations}
                     users={users}
+                    // Fixed: Added missing tags prop
+                    tags={tags}
                     transactionTypes={transactionTypes}
                     onSaveCategory={onSaveCategory}
                     onSaveCategories={onSaveCategories}
