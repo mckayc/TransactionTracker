@@ -1,5 +1,5 @@
 {
-  "name": "Transaction Tracker - More Refinements - v0.3.63",
+  "name": "Transaction Tracker - Rule Ingestion Hub - v0.3.65",
   "description": "High-performance normalized SQLite architecture for millions of financial records.",
   "requestFramePermissions": []
 }

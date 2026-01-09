@@ -138,11 +138,13 @@ export interface ReconciliationRule {
 
 export interface RuleImportDraft extends ReconciliationRule {
     isSelected: boolean;
+    coverageCount?: number;
     mappingStatus: {
         category: 'match' | 'create' | 'none';
         counterparty: 'match' | 'create' | 'none';
         location: 'match' | 'create' | 'none';
         type: 'match' | 'create' | 'none';
+        logicalState?: 'new' | 'identity' | 'synthesis' | 'conflict' | 'redundant';
     };
 }
 
