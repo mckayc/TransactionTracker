@@ -546,7 +546,8 @@ Please output ONLY the resulting CSV content. Do not include conversational text
                                         </div>
 
                                         {/* RIGHT COLUMN: INPUT */}
-                                        <div className="flex-1 bg-white p-10 overflow-y-auto custom-scrollbar flex flex-col gap-8">
+                                        <div className="flex-1 bg-white p-10 overflow-hidden flex flex-col gap-6">
+                                            {/* COMPACT FILE DROPZONE */}
                                             <div 
                                                 onDragOver={e => e.preventDefault()}
                                                 onDrop={e => {
@@ -558,35 +559,57 @@ Please output ONLY the resulting CSV content. Do not include conversational text
                                                     }
                                                 }}
                                                 onClick={() => fileInputRef.current?.click()}
-                                                className="border-4 border-dashed border-slate-100 rounded-[3rem] p-16 flex flex-col items-center justify-center text-center group hover:border-indigo-200 hover:bg-slate-50/50 transition-all cursor-pointer"
+                                                className="border-2 border-dashed border-slate-200 rounded-[2rem] p-6 flex items-center justify-center gap-4 group hover:border-indigo-300 hover:bg-slate-50 transition-all cursor-pointer flex-shrink-0"
                                             >
-                                                <div className="p-6 bg-indigo-50 rounded-full mb-6 group-hover:scale-110 transition-transform">
-                                                    <CloudArrowUpIcon className="w-12 h-12 text-indigo-400" />
+                                                <div className="p-3 bg-indigo-50 rounded-xl group-hover:scale-110 transition-transform">
+                                                    <CloudArrowUpIcon className="w-6 h-6 text-indigo-500" />
                                                 </div>
-                                                <p className="text-xl font-black text-slate-800">Drop Manifest or Click to Browse</p>
+                                                <div className="text-left">
+                                                    <p className="text-sm font-black text-slate-800">Drop Manifest or Browse</p>
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase">XLSX or CSV Format</p>
+                                                </div>
                                                 <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
                                             </div>
 
+                                            {/* EXPANDED TEXT AREA WORKSPACE */}
                                             <div className="relative flex-1 flex flex-col min-h-0">
-                                                <div className="flex justify-between items-center mb-2 px-1">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Paste Manifest Data</label>
-                                                    {pastedRules && <button onClick={() => setPastedRules('')} className="text-[9px] font-black text-red-500 uppercase hover:underline">Clear</button>}
+                                                <div className="flex justify-between items-center mb-3 px-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <TableIcon className="w-4 h-4 text-indigo-400" />
+                                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Paste Manifest Data Rows</label>
+                                                    </div>
+                                                    {pastedRules && (
+                                                        <button 
+                                                            onClick={() => setPastedRules('')} 
+                                                            className="flex items-center gap-1.5 px-2 py-1 text-[9px] font-black text-rose-500 uppercase hover:bg-rose-50 rounded-lg transition-colors"
+                                                        >
+                                                            <TrashIcon className="w-3 h-3" /> Clear Field
+                                                        </button>
+                                                    )}
                                                 </div>
-                                                <textarea 
-                                                    value={pastedRules}
-                                                    onChange={e => setPastedRules(e.target.value)}
-                                                    placeholder="Paste CSV rows here..."
-                                                    className="flex-1 w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] font-mono text-xs focus:bg-white focus:ring-0 focus:border-indigo-400 transition-all resize-none min-h-[300px]"
-                                                />
+                                                <div className="flex-1 relative flex flex-col min-h-0">
+                                                    <textarea 
+                                                        value={pastedRules}
+                                                        onChange={e => setPastedRules(e.target.value)}
+                                                        placeholder="Paste CSV rows here...
+e.g. 'Rule Name, Match Field, Operator, Match Value'
+'Starbucks Logic, description, contains, STARBUCKS'"
+                                                        className="flex-1 w-full p-6 bg-slate-50 border-2 border-slate-100 rounded-[2.5rem] font-mono text-[11px] leading-relaxed focus:bg-white focus:ring-0 focus:border-indigo-400 transition-all resize-none shadow-inner custom-scrollbar"
+                                                    />
+                                                </div>
                                             </div>
 
-                                            <button 
-                                                onClick={handlePasteSubmit}
-                                                disabled={!pastedRules.trim()}
-                                                className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl hover:bg-indigo-700 disabled:opacity-30 transition-all text-sm uppercase tracking-widest active:scale-95"
-                                            >
-                                                Execute Parser
-                                            </button>
+                                            {/* STABLE EXECUTION BUTTON */}
+                                            <div className="flex-shrink-0 pt-2">
+                                                <button 
+                                                    onClick={handlePasteSubmit}
+                                                    disabled={!pastedRules.trim()}
+                                                    className="w-full py-5 bg-indigo-600 text-white font-black rounded-[2rem] shadow-xl shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-30 disabled:shadow-none transition-all text-sm uppercase tracking-widest active:scale-95 flex items-center justify-center gap-3 group"
+                                                >
+                                                    <DatabaseIcon className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                                                    Execute Parser Logic
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 )}
