@@ -283,6 +283,9 @@ const App: React.FC = () => {
                             goals={financialGoals}
                             systemSettings={systemSettings}
                             onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)}
+                            categories={categories}
+                            amazonMetrics={amazonMetrics}
+                            youtubeMetrics={youtubeMetrics}
                         />
                     )}
                     {currentView === 'import' && (

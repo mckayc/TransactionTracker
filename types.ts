@@ -271,7 +271,7 @@ export interface BackupConfig {
 
 export interface DashboardWidget {
     id: string;
-    type: 'report' | 'metric' | 'tasks' | 'calendar';
+    type: 'report' | 'metric' | 'tasks' | 'calendar' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary';
     config?: any; // Saved Report ID or Metric Key
     title?: string;
 }
