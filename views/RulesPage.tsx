@@ -558,8 +558,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                             </div>
                                         </div>
 
-                                        {/* COLUMN 2: LOGIC STUDIO (RESIZED TO BE SMALLER) */}
-                                        <div className="w-72 bg-white flex flex-col min-h-0 border-r border-slate-200 relative">
+                                        {/* COLUMN 2: LOGIC STUDIO */}
+                                        <div className="flex-1 bg-white flex flex-col min-h-0 border-r border-slate-200 relative">
                                             <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
                                                 <div>
                                                     <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">{activeForgePrompt.name}</h3>
