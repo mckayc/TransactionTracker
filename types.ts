@@ -271,9 +271,14 @@ export interface BackupConfig {
 
 export interface DashboardWidget {
     id: string;
-    type: 'report' | 'metric' | 'tasks' | 'calendar' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary';
-    config?: any; // Saved Report ID or Metric Key
-    title?: string;
+    type: 'report' | 'metric' | 'tasks' | 'calendar' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights';
+    config?: {
+        title?: string;
+        goalId?: string;
+        period?: 'week' | 'month' | 'quarter' | 'year';
+        limit?: number;
+        reportId?: string;
+    };
 }
 
 export interface AiConfig {

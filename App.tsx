@@ -276,6 +276,7 @@ const App: React.FC = () => {
                 </header>
                 <div className="flex-1 overflow-y-auto p-4 md:p-8 relative custom-scrollbar bg-slate-50/50">
                     {currentView === 'dashboard' && (
+                        /* Added missing financialPlan prop to Dashboard */
                         <Dashboard 
                             transactions={transactions} 
                             savedReports={savedReports} 
@@ -286,6 +287,7 @@ const App: React.FC = () => {
                             categories={categories}
                             amazonMetrics={amazonMetrics}
                             youtubeMetrics={youtubeMetrics}
+                            financialPlan={financialPlan}
                         />
                     )}
                     {currentView === 'import' && (
