@@ -18,10 +18,11 @@ interface SearchableSelectProps {
     onAddNew?: () => void;
     isHierarchical?: boolean;
     className?: string;
+    compact?: boolean;
 }
 
 const SearchableSelect: React.FC<SearchableSelectProps> = ({ 
-    options, value, onChange, placeholder = "Select option...", label, onAddNew, isHierarchical = false, className = "" 
+    options, value, onChange, placeholder = "Select option...", label, onAddNew, isHierarchical = false, className = "", compact = false
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState('');
@@ -92,31 +93,31 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({
             
             <div 
                 onClick={() => setIsOpen(!isOpen)}
-                className={`w-full bg-white border-2 rounded-xl p-2.5 flex items-center justify-between cursor-pointer transition-all ${isOpen ? 'border-indigo-500 shadow-lg ring-4 ring-indigo-50' : 'border-slate-100 hover:border-slate-300'}`}
+                className={`w-full bg-white border-2 rounded-xl flex items-center justify-between cursor-pointer transition-all ${compact ? 'p-1.5' : 'p-2.5'} ${isOpen ? 'border-indigo-500 shadow-lg ring-4 ring-indigo-50' : 'border-slate-100 hover:border-slate-300'}`}
             >
                 <div className="flex-1 truncate">
                     {selectedOption ? (
-                        <span className="text-sm font-bold text-slate-800">{selectedOption.name}</span>
+                        <span className={`${compact ? 'text-[10px]' : 'text-sm'} font-bold text-slate-800`}>{selectedOption.name}</span>
                     ) : (
-                        <span className="text-sm text-slate-400">{placeholder}</span>
+                        <span className={`${compact ? 'text-[10px]' : 'text-sm'} text-slate-400`}>{placeholder}</span>
                     )}
                 </div>
-                <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                <div className="flex items-center gap-1.5 flex-shrink-0 ml-1.5">
                     {value && (
                         <button 
                             type="button" 
                             onClick={(e) => { e.stopPropagation(); onChange(''); }}
-                            className="p-1 text-slate-300 hover:text-red-500 transition-colors"
+                            className="p-0.5 text-slate-300 hover:text-red-500 transition-colors"
                         >
-                            <CloseIcon className="w-3.5 h-3.5" />
+                            <CloseIcon className="w-3 h-3" />
                         </button>
                     )}
-                    <ChevronDownIcon className={`w-4 h-4 text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDownIcon className={`${compact ? 'w-3 h-3' : 'w-4 h-4'} text-slate-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </div>
             </div>
 
             {isOpen && (
-                <div className="absolute z-[100] mt-2 w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-slide-up flex flex-col max-h-80">
+                <div className="absolute z-[100] mt-2 w-full bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-slide-up flex flex-col max-h-80 min-w-[200px]">
                     <div className="p-3 border-b bg-slate-50 flex items-center gap-2">
                         <div className="relative flex-1">
                             <input 

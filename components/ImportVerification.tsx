@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Counterparty, User, Transaction, ReconciliationRule, Tag, Location, BalanceEffect, RuleCategory } from '../types';
 import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, FolderIcon, ChevronRightIcon, DatabaseIcon } from './Icons';
@@ -260,13 +261,14 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             </div>
                                         </td>
                                         
-                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[90px]">
+                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[80px]">
                                             <SearchableSelect 
                                                 options={counterparties} 
                                                 value={tx.counterpartyId || ''} 
                                                 onChange={val => handleUpdate(tx.tempId, 'counterpartyId', val)}
                                                 placeholder="Entity..."
                                                 isHierarchical
+                                                compact
                                                 onAddNew={() => { setActiveTxForQuickAdd(tx.tempId); setQuickAddType('counterparties'); }}
                                                 className="!bg-transparent"
                                             />
@@ -278,27 +280,30 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                                 value={tx.typeId} 
                                                 onChange={val => handleUpdate(tx.tempId, 'typeId', val)}
                                                 placeholder="Type..."
+                                                compact
                                                 onAddNew={() => { setActiveTxForQuickAdd(tx.tempId); setQuickAddType('transactionTypes'); }}
                                             />
                                         </td>
 
-                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[90px]">
+                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[80px]">
                                             <SearchableSelect 
                                                 options={categories} 
                                                 value={tx.categoryId} 
                                                 onChange={val => handleUpdate(tx.tempId, 'categoryId', val)}
                                                 placeholder="Cat..."
                                                 isHierarchical
+                                                compact
                                                 onAddNew={() => { setActiveTxForQuickAdd(tx.tempId); setQuickAddType('categories'); }}
                                             />
                                         </td>
 
-                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[90px]">
+                                        <td className="px-1 py-1 border-b border-slate-300 min-w-[80px]">
                                             <SearchableSelect 
                                                 options={locations} 
                                                 value={tx.locationId || ''} 
                                                 onChange={val => handleUpdate(tx.tempId, 'locationId', val)}
                                                 placeholder={tx.location || "Loc..."}
+                                                compact
                                                 onAddNew={() => { setActiveTxForQuickAdd(tx.tempId); setQuickAddType('locations'); }}
                                             />
                                         </td>
