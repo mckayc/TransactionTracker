@@ -203,6 +203,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
         const drafts: RuleImportDraft[] = rawRules.map(r => {
             const existing = existingNames.get(r.name.toLowerCase());
+            
+            // Logic for matching suggestions to existing system IDs
             const catMatch = r.suggestedCategoryName ? categories.find(c => c.name.toLowerCase() === r.suggestedCategoryName?.toLowerCase()) : null;
             const typeMatch = r.suggestedTypeName ? transactionTypes.find(t => t.name.toLowerCase() === r.suggestedTypeName?.toLowerCase()) : null;
             const payeeMatch = r.suggestedCounterpartyName ? counterparties.find(p => p.name.toLowerCase() === r.suggestedCounterpartyName?.toLowerCase()) : null;
@@ -240,6 +242,10 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 ruleCategoryId: importMethod === 'ai' ? (activeForgePrompt.ruleCategoryId || 'rcat_other') : (r.ruleCategoryId || 'rcat_manual'),
                 isSelected: state !== 'identity',
                 coverageCount: coverage,
+                // Apply the matched IDs to the operation fields
+                setCategoryId: catMatch?.id || r.setCategoryId,
+                setCounterpartyId: payeeMatch?.id || r.setCounterpartyId,
+                setLocationId: locMatch?.id || r.setLocationId,
                 setTransactionTypeId: typeMatch?.id || r.setTransactionTypeId,
                 mappingStatus: {
                     category: catMatch ? 'match' : (r.suggestedCategoryName ? 'create' : 'none'),
@@ -929,7 +935,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
             />
 
             {isBulkMoveModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4" onClick={() => setIsBulkMoveModalOpen(false)}>
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-8 animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-6">
                             <div>

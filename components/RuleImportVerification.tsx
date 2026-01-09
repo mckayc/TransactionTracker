@@ -79,7 +79,7 @@ const LogicForecastDrawer: React.FC<{
         return mergePatternsUniquely(existingPattern, incomingPattern);
     }, [existingRule, draft]);
 
-    const getCompareValue = (type: 'cat' | 'entity' | 'type', source: 'existing' | 'incoming') => {
+    const getCompareValue = (type: 'cat' | 'entity' | 'type' | 'location', source: 'existing' | 'incoming') => {
         const target = source === 'existing' ? existingRule : draft;
         if (!target) return '--';
         
@@ -94,6 +94,10 @@ const LogicForecastDrawer: React.FC<{
         if (type === 'type') {
             const id = target.setTransactionTypeId;
             return transactionTypes.find(t => t.id === id)?.name || (source === 'incoming' ? draft.suggestedTypeName : null) || '--';
+        }
+        if (type === 'location') {
+            const id = target.setLocationId;
+            return locations.find(l => l.id === id)?.name || (source === 'incoming' ? draft.suggestedLocationName : null) || '--';
         }
         return '--';
     };
@@ -174,6 +178,11 @@ const LogicForecastDrawer: React.FC<{
                                         <td className="px-4 py-4 text-indigo-600">{getCompareValue('entity', 'incoming')}</td>
                                     </tr>
                                     <tr>
+                                        <td className="px-4 py-4 text-slate-400 uppercase text-[9px]">Location</td>
+                                        <td className="px-4 py-4 text-slate-500">{getCompareValue('location', 'existing')}</td>
+                                        <td className="px-4 py-4 text-indigo-600">{getCompareValue('location', 'incoming')}</td>
+                                    </tr>
+                                    <tr>
                                         <td className="px-4 py-4 text-slate-400 uppercase text-[9px]">Tx Type</td>
                                         <td className="px-4 py-4 text-slate-500">{getCompareValue('type', 'existing')}</td>
                                         <td className="px-4 py-4 text-indigo-600">{getCompareValue('type', 'incoming')}</td>
@@ -228,9 +237,67 @@ const RuleImportVerification: React.FC<Props> = ({
         setSelectionSet(next);
     };
 
-    const finalDrafts = useMemo(() => {
-        return drafts.map(d => ({ ...d, isSelected: selectionSet.has(d.id) }));
-    }, [drafts, selectionSet]);
+    const handleFinalCommit = () => {
+        const selectedDrafts = drafts.filter(d => selectionSet.has(d.id));
+        
+        // 1. Logic for auto-creating entities marked as 'create'
+        const newCats: Category[] = [];
+        const newPayees: Counterparty[] = [];
+        const newLocs: Location[] = [];
+
+        const catMap = new Map<string, string>();
+        const payeeMap = new Map<string, string>();
+        const locMap = new Map<string, string>();
+
+        selectedDrafts.forEach(d => {
+            if (d.mappingStatus.category === 'create' && d.suggestedCategoryName) {
+                const name = d.suggestedCategoryName.trim();
+                if (!catMap.has(name.toLowerCase())) {
+                    const id = generateUUID();
+                    catMap.set(name.toLowerCase(), id);
+                    newCats.push({ id, name });
+                }
+            }
+            if (d.mappingStatus.counterparty === 'create' && d.suggestedCounterpartyName) {
+                const name = d.suggestedCounterpartyName.trim();
+                if (!payeeMap.has(name.toLowerCase())) {
+                    const id = generateUUID();
+                    payeeMap.set(name.toLowerCase(), id);
+                    newPayees.push({ id, name });
+                }
+            }
+            if (d.mappingStatus.location === 'create' && d.suggestedLocationName) {
+                const name = d.suggestedLocationName.trim();
+                if (!locMap.has(name.toLowerCase())) {
+                    const id = generateUUID();
+                    locMap.set(name.toLowerCase(), id);
+                    newLocs.push({ id, name });
+                }
+            }
+        });
+
+        // 2. Commit new entities to system state
+        if (newCats.length > 0) onSaveCategories(newCats);
+        if (newPayees.length > 0) onSaveCounterparties(newPayees);
+        if (newLocs.length > 0) onSaveLocations(newLocs);
+
+        // 3. Update drafts with new IDs before final save
+        const finalRules: ReconciliationRule[] = selectedDrafts.map(d => {
+            let rule = { ...d };
+            if (d.mappingStatus.category === 'create' && d.suggestedCategoryName) {
+                rule.setCategoryId = catMap.get(d.suggestedCategoryName.trim().toLowerCase());
+            }
+            if (d.mappingStatus.counterparty === 'create' && d.suggestedCounterpartyName) {
+                rule.setCounterpartyId = payeeMap.get(d.suggestedCounterpartyName.trim().toLowerCase());
+            }
+            if (d.mappingStatus.location === 'create' && d.suggestedLocationName) {
+                rule.setLocationId = locMap.get(d.suggestedLocationName.trim().toLowerCase());
+            }
+            return rule;
+        });
+
+        onFinalize(finalRules);
+    };
 
     return (
         <div className="flex flex-col h-full space-y-4">
@@ -258,7 +325,7 @@ const RuleImportVerification: React.FC<Props> = ({
                 </div>
                 <div className="relative z-10 flex gap-3">
                     <button onClick={onCancel} className="px-6 py-2 font-black text-slate-400 hover:text-white transition-colors text-xs uppercase">Discard Batch</button>
-                    <button onClick={() => onFinalize(finalDrafts.filter(d => d.isSelected))} disabled={selectionSet.size === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-900/20 transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
+                    <button onClick={handleFinalCommit} disabled={selectionSet.size === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-900/20 transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
                 </div>
                 <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-10 text-indigo-400 pointer-events-none" />
             </div>
@@ -280,6 +347,7 @@ const RuleImportVerification: React.FC<Props> = ({
                                 <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Logic Identity</th>
                                 <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Category</th>
                                 <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Entity Target</th>
+                                <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Location Target</th>
                                 <th className="px-4 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Type Resolution</th>
                                 <th className="px-4 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Coverage</th>
                                 <th className="px-4 py-4 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Forecast</th>
@@ -305,15 +373,20 @@ const RuleImportVerification: React.FC<Props> = ({
                                     </td>
                                     <td className="px-4 py-4 border-b border-slate-50 min-w-[140px]">
                                         <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${d.mappingStatus.category === 'create' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                                            {d.suggestedCategoryName || 'N/A'}
+                                            {categories.find(c => c.id === d.setCategoryId)?.name || d.suggestedCategoryName || 'N/A'}
                                         </span>
                                     </td>
                                     <td className="px-4 py-4 border-b border-slate-50 min-w-[140px]">
-                                        <p className="text-xs font-bold text-slate-600">{d.suggestedCounterpartyName || '--'}</p>
+                                        <p className="text-xs font-bold text-slate-600">{payees.find(p => p.id === d.setCounterpartyId)?.name || d.suggestedCounterpartyName || '--'}</p>
+                                    </td>
+                                    <td className="px-4 py-4 border-b border-slate-50 min-w-[140px]">
+                                        <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${d.mappingStatus.location === 'create' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>
+                                            {locations.find(l => l.id === d.setLocationId)?.name || d.suggestedLocationName || '--'}
+                                        </span>
                                     </td>
                                     <td className="px-4 py-4 border-b border-slate-50 min-w-[140px]">
                                         <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${d.mappingStatus.type === 'match' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>
-                                            {d.suggestedTypeName || 'Other'}
+                                            {transactionTypes.find(t => t.id === d.setTransactionTypeId)?.name || d.suggestedTypeName || 'Other'}
                                         </span>
                                     </td>
                                     <td className="px-4 py-4 text-center border-b border-slate-50">
