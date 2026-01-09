@@ -84,6 +84,8 @@ const RulesPage: React.FC<RulesPageProps> = ({
     const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
     const [newCatName, setNewCatName] = useState('');
     const [ruleToDeleteId, setRuleToDeleteId] = useState<string | null>(null);
+    const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+    const [isBulkMoveModalOpen, setIsBulkMoveModalOpen] = useState(false);
 
     // Fullscreen View State
     const [isImportHubOpen, setIsImportHubOpen] = useState(false);
@@ -136,6 +138,20 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setBulkSelectedIds(new Set());
         setSelectedRuleId(null);
         notify('success', 'Rules Purged', `${bulkSelectedIds.size} logical records removed.`);
+        setIsBulkDeleteModalOpen(false);
+    };
+
+    const handleBulkMove = (targetCategoryId: string) => {
+        const updatedRules = rules.map(r => {
+            if (bulkSelectedIds.has(r.id)) {
+                return { ...r, ruleCategoryId: targetCategoryId };
+            }
+            return r;
+        });
+        onSaveRules(updatedRules);
+        setBulkSelectedIds(new Set());
+        notify('success', 'Rules Reorganized', `${bulkSelectedIds.size} rules moved to new category.`);
+        setIsBulkMoveModalOpen(false);
     };
 
     const toggleSelectAll = () => {
@@ -697,9 +713,20 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </button>
                             </div>
                             {bulkSelectedIds.size > 0 && (
-                                <span className="text-[10px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                                    {bulkSelectedIds.size} SELECTED
-                                </span>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => setIsBulkMoveModalOpen(true)}
+                                        className="text-[9px] font-black bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg uppercase shadow-sm hover:bg-indigo-600 hover:text-white transition-all"
+                                    >
+                                        Move {bulkSelectedIds.size}
+                                    </button>
+                                    <button 
+                                        onClick={() => setIsBulkDeleteModalOpen(true)}
+                                        className="text-[9px] font-black bg-red-100 text-red-700 px-2 py-1 rounded-lg uppercase shadow-sm hover:bg-red-600 hover:text-white transition-all"
+                                    >
+                                        Purge {bulkSelectedIds.size}
+                                    </button>
+                                </div>
                             )}
                         </div>
                         <div className="relative">
@@ -799,6 +826,41 @@ const RulesPage: React.FC<RulesPageProps> = ({
                 title="Discard Automation Logic?"
                 message="Future ingestion of matching transactions will default to 'Other' until a new rule is defined."
             />
+
+            <ConfirmationModal 
+                isOpen={isBulkDeleteModalOpen}
+                onClose={() => setIsBulkDeleteModalOpen(false)}
+                onConfirm={handleBulkDelete}
+                title="Purge Logic Batch?"
+                message={`You are about to permanently remove ${bulkSelectedIds.size} logical records. This will affect future ingestion logic.`}
+            />
+
+            {isBulkMoveModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-8 animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800">Move Logic Batch</h3>
+                                <p className="text-xs text-slate-500 font-bold uppercase tracking-widest mt-1">{bulkSelectedIds.size} Items Targeted</p>
+                            </div>
+                            <button onClick={() => setIsBulkMoveModalOpen(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                        </div>
+                        <div className="space-y-2 mb-8 max-h-64 overflow-y-auto custom-scrollbar">
+                            {ruleCategories.map(cat => (
+                                <button
+                                    key={cat.id}
+                                    onClick={() => handleBulkMove(cat.id)}
+                                    className="w-full flex items-center gap-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50 transition-all group"
+                                >
+                                    <FolderIcon className="w-5 h-5 text-slate-400 group-hover:text-indigo-500" />
+                                    <span className="font-bold text-slate-700 group-hover:text-indigo-900">{cat.name}</span>
+                                </button>
+                            ))}
+                        </div>
+                        <button onClick={() => setIsBulkMoveModalOpen(false)} className="w-full py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
