@@ -25,20 +25,24 @@ interface Props {
 
 /**
  * Normalizes and merges multiple condition strings into a single unique OR-chain.
- * Performs set-based de-duplication to prevent logical bloat.
+ * Squashes internal whitespace to ensure 'WORD  A' matches 'WORD A'.
  */
 const mergePatternsUniquely = (existing: string, incoming: string): string => {
+    // Normalization helper: squash multiple spaces and trim
+    const normalize = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase();
+    
     const existingTokens = existing.split(/\s*\|\|\s*/).map(t => t.trim()).filter(Boolean);
     const incomingTokens = incoming.split(/\s*\|\|\s*/).map(t => t.trim()).filter(Boolean);
     
-    const seen = new Set<string>();
+    const seenNormalized = new Set<string>();
     const result: string[] = [];
     
     [...existingTokens, ...incomingTokens].forEach(token => {
-        const normalized = token.toLowerCase();
-        if (!seen.has(normalized)) {
-            seen.add(normalized);
-            result.push(token);
+        const norm = normalize(token);
+        if (!seenNormalized.has(norm)) {
+            seenNormalized.add(norm);
+            // We use a slightly cleaned version (squashed spaces) but keep original-ish casing for the result
+            result.push(token.replace(/\s+/g, ' ').trim());
         }
     });
     
@@ -166,7 +170,7 @@ const LogicForecastDrawer: React.FC<{
                             <h4 className="font-black text-sm uppercase">Verification Protocol</h4>
                          </div>
                          <p className="text-xs text-amber-700 leading-relaxed font-medium">
-                            The system now uses <strong className="text-amber-900">Logical De-duplication</strong>. If an incoming search pattern already exists in the target rule, it will not be appended. This maintains optimal engine performance.
+                            The system now uses <strong className="text-amber-900">Logical De-duplication</strong>. If an incoming search pattern already exists in the target rule (even if spacing differs), it will not be appended. This maintains optimal engine performance.
                          </p>
                     </div>
                 </div>
@@ -231,10 +235,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     nextLogic: 'AND'
                 }];
             } else {
-                // If the user manually selected an ID, it will be in draft.setCategoryId, etc.
-                // We only need to handle the 'create' logic if they left the suggested names
-                
-                // 1. Category Resolution
+                // Category Resolution
                 if (!draft.setCategoryId && draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
                     const normName = draft.suggestedCategoryName.toLowerCase().trim();
                     let catId = createdCats.get(normName);
@@ -247,7 +248,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCategoryId = catId;
                 }
 
-                // 2. Counterparty Resolution
+                // Counterparty Resolution
                 if (!draft.setCounterpartyId && draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
                     const normName = draft.suggestedCounterpartyName.toLowerCase().trim();
                     let cpId = createdCounterparties.get(normName);
@@ -260,7 +261,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCounterpartyId = cpId;
                 }
 
-                // 3. Location Resolution
+                // Location Resolution
                 if (!draft.setLocationId && draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
                     const normName = draft.suggestedLocationName.toLowerCase().trim();
                     let locId = createdLocs.get(normName);

@@ -1,3 +1,4 @@
+
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
@@ -5,21 +6,43 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
     
     if (!tx || !condition || !condition.field) return true;
 
-    if (condition.field === 'description') {
-        // OPTION 1: The "Original Description" Anchor
-        // Always check against the original bank string if available. 
-        // This ensures cleanup rules (which modify tx.description) don't break 
-        // subsequent rules that rely on raw patterns (like location info or store numbers).
-        txValue = (tx.originalDescription || tx.description || '').toLowerCase();
-        const condValue = String(condition.value || '').toLowerCase();
+    // Helper to evaluate a single value against the tx field
+    const checkValue = (actualValue: string, expectedValue: string): boolean => {
+        const val = actualValue.toLowerCase();
+        const expected = expectedValue.toLowerCase().trim();
+        if (!expected) return false;
+
         switch (condition.operator) {
-            case 'contains': return txValue.includes(condValue);
-            case 'does_not_contain': return !txValue.includes(condValue);
-            case 'equals': return txValue === condValue;
-            case 'starts_with': return txValue.startsWith(condValue);
-            case 'ends_with': return txValue.endsWith(condValue);
+            case 'contains': return val.includes(expected);
+            case 'does_not_contain': return !val.includes(expected);
+            case 'equals': return val === expected;
+            case 'starts_with': return val.startsWith(expected);
+            case 'ends_with': return val.endsWith(expected);
+            case 'regex_match': 
+                try {
+                    return new RegExp(expected, 'i').test(actualValue);
+                } catch (e) {
+                    return false;
+                }
             default: return false;
         }
+    };
+
+    if (condition.field === 'description') {
+        txValue = (tx.originalDescription || tx.description || '');
+        const condValue = String(condition.value || '');
+        
+        // Handle inline OR logic: split by ||
+        const tokens = condValue.split(/\s*\|\|\s*/).filter(Boolean);
+        if (tokens.length <= 1) return checkValue(txValue, condValue);
+        
+        // If it's a "does_not_contain", it must not contain ANY of the tokens (Logical AND NOT)
+        if (condition.operator === 'does_not_contain') {
+            return tokens.every(token => checkValue(txValue, token));
+        }
+        // Otherwise, it's a logical OR: match any
+        return tokens.some(token => checkValue(txValue, token));
+
     } else if (condition.field === 'metadata') {
         const key = condition.metadataKey || '';
         const metadataValue = tx.metadata?.[key];
@@ -28,24 +51,24 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
             return metadataValue !== undefined && metadataValue !== null && String(metadataValue).trim() !== '';
         }
 
-        txValue = String(metadataValue || '').toLowerCase();
-        const condValue = String(condition.value || '').toLowerCase();
-        switch (condition.operator) {
-            case 'contains': return txValue.includes(condValue);
-            case 'does_not_contain': return !txValue.includes(condValue);
-            case 'equals': return txValue === condValue;
-            case 'starts_with': return txValue.startsWith(condValue);
-            case 'ends_with': return txValue.endsWith(condValue);
-            default: return false;
+        txValue = String(metadataValue || '');
+        const condValue = String(condition.value || '');
+        const tokens = condValue.split(/\s*\|\|\s*/).filter(Boolean);
+        
+        if (tokens.length <= 1) return checkValue(txValue, condValue);
+        if (condition.operator === 'does_not_contain') {
+            return tokens.every(token => checkValue(txValue, token));
         }
+        return tokens.some(token => checkValue(txValue, token));
+
     } else if (condition.field === 'amount') {
-        txValue = tx.amount || 0;
+        const actualAmount = tx.amount || 0;
         const condValue = Number(condition.value);
         if (isNaN(condValue)) return false;
         switch (condition.operator) {
-            case 'equals': return Math.abs(txValue - condValue) < 0.01;
-            case 'greater_than': return txValue > condValue;
-            case 'less_than': return txValue < condValue;
+            case 'equals': return Math.abs(actualAmount - condValue) < 0.01;
+            case 'greater_than': return actualAmount > condValue;
+            case 'less_than': return actualAmount < condValue;
             default: return false;
         }
     } else if (condition.field === 'accountId') {
