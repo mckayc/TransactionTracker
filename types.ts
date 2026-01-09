@@ -282,10 +282,21 @@ export interface AiConfig {
     thinkingBudget?: number;
 }
 
+export type FieldRequirement = 'required' | 'optional' | 'omit';
+
 export interface RuleForgePrompt {
     id: string;
     name: string;
     prompt: string;
+    fields?: {
+        description?: FieldRequirement;
+        category?: FieldRequirement;
+        counterparty?: FieldRequirement;
+        location?: FieldRequirement;
+        type?: FieldRequirement;
+        tags?: FieldRequirement;
+        skip?: FieldRequirement;
+    };
 }
 
 export interface SystemSettings {

@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
-import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig } from '../types';
+import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig, RuleForgePrompt } from '../types';
 // Added missing import for generateUUID
 import { generateUUID } from '../utils';
 
@@ -190,7 +190,7 @@ export const generateRulesFromData = async (
 };
 
 export const forgeRulesWithCustomPrompt = async (
-    customPrompt: string,
+    protocol: RuleForgePrompt,
     data: string,
     transactionTypes: TransactionType[],
     onProgress?: (msg: string) => void
@@ -202,16 +202,54 @@ export const forgeRulesWithCustomPrompt = async (
     const ai = new GoogleGenAI({ apiKey: key });
     
     const typeNames = transactionTypes.map(t => t.name).join(', ');
+    const fieldConfigs = protocol.fields || {};
+    
+    // Dynamically build the schema based on field requirements
+    const ruleProps: any = {
+        name: { type: Type.STRING, description: "Display name of the rule based on protocol naming requirements" },
+        conditions: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    field: { type: Type.STRING, enum: ["description", "amount", "accountId", "metadata"] },
+                    operator: { type: Type.STRING, enum: ["contains", "equals", "starts_with", "ends_with"] },
+                    value: { type: Type.STRING }
+                },
+                required: ["field", "operator", "value"]
+            }
+        }
+    };
+    
+    const requiredList = ["name", "conditions"];
+    
+    if (fieldConfigs.description !== 'omit') ruleProps.setDescription = { type: Type.STRING };
+    if (fieldConfigs.category !== 'omit') ruleProps.suggestedCategoryName = { type: Type.STRING };
+    if (fieldConfigs.counterparty !== 'omit') ruleProps.suggestedCounterpartyName = { type: Type.STRING };
+    if (fieldConfigs.location !== 'omit') ruleProps.suggestedLocationName = { type: Type.STRING };
+    if (fieldConfigs.type !== 'omit') ruleProps.suggestedTypeName = { type: Type.STRING };
+    if (fieldConfigs.tags !== 'omit') ruleProps.suggestedTags = { type: Type.ARRAY, items: { type: Type.STRING } };
+    if (fieldConfigs.skip !== 'omit') ruleProps.skipImport = { type: Type.BOOLEAN };
+
+    // Handle Required fields
+    if (fieldConfigs.description === 'required') requiredList.push("setDescription");
+    if (fieldConfigs.category === 'required') requiredList.push("suggestedCategoryName");
+    if (fieldConfigs.counterparty === 'required') requiredList.push("suggestedCounterpartyName");
+    if (fieldConfigs.location === 'required') requiredList.push("suggestedLocationName");
+    if (fieldConfigs.type === 'required') requiredList.push("suggestedTypeName");
+    if (fieldConfigs.tags === 'required') requiredList.push("suggestedTags");
+    if (fieldConfigs.skip === 'required') requiredList.push("skipImport");
+
     const systemInstruction = `You are a Logic Compiler for a Financial Reconciliation Engine. 
-    Your strict objective is to interpret the provided RAW TRANSACTION DATA and generate JSON Rules based EXCLUSIVELY on the USER PROTOCOL instructions.
+    Task: Interpret RAW TRANSACTION DATA and generate JSON Rules based EXCLUSIVELY on the USER PROTOCOL.
 
-    CRITICAL CONSTRAINTS:
-    1. If the USER PROTOCOL explicitly states to NOT edit, suggest, or include certain fields, you MUST OMIT those fields from the resulting JSON objects.
-    2. If the protocol asks for only one field (e.g., Location), do not include suggestedCategoryName or suggestedTypeName.
-    3. You have access to these existing system transaction types: [${typeNames}]. Only suggest them if the protocol allows type modification.
-    4. Follow the USER PROTOCOL literally. It is your master instruction set.
+    CRITICAL SCHEMA CONSTRAINTS:
+    1. You MUST OMIT the following fields from your response entirely: [${Object.entries(fieldConfigs).filter(([_, v]) => v === 'omit').map(([k]) => k).join(', ')}].
+    2. You MUST prioritize the logic for these Required fields: [${requiredList.join(', ')}].
+    3. You have access to existing system types: [${typeNames}].
+    4. Follow the USER PROTOCOL literally.
 
-    PROTOCOL: ${customPrompt}`;
+    USER PROTOCOL: ${protocol.prompt}`;
 
     const schema = {
         type: Type.OBJECT,
@@ -220,29 +258,8 @@ export const forgeRulesWithCustomPrompt = async (
                 type: Type.ARRAY,
                 items: {
                     type: Type.OBJECT,
-                    properties: {
-                        name: { type: Type.STRING, description: "Display name of the rule based on protocol naming requirements" },
-                        conditions: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    field: { type: Type.STRING, enum: ["description", "amount", "accountId", "metadata"] },
-                                    operator: { type: Type.STRING, enum: ["contains", "equals", "starts_with", "ends_with"] },
-                                    value: { type: Type.STRING }
-                                },
-                                required: ["field", "operator", "value"]
-                            }
-                        },
-                        setDescription: { type: Type.STRING },
-                        suggestedCategoryName: { type: Type.STRING },
-                        suggestedCounterpartyName: { type: Type.STRING },
-                        suggestedLocationName: { type: Type.STRING },
-                        suggestedTypeName: { type: Type.STRING, description: "The exact name of the transaction type from the provided list, IF allowed by protocol" },
-                        suggestedTags: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        skipImport: { type: Type.BOOLEAN }
-                    },
-                    required: ["name", "conditions"]
+                    properties: ruleProps,
+                    required: requiredList
                 }
             }
         },

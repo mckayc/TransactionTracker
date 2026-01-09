@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings, ImportBatchStats } from '../types';
-import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon, ListIcon, DatabaseIcon, WorkflowIcon } from '../components/Icons';
+import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings, ImportBatchStats, FieldRequirement } from '../types';
+// Add missing UsersIcon import
+import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon, ListIcon, DatabaseIcon, WorkflowIcon, SlashIcon, TypeIcon, ChecklistIcon, UsersIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
@@ -50,24 +51,52 @@ const DEFAULT_FORGE_PROMPTS: RuleForgePrompt[] = [
     {
         id: 'forge-loc',
         name: 'Location Geography Protocol',
-        prompt: 'Identify city and state patterns in the raw transaction descriptions. Generate rules that set the Location ID based on those patterns. Use "contains" operator. Only generate rules if a geographic location is likely.'
+        prompt: 'Identify city and state patterns in the raw transaction descriptions. Name the rule "Location - City, ST". Only generate rules if a geographic location is likely.',
+        fields: { location: 'required', category: 'omit', type: 'omit' }
     },
     {
         id: 'forge-norm',
         name: 'Identity & Logic Normalizer',
-        prompt: 'Generate comprehensive rules for clean Descriptions, logical Categories, Transaction Types, and Counterparties. Standardize vendor names (e.g., remove store numbers) and categorize accurately for tax purposes.'
+        prompt: 'Generate comprehensive rules for clean Descriptions, logical Categories, Transaction Types, and Counterparties. Standardize vendor names and categorize accurately for tax purposes.',
+        fields: { description: 'required', category: 'required', counterparty: 'required', type: 'required' }
     },
     {
         id: 'forge-subs',
         name: 'Subscription Hunter Protocol',
-        prompt: 'Identify potential recurring monthly subscriptions or software services. Generate rules that assign them to a "Subscriptions" category and set appropriate recurring tags.'
-    },
-    {
-        id: 'forge-audit',
-        name: 'High-Value Integrity Audit',
-        prompt: 'Identify transactions exceeding $500 or unusual patterns. Create rules that assign "Review Required" or "Capital Expenditure" tags to these records.'
+        prompt: 'Identify potential recurring monthly subscriptions. Assign them to a "Subscriptions" category.',
+        fields: { category: 'required', tags: 'optional' }
     }
 ];
+
+const FieldController: React.FC<{
+    label: string;
+    value?: FieldRequirement;
+    onChange: (val: FieldRequirement) => void;
+    icon: React.ReactNode;
+}> = ({ label, value = 'optional', onChange, icon }) => {
+    return (
+        <div className="flex items-center justify-between p-3 bg-white rounded-2xl border border-slate-100 shadow-sm transition-all hover:border-slate-300">
+            <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-lg ${value === 'required' ? 'bg-indigo-50 text-indigo-600' : value === 'omit' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-400'}`}>
+                    {icon}
+                </div>
+                <span className="text-xs font-black text-slate-600 uppercase tracking-tight">{label}</span>
+            </div>
+            <div className="flex bg-slate-100 p-1 rounded-xl">
+                {(['required', 'optional', 'omit'] as FieldRequirement[]).map(v => (
+                    <button
+                        key={v}
+                        type="button"
+                        onClick={() => onChange(v)}
+                        className={`px-3 py-1 text-[9px] font-black uppercase rounded-lg transition-all ${value === v ? (v === 'required' ? 'bg-indigo-600 text-white' : v === 'omit' ? 'bg-red-600 text-white' : 'bg-white text-slate-800 shadow-sm') : 'text-slate-400 hover:text-slate-600'}`}
+                    >
+                        {v}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+};
 
 const RulesPage: React.FC<RulesPageProps> = ({ 
     rules, onSaveRule, onSaveRules, onDeleteRule, accounts, transactionTypes, categories, tags, counterparties, locations, users, transactions, onUpdateTransactions, onSaveCategory, onSaveCategories, onSaveCounterparty, onSaveCounterparties, onSaveLocation, onSaveLocations, onSaveTag, onAddTransactionType, onSaveUser,
@@ -103,19 +132,19 @@ const RulesPage: React.FC<RulesPageProps> = ({
     
     // AI Forge State
     const forgePrompts = useMemo(() => {
-        return systemSettings.ruleForgePrompts && systemSettings.ruleForgePrompts.length > 0
+        return (systemSettings.ruleForgePrompts && systemSettings.ruleForgePrompts.length > 0)
             ? systemSettings.ruleForgePrompts
             : DEFAULT_FORGE_PROMPTS;
     }, [systemSettings.ruleForgePrompts]);
 
-    const [selectedForgePromptId, setSelectedForgePromptId] = useState<string>(DEFAULT_FORGE_PROMPTS[1].id);
-    const [forgePromptText, setForgePromptText] = useState<string>(DEFAULT_FORGE_PROMPTS[1].prompt);
-    const [forgeData, setForgeData] = useState<string>('');
+    const [selectedForgePromptId, setSelectedForgePromptId] = useState<string>(forgePrompts[0].id);
     const [isForging, setIsForging] = useState(false);
     const [forgeProgress, setForgeProgress] = useState<string>('');
-    const [isEditingPrompt, setIsEditingPrompt] = useState(false);
+    const [forgeData, setForgeData] = useState<string>('');
     const [isNewPromptModalOpen, setIsNewPromptModalOpen] = useState(false);
     const [newPromptName, setNewPromptName] = useState('');
+
+    const activeForgePrompt = useMemo(() => forgePrompts.find(p => p.id === selectedForgePromptId) || forgePrompts[0], [forgePrompts, selectedForgePromptId]);
 
     const notify = (type: AppNotification['type'], message: string, description?: string) => {
         const id = generateUUID();
@@ -270,9 +299,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         if (!file) return;
         try {
             const reader = new FileReader();
-            reader.onload = () => {
-                setForgeData(reader.result as string);
-            };
+            reader.onload = () => setForgeData(reader.result as string);
             reader.readAsText(file);
         } catch (err) {
             alert("Failed to read file.");
@@ -280,11 +307,11 @@ const RulesPage: React.FC<RulesPageProps> = ({
     };
 
     const handleForgeAiSubmit = async () => {
-        if (!forgeData.trim() || !forgePromptText.trim() || isForging) return;
+        if (!forgeData.trim() || isForging) return;
         setIsForging(true);
         setImportError(null);
         try {
-            const forgedRules = await forgeRulesWithCustomPrompt(forgePromptText, forgeData, transactionTypes, setForgeProgress);
+            const forgedRules = await forgeRulesWithCustomPrompt(activeForgePrompt, forgeData, transactionTypes, setForgeProgress);
             processDrafts(forgedRules);
         } catch (err: any) {
             setImportError(err.message || "AI Forge failed. Neural Core error.");
@@ -293,48 +320,33 @@ const RulesPage: React.FC<RulesPageProps> = ({
         }
     };
 
-    const handleForgePromptSelect = (id: string) => {
-        const found = forgePrompts.find(p => p.id === id);
-        if (found) {
-            setSelectedForgePromptId(id);
-            setForgePromptText(found.prompt);
-            setIsEditingPrompt(false);
-        }
+    const updateCurrentProtocol = (updates: Partial<RuleForgePrompt>) => {
+        const nextPrompts = forgePrompts.map(p => p.id === selectedForgePromptId ? { ...p, ...updates } : p);
+        onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: nextPrompts });
     };
 
-    const handleSaveProtocolToLibrary = () => {
-        const currentPrompts = [...forgePrompts];
-        const idx = currentPrompts.findIndex(p => p.id === selectedForgePromptId);
-        if (idx > -1) currentPrompts[idx] = { ...currentPrompts[idx], prompt: forgePromptText };
-        onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: currentPrompts });
-        setIsEditingPrompt(false);
-        notify('success', 'Protocol Updated', 'Protocol saved to library.');
+    const updateFieldRequirement = (fieldName: keyof Required<RuleForgePrompt>['fields'], val: FieldRequirement) => {
+        const currentFields = activeForgePrompt.fields || {};
+        updateCurrentProtocol({ fields: { ...currentFields, [fieldName]: val } });
     };
 
     const handleCreateNewProtocol = () => {
         if (!newPromptName.trim()) return;
-        const newPrompt: RuleForgePrompt = { id: generateUUID(), name: newPromptName.trim(), prompt: forgePromptText };
+        const newPrompt: RuleForgePrompt = { id: generateUUID(), name: newPromptName.trim(), prompt: '', fields: {} };
         onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: [...forgePrompts, newPrompt] });
         setSelectedForgePromptId(newPrompt.id);
         setIsNewPromptModalOpen(false);
-        setIsEditingPrompt(false);
         notify('success', 'Protocol Registered', `"${newPromptName}" added.`);
     };
 
     const handleDeleteProtocol = (id: string) => {
-        const currentPrompts = (systemSettings.ruleForgePrompts && systemSettings.ruleForgePrompts.length > 0)
-            ? systemSettings.ruleForgePrompts
-            : DEFAULT_FORGE_PROMPTS;
-            
-        const nextPrompts = currentPrompts.filter(p => p.id !== id);
+        if (!confirm("Permanently delete this logic template?")) return;
+        const nextPrompts = forgePrompts.filter(p => p.id !== id);
         onUpdateSystemSettings({ ...systemSettings, ruleForgePrompts: nextPrompts });
-        
-        if (selectedForgePromptId === id) {
-            const fallback = nextPrompts.length > 0 ? nextPrompts[0] : (DEFAULT_FORGE_PROMPTS.find(p => p.id !== id) || DEFAULT_FORGE_PROMPTS[0]);
-            setSelectedForgePromptId(fallback.id);
-            setForgePromptText(fallback.prompt);
+        if (selectedForgePromptId === id && nextPrompts.length > 0) {
+            setSelectedForgePromptId(nextPrompts[0].id);
         }
-        notify('success', 'Protocol Removed', 'Logic template deleted from library.');
+        notify('success', 'Protocol Removed', 'Logic template deleted.');
     };
 
     const handleSaveRuleValidated = (rule: ReconciliationRule) => {
@@ -419,9 +431,9 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 </button>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto custom-scrollbar p-10">
+                            <div className="flex-1 overflow-hidden">
                                 {importMethod === 'upload' && (
-                                    <div className="max-w-4xl mx-auto space-y-10">
+                                    <div className="max-w-4xl mx-auto space-y-10 p-10 h-full overflow-y-auto custom-scrollbar">
                                         <div 
                                             onClick={() => fileInputRef.current?.click()}
                                             className="border-4 border-dashed border-slate-100 rounded-[3rem] p-24 flex flex-col items-center justify-center text-center group hover:border-indigo-200 hover:bg-slate-50/50 transition-all cursor-pointer"
@@ -442,119 +454,110 @@ const RulesPage: React.FC<RulesPageProps> = ({
                                 )}
 
                                 {importMethod === 'ai' && (
-                                    <div className="h-full flex flex-col gap-8 max-w-7xl mx-auto">
-                                        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 h-full">
-                                            {/* PROTOCOL SIDEBAR */}
-                                            <div className="lg:col-span-1 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-200 flex flex-col gap-6">
-                                                <div className="flex justify-between items-center px-1">
-                                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                                        <WorkflowIcon className="w-3 h-3" /> System Protocols
-                                                    </h4>
-                                                    <button onClick={() => { setNewPromptName(''); setIsNewPromptModalOpen(true); }} className="p-1.5 bg-white rounded-lg text-indigo-600 shadow-sm border border-slate-100 hover:bg-indigo-600 hover:text-white transition-all active:scale-90"><AddIcon className="w-4 h-4"/></button>
-                                                </div>
-                                                <div className="space-y-2 overflow-y-auto custom-scrollbar flex-1 pr-1">
-                                                    {forgePrompts.map(p => (
-                                                        <div 
-                                                            key={p.id} 
-                                                            onClick={() => handleForgePromptSelect(p.id)}
-                                                            className={`p-4 rounded-2xl cursor-pointer border-2 transition-all flex flex-col gap-1.5 group/p relative ${selectedForgePromptId === p.id ? 'bg-white border-indigo-500 shadow-lg ring-4 ring-indigo-50' : 'bg-white/40 border-transparent hover:bg-white hover:border-slate-300'}`}
-                                                        >
-                                                            <div className="flex justify-between items-start">
-                                                                <p className={`text-xs font-black truncate max-w-[80%] ${selectedForgePromptId === p.id ? 'text-indigo-900' : 'text-slate-600'}`}>{p.name}</p>
-                                                                {selectedForgePromptId === p.id && <div className="w-1.5 h-1.5 bg-indigo-600 rounded-full animate-pulse" />}
-                                                            </div>
-                                                            <p className={`text-[9px] line-clamp-2 leading-relaxed ${selectedForgePromptId === p.id ? 'text-slate-500' : 'text-slate-400'}`}>{p.prompt}</p>
+                                    <div className="h-full flex gap-0 animate-fade-in">
+                                        {/* COLUMN 1: PROTOCOL LIBRARY */}
+                                        <div className="w-72 bg-slate-50 border-r border-slate-200 flex flex-col min-h-0">
+                                            <div className="p-6 border-b flex justify-between items-center bg-white/50">
+                                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                                    <WorkflowIcon className="w-3 h-3" /> Templates
+                                                </h4>
+                                                <button onClick={() => { setNewPromptName(''); setIsNewPromptModalOpen(true); }} className="p-1.5 bg-white border border-slate-200 rounded-lg text-indigo-600 shadow-sm hover:bg-indigo-600 hover:text-white transition-all active:scale-90"><AddIcon className="w-4 h-4"/></button>
+                                            </div>
+                                            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+                                                {forgePrompts.map(p => (
+                                                    <div 
+                                                        key={p.id} 
+                                                        onClick={() => setSelectedForgePromptId(p.id)}
+                                                        className={`p-4 rounded-2xl cursor-pointer border-2 transition-all flex flex-col gap-1.5 group/p relative ${selectedForgePromptId === p.id ? 'bg-white border-indigo-500 shadow-lg ring-4 ring-indigo-50 z-10' : 'bg-transparent border-transparent hover:bg-white hover:border-slate-300'}`}
+                                                    >
+                                                        <div className="flex justify-between items-start">
+                                                            <p className={`text-xs font-black truncate max-w-[80%] ${selectedForgePromptId === p.id ? 'text-indigo-900' : 'text-slate-600'}`}>{p.name}</p>
                                                             <button 
                                                                 onClick={(e) => { e.stopPropagation(); handleDeleteProtocol(p.id); }} 
-                                                                className="absolute top-2 right-2 p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover/p:opacity-100 transition-all hover:bg-red-50 rounded-lg"
+                                                                className="opacity-0 group-hover/p:opacity-100 p-1 text-slate-300 hover:text-red-500 transition-all"
                                                             >
                                                                 <TrashIcon className="w-3.5 h-3.5"/>
                                                             </button>
                                                         </div>
-                                                    ))}
+                                                        <p className="text-[9px] line-clamp-1 text-slate-400 font-medium">{p.prompt || 'No instructions'}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* COLUMN 2: LOGIC STUDIO */}
+                                        <div className="flex-1 bg-white flex flex-col min-h-0 border-r border-slate-200 relative">
+                                            <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
+                                                <div>
+                                                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">{activeForgePrompt.name}</h3>
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">Configuration & Field Control</p>
                                                 </div>
-                                                <div className="bg-indigo-900 p-4 rounded-3xl text-white flex flex-col gap-2 shadow-inner">
-                                                    <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">Protocol Logic</p>
-                                                    <p className="text-[10px] font-medium leading-relaxed italic opacity-80">"Select a protocol or modify the execution parameters to direct the neural core."</p>
+                                            </div>
+                                            
+                                            <div className="flex-1 overflow-y-auto custom-scrollbar p-8 space-y-10 pb-32">
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Behavioral Directives</label>
+                                                    <textarea 
+                                                        value={activeForgePrompt.prompt}
+                                                        onChange={e => updateCurrentProtocol({ prompt: e.target.value })}
+                                                        placeholder="Describe logic patterns, naming conventions, or specific vendor rules..."
+                                                        className="w-full h-32 p-5 bg-slate-50 border-2 border-slate-100 rounded-[2rem] text-sm font-medium focus:bg-white focus:border-indigo-400 focus:ring-8 focus:ring-indigo-50 transition-all resize-none"
+                                                    />
+                                                </div>
+
+                                                <div className="space-y-4">
+                                                    <div className="flex justify-between items-center px-1">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Logic Schema Constraints</label>
+                                                        <span className="text-[8px] bg-slate-100 px-2 py-0.5 rounded font-black text-slate-500 uppercase">Dynamic Schema generation</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                                        <FieldController label="Normalization" value={activeForgePrompt.fields?.description} onChange={v => updateFieldRequirement('description', v)} icon={<TypeIcon className="w-4 h-4"/>} />
+                                                        <FieldController label="Category Map" value={activeForgePrompt.fields?.category} onChange={v => updateFieldRequirement('category', v)} icon={<TagIcon className="w-4 h-4"/>} />
+                                                        <FieldController label="Counterparty" value={activeForgePrompt.fields?.counterparty} onChange={v => updateFieldRequirement('counterparty', v)} icon={<UsersIcon className="w-4 h-4"/>} />
+                                                        <FieldController label="Geography" value={activeForgePrompt.fields?.location} onChange={v => updateFieldRequirement('location', v)} icon={<MapPinIcon className="w-4 h-4"/>} />
+                                                        <FieldController label="Logic Type" value={activeForgePrompt.fields?.type} onChange={v => updateFieldRequirement('type', v)} icon={<ChecklistIcon className="w-4 h-4"/>} />
+                                                        <FieldController label="Labeling" value={activeForgePrompt.fields?.tags} onChange={v => updateFieldRequirement('tags', v)} icon={<RepeatIcon className="w-4 h-4"/>} />
+                                                        <FieldController label="Import Filtering" value={activeForgePrompt.fields?.skip} onChange={v => updateFieldRequirement('skip', v)} icon={<SlashIcon className="w-4 h-4"/>} />
+                                                    </div>
                                                 </div>
                                             </div>
 
-                                            {/* DATA INPUT & CONTROLS */}
-                                            <div className="lg:col-span-3 flex flex-col gap-6">
-                                                <div className="bg-white rounded-[2.5rem] border-2 border-slate-200 overflow-hidden flex flex-col shadow-sm transition-all focus-within:border-indigo-400 focus-within:ring-8 focus-within:ring-indigo-50">
-                                                    <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex justify-between items-center">
-                                                        <div className="flex items-center gap-3">
-                                                            <DatabaseIcon className="w-4 h-4 text-slate-400" />
-                                                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Raw Data Console</h4>
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <button 
-                                                                onClick={() => forgeFileInputRef.current?.click()} 
-                                                                className="px-4 py-1.5 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm flex items-center gap-2"
-                                                            >
-                                                                <UploadIcon className="w-3.5 h-3.5" /> Upload CSV
-                                                            </button>
-                                                            {forgeData && (
-                                                                <button 
-                                                                    onClick={() => setForgeData('')} 
-                                                                    className="px-3 py-1.5 bg-white border border-red-100 text-red-500 hover:bg-red-50 rounded-xl text-[10px] font-black uppercase transition-all"
-                                                                >
-                                                                    Clear Console
-                                                                </button>
-                                                            )}
-                                                            <input type="file" ref={forgeFileInputRef} className="hidden" accept=".csv,.txt" onChange={handleForgeFileUpload} />
-                                                        </div>
-                                                    </div>
-                                                    <div className="relative flex-1">
-                                                        <textarea 
-                                                            value={forgeData}
-                                                            onChange={e => setForgeData(e.target.value)}
-                                                            className={`w-full h-[320px] bg-slate-50/30 border-none focus:ring-0 p-8 text-slate-700 font-mono text-xs leading-relaxed resize-none transition-all ${!forgeData ? 'animate-pulse bg-indigo-50/10' : ''}`}
-                                                            placeholder="Paste bank CSV rows here, or use the 'Upload CSV' button above..."
-                                                        />
-                                                        {!forgeData && (
-                                                            <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-20">
-                                                                <TableIcon className="w-20 h-20 text-indigo-900 mb-4" />
-                                                                <p className="font-black text-indigo-900 uppercase tracking-widest text-sm">Awaiting Logic Feed</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <div className="bg-white p-6 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-4">
-                                                    <div className="flex justify-between items-center px-1">
-                                                        <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest flex items-center gap-2">
-                                                            <WorkflowIcon className="w-4 h-4" /> Execution Parameters
-                                                        </h4>
-                                                        <button 
-                                                            onClick={() => setIsEditingPrompt(!isEditingPrompt)} 
-                                                            className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${isEditingPrompt ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-indigo-600 bg-slate-100'}`}
-                                                        >
-                                                            {isEditingPrompt ? 'Lock Instructions' : 'Modify Logic'}
-                                                        </button>
-                                                    </div>
-                                                    <textarea 
-                                                        value={forgePromptText}
-                                                        onChange={e => setForgePromptText(e.target.value)}
-                                                        disabled={!isEditingPrompt}
-                                                        className={`w-full p-5 rounded-3xl text-xs leading-relaxed border-2 transition-all font-medium ${isEditingPrompt ? 'border-indigo-400 bg-indigo-50 shadow-inner' : 'border-slate-50 bg-slate-50 text-slate-500'}`}
-                                                        rows={3}
-                                                        placeholder="Direct the AI on how to handle description normalization, categorization, etc."
-                                                    />
-                                                    {isEditingPrompt && (
-                                                        <button onClick={handleSaveProtocolToLibrary} className="w-full py-3 bg-emerald-600 text-white font-black rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all active:scale-95">Save to Logic Library</button>
-                                                    )}
-                                                </div>
-
+                                            <div className="absolute bottom-0 left-0 right-0 p-6 bg-white/80 backdrop-blur-md border-t border-slate-100">
                                                 <button 
                                                     onClick={handleForgeAiSubmit}
                                                     disabled={isForging || !forgeData.trim()}
                                                     className="w-full py-6 bg-indigo-600 text-white font-black rounded-[2.5rem] shadow-2xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-4 text-2xl active:scale-95 disabled:opacity-30 group"
                                                 >
                                                     {isForging ? <div className="w-8 h-8 border-4 border-t-white rounded-full animate-spin" /> : <PlayIcon className="w-8 h-8 group-hover:scale-125 transition-transform" />}
-                                                    {isForging ? forgeProgress : 'Ignite AI Rule Forge'}
+                                                    {isForging ? forgeProgress : 'Ignite Logic Forge'}
                                                 </button>
                                             </div>
+                                        </div>
+
+                                        {/* COLUMN 3: DATA CONSOLE */}
+                                        <div className="w-96 bg-slate-900 flex flex-col min-h-0 relative">
+                                            <div className="p-4 border-b border-white/10 flex justify-between items-center bg-black/20">
+                                                <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                                                    <DatabaseIcon className="w-3.5 h-3.5" /> Raw Ledger
+                                                </h4>
+                                                <div className="flex gap-1">
+                                                    <button onClick={() => forgeFileInputRef.current?.click()} className="p-2 text-white/50 hover:text-white transition-colors" title="Upload CSV"><UploadIcon className="w-4 h-4"/></button>
+                                                    {forgeData && <button onClick={() => setForgeData('')} className="p-2 text-red-400/50 hover:text-red-400 transition-colors"><CloseIcon className="w-4 h-4"/></button>}
+                                                </div>
+                                                <input type="file" ref={forgeFileInputRef} className="hidden" accept=".csv,.txt" onChange={handleForgeFileUpload} />
+                                            </div>
+                                            <textarea 
+                                                value={forgeData}
+                                                onChange={e => setForgeData(e.target.value)}
+                                                className="flex-1 bg-transparent border-none focus:ring-0 p-6 text-indigo-100 font-mono text-[10px] leading-relaxed resize-none custom-scrollbar"
+                                                placeholder="Paste statement rows here or click upload..."
+                                            />
+                                            {!forgeData && (
+                                                <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center opacity-10">
+                                                    <TableIcon className="w-20 h-20 text-white mb-4" />
+                                                    <p className="font-black text-white uppercase tracking-widest text-sm">Awaiting Stream</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
@@ -577,20 +580,6 @@ const RulesPage: React.FC<RulesPageProps> = ({
                             <div className="space-y-3">
                                 <h3 className="text-3xl font-black text-white tracking-tight uppercase">Neural Synthesis</h3>
                                 <p className="text-indigo-200 font-bold uppercase tracking-widest text-xs animate-pulse">{forgeProgress}</p>
-                            </div>
-                            <div className="bg-white/5 border border-white/10 p-6 rounded-[2rem] text-left">
-                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-3">Core Operation Log</p>
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-3 text-[11px] text-white/60 font-mono">
-                                        <CheckCircleIcon className="w-3.5 h-3.5 text-indigo-400" /> Pattern recognition active
-                                    </div>
-                                    <div className="flex items-center gap-3 text-[11px] text-white/60 font-mono">
-                                        <CheckCircleIcon className="w-3.5 h-3.5 text-indigo-400" /> Mapping system constraints
-                                    </div>
-                                    <div className="flex items-center gap-3 text-[11px] text-white font-mono">
-                                        <span className="w-3.5 h-3.5 border border-white/20 rounded-full animate-ping" /> Synchronizing rule batches
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     </div>
