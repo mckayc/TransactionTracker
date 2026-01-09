@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import type { ReconciliationRule, Category, Counterparty, Location, User, TransactionType, RuleImportDraft } from '../types';
 import { CheckCircleIcon, SlashIcon, ExclamationTriangleIcon, AddIcon, BoxIcon, TagIcon, MapPinIcon, UsersIcon, ShieldCheckIcon, CloseIcon, EditIcon, RepeatIcon, WorkflowIcon, InfoIcon, DatabaseIcon, ChevronRightIcon, ArrowRightIcon, SparklesIcon } from './Icons';
 import { generateUUID } from '../utils';
+import SearchableSelect from './SearchableSelect';
 
 interface Props {
     drafts: RuleImportDraft[];
@@ -24,16 +25,24 @@ interface Props {
 
 /**
  * Normalizes and merges multiple condition strings into a single unique OR-chain.
- * e.g. "OREM UT || SALT LAKE" merged with "OREM UT" -> "OREM UT || SALT LAKE"
+ * Performs set-based de-duplication to prevent logical bloat.
  */
 const mergePatternsUniquely = (existing: string, incoming: string): string => {
     const existingTokens = existing.split(/\s*\|\|\s*/).map(t => t.trim()).filter(Boolean);
     const incomingTokens = incoming.split(/\s*\|\|\s*/).map(t => t.trim()).filter(Boolean);
     
-    // Create a Set for uniqueness, case-insensitive comparison would be better but Set is simple start
-    // We'll normalize to Upper for the set comparison if they look like bank strings
-    const uniqueTokens = new Set([...existingTokens, ...incomingTokens]);
-    return Array.from(uniqueTokens).join(' || ');
+    const seen = new Set<string>();
+    const result: string[] = [];
+    
+    [...existingTokens, ...incomingTokens].forEach(token => {
+        const normalized = token.toLowerCase();
+        if (!seen.has(normalized)) {
+            seen.add(normalized);
+            result.push(token);
+        }
+    });
+    
+    return result.join(' || ');
 };
 
 const LogicForecastDrawer: React.FC<{ 
@@ -103,7 +112,7 @@ const LogicForecastDrawer: React.FC<{
                     {isMerge && existingRule && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-2 px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full w-max text-[10px] font-black uppercase tracking-widest">
-                                <RepeatIcon className="w-3 h-3" /> Synthesis Strategy: Intelligent Set Merge
+                                <RepeatIcon className="w-3 h-3" /> Synthesis Strategy: Set-Based Reconciliation
                             </div>
                             <div className="bg-slate-900 rounded-3xl p-6 text-white space-y-6 shadow-xl border border-indigo-500/20">
                                 <div className="space-y-2">
@@ -119,7 +128,7 @@ const LogicForecastDrawer: React.FC<{
                                         </code>
                                     </div>
                                     <div className="flex justify-center">
-                                        <div className="px-4 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase">Uniqueness Reconciliation</div>
+                                        <div className="px-4 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase">De-duplication Check</div>
                                     </div>
                                     <div className="space-y-2">
                                         <p className="text-[9px] font-black text-indigo-400 uppercase">Incoming Pattern</p>
@@ -130,7 +139,7 @@ const LogicForecastDrawer: React.FC<{
                                 </div>
 
                                 <div className="pt-6 border-t border-white/10 space-y-2">
-                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Resulting Engine Logic (De-duplicated)</p>
+                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Resulting Engine Logic (Cleaned Result)</p>
                                     <code className="block p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-sm font-mono text-emerald-300">
                                         {mergedPatternPreview}
                                     </code>
@@ -157,7 +166,7 @@ const LogicForecastDrawer: React.FC<{
                             <h4 className="font-black text-sm uppercase">Verification Protocol</h4>
                          </div>
                          <p className="text-xs text-amber-700 leading-relaxed font-medium">
-                            The system now uses <strong className="text-amber-900">Set-Based Reconciliation</strong>. If the incoming search string already exists in the target rule, it will be skipped during merge to prevent redundant processing cycles.
+                            The system now uses <strong className="text-amber-900">Logical De-duplication</strong>. If an incoming search pattern already exists in the target rule, it will not be appended. This maintains optimal engine performance.
                          </p>
                     </div>
                 </div>
@@ -181,7 +190,7 @@ const RuleImportVerification: React.FC<Props> = ({
         setDrafts(prev => prev.map(d => d.id === id ? { ...d, isSelected: !d.isSelected } : d));
     };
 
-    const updateDraftField = (id: string, field: string, value: string) => {
+    const updateDraftField = (id: string, field: keyof RuleImportDraft, value: any) => {
         setDrafts(prev => prev.map(d => d.id === id ? { ...d, [field]: value } : d));
     };
 
@@ -222,11 +231,11 @@ const RuleImportVerification: React.FC<Props> = ({
                     nextLogic: 'AND'
                 }];
             } else {
-                // 1. RESOLVE OR CREATE CATEGORY
-                if (draft.mappingStatus.category === 'match' && draft.suggestedCategoryName) {
-                    const match = categories.find(c => c.name.toLowerCase().trim() === draft.suggestedCategoryName?.toLowerCase().trim());
-                    if (match) finalRule.setCategoryId = match.id;
-                } else if (draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
+                // If the user manually selected an ID, it will be in draft.setCategoryId, etc.
+                // We only need to handle the 'create' logic if they left the suggested names
+                
+                // 1. Category Resolution
+                if (!draft.setCategoryId && draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
                     const normName = draft.suggestedCategoryName.toLowerCase().trim();
                     let catId = createdCats.get(normName);
                     if (!catId) {
@@ -238,11 +247,8 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCategoryId = catId;
                 }
 
-                // 2. RESOLVE OR CREATE COUNTERPARTY
-                if (draft.mappingStatus.counterparty === 'match' && draft.suggestedCounterpartyName) {
-                    const match = payees.find(p => p.name.toLowerCase().trim() === draft.suggestedCounterpartyName?.toLowerCase().trim());
-                    if (match) finalRule.setCounterpartyId = match.id;
-                } else if (draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
+                // 2. Counterparty Resolution
+                if (!draft.setCounterpartyId && draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
                     const normName = draft.suggestedCounterpartyName.toLowerCase().trim();
                     let cpId = createdCounterparties.get(normName);
                     if (!cpId) {
@@ -254,11 +260,8 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCounterpartyId = cpId;
                 }
 
-                // 3. RESOLVE OR CREATE LOCATION
-                if (draft.mappingStatus.location === 'match' && draft.suggestedLocationName) {
-                    const match = locations.find(l => l.name.toLowerCase().trim() === draft.suggestedLocationName?.toLowerCase().trim());
-                    if (match) finalRule.setLocationId = match.id;
-                } else if (draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
+                // 3. Location Resolution
+                if (!draft.setLocationId && draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
                     const normName = draft.suggestedLocationName.toLowerCase().trim();
                     let locId = createdLocs.get(normName);
                     if (!locId) {
@@ -268,11 +271,6 @@ const RuleImportVerification: React.FC<Props> = ({
                         createdLocs.set(normName, locId);
                     }
                     finalRule.setLocationId = locId;
-                }
-
-                if (draft.suggestedTypeName) {
-                    const matchedType = transactionTypes.find(t => t.name.toLowerCase().trim() === draft.suggestedTypeName?.toLowerCase().trim());
-                    if (matchedType) finalRule.setTransactionTypeId = matchedType.id;
                 }
             }
 
@@ -296,9 +294,9 @@ const RuleImportVerification: React.FC<Props> = ({
             selected: sel.length,
             newEntities: sel.reduce((acc, d) => {
                 let count = 0;
-                if (d.mappingStatus.category === 'create') count++;
-                if (d.mappingStatus.counterparty === 'create') count++;
-                if (d.mappingStatus.location === 'create') count++;
+                if (!d.setCategoryId && d.mappingStatus.category === 'create') count++;
+                if (!d.setCounterpartyId && d.mappingStatus.counterparty === 'create') count++;
+                if (!d.setLocationId && d.mappingStatus.location === 'create') count++;
                 return acc + count;
             }, 0),
             collisions: sel.filter(d => {
@@ -346,8 +344,9 @@ const RuleImportVerification: React.FC<Props> = ({
                             <tr>
                                 <th className="p-2 w-10 bg-slate-100 border-b border-slate-200"><input type="checkbox" checked={stats.selected === stats.total && stats.total > 0} onChange={() => setDrafts(prev => prev.map(p => ({ ...p, isSelected: stats.selected !== stats.total })))} className="rounded text-indigo-600 h-3 w-3" /></th>
                                 <th className="px-3 py-3 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Logic Alias</th>
-                                <th className="px-3 py-3 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Criterial Definition</th>
-                                <th className="px-3 py-3 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Entity Mapping</th>
+                                <th className="px-3 py-3 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Category</th>
+                                <th className="px-3 py-3 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Counterparty</th>
+                                <th className="px-3 py-3 text-left text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Location</th>
                                 <th className="px-3 py-3 text-center text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">Inspect</th>
                             </tr>
                         </thead>
@@ -379,30 +378,39 @@ const RuleImportVerification: React.FC<Props> = ({
                                                 </p>
                                             ) : null}
                                         </td>
-                                        <td className="px-3 py-1.5 border-b border-slate-100">
-                                            <div className="bg-slate-50 px-2 py-0.5 rounded-lg text-[9px] font-mono border border-slate-100 max-w-[240px] overflow-hidden truncate text-slate-500">
-                                                {d.conditions.map((c, i) => (
-                                                    <span key={c.id}>
-                                                        {c.field} {c.operator} <strong className="text-indigo-600">"{c.value}"</strong>
-                                                        {i < d.conditions.length - 1 && <span className="mx-0.5 text-indigo-400 font-black">{c.nextLogic || 'AND'}</span>}
-                                                    </span>
-                                                ))}
-                                            </div>
+                                        
+                                        <td className="px-3 py-1.5 border-b border-slate-100 min-w-[120px]">
+                                            <SearchableSelect 
+                                                options={categories}
+                                                value={d.setCategoryId || ''}
+                                                onChange={val => updateDraftField(d.id, 'setCategoryId', val)}
+                                                placeholder={d.suggestedCategoryName || "Select..."}
+                                                isHierarchical
+                                                className="!bg-transparent text-[10px]"
+                                            />
                                         </td>
-                                        <td className="px-3 py-1.5 border-b border-slate-100">
-                                            <div className="flex flex-wrap gap-1">
-                                                {d.suggestedCategoryName && (
-                                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase border ${d.mappingStatus.category === 'match' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
-                                                        CAT: {d.suggestedCategoryName}
-                                                    </span>
-                                                )}
-                                                {d.suggestedCounterpartyName && (
-                                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase border ${d.mappingStatus.counterparty === 'match' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-indigo-50 text-indigo-700 border-indigo-200'}`}>
-                                                        ENT: {d.suggestedCounterpartyName}
-                                                    </span>
-                                                )}
-                                            </div>
+
+                                        <td className="px-3 py-1.5 border-b border-slate-100 min-w-[120px]">
+                                            <SearchableSelect 
+                                                options={payees}
+                                                value={d.setCounterpartyId || ''}
+                                                onChange={val => updateDraftField(d.id, 'setCounterpartyId', val)}
+                                                placeholder={d.suggestedCounterpartyName || "Select..."}
+                                                isHierarchical
+                                                className="!bg-transparent text-[10px]"
+                                            />
                                         </td>
+
+                                        <td className="px-3 py-1.5 border-b border-slate-100 min-w-[120px]">
+                                            <SearchableSelect 
+                                                options={locations}
+                                                value={d.setLocationId || ''}
+                                                onChange={val => updateDraftField(d.id, 'setLocationId', val)}
+                                                placeholder={d.suggestedLocationName || "Select..."}
+                                                className="!bg-transparent text-[10px]"
+                                            />
+                                        </td>
+
                                         <td className="px-3 py-1.5 text-center border-b border-slate-100">
                                             <button 
                                                 onClick={() => setInspectingDraftId(d.id)}
