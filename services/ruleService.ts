@@ -1,9 +1,8 @@
-
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 /**
- * Collapses multiple spaces into a single space and trims.
- * Essential for matching messy bank data.
+ * Normalization helper: Collapses multiple spaces into one, trims, and lowercases.
+ * Essential for comparing inconsistent bank data.
  */
 const normalizeText = (text: string): string => {
     return (text || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -12,7 +11,7 @@ const normalizeText = (text: string): string => {
 const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCondition, accounts: Account[] = []): boolean => {
     if (!tx || !condition || !condition.field) return true;
 
-    // Helper to evaluate a single token against the tx field
+    // Helper to evaluate a single string token against the transaction field
     const checkValue = (actualValue: string, expectedValue: string): boolean => {
         const normActual = normalizeText(actualValue);
         const normExpected = normalizeText(expectedValue);
@@ -39,15 +38,15 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
         const txValue = (tx.originalDescription || tx.description || '');
         const condValue = String(condition.value || '');
         
-        // Handle inline OR logic: split by ||
+        // Handle inline OR logic: split by || delimiter
         const tokens = condValue.split(/\s*\|\|\s*/).filter(Boolean);
         if (tokens.length <= 1) return checkValue(txValue, condValue);
         
-        // Logical NOT check: Must not contain ANY of the tokens
+        // Logical NOT check: Must not contain ANY of the tokens (AND NOT)
         if (condition.operator === 'does_not_contain') {
             return tokens.every(token => checkValue(txValue, token));
         }
-        // Logical OR: match any token
+        // Functional Boolean OR: true if ANY token matches the transaction
         return tokens.some(token => checkValue(txValue, token));
 
     } else if (condition.field === 'metadata') {

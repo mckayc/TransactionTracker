@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import type { ReconciliationRule, Category, Counterparty, Location, User, TransactionType, RuleImportDraft } from '../types';
 import { CheckCircleIcon, SlashIcon, ExclamationTriangleIcon, AddIcon, BoxIcon, TagIcon, MapPinIcon, UsersIcon, ShieldCheckIcon, CloseIcon, EditIcon, RepeatIcon, WorkflowIcon, InfoIcon, DatabaseIcon, ChevronRightIcon, ArrowRightIcon, SparklesIcon } from './Icons';
@@ -25,7 +24,7 @@ interface Props {
 
 /**
  * Normalizes and merges multiple condition strings into a single unique OR-chain.
- * - Collapses multiple spaces into one.
+ * - Collapses multiple spaces into one (Whitespace Squashing).
  * - Compares case-insensitively.
  * - Returns a clean string with unique tokens joined by ||.
  */
@@ -135,7 +134,7 @@ const LogicForecastDrawer: React.FC<{
                                         </code>
                                     </div>
                                     <div className="flex justify-center">
-                                        <div className="px-4 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase">Logical Uniqueness Check</div>
+                                        <div className="px-4 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase">Normalized Uniqueness Check</div>
                                     </div>
                                     <div className="space-y-2">
                                         <p className="text-[9px] font-black text-indigo-400 uppercase">Incoming Pattern</p>
@@ -146,7 +145,7 @@ const LogicForecastDrawer: React.FC<{
                                 </div>
 
                                 <div className="pt-6 border-t border-white/10 space-y-2">
-                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Resulting Engine Logic (De-duplicated)</p>
+                                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Resulting Engine Logic (Cleaned Result)</p>
                                     <code className="block p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-sm font-mono text-emerald-300">
                                         {mergedPatternPreview}
                                     </code>
@@ -173,7 +172,7 @@ const LogicForecastDrawer: React.FC<{
                             <h4 className="font-black text-sm uppercase">Verification Protocol</h4>
                          </div>
                          <p className="text-xs text-amber-700 leading-relaxed font-medium">
-                            The system now uses <strong className="text-amber-900">Whitespace Normalization</strong>. If an incoming search pattern already exists (regardless of extra spaces or casing), it will not be duplicated.
+                            The system now uses <strong className="text-amber-900">Whitespace Invariant Normalization</strong>. If an incoming search pattern already exists in the target rule (regardless of extra spaces or casing), it will not be duplicated.
                          </p>
                     </div>
                 </div>
@@ -238,7 +237,10 @@ const RuleImportVerification: React.FC<Props> = ({
                     nextLogic: 'AND'
                 }];
             } else {
-                // Category Resolution
+                // If the user manually selected an ID, it will be in draft.setCategoryId, etc.
+                // We only need to handle the 'create' logic if they left the suggested names
+                
+                // 1. Category Resolution
                 if (!draft.setCategoryId && draft.mappingStatus.category === 'create' && draft.suggestedCategoryName) {
                     const normName = draft.suggestedCategoryName.toLowerCase().trim();
                     let catId = createdCats.get(normName);
@@ -251,7 +253,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCategoryId = catId;
                 }
 
-                // Counterparty Resolution
+                // 2. Counterparty Resolution
                 if (!draft.setCounterpartyId && draft.mappingStatus.counterparty === 'create' && draft.suggestedCounterpartyName) {
                     const normName = draft.suggestedCounterpartyName.toLowerCase().trim();
                     let cpId = createdCounterparties.get(normName);
@@ -264,7 +266,7 @@ const RuleImportVerification: React.FC<Props> = ({
                     finalRule.setCounterpartyId = cpId;
                 }
 
-                // Location Resolution
+                // 3. Location Resolution
                 if (!draft.setLocationId && draft.mappingStatus.location === 'create' && draft.suggestedLocationName) {
                     const normName = draft.suggestedLocationName.toLowerCase().trim();
                     let locId = createdLocs.get(normName);
@@ -415,7 +417,7 @@ const RuleImportVerification: React.FC<Props> = ({
                                             />
                                         </td>
 
-                                        <td className="px-3 py-1.5 text-center border-b border-slate-100">
+                                        <td className="px-3 py-3 text-center border-b border-slate-100">
                                             <button 
                                                 onClick={() => setInspectingDraftId(d.id)}
                                                 className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg hover:bg-white transition-all opacity-0 group-hover:opacity-100"
