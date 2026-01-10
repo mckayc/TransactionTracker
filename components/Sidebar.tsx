@@ -1,8 +1,7 @@
-
 import React from 'react';
 import CalendarView from './CalendarView';
 import type { Transaction, View } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, WizardIcon, DocumentIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon, NotesIcon } from './Icons';
+import { DashboardIcon, TableIcon, CalendarIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, WizardIcon, DocumentIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon } from './Icons';
 
 interface SidebarProps {
   currentView: View;
@@ -19,7 +18,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
     { id: 'dashboard', label: 'Dashboard', icon: DashboardIcon },
     { id: 'import', label: 'Import', icon: CloudArrowUpIcon },
     { id: 'transactions', label: 'Transactions', icon: TableIcon },
-    { id: 'journal', label: 'Journal', icon: NotesIcon },
     { id: 'documents', label: 'Documents', icon: DocumentIcon },
     { id: 'plan', label: 'Financial Plan', icon: LightBulbIcon },
     { id: 'calendar', label: 'Calendar', icon: CalendarIcon },

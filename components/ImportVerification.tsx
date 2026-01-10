@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Counterparty, User, Transaction, ReconciliationRule, Tag, Location, BalanceEffect, RuleCategory } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, FolderIcon, ChevronRightIcon, DatabaseIcon, TrashIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, FolderIcon, ChevronRightIcon, DatabaseIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
 import RuleModal from './RuleModal';
@@ -31,7 +31,6 @@ interface ImportVerificationProps {
     ruleCategories: RuleCategory[];
     onSaveRuleCategory: (rc: RuleCategory) => void;
     onSaveRule: (rule: ReconciliationRule) => void;
-    onDeleteRule: (ruleId: string) => void;
     onSaveCategory: (category: Category) => void;
     onSaveCounterparty: (p: Counterparty) => void;
     onSaveTag: (tag: Tag) => void;
@@ -40,6 +39,7 @@ interface ImportVerificationProps {
     onAddTransactionType: (type: TransactionType) => void;
     existingTransactions: Transaction[];
     rules: ReconciliationRule[];
+    // Added bulk save props to resolve interface mismatch when called from ImportPage
     onSaveCategories: (cs: Category[]) => void;
     onSaveCounterparties: (ps: Counterparty[]) => void;
     onSaveLocations: (ls: Location[]) => void;
@@ -47,24 +47,6 @@ interface ImportVerificationProps {
 
 type SortKey = 'date' | 'description' | 'counterpartyId' | 'categoryId' | 'amount' | '';
 type SortDirection = 'asc' | 'desc';
-
-const Toast: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => {
-    useEffect(() => {
-        const timer = setTimeout(onClose, 3000);
-        return () => clearTimeout(timer);
-    }, [onClose]);
-
-    return (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[350] animate-slide-up">
-            <div className="bg-slate-900/95 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3">
-                <div className="bg-indigo-500 rounded-full p-1">
-                    <CheckCircleIcon className="w-4 h-4 text-white" />
-                </div>
-                <span className="text-sm font-bold tracking-tight">{message}</span>
-            </div>
-        </div>
-    );
-};
 
 const RawDataDrawer: React.FC<{ tx: VerifiableTransaction | null; onClose: () => void; }> = ({ tx, onClose }) => {
     if (!tx) return null;
@@ -120,7 +102,8 @@ const RawDataDrawer: React.FC<{ tx: VerifiableTransaction | null; onClose: () =>
 };
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
-    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, counterparties, locations, users, tags, ruleCategories, onSaveRuleCategory, onSaveRule, onDeleteRule, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, existingTransactions, rules,
+    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, counterparties, locations, users, tags, ruleCategories, onSaveRuleCategory, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, existingTransactions, rules,
+    // Destructure bulk save props
     onSaveCategories, onSaveCounterparties, onSaveLocations
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
@@ -134,7 +117,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
     const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
     const [activeTxForQuickAdd, setActiveTxForQuickAdd] = useState<string | null>(null);
     const [inspectedTx, setInspectedTx] = useState<VerifiableTransaction | null>(null);
-    const [toastMessage, setToastMessage] = useState<string | null>(null);
     
     // Multiple Rules state
     const [inspectingRulesTxId, setInspectingRulesTxId] = useState<string | null>(null);
@@ -148,6 +130,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
             const sig = getTransactionSignature(tx);
             const conflict = dbSigs.has(sig) ? 'database' : null;
             
+            // Auto-match locations by string if ID is missing but string is present
             let finalLocationId = tx.locationId;
             if (!finalLocationId && tx.location) {
                 const match = locations.find(l => l.name.toLowerCase() === tx.location?.toLowerCase());
@@ -223,6 +206,8 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
     const handleFinalCommit = () => {
         const selectedDrafts = transactions.filter(t => !t.isIgnored);
+        
+        // Finalize the verified list
         onComplete(selectedDrafts);
     };
 
@@ -422,14 +407,11 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
 
             {isRuleModalOpen && (
                 <RuleModal 
-                    isOpen={isRuleModalOpen} 
-                    onClose={() => setIsRuleModalOpen(false)} 
-                    onSaveRule={(r) => { onSaveRule(r); setIsRuleModalOpen(false); setToastMessage(`Logic rule "${r.name}" updated successfully.`); }}
-                    onDeleteRule={(id) => { onDeleteRule(id); setIsRuleModalOpen(false); setToastMessage("Automation rule permanently purged."); }}
+                    isOpen={isRuleModalOpen} onClose={() => setIsRuleModalOpen(false)} onSaveRule={(r) => { onSaveRule(r); setIsRuleModalOpen(false); }}
                     accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} counterparties={counterparties} locations={locations} users={users} transaction={ruleTransactionContext}
                     ruleCategories={ruleCategories} onSaveRuleCategory={onSaveRuleCategory}
                     onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveTag={onSaveTag} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onAddTransactionType={onAddTransactionType}
-                    onSaveAndRun={(r) => { onSaveRule(r); const updated = applyRulesToTransactions(transactions, [rules.filter(Boolean), r].flat(), accounts); setTransactions(updated as VerifiableTransaction[]); setIsRuleModalOpen(false); setToastMessage(`Logic updated and re-applied.`); }}
+                    onSaveAndRun={(r) => { onSaveRule(r); const updated = applyRulesToTransactions(transactions, [rules.filter(Boolean), r].flat(), accounts); setTransactions(updated as VerifiableTransaction[]); setIsRuleModalOpen(false); }}
                     existingRules={rules}
                 />
             )}
@@ -438,8 +420,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 isOpen={!!quickAddType} onClose={() => { setQuickAddType(null); setActiveTxForQuickAdd(null); }} type={quickAddType || 'categories'}
                 onSave={handleQuickAddSave} categories={categories} tags={tags} counterparties={counterparties} locations={locations} users={users} transactionTypes={transactionTypes} accountTypes={[]} accounts={accounts}
             />
-
-            {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
         </div>
     );
 };

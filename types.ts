@@ -466,4 +466,4 @@ export interface DuplicatePair {
     existingTx: Transaction;
 }
 
-export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';
+export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';

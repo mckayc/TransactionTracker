@@ -34,17 +34,19 @@ interface ImportPageProps {
   documentFolders: DocumentFolder[];
   onCreateFolder: (folder: DocumentFolder) => void;
   onSaveRule: (rule: ReconciliationRule) => void;
-  onDeleteRule: (ruleId: string) => void;
   onSaveCategory: (category: Category) => void;
   onSaveCounterparty: (p: Counterparty) => void;
+  // Added missing onSaveLocation and onSaveUser props to interface
   onSaveLocation: (location: Location) => void;
   onSaveUser: (user: User) => void;
   onSaveTag: (tag: Tag) => void;
   onAddTransactionType: (type: TransactionType) => void;
   onUpdateTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
+  // Add missing ruleCategories and onSaveRuleCategory to props
   ruleCategories: RuleCategory[];
   onSaveRuleCategory: (rc: RuleCategory) => void;
+  // Added bulk save props to resolve App.tsx type mismatch
   onSaveCounterparties: (ps: Counterparty[]) => void;
   onSaveLocations: (ls: Location[]) => void;
   onSaveCategories: (cs: Category[]) => void;
@@ -52,9 +54,11 @@ interface ImportPageProps {
 
 const ImportPage: React.FC<ImportPageProps> = ({ 
     onTransactionsAdded, transactions: recentGlobalTransactions, accounts, categories, tags, rules, counterparties, locations, users, transactionTypes, accountTypes, onSaveCategory, onSaveCounterparty, 
+    // Destructure new props
     onSaveLocation, onSaveUser,
-    onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule, onDeleteRule, onAddAccount,
+    onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule, onAddAccount,
     ruleCategories, onSaveRuleCategory,
+    // Destructure bulk save props
     onSaveCounterparties, onSaveLocations, onSaveCategories
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
@@ -69,10 +73,11 @@ const ImportPage: React.FC<ImportPageProps> = ({
   const [isInitializing, setIsInitializing] = useState(false);
 
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
-  // Use a local staged array of full Transaction objects for the "Final Polish" phase
-  // to avoid waiting for the asynchronous global state refresh from the parent.
-  const [stagedImportedTxs, setStagedImportedTxs] = useState<Transaction[]>([]);
+  const [importedTxIds, setImportedTxIds] = useState<Set<string>>(new Set());
 
+  // System Readiness Check
+  // We allow the UI if we have transactionTypes and categories (which are seeded). 
+  // If accounts are missing, we show the "Quick Start" flow.
   const hasCoreConfiguration = transactionTypes.length >= 6 && categories.length > 0;
   const hasAccount = accounts.length > 0;
 
@@ -95,7 +100,10 @@ const ImportPage: React.FC<ImportPageProps> = ({
   const handleQuickStart = async () => {
       setIsInitializing(true);
       try {
+          // 1. Force a system repair to fix types/categories
           await api.repairSystem();
+          
+          // 2. Create default account
           const mainAccount: Account = {
               id: 'acc_primary',
               name: 'Main Ledger',
@@ -103,6 +111,8 @@ const ImportPage: React.FC<ImportPageProps> = ({
               accountTypeId: accountTypes[0]?.id || 'at_checking'
           };
           onAddAccount(mainAccount);
+          
+          // Force a reload of the window to pick up all seeded data correctly
           setTimeout(() => window.location.reload(), 500);
       } catch (err) {
           setError("Quick Start failed. Please try manual configuration in 'Organize Data'.");
@@ -113,6 +123,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
 
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
     try {
+        console.log(`[IMPORT] Normalizing ${rawTransactions.length} items with ${currentRules.length} rules...`);
         if (!rawTransactions || rawTransactions.length === 0) {
             setError("No transactions were found in the provided data. Please check the file format or try AI mode.");
             setAppState('error');
@@ -139,8 +150,10 @@ const ImportPage: React.FC<ImportPageProps> = ({
             return { ...tx, categoryId: finalCategoryId, tempId: generateUUID() };
         });
         
+        console.log("[IMPORT] Staging complete. Ready for verification.");
         setRawTransactionsToVerify(processedTransactions);
     } catch (e: any) {
+        console.error("[IMPORT] Transformation error:", e);
         setError(`Transformation error: ${e.message || 'Internal logic error'}`);
         setAppState('error');
     }
@@ -151,11 +164,14 @@ const ImportPage: React.FC<ImportPageProps> = ({
     setAppState('processing');
     setProgressMessage(aiMode ? 'AI Thinking (Analyzing Statements)...' : 'Parsing local files...');
     try {
+      console.log(`[IMPORT] Starting ${aiMode ? 'AI' : 'Local'} extraction for ${files.length} files...`);
       const raw = aiMode 
         ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage) 
         : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
       
       const safeRaw = (raw || []).filter(tx => tx && typeof tx === 'object');
+      console.log(`[IMPORT] Parser returned ${safeRaw.length} valid results.`);
+      
       if (safeRaw.length === 0) {
           throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
       }
@@ -165,21 +181,18 @@ const ImportPage: React.FC<ImportPageProps> = ({
       applyRulesAndSetStaging(safeRaw, defaultUser?.id || 'user_primary', rules);
       setAppState('verifying_import');
     } catch (err: any) {
+      console.error("[IMPORT] Critical extraction failure:", err);
       setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
       setAppState('error');
     }
   }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
-      // Use the service to generate IDs and detect duplicates against CURRENT state
+      console.log(`[IMPORT] User confirmed ${verified.length} transactions for merge...`);
       const { added } = mergeTransactions(recentGlobalTransactions.filter(Boolean), verified.filter(Boolean));
-      
-      // Store locally so the next screen doesn't wait for parent prop sync
-      setStagedImportedTxs(added);
-      
-      // Notify parent to update DB
+      console.log(`[IMPORT] Merge results: ${added.length} new records created.`);
       onTransactionsAdded(added, []);
-      
+      setImportedTxIds(new Set(added.map(tx => tx.id)));
       setAppState('post_import_edit');
   };
 
@@ -195,6 +208,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
       </div>
       
       <div className="flex-1 min-h-0 flex flex-col gap-6 overflow-hidden">
+        {/* Quick Start Flow if Account is missing */}
         {!hasAccount && appState === 'idle' ? (
              <div className="flex-1 flex items-center justify-center p-4">
                  <div className="max-w-2xl w-full bg-white p-12 rounded-[3rem] shadow-xl border border-slate-200 text-center space-y-8 animate-fade-in">
@@ -308,6 +322,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                 onClick={async () => {
                                                     setAppState('processing');
                                                     try {
+                                                        console.log("[IMPORT] Starting text-based ingestion...");
                                                         const raw = useAi 
                                                             ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) 
                                                             : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
@@ -318,6 +333,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                         applyRulesAndSetStaging(safeRaw, defaultUser?.id || 'user_primary', rules);
                                                         setAppState('verifying_import');
                                                     } catch(e: any) { 
+                                                        console.error("[IMPORT] Text parse failure:", e);
                                                         setAppState('error'); 
                                                         setError(`Parsing failed: ${e.message || 'Unknown error'}. Ensure columns align.`); 
                                                     }
@@ -347,20 +363,20 @@ const ImportPage: React.FC<ImportPageProps> = ({
             <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
                 {appState === 'verifying_import' ? (
                     <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                        <ImportVerification rules={rules} onSaveRule={onSaveRule} onDeleteRule={onDeleteRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} counterparties={counterparties} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} ruleCategories={ruleCategories} onSaveRuleCategory={onSaveRuleCategory} onSaveCounterparties={onSaveCounterparties} onSaveLocations={onSaveLocations} onSaveCategories={onSaveCategories} />
+                        {/* Fix: Pass missing bulk save props to ImportVerification to resolve App.tsx type mismatch */}
+                        <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} counterparties={counterparties} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} ruleCategories={ruleCategories} onSaveRuleCategory={onSaveRuleCategory} onSaveCounterparties={onSaveCounterparties} onSaveLocations={onSaveLocations} onSaveCategories={onSaveCategories} />
                     </div>
                 ) : appState === 'post_import_edit' ? (
                     <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-0 h-full">
                         <div className="flex justify-between items-center mb-6 bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm">
                             <div>
                                 <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> Final Polish</h2>
-                                <p className="text-sm text-slate-500">Review {stagedImportedTxs.length} ingested transactions.</p>
+                                <p className="text-sm text-slate-500">Review {importedTxIds.size} ingested transactions.</p>
                             </div>
-                            <button onClick={() => { setAppState('idle'); setStagedImportedTxs([]); }} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Finish</button>
+                            <button onClick={() => setAppState('idle')} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Finish</button>
                         </div>
                         <div className="flex-1 overflow-hidden border border-slate-200 rounded-2xl relative shadow-inner">
-                            {/* Render using the staged local state instead of filtering the global prop to ensure instant UI responsiveness */}
-                            <TransactionTable transactions={stagedImportedTxs} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
+                            <TransactionTable transactions={recentGlobalTransactions.filter(tx => tx && importedTxIds.has(tx.id))} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
                         </div>
                     </div>
                 ) : (

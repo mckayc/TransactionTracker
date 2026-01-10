@@ -92,8 +92,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 ];
                 setConditions(newConditions);
                 setSetCategoryId(ctx.categoryId || ctx.setCategoryId || '');
-                // Backwards compatibility for legacy setPayeeId
-                setSetCounterpartyId(ctx.counterpartyId || ctx.setCounterpartyId || ctx.setPayeeId || '');
+                setSetCounterpartyId(ctx.counterpartyId || ctx.setCounterpartyId || '');
                 setSetLocationId(ctx.locationId || ctx.setLocationId || '');
                 setSetUserId(ctx.userId || ctx.setUserId || '');
                 setSetTransactionTypeId(ctx.typeId || ctx.setTransactionTypeId || '');
@@ -154,7 +153,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
     };
 
     const getRulePayload = (): ReconciliationRule => ({
-        id: isCollision ? collidingRule!.id : ruleId,
+        id: isCollision ? collidingRule.id : ruleId,
         name: name.trim(),
         ruleCategoryId,
         conditions,
