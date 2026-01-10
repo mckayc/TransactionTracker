@@ -1,6 +1,6 @@
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { BusinessNote, BusinessProfile } from '../types';
-// Fixed: Removed non-existent FilterIcon and added missing DatabaseIcon
 import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, BoxIcon, InfoIcon, RobotIcon, CopyIcon, FileTextIcon, SaveIcon, DatabaseIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
@@ -99,14 +99,19 @@ const BlockEditor: React.FC<{
     onChange: (content: string) => void;
     onCopyFiltered: (text: string) => void;
 }> = ({ initialContent, onChange, onCopyFiltered }) => {
+    // Local state for blocks to ensure fast typing
     const [blocks, setBlocks] = useState<ContentBlock[]>(() => parseMarkdownToBlocks(initialContent));
     const [focusedId, setFocusedId] = useState<string | null>(null);
 
+    // Sync back to parent debounced
     useEffect(() => {
-        const markdown = serializeBlocksToMarkdown(blocks);
-        if (markdown !== initialContent) {
-            onChange(markdown);
-        }
+        const timer = setTimeout(() => {
+            const markdown = serializeBlocksToMarkdown(blocks);
+            if (markdown !== initialContent) {
+                onChange(markdown);
+            }
+        }, 300);
+        return () => clearTimeout(timer);
     }, [blocks]);
 
     const updateBlock = (id: string, updates: Partial<ContentBlock>) => {
@@ -151,10 +156,19 @@ const BlockEditor: React.FC<{
         
         if (e.key === 'Enter') {
             e.preventDefault();
-            addBlock(b.id, b.type, b.indent);
+            // If pressing enter on an empty list item, turn it back into a paragraph (double enter to exit list)
+            if (b.text === '' && b.type !== 'paragraph') {
+                updateBlock(b.id, { type: 'paragraph' });
+            } else {
+                addBlock(b.id, b.type, b.indent);
+            }
         } else if (e.key === 'Backspace' && b.text === '') {
             e.preventDefault();
-            deleteBlock(b.id);
+            if (b.type !== 'paragraph') {
+                updateBlock(b.id, { type: 'paragraph' });
+            } else {
+                deleteBlock(b.id);
+            }
         } else if (e.key === 'Tab') {
             e.preventDefault();
             const newIndent = e.shiftKey ? Math.max(0, b.indent - 1) : Math.min(5, b.indent + 1);
@@ -178,21 +192,14 @@ const BlockEditor: React.FC<{
         setBlocks([...incomplete, ...complete]);
     };
 
-    const handleCopyForAi = () => {
-        const text = blocks
-            .filter(b => !b.checked)
-            .map(b => b.text)
-            .join('\n');
-        onCopyFiltered(text);
-    };
-
     return (
         <div className="flex flex-col h-full bg-white overflow-hidden rounded-2xl border border-slate-200 shadow-inner">
             <div className="flex items-center justify-between p-1.5 bg-slate-50 border-b border-slate-200 sticky top-0 z-20">
                 <div className="flex items-center gap-1">
                     <div className="flex bg-white rounded-lg border border-slate-200 p-0.5 shadow-sm">
-                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all" title="Checkbox Item"><ChecklistIcon className="w-3.5 h-3.5" /></button>
-                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all" title="Bullet Item"><ListIcon className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'paragraph' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all font-black text-[9px] px-2" title="Text">TXT</button>
+                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all" title="Checkbox"><ChecklistIcon className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all" title="Bullet"><ListIcon className="w-3.5 h-3.5" /></button>
                         <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'h1' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all font-black text-[10px] px-2" title="Header">H1</button>
                     </div>
                 </div>
@@ -201,7 +208,7 @@ const BlockEditor: React.FC<{
                         <ArrowDownIcon className="w-3 h-3" /> Sink Done
                     </button>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                    <button type="button" onClick={handleCopyForAi} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md">
+                    <button type="button" onClick={() => onCopyFiltered(serializeBlocksToMarkdown(blocks.filter(b => !b.checked)))} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md">
                         <RobotIcon className="w-3 h-3" /> Copy for AI
                     </button>
                 </div>
@@ -244,16 +251,18 @@ const BlockEditor: React.FC<{
                                 const val = e.target.value;
                                 let type = b.type;
                                 let text = val;
-                                if (b.type === 'paragraph') {
-                                    if (val === '- ') { type = 'bullet'; text = ''; }
-                                    else if (val === '[] ') { type = 'todo'; text = ''; }
-                                    else if (val === '# ') { type = 'h1'; text = ''; }
-                                    else if (val === '1. ') { type = 'number'; text = ''; }
+                                // Simple auto-formatting on space
+                                if (b.type === 'paragraph' && text.length === 2) {
+                                    if (text === '- ') { type = 'bullet'; text = ''; }
+                                    else if (text === '# ') { type = 'h1'; text = ''; }
+                                    else if (text === '1.') { type = 'number'; text = ''; }
+                                } else if (b.type === 'paragraph' && text.length === 3) {
+                                    if (text === '[] ') { type = 'todo'; text = ''; }
                                 }
                                 updateBlock(b.id, { text, type });
                             }}
                             onKeyDown={(e) => handleKeyDown(e, b)}
-                            placeholder="..."
+                            placeholder={b.type === 'paragraph' ? 'Type text or "/" for commands' : ''}
                             rows={1}
                             className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] transition-all duration-200 ${b.type === 'h1' ? 'text-base font-black text-slate-800' : 'text-sm font-medium'} ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
                             onInput={(e) => {
@@ -276,6 +285,12 @@ const JournalPage: React.FC<JournalPageProps> = ({ notes, onUpdateNotes, profile
     const [selectedTypeFilter, setSelectedTypeFilter] = useState<string | null>(null);
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+    // BUFFERED LOCAL STATE to prevent typing lag
+    const [localTitle, setLocalTitle] = useState('');
+    const [localContent, setLocalContent] = useState('');
+    const [localType, setLocalType] = useState<'bug' | 'note' | 'idea' | 'task'>('note');
+    const [localIsCompleted, setLocalIsCompleted] = useState(false);
+
     const filteredNotes = useMemo(() => {
         return notes
             .filter(n => {
@@ -291,11 +306,43 @@ const JournalPage: React.FC<JournalPageProps> = ({ notes, onUpdateNotes, profile
 
     const activeNote = useMemo(() => notes.find(n => n.id === selectedNoteId), [notes, selectedNoteId]);
 
+    // Initialize local state when selecting a new note
+    useEffect(() => {
+        if (activeNote) {
+            setLocalTitle(activeNote.title);
+            setLocalContent(activeNote.content);
+            setLocalType(activeNote.type);
+            setLocalIsCompleted(activeNote.isCompleted);
+        }
+    }, [selectedNoteId]);
+
+    // DEBOUNCED GLOBAL SYNC
+    useEffect(() => {
+        if (!selectedNoteId) return;
+        const timer = setTimeout(() => {
+            const current = notes.find(n => n.id === selectedNoteId);
+            if (!current) return;
+            
+            // Only update if something actually changed
+            if (current.title !== localTitle || current.content !== localContent || current.type !== localType || current.isCompleted !== localIsCompleted) {
+                onUpdateNotes(notes.map(n => n.id === selectedNoteId ? { 
+                    ...n, 
+                    title: localTitle, 
+                    content: localContent, 
+                    type: localType, 
+                    isCompleted: localIsCompleted,
+                    updatedAt: new Date().toISOString() 
+                } : n));
+            }
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, [localTitle, localContent, localType, localIsCompleted, selectedNoteId]);
+
     const handleCreateNote = () => {
         const id = generateUUID();
         const newNote: BusinessNote = {
             id,
-            title: 'New Log Entry',
+            title: 'New Entry',
             content: '',
             type: selectedTypeFilter as any || 'note',
             priority: 'medium',
@@ -305,11 +352,6 @@ const JournalPage: React.FC<JournalPageProps> = ({ notes, onUpdateNotes, profile
         };
         onUpdateNotes([...notes, newNote]);
         setSelectedNoteId(id);
-    };
-
-    const handleUpdateActiveNote = (updates: Partial<BusinessNote>) => {
-        if (!selectedNoteId) return;
-        onUpdateNotes(notes.map(n => n.id === selectedNoteId ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n));
     };
 
     const handleCopyForAI = (text: string) => {
@@ -394,13 +436,13 @@ const JournalPage: React.FC<JournalPageProps> = ({ notes, onUpdateNotes, profile
                                 <div className="flex-1 min-w-0 mr-4">
                                     <input 
                                         type="text" 
-                                        value={activeNote.title} 
-                                        onChange={e => handleUpdateActiveNote({ title: e.target.value })} 
+                                        value={localTitle} 
+                                        onChange={e => setLocalTitle(e.target.value)} 
                                         className="text-xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full placeholder:text-slate-300" 
                                         placeholder="Entry Title" 
                                     />
                                     <div className="flex items-center gap-2 mt-1.5">
-                                        <select value={activeNote.type} onChange={e => handleUpdateActiveNote({ type: e.target.value as any })} className="text-[8px] font-black uppercase bg-slate-100 border-none rounded-md py-0.5 px-1.5 focus:ring-0 cursor-pointer text-slate-600">
+                                        <select value={localType} onChange={e => setLocalType(e.target.value as any)} className="text-[8px] font-black uppercase bg-slate-100 border-none rounded-md py-0.5 px-1.5 focus:ring-0 cursor-pointer text-slate-600">
                                             <option value="note">Journal</option>
                                             <option value="bug">Issue/Bug</option>
                                             <option value="idea">Proposal</option>
@@ -408,11 +450,11 @@ const JournalPage: React.FC<JournalPageProps> = ({ notes, onUpdateNotes, profile
                                         </select>
                                         <div className="h-2 w-px bg-slate-200" />
                                         <button 
-                                            onClick={() => handleUpdateActiveNote({ isCompleted: !activeNote.isCompleted })} 
-                                            className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md shadow-sm transition-all flex items-center gap-1.5 ${activeNote.isCompleted ? 'bg-green-600 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                                            onClick={() => setLocalIsCompleted(!localIsCompleted)} 
+                                            className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md shadow-sm transition-all flex items-center gap-1.5 ${localIsCompleted ? 'bg-green-600 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
                                         >
-                                            {activeNote.isCompleted ? <CheckCircleIcon className="w-2.5 h-2.5" /> : null}
-                                            {activeNote.isCompleted ? 'Resolved' : 'Mark Resolved'}
+                                            {localIsCompleted ? <CheckCircleIcon className="w-2.5 h-2.5" /> : null}
+                                            {localIsCompleted ? 'Resolved' : 'Mark Resolved'}
                                         </button>
                                     </div>
                                 </div>
@@ -422,7 +464,7 @@ const JournalPage: React.FC<JournalPageProps> = ({ notes, onUpdateNotes, profile
                                 </div>
                             </div>
                             <div className="flex-1 overflow-hidden p-3 bg-slate-50/10">
-                                <BlockEditor key={selectedNoteId} initialContent={activeNote.content} onChange={(newContent) => handleUpdateActiveNote({ content: newContent })} onCopyFiltered={handleCopyForAI} />
+                                <BlockEditor key={selectedNoteId} initialContent={activeNote.content} onChange={(newContent) => setLocalContent(newContent)} onCopyFiltered={handleCopyForAI} />
                             </div>
                         </div>
                     ) : (
