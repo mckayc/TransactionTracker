@@ -69,6 +69,18 @@ export const api = {
         await fetchWithRetry(`/api/transactions/${id}`, { method: 'DELETE' });
     },
 
+    saveRule: async (rule: any): Promise<void> => {
+        await fetchWithRetry('/api/reconciliation-rules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rule),
+        });
+    },
+
+    deleteRule: async (id: string): Promise<void> => {
+        await fetchWithRetry(`/api/reconciliation-rules/${id}`, { method: 'DELETE' });
+    },
+
     save: async (key: string, value: any): Promise<void> => {
         await fetchWithRetry(`/api/data/${key}`, {
             method: 'POST',

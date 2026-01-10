@@ -46,6 +46,10 @@ interface ImportPageProps {
   // Add missing ruleCategories and onSaveRuleCategory to props
   ruleCategories: RuleCategory[];
   onSaveRuleCategory: (rc: RuleCategory) => void;
+  // Added bulk save props to resolve App.tsx type mismatch
+  onSaveCounterparties: (ps: Counterparty[]) => void;
+  onSaveLocations: (ls: Location[]) => void;
+  onSaveCategories: (cs: Category[]) => void;
 }
 
 const ImportPage: React.FC<ImportPageProps> = ({ 
@@ -53,7 +57,9 @@ const ImportPage: React.FC<ImportPageProps> = ({
     // Destructure new props
     onSaveLocation, onSaveUser,
     onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule, onAddAccount,
-    ruleCategories, onSaveRuleCategory
+    ruleCategories, onSaveRuleCategory,
+    // Destructure bulk save props
+    onSaveCounterparties, onSaveLocations, onSaveCategories
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -357,9 +363,8 @@ const ImportPage: React.FC<ImportPageProps> = ({
             <div className="flex-1 min-h-0 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
                 {appState === 'verifying_import' ? (
                     <div className="flex-1 min-h-0 h-full flex flex-col overflow-hidden">
-                        {/* Pass onSaveLocation and onSaveUser to ImportVerification */}
-                        {/* Fix: Pass ruleCategories and onSaveRuleCategory to ImportVerification */}
-                        <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} counterparties={counterparties} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} ruleCategories={ruleCategories} onSaveRuleCategory={onSaveRuleCategory} />
+                        {/* Fix: Pass missing bulk save props to ImportVerification to resolve App.tsx type mismatch */}
+                        <ImportVerification rules={rules} onSaveRule={onSaveRule} initialTransactions={rawTransactionsToVerify} onComplete={handleVerificationComplete} onCancel={() => setAppState('idle')} accounts={accounts} categories={categories} transactionTypes={transactionTypes} counterparties={counterparties} locations={locations} users={users} tags={tags} existingTransactions={recentGlobalTransactions} onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onSaveTag={onSaveTag} onAddTransactionType={onAddTransactionType} ruleCategories={ruleCategories} onSaveRuleCategory={onSaveRuleCategory} onSaveCounterparties={onSaveCounterparties} onSaveLocations={onSaveLocations} onSaveCategories={onSaveCategories} />
                     </div>
                 ) : appState === 'post_import_edit' ? (
                     <div className="flex-1 flex flex-col overflow-hidden animate-fade-in min-h-0 h-full">

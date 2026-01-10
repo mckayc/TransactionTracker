@@ -39,6 +39,10 @@ interface ImportVerificationProps {
     onAddTransactionType: (type: TransactionType) => void;
     existingTransactions: Transaction[];
     rules: ReconciliationRule[];
+    // Added bulk save props to resolve interface mismatch when called from ImportPage
+    onSaveCategories: (cs: Category[]) => void;
+    onSaveCounterparties: (ps: Counterparty[]) => void;
+    onSaveLocations: (ls: Location[]) => void;
 }
 
 type SortKey = 'date' | 'description' | 'counterpartyId' | 'categoryId' | 'amount' | '';
@@ -98,7 +102,9 @@ const RawDataDrawer: React.FC<{ tx: VerifiableTransaction | null; onClose: () =>
 };
 
 const ImportVerification: React.FC<ImportVerificationProps> = ({ 
-    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, counterparties, locations, users, tags, ruleCategories, onSaveRuleCategory, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, existingTransactions, rules
+    initialTransactions, onComplete, onCancel, accounts, categories, transactionTypes, counterparties, locations, users, tags, ruleCategories, onSaveRuleCategory, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onSaveLocation, onSaveUser, onAddTransactionType, existingTransactions, rules,
+    // Destructure bulk save props
+    onSaveCategories, onSaveCounterparties, onSaveLocations
 }) => {
     const [transactions, setTransactions] = useState<VerifiableTransaction[]>([]);
     const [sortKey, setSortKey] = useState<SortKey>('date');
@@ -198,6 +204,13 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
         return sortedTransactions.find(t => t.tempId === inspectingRulesTxId);
     }, [sortedTransactions, inspectingRulesTxId]);
 
+    const handleFinalCommit = () => {
+        const selectedDrafts = transactions.filter(t => !t.isIgnored);
+        
+        // Finalize the verified list
+        onComplete(selectedDrafts);
+    };
+
     return (
         <div className="space-y-2 flex flex-col h-full w-full min-h-0 overflow-hidden">
             <div className="p-3 bg-white border border-slate-200 rounded-2xl flex flex-col sm:flex-row justify-between items-center gap-3 flex-shrink-0 shadow-sm">
@@ -210,7 +223,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
                     <button onClick={onCancel} className="px-4 py-1.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-[10px] uppercase hover:bg-slate-200">Cancel</button>
-                    <button onClick={() => onComplete(transactions.filter(t => !t.isIgnored))} className="px-6 py-1.5 bg-indigo-600 text-white font-black rounded-xl shadow-md text-[10px] uppercase hover:bg-indigo-700">Finalize Merge</button>
+                    <button onClick={handleFinalCommit} className="px-6 py-1.5 bg-indigo-600 text-white font-black rounded-xl shadow-md text-[10px] uppercase hover:bg-indigo-700">Finalize Merge</button>
                 </div>
             </div>
 

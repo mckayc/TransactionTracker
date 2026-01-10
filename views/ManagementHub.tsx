@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo } from 'react';
-import type { Category, Tag, Counterparty, User, TransactionType, Transaction, AccountType, Account, Location } from '../types';
+import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, Location } from '../types';
 import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, CloseIcon, BoxIcon, MapPinIcon, TrashIcon, CreditCardIcon, SearchCircleIcon, SparklesIcon } from '../components/Icons';
 import EntityEditor, { EntityType } from '../components/EntityEditor';
 
@@ -30,6 +31,8 @@ interface ManagementHubProps {
     accounts: Account[];
     onSaveAccount: (a: Account) => void;
     onDeleteAccount: (id: string) => void;
+    onSaveCategories: (cs: Category[]) => void;
+    onSaveLocations: (ls: Location[]) => void;
 }
 
 const TreeNode: React.FC<{ 
@@ -41,18 +44,20 @@ const TreeNode: React.FC<{
     usageMap: Map<string, number>;
     expandedIds: Set<string>;
     onToggleExpand: (id: string) => void;
-    bulkSelectedIds: Set<string>; // Changed from isBulkSelected: boolean
+    bulkSelectedIds: Set<string>; 
     onToggleBulk: (id: string) => void;
     searchFilter: string;
     onDelete: (id: string) => void;
 }> = ({ item, all, level, selectedId, onSelect, usageMap, expandedIds, onToggleExpand, bulkSelectedIds, onToggleBulk, searchFilter, onDelete }) => {
-    const children = all.filter(x => x.parentId === item.id).sort((a,b) => a.name.localeCompare(b.name));
+    // Fixed: Use property check 'parentId' in x to handle union types without parentId (like Tag)
+    const children = all.filter(x => 'parentId' in x && x.parentId === item.id).sort((a,b) => a.name.localeCompare(b.name));
     
     const matchesSearch = item.name.toLowerCase().includes(searchFilter.toLowerCase());
     
     const hasVisibleChild = (node: any): boolean => {
         if (node.name.toLowerCase().includes(searchFilter.toLowerCase())) return true;
-        const sub = all.filter(x => x.parentId === node.id);
+        // Fixed: Use property check 'parentId' in x to handle union types
+        const sub = all.filter(x => 'parentId' in x && x.parentId === node.id);
         return sub.some(s => hasVisibleChild(s));
     };
 
@@ -75,7 +80,7 @@ const TreeNode: React.FC<{
                         checked={isChecked} 
                         onClick={(e) => e.stopPropagation()} 
                         onChange={() => onToggleBulk(item.id)} 
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50"
                     />
                     {children.length > 0 ? (
                         <button 
@@ -87,34 +92,20 @@ const TreeNode: React.FC<{
                     ) : (
                         <div className="w-5" />
                     )}
-                    <span className={`text-sm font-bold truncate ${selectedId === item.id ? 'text-indigo-900' : 'text-slate-700'} ${matchesSearch && searchFilter ? 'bg-yellow-100 ring-2 ring-yellow-100 rounded' : ''}`}>{item.name}</span>
+                    <span className={`text-sm font-bold truncate ${selectedId === item.id ? 'text-indigo-900' : 'text-slate-700'} ${matchesSearch && searchFilter ? 'bg-yellow-100' : ''}`}>{item.name}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-                        className="p-1.5 text-slate-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50"
-                        title="Delete Item"
-                    >
-                        <TrashIcon className="w-4 h-4" />
-                    </button>
-                    <span className="text-[9px] font-black bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded-full">{count}</span>
+                <div className="flex items-center gap-3">
+                    {count > 0 && <span className="text-[10px] font-black bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">{count}</span>}
+                    <button onClick={(e) => { e.stopPropagation(); if(confirm(`Delete "${item.name}"?`)) onDelete(item.id); }} className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-300 hover:text-red-500 transition-all"><TrashIcon className="w-4 h-4"/></button>
                 </div>
             </div>
             {isExpanded && children.map(child => (
                 <TreeNode 
-                    key={child.id} 
-                    item={child} 
-                    all={all} 
-                    level={level + 1} 
-                    selectedId={selectedId} 
-                    onSelect={onSelect} 
-                    usageMap={usageMap}
-                    expandedIds={expandedIds}
-                    onToggleExpand={onToggleExpand}
-                    bulkSelectedIds={bulkSelectedIds}
-                    onToggleBulk={onToggleBulk}
-                    searchFilter={searchFilter}
-                    onDelete={onDelete}
+                    key={child.id} item={child} all={all} level={level + 1} 
+                    selectedId={selectedId} onSelect={setSelectedId} 
+                    usageMap={usageMap} expandedIds={expandedIds} 
+                    onToggleExpand={onToggleExpand} bulkSelectedIds={bulkSelectedIds}
+                    onToggleBulk={onToggleBulk} searchFilter={searchFilter} onDelete={onDelete}
                 />
             ))}
         </div>
@@ -122,376 +113,196 @@ const TreeNode: React.FC<{
 };
 
 const ManagementHub: React.FC<ManagementHubProps> = (props) => {
-    const { 
-        transactions, categories, onSaveCategory, onDeleteCategory, tags, onSaveTag, onDeleteTag,
-        counterparties, onSaveCounterparty, onDeleteCounterparty, onSaveCounterparties,
-        locations, onSaveLocation, onDeleteLocation, users, onSaveUser, onDeleteUser,
-        transactionTypes, onSaveTransactionType, onDeleteTransactionType,
-        accountTypes, onSaveAccountType, onDeleteAccountType, accounts, onSaveAccount, onDeleteAccount
-    } = props;
-
     const [activeTab, setActiveTab] = useState<EntityType>('categories');
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [search, setSearch] = useState('');
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(new Set());
-    const [searchFilter, setSearchFilter] = useState('');
-    
-    // Move Modal State
-    const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
-    const [moveSearch, setMoveSearch] = useState('');
 
-    const usageCounts = useMemo(() => {
-        const counts = {
-            categories: new Map<string, number>(),
-            tags: new Map<string, number>(),
-            counterparties: new Map<string, number>(),
-            locations: new Map<string, number>(),
-            users: new Map<string, number>(),
-            transactionTypes: new Map<string, number>(),
-            accountTypes: new Map<string, number>(),
-            accounts: new Map<string, number>()
-        };
-        transactions.forEach(tx => {
-            counts.categories.set(tx.categoryId, (counts.categories.get(tx.categoryId) || 0) + 1);
-            tx.tagIds?.forEach(tid => counts.tags.set(tid, (counts.tags.get(tid) || 0) + 1));
-            if (tx.counterpartyId) counts.counterparties.set(tx.counterpartyId, (counts.counterparties.get(tx.counterpartyId) || 0) + 1);
-            if (tx.locationId) counts.locations.set(tx.locationId, (counts.locations.get(tx.locationId) || 0) + 1);
-            if (tx.userId) counts.users.set(tx.userId, (counts.users.get(tx.userId) || 0) + 1);
-            counts.transactionTypes.set(tx.typeId, (counts.transactionTypes.get(tx.typeId) || 0) + 1);
-            if (tx.accountId) counts.accounts.set(tx.accountId, (counts.accounts.get(tx.accountId) || 0) + 1);
+    const usageMap = useMemo(() => {
+        const map = new Map<string, number>();
+        props.transactions.forEach(tx => {
+            const keys = [];
+            if (activeTab === 'categories') keys.push(tx.categoryId);
+            else if (activeTab === 'counterparties') keys.push(tx.counterpartyId);
+            else if (activeTab === 'locations') keys.push(tx.locationId);
+            else if (activeTab === 'tags' && tx.tagIds) keys.push(...tx.tagIds);
+            else if (activeTab === 'users') keys.push(tx.userId);
+            else if (activeTab === 'transactionTypes') keys.push(tx.typeId);
+            else if (activeTab === 'accounts') keys.push(tx.accountId);
+            
+            keys.forEach(k => { if(k) map.set(k, (map.get(k) || 0) + 1); });
         });
-        accounts.forEach(acc => {
-            counts.accountTypes.set(acc.accountTypeId, (counts.accountTypes.get(acc.accountTypeId) || 0) + 1);
-        });
-        return counts;
-    }, [transactions, accounts]);
+        return map;
+    }, [props.transactions, activeTab]);
 
-    const currentList = useMemo(() => {
-        let list: any[] = [];
+    const activeList = useMemo(() => {
         switch (activeTab) {
-            case 'categories': list = categories; break;
-            case 'tags': list = tags; break;
-            case 'counterparties': list = counterparties; break;
-            case 'locations': list = locations; break;
-            case 'users': list = users; break;
-            case 'transactionTypes': list = transactionTypes; break;
-            case 'accountTypes': list = accountTypes; break;
-            case 'accounts': list = accounts; break;
+            case 'categories': return props.categories;
+            case 'tags': return props.tags;
+            case 'counterparties': return props.counterparties;
+            case 'locations': return props.locations;
+            case 'users': return props.users;
+            case 'transactionTypes': return props.transactionTypes;
+            case 'accountTypes': return props.accountTypes;
+            case 'accounts': return props.accounts;
+            default: return [];
         }
-        return [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    }, [activeTab, categories, tags, counterparties, locations, users, transactionTypes, accountTypes, accounts]);
+    }, [activeTab, props]);
 
-    const handleSelect = (id: string) => {
-        setSelectedId(id);
-        setIsCreating(false);
-    };
-
-    const handleBulkToggle = (id: string) => {
-        const next = new Set(bulkSelectedIds);
-        if (next.has(id)) next.delete(id); else next.add(id);
-        setBulkSelectedIds(next);
-    };
-
-    const handleDeleteSingle = (id: string) => {
-        const count = (usageCounts as any)[activeTab].get(id) || 0;
-        if (count > 0) {
-            alert(`This ${activeTab.slice(0, -1)} is currently used in ${count} records. Re-categorize those items before deleting.`);
-            return;
-        }
-        if (!confirm(`Delete this ${activeTab.slice(0, -1)}?`)) return;
-
-        switch (activeTab) {
-            case 'categories': onDeleteCategory(id); break;
-            case 'tags': onDeleteTag(id); break;
-            case 'counterparties': onDeleteCounterparty(id); break;
-            case 'locations': onDeleteLocation(id); break;
-            case 'users': onDeleteUser(id); break;
-            case 'transactionTypes': onDeleteTransactionType(id); break;
-            case 'accountTypes': onDeleteAccountType(id); break;
-            case 'accounts': onDeleteAccount(id); break;
-        }
-        if (selectedId === id) setSelectedId(null);
-    };
-
-    const handleBulkDelete = () => {
-        if (bulkSelectedIds.size === 0) return;
-        if (!confirm(`Delete ${bulkSelectedIds.size} selected items? (Only unused items will be removed)`)) return;
-        bulkSelectedIds.forEach(id => {
-            const count = (usageCounts as any)[activeTab].get(id) || 0;
-            if (count === 0) {
-                switch (activeTab) {
-                    case 'categories': onDeleteCategory(id); break;
-                    case 'tags': onDeleteTag(id); break;
-                    case 'counterparties': onDeleteCounterparty(id); break;
-                    case 'locations': onDeleteLocation(id); break;
-                    case 'users': onDeleteUser(id); break;
-                    case 'transactionTypes': onDeleteTransactionType(id); break;
-                    case 'accountTypes': onDeleteAccountType(id); break;
-                    case 'accounts': onDeleteAccount(id); break;
-                }
-            }
-        });
-        setBulkSelectedIds(new Set());
-    };
-
-    const handleConfirmMove = (targetParentId: string | undefined) => {
-        const updates = counterparties.map(c => 
-            bulkSelectedIds.has(c.id) ? { ...c, parentId: targetParentId } : c
-        );
-        onSaveCounterparties(updates);
-        setBulkSelectedIds(new Set());
-        setIsMoveModalOpen(false);
-    };
-
-    const handleNew = () => {
-        setSelectedId(null);
-        setIsCreating(true);
-    };
-
-    const handleSaveEntity = (type: EntityType, payload: any) => {
+    const handleSave = (type: EntityType, payload: any) => {
         switch (type) {
-            case 'categories': onSaveCategory(payload); break;
-            case 'tags': onSaveTag(payload); break;
-            case 'counterparties': onSaveCounterparty(payload); break;
-            case 'locations': onSaveLocation(payload); break;
-            case 'users': onSaveUser(payload); break;
-            case 'transactionTypes': onSaveTransactionType(payload); break;
-            case 'accountTypes': onSaveAccountType(payload); break;
-            case 'accounts': onSaveAccount(payload); break;
+            case 'categories': props.onSaveCategory(payload); break;
+            case 'tags': props.onSaveTag(payload); break;
+            case 'counterparties': props.onSaveCounterparty(payload); break;
+            case 'locations': props.onSaveLocation(payload); break;
+            case 'users': props.onSaveUser(payload); break;
+            case 'transactionTypes': props.onSaveTransactionType(payload); break;
+            case 'accountTypes': props.onSaveAccountType(payload); break;
+            case 'accounts': props.onSaveAccount(payload); break;
         }
         setIsCreating(false);
         setSelectedId(payload.id);
     };
 
-    const rootItems = useMemo(() => {
-        if (activeTab === 'categories' || activeTab === 'counterparties') {
-            return currentList.filter(x => !x.parentId);
+    const handleDelete = (id: string) => {
+        switch (activeTab) {
+            case 'categories': props.onDeleteCategory(id); break;
+            case 'tags': props.onDeleteTag(id); break;
+            case 'counterparties': props.onDeleteCounterparty(id); break;
+            case 'locations': props.onDeleteLocation(id); break;
+            case 'users': props.onDeleteUser(id); break;
+            case 'transactionTypes': props.onDeleteTransactionType(id); break;
+            case 'accountTypes': props.onDeleteAccountType(id); break;
+            case 'accounts': props.onDeleteAccount(id); break;
         }
-        return currentList;
-    }, [currentList, activeTab]);
-
-    const potentialParents = useMemo(() => {
-        // Prevent moving an item to one of the currently selected items (avoids circular references simply)
-        return counterparties
-            .filter(c => !bulkSelectedIds.has(c.id))
-            .filter(c => c.name.toLowerCase().includes(moveSearch.toLowerCase()))
-            .sort((a, b) => a.name.localeCompare(b.name));
-    }, [counterparties, bulkSelectedIds, moveSearch]);
-
-    const getPanelSubtitle = (type: EntityType) => {
-        if (type === 'transactionTypes') return 'Transaction Types System Logic';
-        if (type === 'accountTypes') return 'Account Types System Logic';
-        return `${type.slice(0, -1)} System Logic`;
+        if (selectedId === id) setSelectedId(null);
     };
+
+    const handleToggleBulk = (id: string) => {
+        const next = new Set(bulkSelectedIds);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        setBulkSelectedIds(next);
+    };
+
+    const handleBulkAction = (action: 'delete' | 'move') => {
+        if (action === 'delete') {
+            if (confirm(`Permanently purge ${bulkSelectedIds.size} records?`)) {
+                bulkSelectedIds.forEach(id => handleDelete(id));
+                setBulkSelectedIds(new Set());
+            }
+        }
+    };
+
+    const TABS: { id: EntityType; label: string; icon: React.ReactNode }[] = [
+        { id: 'categories', label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
+        { id: 'counterparties', label: 'Counterparties', icon: <BoxIcon className="w-4 h-4" /> },
+        { id: 'locations', label: 'Locations', icon: <MapPinIcon className="w-4 h-4" /> },
+        { id: 'tags', label: 'Labels & Tags', icon: <ShieldCheckIcon className="w-4 h-4" /> },
+        { id: 'accounts', label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" /> },
+        { id: 'transactionTypes', label: 'Tx Types', icon: <ChecklistIcon className="w-4 h-4" /> },
+        { id: 'users', label: 'Identities', icon: <UsersIcon className="w-4 h-4" /> }
+    ];
 
     return (
         <div className="h-full flex flex-col gap-6">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-end flex-shrink-0">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">System Organization</h1>
-                    <p className="text-sm text-slate-500">Master entity and categorization management.</p>
+                    <h1 className="text-3xl font-black text-slate-800 tracking-tight">Identity Hub</h1>
+                    <p className="text-sm text-slate-500">Manage institutional entities, hierarchies, and system branding.</p>
                 </div>
-            </div>
-
-            <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200 overflow-x-auto">
-                {[
-                    { id: 'categories', label: 'Categories', icon: <TagIcon className="w-4 h-4" /> },
-                    { id: 'counterparties', label: 'Counterparties', icon: <UsersIcon className="w-4 h-4" /> },
-                    { id: 'accounts', label: 'Accounts', icon: <CreditCardIcon className="w-4 h-4" /> },
-                    { id: 'tags', label: 'Tags', icon: <TagIcon className="w-4 h-4" /> },
-                    { id: 'locations', label: 'Locations', icon: <MapPinIcon className="w-4 h-4" /> },
-                    { id: 'users', label: 'Users', icon: <UserGroupIcon className="w-4 h-4" /> },
-                    { id: 'transactionTypes', label: 'Transaction Types', icon: <ChecklistIcon className="w-4 h-4" /> },
-                    { id: 'accountTypes', label: 'Account Types', icon: <ShieldCheckIcon className="w-4 h-4" /> },
-                ].map(tab => (
-                    <button 
-                        key={tab.id}
-                        onClick={() => { setActiveTab(tab.id as EntityType); setSelectedId(null); setIsCreating(false); setBulkSelectedIds(new Set()); setSearchFilter(''); }}
-                        className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}
-                    >
-                        {tab.icon} {tab.label}
+                <div className="flex gap-3">
+                    {bulkSelectedIds.size > 0 && (
+                        <div className="flex bg-slate-900 text-white p-1 rounded-2xl shadow-xl animate-slide-up">
+                            <span className="px-4 py-2 text-[10px] font-black uppercase tracking-widest">{bulkSelectedIds.size} Selected</span>
+                            <button onClick={() => handleBulkAction('delete')} className="p-2 hover:bg-white/10 rounded-xl text-rose-400" title="Mass Delete"><TrashIcon className="w-4 h-4"/></button>
+                            <button onClick={() => setBulkSelectedIds(new Set())} className="p-2 text-slate-500 hover:text-white"><CloseIcon className="w-4 h-4"/></button>
+                        </div>
+                    )}
+                    <button onClick={() => { setIsCreating(true); setSelectedId(null); }} className="flex items-center gap-2 px-8 py-3 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all active:scale-95">
+                        <AddIcon className="w-5 h-5" /> Register Entity
                     </button>
-                ))}
+                </div>
             </div>
 
             <div className="flex-1 flex gap-6 min-h-0 overflow-hidden pb-10">
-                {/* COLUMN 1: STREAM */}
-                <div className="w-96 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden">
-                    <div className="p-4 border-b space-y-4 bg-slate-50">
-                        <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-3">
-                                <input 
-                                    type="checkbox" 
-                                    checked={bulkSelectedIds.size === currentList.length && currentList.length > 0} 
-                                    onChange={() => setBulkSelectedIds(bulkSelectedIds.size === currentList.length ? new Set() : new Set(currentList.map(x => x.id)))} 
-                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-50"
-                                />
-                                <h3 className="font-black text-slate-700 capitalize tracking-tight">
-                                    {activeTab === 'transactionTypes' ? 'Transaction Types' : activeTab === 'accountTypes' ? 'Account Types' : activeTab}
-                                </h3>
-                            </div>
-                            <button onClick={handleNew} className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 transition-all shadow-md active:scale-95">
-                                <AddIcon className="w-4 h-4" />
+                {/* COLUMN 1: TAXONOMY */}
+                <div className="w-64 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col p-4 flex-shrink-0">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 px-2">Taxonomy Clusters</p>
+                    <div className="space-y-1">
+                        {TABS.map(tab => (
+                            <button 
+                                key={tab.id} 
+                                onClick={() => { setActiveTab(tab.id); setSelectedId(null); setIsCreating(false); setBulkSelectedIds(new Set()); }} 
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab.id ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-100' : 'text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                {tab.icon} {tab.label}
                             </button>
-                        </div>
-                        <div className="relative group">
-                            <input 
-                                type="text" 
-                                placeholder={`Search ${activeTab === 'transactionTypes' ? 'Transaction Types' : activeTab === 'accountTypes' ? 'Account Types' : activeTab}...`} 
-                                value={searchFilter} 
-                                onChange={e => setSearchFilter(e.target.value)} 
-                                className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-bold" 
-                            />
-                            <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
-                            {searchFilter && <button onClick={() => setSearchFilter('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500"><CloseIcon className="w-3.5 h-3.5"/></button>}
-                        </div>
+                        ))}
                     </div>
-                    <div className="flex-1 overflow-y-auto p-2 custom-scrollbar space-y-1">
-                        {rootItems.length === 0 ? (
-                            <div className="p-10 text-center text-slate-300">
-                                <BoxIcon className="w-12 h-12 mx-auto mb-2 opacity-20" />
-                                <p className="text-xs font-bold">Empty list.</p>
-                            </div>
-                        ) : (
-                            rootItems.map(item => (
-                                <TreeNode 
-                                    key={item.id} 
-                                    item={item} 
-                                    all={currentList} 
-                                    level={0} 
-                                    selectedId={selectedId} 
-                                    onSelect={handleSelect} 
-                                    usageMap={(usageCounts as any)[activeTab]}
-                                    expandedIds={expandedIds}
-                                    onToggleExpand={(id) => { const n = new Set(expandedIds); if(n.has(id)) n.delete(id); else n.add(id); setExpandedIds(n); }}
-                                    bulkSelectedIds={bulkSelectedIds}
-                                    onToggleBulk={handleBulkToggle}
-                                    searchFilter={searchFilter}
-                                    onDelete={handleDeleteSingle}
-                                />
-                            ))
-                        )}
-                    </div>
-                    {bulkSelectedIds.size > 0 && (
-                        <div className="p-3 border-t bg-indigo-50 flex gap-2">
-                            <button onClick={handleBulkDelete} className="flex-1 py-2 bg-red-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-red-700 shadow-sm flex items-center justify-center gap-2">
-                                <TrashIcon className="w-3 h-3" /> Delete {bulkSelectedIds.size}
-                            </button>
-                            {activeTab === 'counterparties' && (
-                                <button onClick={() => { setMoveSearch(''); setIsMoveModalOpen(true); }} className="flex-1 py-2 bg-indigo-600 text-white text-[10px] font-black uppercase rounded-lg hover:bg-indigo-700 shadow-sm flex items-center justify-center gap-2">
-                                    <ChevronRightIcon className="w-3 h-3" /> Move Group
-                                </button>
-                            )}
-                        </div>
-                    )}
                 </div>
 
-                {/* COLUMN 2: CONSOLE */}
-                <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 relative">
-                    {(selectedId || isCreating) ? (
-                        <div className="flex flex-col h-full animate-fade-in">
-                            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-                                <div>
-                                    <h3 className="text-xl font-black text-slate-800">{isCreating ? 'Blueprint Designer' : 'Update Definition'}</h3>
-                                    <p className="text-xs text-slate-500 uppercase font-black tracking-widest mt-0.5">{getPanelSubtitle(activeTab)}</p>
-                                </div>
-                                <button type="button" onClick={() => { setSelectedId(null); setIsCreating(false); }} className="p-2 text-slate-400 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6" /></button>
-                            </div>
-
-                            <EntityEditor 
-                                type={activeTab}
-                                initialId={selectedId}
-                                onSave={handleSaveEntity}
-                                onCancel={() => { setSelectedId(null); setIsCreating(false); }}
-                                categories={categories}
-                                tags={tags}
-                                counterparties={counterparties}
-                                locations={locations}
-                                users={users}
-                                transactionTypes={transactionTypes}
-                                accountTypes={accountTypes}
-                                accounts={accounts}
-                            />
+                {/* COLUMN 2: TREE/STREAM */}
+                <div className="w-96 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col min-h-0">
+                    <div className="p-4 border-b bg-slate-50 rounded-t-3xl space-y-4">
+                        <div className="relative">
+                            <input type="text" placeholder="Filter registry..." value={search} onChange={e => setSearch(e.target.value)} className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-bold shadow-inner" />
+                            <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                         </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
+                        {/* Fixed: Use property check 'parentId' in x to handle union types without parentId (like Tag) */}
+                        {activeList.filter(x => !('parentId' in x) || !x.parentId).map(item => (
+                            <TreeNode 
+                                key={item.id} item={item} all={activeList} level={0} 
+                                selectedId={selectedId} onSelect={setSelectedId} 
+                                usageMap={usageMap} expandedIds={expandedIds} 
+                                onToggleExpand={(id) => setExpandedIds(prev => { const n = new Set(prev); if(n.has(id)) n.delete(id); else n.add(id); return n; })}
+                                bulkSelectedIds={bulkSelectedIds}
+                                onToggleBulk={handleToggleBulk}
+                                searchFilter={search}
+                                onDelete={handleDelete}
+                            />
+                        ))}
+                        {activeList.length === 0 && (
+                            <div className="p-12 text-center text-slate-300 italic opacity-50 flex flex-col items-center">
+                                <SearchCircleIcon className="w-12 h-12 mb-2" />
+                                <p className="text-[10px] font-black uppercase">No records found</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* COLUMN 3: EDITOR */}
+                <div className="flex-1 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col min-h-0 overflow-hidden relative">
+                    {selectedId || isCreating ? (
+                        <EntityEditor 
+                            type={activeTab} 
+                            initialId={selectedId} 
+                            onSave={handleSave} 
+                            onCancel={() => { setSelectedId(null); setIsCreating(false); }}
+                            categories={props.categories}
+                            tags={props.tags}
+                            counterparties={props.counterparties}
+                            locations={props.locations}
+                            users={props.users}
+                            transactionTypes={props.transactionTypes}
+                            accountTypes={props.accountTypes}
+                            accounts={props.accounts}
+                        />
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
-                            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center shadow-2xl border border-slate-100 mb-6 animate-bounce-subtle">
-                                <ChecklistIcon className="w-10 h-10 text-indigo-200" />
+                            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-2xl border border-slate-100 mb-8 animate-bounce-subtle">
+                                <SparklesIcon className="w-12 h-12 text-indigo-200" />
                             </div>
-                            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Entity Architect</h3>
-                            <p className="text-slate-400 text-sm mt-3 font-medium max-w-xs leading-relaxed">Select an active registry item to manage its structural logic or visual styling.</p>
-                            <button onClick={handleNew} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg">Register New {activeTab.slice(0,-1)}</button>
+                            <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Entity Workbench</h3>
+                            <p className="text-slate-500 max-w-xs mt-4 font-medium leading-relaxed">Select an institutional record from the registry to audit its metadata, modify its hierarchy, or update its symbol branding.</p>
+                            <button onClick={() => setIsCreating(true)} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Start Creation</button>
                         </div>
                     )}
                 </div>
             </div>
-
-            {/* In-App Move Modal */}
-            {isMoveModalOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4" onClick={() => setIsMoveModalOpen(false)}>
-                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b flex justify-between items-center bg-indigo-600 text-white">
-                            <div className="flex items-center gap-3">
-                                <SparklesIcon className="w-6 h-6" />
-                                <div><h3 className="font-black text-lg">Select New Parent</h3><p className="text-[10px] text-indigo-200 uppercase font-bold">Batch Relocation</p></div>
-                            </div>
-                            <button onClick={() => setIsMoveModalOpen(false)} className="p-2 hover:bg-white/20 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-white"/></button>
-                        </div>
-                        
-                        <div className="p-4 bg-slate-50 border-b">
-                            <div className="relative">
-                                <input 
-                                    type="text" 
-                                    value={moveSearch} 
-                                    onChange={e => setMoveSearch(e.target.value)} 
-                                    placeholder="Search for a parent..." 
-                                    className="w-full pl-10 pr-4 py-3 bg-white border-2 border-slate-200 rounded-xl font-bold focus:border-indigo-500 outline-none"
-                                    autoFocus
-                                />
-                                <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
-                            </div>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto max-h-96 p-2 custom-scrollbar bg-white">
-                            <button 
-                                onClick={() => handleConfirmMove(undefined)}
-                                className="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-indigo-50 text-left transition-all border border-transparent hover:border-indigo-100 group"
-                            >
-                                <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-white transition-colors text-slate-500"><ChevronRightIcon className="w-4 h-4"/></div>
-                                <div>
-                                    <p className="text-sm font-black text-slate-800">No Parent (Root)</p>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase">Move items to top level</p>
-                                </div>
-                            </button>
-                            
-                            {potentialParents.map(parent => (
-                                <button 
-                                    key={parent.id}
-                                    onClick={() => handleConfirmMove(parent.id)}
-                                    className="w-full flex items-center gap-4 p-4 rounded-xl hover:bg-indigo-50 text-left transition-all border border-transparent hover:border-indigo-100 group"
-                                >
-                                    <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-white transition-colors text-indigo-400"><BoxIcon className="w-4 h-4"/></div>
-                                    <div>
-                                        <p className="text-sm font-black text-slate-800">{parent.name}</p>
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase">ID: {parent.id.substring(0,8)}</p>
-                                    </div>
-                                </button>
-                            ))}
-                            
-                            {potentialParents.length === 0 && moveSearch && (
-                                <div className="p-12 text-center text-slate-400">
-                                    <p className="text-sm font-bold italic">No matching counterparties found.</p>
-                                </div>
-                            )}
-                        </div>
-                        
-                        <div className="p-4 bg-slate-50 border-t flex justify-end">
-                            <button onClick={() => setIsMoveModalOpen(false)} className="px-6 py-2 text-sm font-bold text-slate-500 hover:text-slate-800">Cancel</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 };

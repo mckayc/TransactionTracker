@@ -58,7 +58,6 @@ let db;
 
 /**
  * MIGRATION ENGINE
- * Resolves inconsistencies identified in the System Manifesto
  */
 const runMigrations = () => {
     console.log("[MIGRATE] Checking system integrity...");
@@ -67,78 +66,76 @@ const runMigrations = () => {
     const getColumns = (name) => db.prepare(`PRAGMA table_info(${name})`).all();
 
     db.transaction(() => {
-        // 1. Standardize Transaction Types
+        // 1. Dedicated Rules Table
+        if (!tableExists('reconciliation_rules')) {
+            console.log("[MIGRATE] Initializing dedicated reconciliation_rules table...");
+            db.exec(`
+                CREATE TABLE reconciliation_rules (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    rule_category_id TEXT,
+                    priority INTEGER DEFAULT 0,
+                    skip_import INTEGER DEFAULT 0,
+                    is_ai_draft INTEGER DEFAULT 0,
+                    logic_json TEXT
+                )
+            `);
+            
+            // Migration from app_storage blob if exists
+            const legacy = db.prepare("SELECT value FROM app_storage WHERE key = 'reconciliationRules'").get();
+            if (legacy && legacy.value) {
+                try {
+                    const rules = JSON.parse(legacy.value);
+                    const insert = db.prepare("INSERT INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json) VALUES (?, ?, ?, ?, ?, ?)");
+                    rules.forEach(r => {
+                        insert.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r));
+                    });
+                    console.log(`[MIGRATE] Successfully migrated ${rules.length} rules to structured table.`);
+                    db.prepare("DELETE FROM app_storage WHERE key = 'reconciliationRules'").run();
+                } catch (e) {
+                    console.error("[MIGRATE] Legacy rule migration failed:", e.message);
+                }
+            }
+        }
+
+        // 2. Standardize Transaction Types
         if (tableExists('transaction_types')) {
             const cols = getColumns('transaction_types');
             if (cols.some(c => c.name === 'balanceEffect') && !cols.some(c => c.name === 'balance_effect')) {
-                console.log("[MIGRATE] Standardizing transaction_types columns...");
                 db.exec("ALTER TABLE transaction_types RENAME COLUMN balanceEffect TO balance_effect");
             }
         }
 
-        // 2. Consolidate Payees/Merchants into Counterparties
+        // 3. Consolidate Payees/Merchants into Counterparties
         if (!tableExists('counterparties')) {
-             console.log("[MIGRATE] Initializing counterparties table...");
              db.exec("CREATE TABLE counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT)");
         }
-
         if (tableExists('payees')) {
-            console.log("[MIGRATE] Migrating legacy payees...");
             db.exec("INSERT OR IGNORE INTO counterparties (id, name, parent_id, notes, user_id) SELECT id, name, parentId, notes, userId FROM payees");
             db.exec("DROP TABLE payees");
         }
-
         if (tableExists('merchants')) {
-            console.log("[MIGRATE] Migrating legacy merchants...");
             db.exec("INSERT OR IGNORE INTO counterparties (id, name, notes) SELECT id, name, notes FROM merchants");
             db.exec("DROP TABLE merchants");
         }
 
-        // 3. Fix Casing in Core Tables
+        // 4. Fix Casing
         const fixCasing = (table, oldCol, newCol) => {
             if (!tableExists(table)) return;
             const cols = getColumns(table);
             if (cols.some(c => c.name === oldCol) && !cols.some(c => c.name === newCol)) {
-                console.log(`[MIGRATE] Renaming ${table}.${oldCol} -> ${newCol}`);
                 db.exec(`ALTER TABLE ${table} RENAME COLUMN ${oldCol} TO ${newCol}`);
             }
         };
-
         fixCasing('accounts', 'accountTypeId', 'account_type_id');
         fixCasing('categories', 'parentId', 'parent_id');
         fixCasing('users', 'isDefault', 'is_default');
 
-        // 4. Critical: Fix Transactions table schema drift
         if (tableExists('transactions')) {
             const cols = getColumns('transactions');
             if (!cols.some(c => c.name === 'applied_rule_ids')) {
-                console.log("[MIGRATE] Adding applied_rule_ids to transactions...");
                 db.exec("ALTER TABLE transactions ADD COLUMN applied_rule_ids TEXT");
             }
-        }
-        
-        // 5. Rule Categories Table & Migration
-        if (!tableExists('rule_categories')) {
-             console.log("[MIGRATE] Creating rule_categories table...");
-             db.exec("CREATE TABLE rule_categories (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER)");
-        }
-        
-        // 6. Ensure Indexes exist for performance
-        console.log("[MIGRATE] Verifying performance indexes...");
-        db.exec(`
-            CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
-            CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
-            CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
-            CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
-            CREATE INDEX IF NOT EXISTS idx_transactions_link_group ON transactions(link_group_id);
-            CREATE INDEX IF NOT EXISTS idx_transaction_tags_tx ON transaction_tags(transaction_id);
-        `);
-        
-        // 7. Cleanup redundant storage
-        if (tableExists('app_config')) {
-            console.log("[MIGRATE] Retiring legacy app_config...");
-            db.exec("INSERT OR IGNORE INTO app_storage (key, value) SELECT key, value FROM app_config");
-            db.exec("DROP TABLE app_config");
         }
     })();
 };
@@ -153,38 +150,31 @@ const createTables = () => {
         CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT, color TEXT);
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
-        CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
         CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, name TEXT, city TEXT, state TEXT, country TEXT);
         CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
         CREATE TABLE IF NOT EXISTS rule_categories (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
-
+        CREATE TABLE IF NOT EXISTS transaction_tags (transaction_id TEXT, tag_id TEXT, PRIMARY KEY (transaction_id, tag_id));
         CREATE TABLE IF NOT EXISTS transactions (
-            id TEXT PRIMARY KEY,
-            date TEXT,
-            description TEXT,
-            amount REAL,
-            category_id TEXT,
-            account_id TEXT,
-            type_id TEXT,
-            counterparty_id TEXT,
-            location_id TEXT,
-            user_id TEXT,
-            location TEXT,
-            notes TEXT,
-            original_description TEXT,
-            source_filename TEXT,
-            link_group_id TEXT,
-            is_parent INTEGER DEFAULT 0,
-            parent_transaction_id TEXT,
-            is_completed INTEGER DEFAULT 0,
-            applied_rule_ids TEXT,
+            id TEXT PRIMARY KEY, 
+            date TEXT, 
+            description TEXT, 
+            amount REAL, 
+            category_id TEXT, 
+            account_id TEXT, 
+            type_id TEXT, 
+            counterparty_id TEXT, 
+            location_id TEXT, 
+            user_id TEXT, 
+            location TEXT, 
+            notes TEXT, 
+            original_description TEXT, 
+            source_filename TEXT, 
+            link_group_id TEXT, 
+            is_parent INTEGER DEFAULT 0, 
+            parent_transaction_id TEXT, 
+            is_completed INTEGER DEFAULT 0, 
+            applied_rule_ids TEXT, 
             metadata TEXT
-        );
-
-        CREATE TABLE IF NOT EXISTS transaction_tags (
-            transaction_id TEXT,
-            tag_id TEXT,
-            PRIMARY KEY (transaction_id, tag_id)
         );
       `);
 };
@@ -193,7 +183,6 @@ const ensureSeedData = () => {
     try {
         const typeCount = db.prepare("SELECT COUNT(*) as count FROM transaction_types").get().count;
         if (typeCount < 6) {
-            console.log("[DB] Seeding default transaction types...");
             const insertType = db.prepare("INSERT OR REPLACE INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)");
             db.transaction(() => {
                 insertType.run('type_income', 'Income', 'incoming', 'text-emerald-600');
@@ -204,91 +193,57 @@ const ensureSeedData = () => {
                 insertType.run('type_donation', 'Donation', 'outgoing', 'text-pink-600');
             })();
         }
-        
         const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get().count;
-        if (userCount === 0) {
-            console.log("[DB] Seeding default user...");
-            db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
-        }
-
+        if (userCount === 0) db.prepare("INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)").run('user_primary', 'Primary User', 1);
         const categoryCount = db.prepare("SELECT COUNT(*) as count FROM categories").get().count;
-        if (categoryCount === 0) {
-            console.log("[DB] Seeding default category...");
-            db.prepare("INSERT INTO categories (id, name) VALUES (?, ?)").run('cat_other', 'Other');
-        }
-        
-        // Seed new Manual Rule default
-        console.log("[DB] Verifying rule categories...");
+        if (categoryCount === 0) db.prepare("INSERT INTO categories (id, name) VALUES (?, ?)").run('cat_other', 'Other');
         const insertRuleCat = db.prepare("INSERT OR REPLACE INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)");
         db.transaction(() => {
-            // Remove 'rcat_all' as a selectable category if it exists
-            db.prepare("DELETE FROM rule_categories WHERE id = ?").run('rcat_all');
-            
             insertRuleCat.run('rcat_desc', 'Description', 0);
             insertRuleCat.run('rcat_loc', 'Location', 0);
             insertRuleCat.run('rcat_manual', 'Manual Rule', 1);
             insertRuleCat.run('rcat_other', 'Other', 0);
-            
-            // Clean up legacy rcat_user if it was seeded
-            db.prepare("DELETE FROM rule_categories WHERE id = ?").run('rcat_user');
         })();
-
-        const accountTypeCount = db.prepare("SELECT COUNT(*) as count FROM account_types").get().count;
-        if (accountTypeCount === 0) {
-            console.log("[DB] Seeding default account types...");
-            const insertAT = db.prepare("INSERT INTO account_types (id, name, is_default) VALUES (?, ?, ?)");
-            db.transaction(() => {
-                insertAT.run('at_checking', 'Checking', 1);
-                insertAT.run('at_savings', 'Savings', 0);
-                insertAT.run('at_credit', 'Credit Card', 0);
-            })();
-        }
-    } catch (err) {
-        console.error("[DB] Seeder Error:", err.message);
-    }
+    } catch (err) { console.error("[DB] Seeder Error:", err.message); }
 };
 
 const initDb = () => {
     try {
-        console.log(`[DB] Opening database at ${DB_PATH}`);
         db = new Database(DB_PATH);
         db.pragma('journal_mode = WAL');
         db.pragma('busy_timeout = 5000');
-        
-        runMigrations(); // Fix schema drift first
-        createTables();   // Ensure all tables exist
-        ensureSeedData(); // Ensure core types exist
-    } catch (dbErr) {
-        console.error("[DB] ENGINE STARTUP FAILURE:", dbErr.message);
-    }
+        createTables();
+        runMigrations();
+        ensureSeedData();
+    } catch (dbErr) { console.error("[DB] ENGINE STARTUP FAILURE:", dbErr.message); }
 };
 
 initDb();
 
-app.get('/api/admin/diagnose', (req, res) => {
+// Granular Rule Endpoints
+app.post('/api/reconciliation-rules', (req, res) => {
     try {
-        const tables = db.prepare("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
-        const diagnostics = tables.map(t => {
-            const count = db.prepare(`SELECT COUNT(*) as count FROM ${t.name}`).get().count;
-            const columns = db.prepare(`PRAGMA table_info(${t.name})`).all();
-            return {
-                table: t.name,
-                schema: t.sql,
-                rowCount: count,
-                columns: columns.map(c => ({ name: c.name, type: c.type }))
-            };
-        });
-        res.json({
-            status: 'healthy',
-            databaseSize: fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0,
-            tables: diagnostics,
-            timestamp: new Date().toISOString()
-        });
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+        const r = req.body;
+        if (!r.id) return res.status(400).json({ error: "Missing ID" });
+        
+        const insert = db.prepare(`
+            INSERT OR REPLACE INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+        `);
+        
+        insert.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r));
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.delete('/api/reconciliation-rules/:id', (req, res) => {
+    try {
+        db.prepare("DELETE FROM reconciliation_rules WHERE id = ?").run(req.params.id);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Transactions Filter Helper
 const buildTxFilters = (params) => {
     const { search, startDate, endDate, accountIds, categoryIds, userId } = params;
     let filterQuery = ` WHERE 1=1 AND t.is_parent = 0`;
@@ -349,16 +304,12 @@ app.get('/api/transactions', (req, res) => {
             appliedRuleIds: r.applied_rule_ids ? JSON.parse(r.applied_rule_ids) : []
         }));
         res.json({ data: results, total: totalCount });
-    } catch (e) { 
-        console.error("[API] Error fetching transactions:", e.message);
-        res.status(500).json({ error: e.message }); 
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/analytics/summary', (req, res) => {
     try {
         const { filterQuery, values } = buildTxFilters(req.query);
-        // Robust summary query returning distinct aggregates for the dashboard and ledger views
         const query = `
             SELECT 
                 SUM(CASE WHEN tt.balance_effect = 'incoming' THEN t.amount ELSE 0 END) as incoming,
@@ -370,22 +321,13 @@ app.get('/api/analytics/summary', (req, res) => {
             ${filterQuery}
         `;
         const result = db.prepare(query).get(...values);
-        res.json({
-            incoming: result.incoming || 0,
-            outgoing: result.outgoing || 0,
-            neutral: result.neutral || 0,
-            investments: result.investments || 0
-        });
-    } catch (e) { 
-        console.error("[API] Summary error:", e.message);
-        res.status(500).json({ error: e.message }); 
-    }
+        res.json({ incoming: result.incoming || 0, outgoing: result.outgoing || 0, neutral: result.neutral || 0, investments: result.investments || 0 });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/transactions/batch', (req, res) => {
     try {
         const txs = req.body;
-        console.log(`[DB] Batch inserting ${txs.length} transactions...`);
         const insert = db.prepare(`
             INSERT OR REPLACE INTO transactions (
                 id, date, description, amount, category_id, account_id, type_id, 
@@ -398,30 +340,12 @@ app.post('/api/transactions/batch', (req, res) => {
         const tagInsert = db.prepare("INSERT INTO transaction_tags (transaction_id, tag_id) VALUES (?, ?)");
         db.transaction((items) => {
             for (const tx of items) {
-                insert.run(
-                    tx.id, tx.date, tx.description, tx.amount, tx.categoryId, tx.accountId, tx.typeId,
-                    tx.counterpartyId || null, tx.locationId || null, tx.userId || null, tx.location || null, tx.notes || null,
-                    tx.originalDescription || null, tx.sourceFilename || null, tx.linkGroupId || null,
-                    tx.isParent ? 1 : 0, tx.parentTransactionId || null, tx.isCompleted ? 1 : 0,
-                    JSON.stringify(tx.appliedRuleIds || []),
-                    JSON.stringify(tx.metadata || {})
-                );
+                insert.run(tx.id, tx.date, tx.description, tx.amount, tx.categoryId, tx.accountId, tx.typeId, tx.counterpartyId || null, tx.locationId || null, tx.userId || null, tx.location || null, tx.notes || null, tx.originalDescription || null, tx.sourceFilename || null, tx.linkGroupId || null, tx.isParent ? 1 : 0, tx.parentTransactionId || null, tx.isCompleted ? 1 : 0, JSON.stringify(tx.appliedRuleIds || []), JSON.stringify(tx.metadata || {}));
                 tagClear.run(tx.id);
                 if (tx.tagIds) tx.tagIds.forEach(tid => tagInsert.run(tx.id, tid));
             }
         })(txs);
         res.json({ success: true, count: txs.length });
-    } catch (e) { 
-        console.error("[DB] Batch transaction error:", e.message);
-        res.status(500).json({ error: e.message }); 
-    }
-});
-
-app.delete('/api/transactions/:id', (req, res) => {
-    try {
-        db.prepare("DELETE FROM transactions WHERE id = ?").run(req.params.id);
-        db.prepare("DELETE FROM transaction_tags WHERE transaction_id = ?").run(req.params.id);
-        res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -432,17 +356,16 @@ app.get('/api/data', (req, res) => {
     for (const row of rows) {
       try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
     }
-    
-    try { data.categories = db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all(); } catch(e) { data.categories = []; }
-    try { data.ruleCategories = db.prepare("SELECT id, name, is_default AS isDefault FROM rule_categories").all().map(r => ({...r, isDefault: !!r.isDefault})); } catch(e) { data.ruleCategories = []; }
-    try { data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId FROM accounts").all(); } catch(e) { data.accounts = []; }
-    try { data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all().map(a => ({...a, isDefault: !!a.isDefault})); } catch(e) { data.accountTypes = []; }
-    try { data.users = db.prepare("SELECT id, name, is_default AS isDefault FROM users").all().map(u => ({...u, isDefault: !!u.isDefault})); } catch(e) { data.users = []; }
-    try { data.counterparties = db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM counterparties").all(); } catch(e) { data.counterparties = []; }
-    try { data.locations = db.prepare("SELECT id, name, city, state, country FROM locations").all(); } catch(e) { data.locations = []; }
-    try { data.tags = db.prepare("SELECT * FROM tags").all(); } catch(e) { data.tags = []; }
-    try { data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect, color FROM transaction_types").all(); } catch(e) { data.transactionTypes = []; }
-    
+    data.reconciliationRules = db.prepare("SELECT logic_json FROM reconciliation_rules").all().map(r => JSON.parse(r.logic_json));
+    data.categories = db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all();
+    data.ruleCategories = db.prepare("SELECT id, name, is_default AS isDefault FROM rule_categories").all().map(r => ({...r, isDefault: !!r.isDefault}));
+    data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId FROM accounts").all();
+    data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all().map(a => ({...a, isDefault: !!a.isDefault}));
+    data.users = db.prepare("SELECT id, name, is_default AS isDefault FROM users").all().map(u => ({...u, isDefault: !!u.isDefault}));
+    data.counterparties = db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM counterparties").all();
+    data.locations = db.prepare("SELECT id, name, city, state, country FROM locations").all();
+    data.tags = db.prepare("SELECT * FROM tags").all();
+    data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect, color FROM transaction_types").all();
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -451,9 +374,14 @@ app.post('/api/data/:key', (req, res) => {
   try {
     const key = req.params.key;
     const value = req.body;
-    console.log(`[DB] Saving key '${key}'...`);
     
-    if (key === 'categories' && Array.isArray(value)) {
+    if (key === 'reconciliationRules' && Array.isArray(value)) {
+        db.prepare("DELETE FROM reconciliation_rules").run();
+        const stmt = db.prepare("INSERT INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json) VALUES (?, ?, ?, ?, ?, ?)");
+        db.transaction(() => {
+            value.forEach(r => stmt.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r)));
+        })();
+    } else if (key === 'categories' && Array.isArray(value)) {
         db.prepare("DELETE FROM categories").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO categories (id, name, parent_id) VALUES (?, ?, ?)");
         db.transaction(() => { value.forEach(c => stmt.run(c.id, c.name, c.parentId || null)); })();
@@ -461,7 +389,6 @@ app.post('/api/data/:key', (req, res) => {
         db.prepare("DELETE FROM rule_categories").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)");
         db.transaction(() => { value.forEach(rc => stmt.run(rc.id, rc.name, rc.isDefault ? 1 : 0)); })();
-        ensureSeedData();
     } else if (key === 'accounts' && Array.isArray(value)) {
         db.prepare("DELETE FROM accounts").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO accounts (id, name, identifier, account_type_id) VALUES (?, ?, ?, ?)");
@@ -474,12 +401,10 @@ app.post('/api/data/:key', (req, res) => {
         db.prepare("DELETE FROM users").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO users (id, name, is_default) VALUES (?, ?, ?)");
         db.transaction(() => { value.forEach(u => stmt.run(u.id, u.name, u.isDefault ? 1 : 0)); })();
-        ensureSeedData();
     } else if (key === 'transactionTypes' && Array.isArray(value)) {
         db.prepare("DELETE FROM transaction_types").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)");
         db.transaction(() => { value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect, t.color || null)); })();
-        ensureSeedData();
     } else if (key === 'counterparties' && Array.isArray(value)) {
         db.prepare("DELETE FROM counterparties").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO counterparties (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
@@ -496,23 +421,20 @@ app.post('/api/data/:key', (req, res) => {
         db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
     }
     res.json({ success: true });
-  } catch (e) { 
-      console.error(`[DB] Error saving '${req.params.key}':`, e.message);
-      res.status(500).json({ error: e.message }); 
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/admin/reset', async (req, res) => {
     const { entities } = req.body || {};
     try {
-        console.warn(`[ADMIN] Database reset requested for entities: ${entities || 'ALL'}`);
         if (!entities || entities.includes('all')) {
             if (db) db.close();
             if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
             initDb();
-            return res.json({ success: true, message: "System purged." });
+            return res.json({ success: true });
         }
         db.transaction(() => {
+            if (entities.includes('reconciliationRules')) db.prepare("DELETE FROM reconciliation_rules").run();
             if (entities.includes('transactions')) { db.prepare("DELETE FROM transactions").run(); db.prepare("DELETE FROM transaction_tags").run(); }
             if (entities.includes('accounts')) db.prepare("DELETE FROM accounts").run();
             if (entities.includes('accountTypes')) db.prepare("DELETE FROM account_types").run();
@@ -523,26 +445,22 @@ app.post('/api/admin/reset', async (req, res) => {
             if (entities.includes('locations')) db.prepare("DELETE FROM locations").run();
             if (entities.includes('users')) db.prepare("DELETE FROM users WHERE is_default = 0").run();
             if (entities.includes('files_meta')) db.prepare("DELETE FROM files_meta").run();
-            const storageKeys = { 'amazonMetrics': 'amazonMetrics', 'youtubeMetrics': 'youtubeMetrics', 'amazonVideos': 'amazonVideos', 'financialGoals': 'financialGoals', 'financialPlan': 'financialPlan', 'reconciliationRules': 'reconciliationRules', 'templates': 'templates', 'tasks': 'tasks', 'taskCompletions': 'taskCompletions', 'savedReports': 'savedReports', 'contentLinks': 'contentLinks', 'businessNotes': 'businessNotes' };
-            entities.forEach(entity => { if (storageKeys[entity]) db.prepare("DELETE FROM app_storage WHERE key = ?").run(storageKeys[entity]); });
+            const storageKeys = ['amazonMetrics', 'youtubeMetrics', 'amazonVideos', 'financialGoals', 'financialPlan', 'templates', 'tasks', 'taskCompletions', 'savedReports', 'contentLinks', 'businessNotes'];
+            entities.forEach(entity => { if (storageKeys.includes(entity)) db.prepare("DELETE FROM app_storage WHERE key = ?").run(entity); });
         })();
         ensureSeedData();
         db.pragma('vacuum');
-        res.json({ success: true, message: "Selective purge complete." });
+        res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/admin/repair', (req, res) => {
     try {
-        console.log("[ADMIN] Executing system repair protocol...");
-        runMigrations(); // Run renaming/consolidation logic
-        createTables();   // Force ensure tables exist
-        ensureSeedData(); // Force re-seed missing types
-        res.json({ success: true, message: "Schema verified and core data seeded." });
-    } catch (e) {
-        console.error("[ADMIN] Repair failed:", e.message);
-        res.status(500).json({ error: e.message });
-    }
+        runMigrations();
+        createTables();
+        ensureSeedData();
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/files/:id', (req, res) => {
@@ -551,29 +469,21 @@ app.post('/api/files/:id', (req, res) => {
   const mimeType = req.headers['content-type'] || 'application/octet-stream';
   try {
     const diskFilename = `${Date.now()}_${rawFilename.replace(/[^a-zA-Z0-9.]/g, '_')}`;
-    console.log(`[FILES] Uploading ${rawFilename} as ${diskFilename}`);
     fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), req.body);
     db.prepare('INSERT OR REPLACE INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, rawFilename, diskFilename, mimeType, req.body.length, new Date().toISOString());
     res.json({ success: true });
-  } catch (e) { 
-      console.error("[FILES] Upload failure:", e.message);
-      res.status(500).send(e.message); 
-  }
+  } catch (e) { res.status(500).send(e.message); }
 });
 
 app.get('/api/files/:id', (req, res) => {
   try {
     const meta = db.prepare('SELECT * FROM files_meta WHERE id = ?').get(req.params.id);
     if (!meta) return res.status(404).send('Metadata entry not found');
-    
     const fullPath = path.join(DOCUMENTS_DIR, meta.disk_filename);
     if (fs.existsSync(fullPath)) {
         res.setHeader('Content-Type', meta.mime_type);
         res.sendFile(fullPath);
-    } else {
-        console.error(`[FILES] Orphaned record: ${meta.original_name} metadata exists but file ${meta.disk_filename} is missing on disk.`);
-        res.status(404).send('File missing on server storage');
-    }
+    } else res.status(404).send('File missing');
   } catch (e) { res.status(500).send('Error reading file'); }
 });
 
