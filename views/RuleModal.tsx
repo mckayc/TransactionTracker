@@ -74,7 +74,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
     const isCollision = !!collidingRule;
 
     const primaryLabel = isCollision ? 'Overwrite' : (isExistingRule ? 'Update' : 'Commit');
-    const executeLabel = isCollision ? 'Overwrite & Execute' : (isExistingRule ? 'Update & Execute' : 'Commit & Execute');
 
     useEffect(() => {
         if (isOpen) {
@@ -92,7 +91,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
                 ];
                 setConditions(newConditions);
                 setSetCategoryId(ctx.categoryId || ctx.setCategoryId || '');
-                // Backwards compatibility for legacy setPayeeId
                 setSetCounterpartyId(ctx.counterpartyId || ctx.setCounterpartyId || ctx.setPayeeId || '');
                 setSetLocationId(ctx.locationId || ctx.setLocationId || '');
                 setSetUserId(ctx.userId || ctx.setUserId || '');
@@ -208,7 +206,7 @@ const RuleModal: React.FC<RuleModalProps> = ({
                             </button>
                             <button onClick={handleSaveAndRun} disabled={!name.trim()} className="px-8 py-2.5 text-xs font-black uppercase bg-indigo-600 text-white rounded-xl shadow-lg shadow-indigo-100 flex items-center gap-2 hover:bg-indigo-700 active:scale-95 transition-all">
                                 <PlayIcon className="w-4 h-4" /> 
-                                {executeLabel}
+                                Run
                             </button>
                         </div>
                     </div>

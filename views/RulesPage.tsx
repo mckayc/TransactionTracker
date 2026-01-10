@@ -4,6 +4,7 @@ import type { Transaction, ReconciliationRule, Account, TransactionType, Counter
 import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon, ListIcon, DatabaseIcon, WorkflowIcon, SlashIcon, TypeIcon, ChecklistIcon, UsersIcon, CopyIcon } from '../components/Icons';
 import RuleModal from '../components/RuleModal';
 import RuleImportVerification from '../components/RuleImportVerification';
+import RulePreviewModal from '../components/RulePreviewModal';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
 import { forgeRulesWithCustomPrompt } from '../services/geminiService';
 import { generateUUID } from '../utils';
@@ -120,6 +121,10 @@ const RulesPage: React.FC<RulesPageProps> = ({
 
     // Fullscreen View State
     const [isImportHubOpen, setIsImportHubOpen] = useState(false);
+
+    // Rule Run / Preview state
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+    const [previewRule, setPreviewRule] = useState<ReconciliationRule | null>(null);
 
     // Notification State
     const [notification, setNotification] = useState<AppNotification | null>(null);
@@ -437,6 +442,23 @@ Please output ONLY the resulting CSV content. Do not include conversational text
         setIsCreating(false);
         setSelectedRuleId(rule.id);
         notify('success', 'Logic Committed', `Rule "${rule.name}" synchronized.`);
+    };
+
+    const handleSaveAndRunFlow = (rule: ReconciliationRule) => {
+        onSaveRule(rule);
+        setPreviewRule(rule);
+        setIsPreviewOpen(true);
+        setIsCreating(false);
+        setSelectedRuleId(rule.id);
+    };
+
+    const handleApplyPreviewUpdates = async (updates: Transaction[]) => {
+        if (updates.length > 0) {
+            onUpdateTransactions(updates);
+            notify('success', 'Registry Synchronized', `${updates.length} historical records updated.`);
+        }
+        setIsPreviewOpen(false);
+        setPreviewRule(null);
     };
 
     const handleSaveRuleCat = (e: React.FormEvent) => {
@@ -969,6 +991,7 @@ e.g. 'Rule Name, Match Field, Operator, Match Value'
                                 isOpen={true} 
                                 onClose={() => { setSelectedRuleId(null); setIsCreating(false); }} 
                                 onSaveRule={handleSaveRuleValidated}
+                                onSaveAndRun={handleSaveAndRunFlow}
                                 onDeleteRule={(id) => { onDeleteRule(id); setSelectedRuleId(null); setIsCreating(false); }}
                                 accounts={accounts}
                                 transactionTypes={transactionTypes}
@@ -1041,6 +1064,20 @@ e.g. 'Rule Name, Match Field, Operator, Match Value'
                         <button onClick={() => setIsBulkMoveModalOpen(false)} className="w-full py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
                     </div>
                 </div>
+            )}
+
+            {isPreviewOpen && previewRule && (
+                <RulePreviewModal
+                    isOpen={isPreviewOpen}
+                    onClose={() => { setIsPreviewOpen(false); setPreviewRule(null); }}
+                    rule={previewRule}
+                    transactions={transactions}
+                    accounts={accounts}
+                    transactionTypes={transactionTypes}
+                    categories={categories}
+                    payees={counterparties}
+                    onApply={handleApplyPreviewUpdates}
+                />
             )}
 
             {notification && (
