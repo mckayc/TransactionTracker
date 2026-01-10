@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import type { BusinessNote, Transaction, Account, Category, BusinessProfile, BusinessInfo, TaxInfo } from '../types';
-import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, UsersIcon, BoxIcon, InfoIcon, RobotIcon, CopyIcon, FileTextIcon } from '../components/Icons';
+import type { BusinessNote, Transaction, Account, Category, BusinessProfile, BusinessInfo, TaxInfo, ChatMessage } from '../types';
+import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, BoxIcon, InfoIcon, RobotIcon, CopyIcon, FileTextIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { askAiAdvisor } from '../services/geminiService';
 
@@ -136,27 +137,30 @@ const serializeBlocksToMarkdown = (blocks: ContentBlock[]): string => {
 };
 
 const BlockEditor: React.FC<{
-    initialBlocks: ContentBlock[];
-    onChange: (blocks: ContentBlock[]) => void;
+    initialContent: string;
+    onChange: (content: string) => void;
     noteId: string;
-}> = ({ initialBlocks, onChange, noteId }) => {
-    const [internalBlocks, setInternalBlocks] = useState<ContentBlock[]>(initialBlocks);
+}> = ({ initialContent, onChange, noteId }) => {
+    // Local blocks state to ensure stable keys (UUIDs) during a single editing session
+    const [internalBlocks, setInternalBlocks] = useState<ContentBlock[]>([]);
     const [focusedId, setFocusedId] = useState<string | null>(null);
     const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const lastNoteId = useRef<string>(noteId);
+    const lastNoteId = useRef<string | null>(null);
 
+    // Only re-parse markdown into blocks when the Note ID changes.
+    // This prevents generating new UUIDs for existing lines on every keystroke.
     useEffect(() => {
         if (noteId !== lastNoteId.current) {
-            setInternalBlocks(initialBlocks);
+            setInternalBlocks(parseMarkdownToBlocks(initialContent));
             lastNoteId.current = noteId;
         }
-    }, [noteId, initialBlocks]);
+    }, [noteId, initialContent]);
 
     const triggerChange = (updatedBlocks: ContentBlock[]) => {
         setInternalBlocks(updatedBlocks);
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
         debounceTimer.current = setTimeout(() => {
-            onChange(updatedBlocks);
+            onChange(serializeBlocksToMarkdown(updatedBlocks));
         }, 500);
     };
 
@@ -191,29 +195,21 @@ const BlockEditor: React.FC<{
         let i = 0;
         
         while (i < internalBlocks.length) {
-            // Check if we are starting a contiguous checklist group
             if (internalBlocks[i].type === 'todo') {
                 const todoBranches: { parent: ContentBlock; descendants: ContentBlock[] }[] = [];
-                
-                // Group each base todo with its children
                 while (i < internalBlocks.length && internalBlocks[i].type === 'todo') {
                     const currentTodo = internalBlocks[i];
                     const descendants: ContentBlock[] = [];
                     const baseIndent = currentTodo.indent;
                     i++;
-                    
-                    // Collect everything more indented that follows immediately
                     while (i < internalBlocks.length && internalBlocks[i].indent > baseIndent) {
                         descendants.push(internalBlocks[i]);
                         i++;
                     }
                     todoBranches.push({ parent: currentTodo, descendants });
                 }
-                
-                // Partition branches: Incomplete first, then complete
                 const incomplete = todoBranches.filter(t => !t.parent.checked);
                 const complete = todoBranches.filter(t => t.parent.checked);
-                
                 [...incomplete, ...complete].forEach(branch => {
                     next.push(branch.parent);
                     next.push(...branch.descendants);
@@ -348,7 +344,6 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
     }, [notes, searchTerm, selectedTypeFilter]);
 
     const activeNote = useMemo(() => notes.find(n => n.id === selectedNoteId), [notes, selectedNoteId]);
-    const blocks = useMemo(() => activeNote ? parseMarkdownToBlocks(activeNote.content) : [], [activeNote?.content]);
 
     const handleCreateNote = () => {
         const id = generateUUID();
@@ -373,13 +368,10 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
 
     const handleCopyForAi = () => {
         if (!activeNote) return;
-        
-        // Filter out completed tasks from the content
         const filteredContent = activeNote.content.split('\n').filter(line => {
             const t = line.trim();
             return !(t.startsWith('- [x]') || t.startsWith('- [X]'));
         }).join('\n');
-
         const aiPrompt = `PROMPT FOR AI ANALYSIS:\n\nAnalyze the following log entry from my business operations journal. Identify any underlying patterns, potential efficiency gains, or technical debt risks mentioned in the text.\n\nTITLE: ${activeNote.title}\nTYPE: ${activeNote.type}\n\nCONTENT (Filtered for active tasks):\n${filteredContent}`;
         copyToClipboard(aiPrompt, (msg) => setToastMessage(msg));
     };
@@ -601,8 +593,8 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                     <div className="flex-1 overflow-hidden p-6 flex flex-col min-h-0 bg-slate-50/20">
                                         <BlockEditor 
                                             noteId={selectedNoteId}
-                                            initialBlocks={blocks} 
-                                            onChange={(newBlocks) => handleUpdateActiveNote({ content: serializeBlocksToMarkdown(newBlocks) })} 
+                                            initialContent={activeNote.content} 
+                                            onChange={(newContent) => handleUpdateActiveNote({ content: newContent })} 
                                         />
                                     </div>
                                 </div>
