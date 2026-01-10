@@ -273,7 +273,7 @@ export interface BackupConfig {
 
 export interface DashboardWidget {
     id: string;
-    type: 'report' | 'metric' | 'tasks' | 'calendar' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights';
+    type: 'report' | 'tasks' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights';
     colSpan: 1 | 2 | 3;
     config?: {
         title?: string;

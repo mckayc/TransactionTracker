@@ -325,7 +325,9 @@ const WidgetSlot: React.FC<{
     financialPlan: FinancialPlan | null;
 }> = ({ widget, onRemove, onConfigure, onDelete, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan }) => {
     
-    const BLUEPRINTS = {
+    // BLUEPRINTS implementation map - used for labels and icons in headers
+    // Using explicit typing for logical indexing safety
+    const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
         'goal_gauge': { icon: <ShieldCheckIcon className="w-4 h-4" />, label: 'Goal Progress' },
         'tax_projection': { icon: <CalendarIcon className="w-4 h-4" />, label: 'Tax Estimator' },
@@ -337,7 +339,7 @@ const WidgetSlot: React.FC<{
         'report': { icon: <BarChartIcon className="w-4 h-4" />, label: 'Report Pivot' }
     };
 
-    const blueprint = BLUEPRINTS[widget.type] || { icon: <InfoIcon className="w-4 h-4" />, label: 'Module' };
+    const identity = COMPONENT_IDENTITY_MAP[widget.type] || { icon: <InfoIcon className="w-4 h-4" />, label: 'Module' };
 
     const renderContent = () => {
         if (widget.type === 'report' && widget.config?.reportId) {
@@ -374,9 +376,9 @@ const WidgetSlot: React.FC<{
         <div className={`bg-white rounded-[1.5rem] border border-slate-200 shadow-sm overflow-hidden group flex flex-col h-full min-h-[300px] transition-all hover:shadow-md ${spanClass}`}>
             <header className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
-                    <div className="text-indigo-600 flex-shrink-0">{blueprint.icon}</div>
+                    <div className="text-indigo-600 flex-shrink-0">{identity.icon}</div>
                     <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight truncate">
-                        {widget.config?.title || blueprint.label}
+                        {widget.config?.title || identity.label}
                     </h4>
                 </div>
                 <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -530,7 +532,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
         });
     };
 
-    const BLUEPRINTS = [
+    const BLUEPRINT_OPTIONS = [
         { id: 'cashflow', label: 'Cash Flow', icon: <DollarSign className="w-4 h-4" /> },
         { id: 'goal_gauge', label: 'Goal Progress', icon: <ShieldCheckIcon className="w-4 h-4" /> },
         { id: 'tax_projection', label: 'Tax Estimator', icon: <CalendarIcon className="w-4 h-4" /> },
@@ -667,7 +669,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                             {/* Blueprints Sidebar */}
                             <div className="w-72 bg-slate-50 border-r border-slate-100 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-1.5">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-2">Logical Blueprints</p>
-                                {BLUEPRINTS.map(bp => {
+                                {BLUEPRINT_OPTIONS.map(bp => {
                                     const isExpanded = expandedBlueprints.has(bp.id);
                                     const instances = widgetLibrary.filter(w => w.type === bp.id);
                                     
