@@ -179,7 +179,7 @@ const CashFlowModule: React.FC<{
                     labelText = counterparties.find(cp => cp.id === key)?.name || 'Unknown';
                 } else if (dataType === 'account') {
                     key = tx.accountId;
-                    labelText = key; // Simple ID for now
+                    labelText = key; 
                 } else {
                     key = tx.typeId;
                     labelText = key;
@@ -321,7 +321,7 @@ const TopExpensesModule: React.FC<{ transactions: Transaction[], categories: Cat
                                 <span className="text-slate-800">{formatCurrency(c.amt)}</span>
                             </div>
                             <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                <div className="h-full bg-rose-500" style={{ width: `${(c.amt / totalExpense) * 100}%` }} />
+                                <div className="h-full bg-rose-50" style={{ width: `${(c.amt / totalExpense) * 100}%` }} />
                             </div>
                         </div>
                     ))
@@ -497,7 +497,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [configTitle, setConfigTitle] = useState('');
     const [configGoalId, setConfigGoalId] = useState('');
     const [configReportId, setConfigReportId] = useState('');
-    const [configPeriod, setConfigPeriod] = useState<DashboardWidget['config']['period']>('month');
+    // Use NonNullable to access optional config type safely
+    const [configPeriod, setConfigPeriod] = useState<NonNullable<DashboardWidget['config']>['period']>('month');
     const [configColSpan, setConfigColSpan] = useState<1 | 2 | 3>(1);
     const [configBlueprint, setConfigBlueprint] = useState<DashboardWidget['type']>('cashflow');
     const [expandedBlueprints, setExpandedBlueprints] = useState<Set<string>>(new Set());
@@ -505,7 +506,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     // New configuration fields for Cashflow
     const [configVizType, setConfigVizType] = useState<'pie' | 'bar' | 'cards'>('cards');
     const [configLookback, setConfigLookback] = useState<number>(0);
-    const [configDisplayDataType, setConfigDisplayDataType] = useState<DashboardWidget['config']['displayDataType']>('type');
+    // Use NonNullable to access optional config type safely
+    const [configDisplayDataType, setConfigDisplayDataType] = useState<NonNullable<DashboardWidget['config']>['displayDataType']>('type');
     const [configExcludeKeywords, setConfigExcludeKeywords] = useState<string>('');
 
     const dashboards = useMemo(() => {
@@ -576,7 +578,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 widgets: d.widgets.filter(w => w.id !== id)
             }));
             onUpdateSystemSettings({ ...systemSettings, widgetLibrary: updatedLibrary, dashboards: updatedDashboards });
-            // If the deleted widget was currently being configured, close the modal
             if (isConfiguring === id) setIsConfiguring(null);
         } else {
             const next = dashboards.filter(d => d.id !== id);
@@ -710,7 +711,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         amazonMetrics={amazonMetrics}
                         youtubeMetrics={youtubeMetrics}
                         financialPlan={financialPlan}
-                        counterparties={[]} // Placeholder - counterparties handled inside
+                        counterparties={[]} 
                     />
                 ))}
                 
@@ -761,14 +762,13 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         </div>
                         <div className="flex gap-4 mt-10">
                             <button onClick={() => setIsCreatingDashboard(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
-                            {/* Fixed: Added missing onClick attribute for handleCreateDashboard */}
                             <button onClick={handleCreateDashboard} className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">Deploy View</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Module Forge (Renamed to Modules) */}
+            {/* Modules Overlay */}
             {isConfiguring && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={() => setIsConfiguring(null)}>
                     <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -837,7 +837,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                         />
                                     </div>
                                     
-                                    {/* Hide Grid Footprint if Cashflow is selected */}
                                     {configBlueprint !== 'cashflow' && (
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Grid Footprint (Col Span)</label>
@@ -858,7 +857,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
 
                                 {configBlueprint === 'cashflow' && (
                                     <div className="space-y-10 animate-fade-in">
-                                        {/* Top Section - Visualization */}
                                         <div className="space-y-3">
                                             <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Visualization Interface</label>
                                             <div className="grid grid-cols-3 gap-2">
@@ -874,7 +872,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                             </div>
                                         </div>
 
-                                        {/* Middle Section - Observation Period & Lookback */}
                                         <div className="space-y-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
                                             <div className="space-y-3">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Observation Epoch</label>
@@ -891,7 +888,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                 </div>
                                             </div>
                                             <div className="space-y-3">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Lookback Units (Previous to current)</label>
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Lookback Units</label>
                                                 <div className="flex items-center gap-4">
                                                     <input 
                                                         type="number" 
@@ -907,7 +904,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                             </div>
                                         </div>
 
-                                        {/* Lower Section - Data Display & Exclusion */}
                                         <div className="space-y-6">
                                             <div className="space-y-3">
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Display Dimension</label>
@@ -931,7 +927,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                     placeholder="e.g. tiktok, youtube, transfer"
                                                     className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium focus:border-indigo-500 outline-none"
                                                 />
-                                                <p className="text-[9px] text-slate-400 ml-1 italic">Entries containing these strings in their label will be purged from the visual output.</p>
                                             </div>
                                         </div>
                                     </div>
@@ -951,7 +946,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                     <p className="text-[10px] text-slate-400 font-bold uppercase">{formatCurrency(g.targetAmount)} Target</p>
                                                 </button>
                                             ))}
-                                            {goals.length === 0 && <div className="p-8 text-center bg-slate-50 rounded-2xl text-xs text-slate-400 italic">No targets defined in Financial Plan.</div>}
                                         </div>
                                     </div>
                                 )}
@@ -970,15 +964,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                     <p className="text-[10px] text-slate-400 font-bold uppercase">{r.config.groupBy} Pivot</p>
                                                 </button>
                                             ))}
-                                            {savedReports.length === 0 && <div className="p-8 text-center bg-slate-50 rounded-2xl text-xs text-slate-400 italic">Construct strategies in Reports first.</div>}
                                         </div>
                                     </div>
                                 )}
-
-                                <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-start gap-4">
-                                    <InfoIcon className="w-5 h-5 text-indigo-300 mt-0.5" />
-                                    <p className="text-xs text-slate-400 leading-relaxed font-medium">Configurations are committed to your system library and can be deployed to any dashboard view.</p>
-                                </div>
                             </div>
                         </div>
 
