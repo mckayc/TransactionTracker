@@ -1,4 +1,3 @@
-
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -335,7 +334,8 @@ app.get('/api/analytics/breakdown', (req, res) => {
         else if (type === 'outflow') typeFilter = " AND tt.balance_effect = 'outgoing'";
         else if (type === 'investments') typeFilter = " AND t.type_id = 'type_investment'";
 
-        const query = `
+        // 1. Get Top 15 Breakdown
+        const breakdownQuery = `
             SELECT 
                 COALESCE(cp.name, t.description) as label,
                 SUM(ABS(t.amount)) as amount
@@ -348,16 +348,25 @@ app.get('/api/analytics/breakdown', (req, res) => {
             LIMIT 15
         `;
         
-        const results = db.prepare(query).all(...values);
-        const total = results.reduce((sum, r) => sum + r.amount, 0);
+        const results = db.prepare(breakdownQuery).all(...values);
+        
+        // 2. Get Actual Total for the entire period/type (ignores top-15 limit)
+        const totalQuery = `
+            SELECT SUM(ABS(t.amount)) as total
+            FROM transactions t
+            JOIN transaction_types tt ON t.type_id = tt.id
+            ${filterQuery} ${typeFilter}
+        `;
+        const totalResult = db.prepare(totalQuery).get(...values);
+        const actualTotal = totalResult.total || 0;
         
         res.json({
             items: results.map(r => ({
                 label: r.label,
                 amount: r.amount,
-                percentage: total > 0 ? (r.amount / total) * 100 : 0
+                percentage: actualTotal > 0 ? (r.amount / actualTotal) * 100 : 0
             })),
-            total
+            total: actualTotal
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -445,7 +454,7 @@ app.post('/api/data/:key', (req, res) => {
     } else if (key === 'counterparties' && Array.isArray(value)) {
         db.prepare("DELETE FROM counterparties").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO counterparties (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
-        db.transaction(() => { value.forEach(p => stmt.run(p.id, p.name, p.parentId || null, p.notes || null, p.userId || null)); })();
+        db.transaction(() => { value.forEach(p => stmt.run(p.id, name, p.parentId || null, p.notes || null, p.userId || null)); })();
     } else if (key === 'locations' && Array.isArray(value)) {
         db.prepare("DELETE FROM locations").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO locations (id, name, city, state, country) VALUES (?, ?, ?, ?, ?)");
