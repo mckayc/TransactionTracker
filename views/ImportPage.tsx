@@ -69,7 +69,9 @@ const ImportPage: React.FC<ImportPageProps> = ({
   const [isInitializing, setIsInitializing] = useState(false);
 
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
-  const [importedTxIds, setImportedTxIds] = useState<Set<string>>(new Set());
+  // Use a local staged array of full Transaction objects for the "Final Polish" phase
+  // to avoid waiting for the asynchronous global state refresh from the parent.
+  const [stagedImportedTxs, setStagedImportedTxs] = useState<Transaction[]>([]);
 
   const hasCoreConfiguration = transactionTypes.length >= 6 && categories.length > 0;
   const hasAccount = accounts.length > 0;
@@ -169,9 +171,15 @@ const ImportPage: React.FC<ImportPageProps> = ({
   }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
+      // Use the service to generate IDs and detect duplicates against CURRENT state
       const { added } = mergeTransactions(recentGlobalTransactions.filter(Boolean), verified.filter(Boolean));
+      
+      // Store locally so the next screen doesn't wait for parent prop sync
+      setStagedImportedTxs(added);
+      
+      // Notify parent to update DB
       onTransactionsAdded(added, []);
-      setImportedTxIds(new Set(added.map(tx => tx.id)));
+      
       setAppState('post_import_edit');
   };
 
@@ -346,12 +354,13 @@ const ImportPage: React.FC<ImportPageProps> = ({
                         <div className="flex justify-between items-center mb-6 bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm">
                             <div>
                                 <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> Final Polish</h2>
-                                <p className="text-sm text-slate-500">Review {importedTxIds.size} ingested transactions.</p>
+                                <p className="text-sm text-slate-500">Review {stagedImportedTxs.length} ingested transactions.</p>
                             </div>
-                            <button onClick={() => setAppState('idle')} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Finish</button>
+                            <button onClick={() => { setAppState('idle'); setStagedImportedTxs([]); }} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Finish</button>
                         </div>
                         <div className="flex-1 overflow-hidden border border-slate-200 rounded-2xl relative shadow-inner">
-                            <TransactionTable transactions={recentGlobalTransactions.filter(tx => tx && importedTxIds.has(tx.id))} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
+                            {/* Render using the staged local state instead of filtering the global prop to ensure instant UI responsiveness */}
+                            <TransactionTable transactions={stagedImportedTxs} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
                         </div>
                     </div>
                 ) : (
