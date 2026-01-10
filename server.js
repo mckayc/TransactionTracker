@@ -101,22 +101,27 @@ const runMigrations = () => {
                     console.error("[MIGRATE] Legacy rule migration failed:", e.message);
                 }
             }
-        } else {
-            // 1b. If rules table exists, ensure JSON content is standardized (Counterparty vs Payee)
-            try {
-                const rows = db.prepare("SELECT id, logic_json FROM reconciliation_rules").all();
-                const update = db.prepare("UPDATE reconciliation_rules SET logic_json = ? WHERE id = ?");
-                rows.forEach(row => {
-                    if (row.logic_json && (row.logic_json.includes('setPayeeId') || row.logic_json.includes('suggestedPayeeName'))) {
-                        const r = JSON.parse(row.logic_json);
-                        if (r.setPayeeId) { r.setCounterpartyId = r.setPayeeId; delete r.setPayeeId; }
-                        if (r.suggestedPayeeName) { r.suggestedCounterpartyName = r.suggestedPayeeName; delete r.suggestedPayeeName; }
-                        update.run(JSON.stringify(r), row.id);
-                        console.log(`[MIGRATE] Standardized logic mapping for rule ${row.id}`);
-                    }
-                });
-            } catch (e) { console.error("[MIGRATE] Rule standardization failed:", e); }
         }
+
+        // ALWAYS PERFORM DEEP SCAN FOR LEGACY KEYS IN LOGIC_JSON
+        // This ensures that even if rules were added via import later, they get standardized
+        try {
+            const rows = db.prepare("SELECT id, logic_json FROM reconciliation_rules").all();
+            const update = db.prepare("UPDATE reconciliation_rules SET logic_json = ? WHERE id = ?");
+            rows.forEach(row => {
+                if (row.logic_json && (row.logic_json.includes('setPayeeId') || row.logic_json.includes('suggestedPayeeName'))) {
+                    const r = JSON.parse(row.logic_json);
+                    let changed = false;
+                    if (r.setPayeeId) { r.setCounterpartyId = r.setPayeeId; delete r.setPayeeId; changed = true; }
+                    if (r.suggestedPayeeName) { r.suggestedCounterpartyName = r.suggestedPayeeName; delete r.suggestedPayeeName; changed = true; }
+                    
+                    if (changed) {
+                        update.run(JSON.stringify(r), row.id);
+                        console.log(`[MIGRATE] Deep-cleaned legacy logic for rule: ${row.id}`);
+                    }
+                }
+            });
+        } catch (e) { console.error("[MIGRATE] Rule deep-scan failed:", e); }
 
         // 2. Standardize Transaction Types
         if (tableExists('transaction_types')) {
@@ -130,11 +135,15 @@ const runMigrations = () => {
         if (!tableExists('counterparties')) {
              db.exec("CREATE TABLE counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT)");
         }
+        
+        // Safe migration from legacy tables if they haven't been purged yet
         if (tableExists('payees')) {
+            console.log("[MIGRATE] Ingesting records from legacy 'payees' table...");
             db.exec("INSERT OR IGNORE INTO counterparties (id, name, parent_id, notes, user_id) SELECT id, name, parentId, notes, userId FROM payees");
             db.exec("DROP TABLE payees");
         }
         if (tableExists('merchants')) {
+            console.log("[MIGRATE] Ingesting records from legacy 'merchants' table...");
             db.exec("INSERT OR IGNORE INTO counterparties (id, name, notes) SELECT id, name, notes FROM merchants");
             db.exec("DROP TABLE merchants");
         }
@@ -155,6 +164,10 @@ const runMigrations = () => {
             const cols = getColumns('transactions');
             if (!cols.some(c => c.name === 'applied_rule_ids')) {
                 db.exec("ALTER TABLE transactions ADD COLUMN applied_rule_ids TEXT");
+            }
+            // Transition counterparty_id data from payee_id if found
+            if (cols.some(c => c.name === 'payee_id') && cols.some(c => c.name === 'counterparty_id')) {
+                db.exec("UPDATE transactions SET counterparty_id = payee_id WHERE counterparty_id IS NULL AND payee_id IS NOT NULL");
             }
         }
     })();

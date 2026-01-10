@@ -160,8 +160,10 @@ export const applyRulesToTransactions = (
         if (rule.setCategoryId) {
           modifiedTx.categoryId = rule.setCategoryId;
         }
-        if (rule.setCounterpartyId) {
-          modifiedTx.counterpartyId = rule.setCounterpartyId;
+        // Support both new 'setCounterpartyId' and legacy 'setPayeeId'
+        const targetCounterpartyId = rule.setCounterpartyId || rule.setPayeeId;
+        if (targetCounterpartyId) {
+          modifiedTx.counterpartyId = targetCounterpartyId;
         }
         if (rule.setLocationId) {
           modifiedTx.locationId = rule.setLocationId;
@@ -213,8 +215,10 @@ export const findMatchingTransactions = (
         updatedTx.categoryId = rule.setCategoryId;
         changed = true;
       }
-      if (rule.setCounterpartyId && updatedTx.counterpartyId !== rule.setCounterpartyId) {
-        updatedTx.counterpartyId = rule.setCounterpartyId;
+      
+      const targetCounterpartyId = rule.setCounterpartyId || rule.setPayeeId;
+      if (targetCounterpartyId && updatedTx.counterpartyId !== targetCounterpartyId) {
+        updatedTx.counterpartyId = targetCounterpartyId;
         changed = true;
       }
       if (rule.setLocationId && updatedTx.locationId !== rule.setLocationId) {

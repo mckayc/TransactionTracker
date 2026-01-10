@@ -119,6 +119,7 @@ export interface ReconciliationRule {
     conditions: RuleCondition[];
     setCategoryId?: string;
     setCounterpartyId?: string;
+    setPayeeId?: string; // Legacy support
     setLocationId?: string;
     setUserId?: string;
     setTransactionTypeId?: string;
@@ -130,6 +131,7 @@ export interface ReconciliationRule {
     scope?: string;
     suggestedCategoryName?: string;
     suggestedCounterpartyName?: string;
+    suggestedPayeeName?: string; // Legacy support
     suggestedLocationName?: string;
     suggestedUserName?: string;
     suggestedTypeName?: string;
