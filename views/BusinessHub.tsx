@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import type { BusinessNote, Transaction, Account, Category, BusinessProfile, BusinessInfo, TaxInfo, ChatMessage } from '../types';
-import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, BoxIcon, InfoIcon, RobotIcon, CopyIcon, FileTextIcon, SaveIcon } from '../components/Icons';
+import type { BusinessNote, Transaction, Account, Category, BusinessProfile, BusinessInfo, TaxInfo } from '../types';
+import { CheckCircleIcon, SendIcon, AddIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, TrashIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ShieldCheckIcon, BoxIcon, RobotIcon, CopyIcon, FileTextIcon, SaveIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { askAiAdvisor } from '../services/geminiService';
 
@@ -17,308 +17,132 @@ interface BusinessHubProps {
     categories: Category[];
 }
 
-type BlockType = 'paragraph' | 'todo' | 'bullet' | 'number' | 'h1';
-
-interface ContentBlock {
-    id: string;
-    type: BlockType;
-    text: string;
-    checked: boolean;
-    indent: number;
-}
-
-const Toast: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => {
-    useEffect(() => {
-        const timer = setTimeout(onClose, 3000);
-        return () => clearTimeout(timer);
-    }, [onClose]);
-
-    return (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] animate-slide-up">
-            <div className="bg-slate-900/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3">
-                <div className="bg-indigo-50 rounded-full p-1">
-                    <CheckCircleIcon className="w-4 h-4 text-white" />
-                </div>
-                <span className="text-sm font-bold tracking-tight">{message}</span>
-            </div>
-        </div>
-    );
-};
-
-const copyToClipboard = (text: string, onDone: (msg: string) => void) => {
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(() => onDone("Copied to clipboard")).catch(() => fallbackCopy(text, onDone));
-    } else {
-        fallbackCopy(text, onDone);
-    }
-};
-
-const fallbackCopy = (text: string, onDone: (msg: string) => void) => {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-9999px";
-    textArea.style.top = "0";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    try {
-        const successful = document.execCommand('copy');
-        if (successful) onDone("Copied to clipboard (fallback)");
-    } catch (err) {}
-    document.body.removeChild(textArea);
-};
-
-const parseMarkdownToBlocks = (markdown: string): ContentBlock[] => {
-    if (!markdown || markdown.trim() === '') {
-        return [{ id: generateUUID(), type: 'paragraph', text: '', checked: false, indent: 0 }];
-    }
-    return markdown.split('\n').map(line => {
-        const indentMatch = line.match(/^(\s*)/);
-        const indentCount = indentMatch ? indentMatch[0].length : 0;
-        const indent = Math.floor(indentCount / 2);
-        const trimmed = line.trim();
-        if (trimmed.startsWith('# ')) return { id: generateUUID(), type: 'h1', text: trimmed.replace('# ', ''), checked: false, indent };
-        if (trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]') || trimmed.startsWith('- [X]')) {
-            return { id: generateUUID(), type: 'todo', text: trimmed.replace(/- \[[ xX]\]\s*/, ''), checked: trimmed.toLowerCase().includes('- [x]'), indent };
-        }
-        if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) return { id: generateUUID(), type: 'bullet', text: trimmed.replace(/^[-*]\s+/, ''), checked: false, indent };
-        const numMatch = trimmed.match(/^\d+\.\s+(.*)/);
-        if (numMatch) return { id: generateUUID(), type: 'number', text: numMatch[1], checked: false, indent };
-        return { id: generateUUID(), type: 'paragraph', text: trimmed, checked: false, indent };
-    });
-};
-
-const serializeBlocksToMarkdown = (blocks: ContentBlock[]): string => {
-    return blocks.map(b => {
-        const prefix = '  '.repeat(b.indent);
-        let marker = '';
-        if (b.type === 'h1') marker = '# ';
-        else if (b.type === 'todo') marker = `- [${b.checked ? 'x' : ' '}] `;
-        else if (b.type === 'bullet') marker = '- ';
-        else if (b.type === 'number') marker = '1. ';
-        return prefix + marker + b.text;
-    }).join('\n');
-};
-
-const BlockEditor: React.FC<{
-    initialContent: string;
-    onChange: (content: string) => void;
-    onStatusChange?: (isDirty: boolean) => void;
-}> = React.memo(({ initialContent, onChange, onStatusChange }) => {
-    const [internalBlocks, setInternalBlocks] = useState<ContentBlock[]>(() => parseMarkdownToBlocks(initialContent));
-    const [focusedId, setFocusedId] = useState<string | null>(null);
+/**
+ * NoteEditor: A high-performance buffered editor.
+ * It maintains local state for typing and only syncs to the parent (and DB)
+ * on focus loss (blur) or every 20 seconds.
+ */
+const NoteEditor: React.FC<{
+    note: BusinessNote;
+    onSave: (updates: Partial<BusinessNote>) => void;
+}> = ({ note, onSave }) => {
+    const [draftTitle, setDraftTitle] = useState(note.title);
+    const [draftContent, setDraftContent] = useState(note.content);
     const [isDirty, setIsDirty] = useState(false);
     
-    const lastSavedRef = useRef<string>(initialContent);
-    const contentRef = useRef<ContentBlock[]>(internalBlocks);
+    // Track references to avoid closure staleness in the heartbeat timer
+    const draftRef = useRef({ title: note.title, content: note.content });
+    const lastSavedRef = useRef({ title: note.title, content: note.content });
 
-    // Sync ref for access in timers/listeners
+    // When the note object changes (e.g. user selects a different note in sidebar)
+    // we reset the editor state entirely.
     useEffect(() => {
-        contentRef.current = internalBlocks;
-    }, [internalBlocks]);
-
-    // Handle incoming external changes (rare, but possible if DB syncs)
-    useEffect(() => {
-        if (!isDirty && initialContent !== lastSavedRef.current) {
-            setInternalBlocks(parseMarkdownToBlocks(initialContent));
-            lastSavedRef.current = initialContent;
-        }
-    }, [initialContent, isDirty]);
+        setDraftTitle(note.title);
+        setDraftContent(note.content);
+        draftRef.current = { title: note.title, content: note.content };
+        lastSavedRef.current = { title: note.title, content: note.content };
+        setIsDirty(false);
+    }, [note.id]);
 
     const pushChanges = useCallback(() => {
-        const markdown = serializeBlocksToMarkdown(contentRef.current);
-        if (markdown !== lastSavedRef.current) {
-            onChange(markdown);
-            lastSavedRef.current = markdown;
-            setIsDirty(false);
-            onStatusChange?.(false);
-        }
-    }, [onChange, onStatusChange]);
+        const hasTitleChanged = draftRef.current.title !== lastSavedRef.current.title;
+        const hasContentChanged = draftRef.current.content !== lastSavedRef.current.content;
 
-    // Background Heartbeat: Save every 20s if dirty
+        if (hasTitleChanged || hasContentChanged) {
+            onSave({ 
+                title: draftRef.current.title, 
+                content: draftRef.current.content 
+            });
+            lastSavedRef.current = { ...draftRef.current };
+            setIsDirty(false);
+        }
+    }, [onSave]);
+
+    // Heartbeat: Auto-save every 20 seconds if there are changes
     useEffect(() => {
-        const timer = setInterval(() => {
+        const interval = setInterval(() => {
             if (isDirty) pushChanges();
         }, 20000);
-        return () => clearInterval(timer);
+        return () => clearInterval(interval);
     }, [isDirty, pushChanges]);
 
-    const markDirty = () => {
-        if (!isDirty) {
-            setIsDirty(true);
-            onStatusChange?.(true);
-        }
+    const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setDraftTitle(val);
+        draftRef.current.title = val;
+        setIsDirty(true);
     };
 
-    const updateBlock = (id: string, updates: Partial<ContentBlock>) => {
-        setInternalBlocks(prev => prev.map(b => b.id === id ? { ...b, ...updates } : b));
-        markDirty();
-    };
-
-    const addBlock = (afterId: string, type: BlockType = 'paragraph', indent: number = 0) => {
-        const index = contentRef.current.findIndex(b => b.id === afterId);
-        const newBlock = { id: generateUUID(), type, text: '', checked: false, indent };
-        const next = [...contentRef.current];
-        next.splice(index + 1, 0, newBlock);
-        setInternalBlocks(next);
-        markDirty();
-        setTimeout(() => document.getElementById(`block-${newBlock.id}`)?.focus(), 10);
-    };
-
-    const deleteBlock = (id: string) => {
-        if (internalBlocks.length <= 1) {
-            updateBlock(id, { type: 'paragraph', text: '', checked: false, indent: 0 });
-            return;
-        }
-        const index = internalBlocks.findIndex(b => b.id === id);
-        const prevBlock = internalBlocks[index - 1];
-        const next = internalBlocks.filter(b => b.id !== id);
-        setInternalBlocks(next);
-        markDirty();
-        if (prevBlock) setTimeout(() => document.getElementById(`block-${prevBlock.id}`)?.focus(), 10);
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent, b: ContentBlock) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            addBlock(b.id, b.type, b.indent);
-        } else if (e.key === 'Backspace' && b.text === '') {
-            e.preventDefault();
-            deleteBlock(b.id);
-        } else if (e.key === 'Tab') {
-            e.preventDefault();
-            const newIndent = e.shiftKey ? Math.max(0, b.indent - 1) : Math.min(5, b.indent + 1);
-            updateBlock(b.id, { indent: newIndent });
-        }
-    };
-
-    const sortCheckedToBottom = () => {
-        const blocks = [...contentRef.current];
-        const next: ContentBlock[] = [];
-        let i = 0;
-        while (i < blocks.length) {
-            if (blocks[i].type === 'todo') {
-                const todoBranches: { parent: ContentBlock; descendants: ContentBlock[] }[] = [];
-                while (i < blocks.length && blocks[i].type === 'todo') {
-                    const currentTodo = blocks[i];
-                    const descendants: ContentBlock[] = [];
-                    const baseIndent = currentTodo.indent;
-                    i++;
-                    while (i < blocks.length && blocks[i].indent > baseIndent) {
-                        descendants.push(blocks[i]);
-                        i++;
-                    }
-                    todoBranches.push({ parent: currentTodo, descendants });
-                }
-                const incomplete = todoBranches.filter(t => !t.parent.checked);
-                const complete = todoBranches.filter(t => t.parent.checked);
-                [...incomplete, ...complete].forEach(branch => {
-                    next.push(branch.parent);
-                    next.push(...branch.descendants);
-                });
-            } else {
-                next.push(blocks[i]);
-                i++;
-            }
-        }
-        setInternalBlocks(next);
-        markDirty();
+    const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const val = e.target.value;
+        setDraftContent(val);
+        draftRef.current.content = val;
+        setIsDirty(true);
     };
 
     return (
-        <div className="flex flex-col h-full bg-white overflow-hidden" onBlur={() => isDirty && pushChanges()}>
-            <div className="flex items-center justify-between p-2 bg-slate-50/50 border-b border-slate-100 sticky top-0 z-20">
-                <div className="flex items-center gap-2">
-                    <div className="flex bg-white rounded-xl border border-slate-200 p-0.5 shadow-sm">
-                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all"><ChecklistIcon className="w-4 h-4" /></button>
-                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all"><ListIcon className="w-4 h-4" /></button>
-                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'h1' })} className="p-1.5 hover:bg-indigo-50 rounded-lg text-slate-600 transition-all font-black text-xs px-2">H1</button>
-                    </div>
-                    {isDirty && (
-                        <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-600 rounded-full border border-amber-100 animate-pulse">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            <span className="text-[10px] font-black uppercase tracking-widest">Unsaved</span>
+        <div className="flex flex-col h-full bg-white animate-fade-in" onBlur={pushChanges}>
+            <div className="p-6 border-b flex justify-between items-center bg-white z-10 shadow-sm">
+                <div className="flex-1 min-w-0 mr-4">
+                    <input 
+                        type="text" 
+                        value={draftTitle} 
+                        onChange={handleTitleChange}
+                        className="text-2xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full placeholder:text-slate-300" 
+                        placeholder="Log Title" 
+                    />
+                    <div className="flex items-center gap-3 mt-2">
+                        <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md border text-[10px] font-black uppercase tracking-widest ${isDirty ? 'bg-amber-50 text-amber-600 border-amber-100 animate-pulse' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${isDirty ? 'bg-amber-500' : 'bg-slate-300'}`} />
+                            {isDirty ? 'Unsaved Changes' : 'Synced'}
                         </div>
-                    )}
+                        <div className="h-3 w-px bg-slate-200" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            Created {new Date(note.createdAt).toLocaleDateString()}
+                        </span>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button type="button" onClick={sortCheckedToBottom} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
-                        <ArrowDownIcon className="w-3 h-3" /> Sink Checked
+                    <button 
+                        onClick={pushChanges}
+                        disabled={!isDirty}
+                        className={`p-2.5 rounded-xl transition-all ${isDirty ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-300'}`}
+                        title="Force Sync Now"
+                    >
+                        <SaveIcon className="w-5 h-5" />
                     </button>
-                    {isDirty && (
-                        <button type="button" onClick={pushChanges} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md">
-                            <SaveIcon className="w-3 h-3" /> Sync Now
-                        </button>
-                    )}
+                    <button 
+                        onClick={() => {
+                            if (navigator.clipboard) navigator.clipboard.writeText(draftContent);
+                        }} 
+                        className="p-2.5 text-slate-400 hover:text-indigo-600 rounded-xl transition-all"
+                        title="Copy content"
+                    >
+                        <CopyIcon className="w-5 h-5"/>
+                    </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-1 custom-scrollbar">
-                {internalBlocks.map((b) => (
-                    <div 
-                        key={b.id} 
-                        className={`group flex items-start gap-3 py-0.5 relative rounded-lg transition-colors ${focusedId === b.id ? 'bg-indigo-50/30' : 'hover:bg-slate-50/50'}`}
-                        style={{ paddingLeft: `${b.indent * 20}px` }}
-                    >
-                        <div className="flex-shrink-0 mt-1.5 w-5 flex justify-center">
-                            {b.type === 'todo' ? (
-                                <button 
-                                    type="button"
-                                    onClick={() => updateBlock(b.id, { checked: !b.checked })}
-                                    className={`w-4 h-4 rounded border-2 transition-all flex items-center justify-center ${b.checked ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-white border-slate-300 hover:border-indigo-400'}`}
-                                >
-                                    {b.checked && <CheckCircleIcon className="w-3 h-3" />}
-                                </button>
-                            ) : b.type === 'bullet' ? (
-                                <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5" />
-                            ) : b.type === 'h1' ? (
-                                <span className="text-[10px] font-black text-indigo-400 mt-1 uppercase">h1</span>
-                            ) : null}
-                        </div>
-                        <textarea
-                            id={`block-${b.id}`}
-                            value={b.text}
-                            onFocus={() => setFocusedId(b.id)}
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                let type = b.type;
-                                let text = val;
-                                if (b.type === 'paragraph') {
-                                    if (val === '- ') { type = 'bullet'; text = ''; }
-                                    else if (val === '[] ') { type = 'todo'; text = ''; }
-                                    else if (val === '# ') { type = 'h1'; text = ''; }
-                                }
-                                updateBlock(b.id, { text, type });
-                            }}
-                            onKeyDown={(e) => handleKeyDown(e, b)}
-                            placeholder="Start typing..."
-                            rows={1}
-                            className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] transition-all duration-200 ${b.type === 'h1' ? 'text-lg font-black text-slate-800' : 'text-sm font-medium'} ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
-                            onInput={(e) => {
-                                const target = e.target as HTMLTextAreaElement;
-                                target.style.height = 'auto';
-                                target.style.height = target.scrollHeight + 'px';
-                            }}
-                        />
-                        <button type="button" onClick={() => deleteBlock(b.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-300 hover:text-red-500 rounded-lg transition-all"><TrashIcon className="w-4 h-4"/></button>
-                    </div>
-                ))}
+            <div className="flex-1 p-6 relative">
+                <textarea
+                    value={draftContent}
+                    onChange={handleContentChange}
+                    className="w-full h-full p-4 border-none focus:ring-0 resize-none font-medium text-slate-700 leading-relaxed bg-slate-50/30 rounded-2xl custom-scrollbar"
+                    placeholder="Describe the situation, bug, or idea..."
+                />
             </div>
         </div>
     );
-});
+};
 
 const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, notes, onUpdateNotes }) => {
     const [activeTab, setActiveTab] = useState<'identity' | 'journal'>('identity');
     const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedTypeFilter, setSelectedTypeFilter] = useState<string | null>(null);
-    const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [aiQuery, setAiQuery] = useState('');
     const [aiResponse, setAiResponse] = useState('');
     const [isAiLoading, setIsAiLoading] = useState(false);
-    const [isGlobalDirty, setIsGlobalDirty] = useState(false);
 
     const updateInfo = (key: keyof BusinessInfo, value: string) => {
         onUpdateProfile({ ...profile, info: { ...profile.info, [key]: value } });
@@ -347,7 +171,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
         const id = generateUUID();
         const newNote: BusinessNote = {
             id,
-            title: 'New Log Entry',
+            title: 'New Entry',
             content: '',
             type: selectedTypeFilter as any || 'note',
             priority: 'medium',
@@ -361,7 +185,11 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
 
     const handleUpdateActiveNote = (updates: Partial<BusinessNote>) => {
         if (!selectedNoteId) return;
-        onUpdateNotes(notes.map(n => n.id === selectedNoteId ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n));
+        onUpdateNotes(notes.map(n => n.id === selectedNoteId ? { 
+            ...n, 
+            ...updates, 
+            updatedAt: new Date().toISOString() 
+        } : n));
     };
 
     const handleAskAi = async () => {
@@ -383,19 +211,11 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight">Business Hub</h1>
-                    <p className="text-sm text-slate-500">Identity & Memory.</p>
+                    <p className="text-sm text-slate-500">Identity & Institutional Memory.</p>
                 </div>
-                <div className="flex items-center gap-4">
-                    {isGlobalDirty && (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-xl border border-amber-100 animate-pulse font-black text-[10px] uppercase">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                            Pending Sync
-                        </div>
-                    )}
-                    <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200">
-                        <button onClick={() => setActiveTab('identity')} className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'identity' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>Identity</button>
-                        <button onClick={() => setActiveTab('journal')} className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'journal' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>Journal</button>
-                    </div>
+                <div className="flex bg-white p-1 rounded-xl shadow-sm border border-slate-200">
+                    <button onClick={() => setActiveTab('identity')} className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'identity' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>Identity</button>
+                    <button onClick={() => setActiveTab('journal')} className={`px-4 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'journal' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>Journal</button>
                 </div>
             </div>
 
@@ -418,14 +238,14 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                 </div>
                             </div>
                         </div>
-                        <div className="bg-slate-900 rounded-3xl p-6 text-white flex flex-col gap-6 relative overflow-hidden">
+                        <div className="bg-slate-900 rounded-3xl p-6 text-white flex flex-col gap-6 relative overflow-hidden shadow-xl">
                             <div className="relative z-10 flex flex-col h-full">
                                 <h3 className="font-black uppercase tracking-tight flex items-center gap-2 mb-4"><RobotIcon className="w-6 h-6 text-indigo-400" /> Advisor</h3>
                                 <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 mb-4 text-sm leading-relaxed text-slate-300 bg-black/20 p-4 rounded-2xl border border-white/5 shadow-inner">
-                                    {aiResponse ? <div dangerouslySetInnerHTML={{ __html: aiResponse.replace(/\n/g, '<br/>') }} /> : <p className="italic text-slate-500">Ask about tax strategy...</p>}
+                                    {aiResponse ? <div dangerouslySetInnerHTML={{ __html: aiResponse.replace(/\n/g, '<br/>') }} /> : <p className="italic text-slate-500">Ask about tax strategy or compliance deadlines...</p>}
                                 </div>
                                 <div className="space-y-3">
-                                    <textarea value={aiQuery} onChange={e => setAiQuery(e.target.value)} className="w-full bg-white/5 border-white/10 text-white rounded-xl text-xs p-3 focus:border-indigo-500 transition-all placeholder:text-slate-600 min-h-[100px] resize-none" placeholder="Deadlines?" />
+                                    <textarea value={aiQuery} onChange={e => setAiQuery(e.target.value)} className="w-full bg-white/5 border-white/10 text-white rounded-xl text-xs p-3 focus:border-indigo-500 transition-all placeholder:text-slate-600 min-h-[100px] resize-none" placeholder="How should I handle estimated payments?" />
                                     <button onClick={handleAskAi} disabled={isAiLoading || !aiQuery.trim()} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-lg flex items-center justify-center gap-2 disabled:opacity-30">
                                         {isAiLoading ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin"></div> : <SendIcon className="w-4 h-4" />} Consult
                                     </button>
@@ -437,69 +257,73 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
 
                 {activeTab === 'journal' && (
                     <div className="bg-white rounded-3xl border border-slate-200 shadow-sm flex h-full overflow-hidden">
-                        <div className="w-48 border-r border-slate-100 bg-slate-50/30 flex flex-col p-4 flex-shrink-0">
+                        <div className="w-56 border-r border-slate-100 bg-slate-50/30 flex flex-col p-4 flex-shrink-0">
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 ml-1">Taxonomy</p>
                             <div className="space-y-1">
                                 {[
                                     { id: null, label: 'All Entries', icon: <FileTextIcon className="w-4 h-4" /> },
-                                    { id: 'note', label: 'Logs', icon: <NotesIcon className="w-4 h-4 text-blue-500" /> },
-                                    { id: 'bug', label: 'Bugs', icon: <BugIcon className="w-4 h-4 text-red-500" /> },
+                                    { id: 'note', label: 'General Logs', icon: <NotesIcon className="w-4 h-4 text-blue-500" /> },
+                                    { id: 'bug', label: 'Issue Tracker', icon: <BugIcon className="w-4 h-4 text-red-500" /> },
                                     { id: 'idea', label: 'Proposals', icon: <LightBulbIcon className="w-4 h-4 text-amber-500" /> },
-                                    { id: 'task', label: 'Actions', icon: <ChecklistIcon className="w-4 h-4 text-green-500" /> }
+                                    { id: 'task', label: 'Action Items', icon: <ChecklistIcon className="w-4 h-4 text-green-500" /> }
                                 ].map(type => (
-                                    <button key={type.label} onClick={() => setSelectedTypeFilter(type.id)} className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-bold transition-all ${selectedTypeFilter === type.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}>
+                                    <button key={type.label} onClick={() => setSelectedTypeFilter(type.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${selectedTypeFilter === type.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}>
                                         {type.icon}<span>{type.label}</span>
                                     </button>
                                 ))}
                             </div>
                         </div>
                         <div className="w-80 border-r border-slate-100 flex flex-col min-h-0 flex-shrink-0">
-                            <div className="p-4 border-b flex justify-between items-center bg-white"><h3 className="font-black text-slate-800 uppercase tracking-tighter text-sm">Stream</h3><button onClick={handleCreateNote} className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 active:scale-95"><AddIcon className="w-4 h-4"/></button></div>
-                            <div className="p-3 border-b"><div className="relative"><input type="text" placeholder="Search..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-slate-100 border-none rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-bold" /><SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" /></div></div>
+                            <div className="p-4 border-b flex justify-between items-center bg-white">
+                                <h3 className="font-black text-slate-800 uppercase tracking-tighter text-sm">Chronicle</h3>
+                                <button onClick={handleCreateNote} className="p-2 bg-indigo-600 text-white rounded-full hover:bg-indigo-700 active:scale-95 shadow-lg shadow-indigo-100">
+                                    <AddIcon className="w-4 h-4"/>
+                                </button>
+                            </div>
+                            <div className="p-3 border-b bg-slate-50/50">
+                                <div className="relative">
+                                    <input type="text" placeholder="Filter memory..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-9 pr-4 py-2 bg-white border border-slate-200 rounded-xl text-xs focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
+                                    <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                                </div>
+                            </div>
                             <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar">
-                                {filteredNotes.map(n => (
+                                {filteredNotes.length === 0 ? (
+                                    <div className="py-12 text-center text-slate-300 italic flex flex-col items-center">
+                                        <FileTextIcon className="w-8 h-8 mb-2 opacity-10" />
+                                        <p className="text-[10px] font-black uppercase">No records</p>
+                                    </div>
+                                ) : filteredNotes.map(n => (
                                     <div key={n.id} onClick={() => setSelectedNoteId(n.id)} className={`p-4 rounded-2xl cursor-pointer border-2 transition-all flex flex-col gap-1.5 ${selectedNoteId === n.id ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}>
-                                        <div className="flex justify-between items-start"><h4 className={`text-sm font-black truncate pr-2 ${n.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{n.title}</h4><div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'bug' ? 'bg-red-500' : n.type === 'idea' ? 'bg-amber-500' : 'bg-blue-500'}`} /></div>
+                                        <div className="flex justify-between items-start">
+                                            <h4 className={`text-sm font-black truncate pr-2 ${selectedNoteId === n.id ? 'text-indigo-900' : 'text-slate-800'}`}>{n.title || 'Untitled Entry'}</h4>
+                                            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${n.type === 'bug' ? 'bg-red-500' : n.type === 'idea' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+                                        </div>
                                         <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">{new Date(n.updatedAt).toLocaleDateString()}</p>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                        <div className="flex-1 flex flex-col min-h-0 bg-white relative">
+                        <div className="flex-1 flex flex-col min-h-0 bg-white">
                             {selectedNoteId && activeNote ? (
-                                <div className="flex flex-col h-full animate-fade-in">
-                                    <div className="p-6 border-b flex justify-between items-center z-10 shadow-sm bg-white">
-                                        <div className="flex-1 min-w-0 mr-4">
-                                            <input type="text" value={activeNote.title} onChange={e => handleUpdateActiveNote({ title: e.target.value })} className="text-2xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full placeholder:text-slate-300" placeholder="Log Title" />
-                                            <div className="flex items-center gap-3 mt-2">
-                                                <select value={activeNote.type} onChange={e => handleUpdateActiveNote({ type: e.target.value as any })} className="text-[10px] font-black uppercase bg-slate-100 border-none rounded-lg py-1 px-2 focus:ring-0 cursor-pointer">
-                                                    <option value="note">Log Entry</option><option value="bug">Bug</option><option value="idea">Idea</option><option value="task">Action</option>
-                                                </select>
-                                                <button onClick={() => handleUpdateActiveNote({ isCompleted: !activeNote.isCompleted })} className={`text-[10px] font-black uppercase px-3 py-1 rounded-lg shadow-sm ${activeNote.isCompleted ? 'bg-green-100 text-green-700' : 'bg-slate-700 text-white hover:bg-slate-800'}`}>{activeNote.isCompleted ? 'Resolved' : 'Mark Resolved'}</button>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={() => copyToClipboard(activeNote.content, (msg) => setToastMessage(msg))} className="p-2.5 text-slate-400 hover:text-indigo-600 rounded-xl transition-all"><CopyIcon className="w-5 h-5"/></button>
-                                            <button onClick={() => { if(confirm("Discard?")) { onUpdateNotes(notes.filter(n => n.id !== selectedNoteId)); setSelectedNoteId(null); } }} className="p-2.5 text-slate-300 hover:text-red-500 rounded-xl transition-all"><TrashIcon className="w-5 h-5"/></button>
-                                        </div>
-                                    </div>
-                                    <div className="flex-1 overflow-hidden p-6 bg-slate-50/20">
-                                        <BlockEditor 
-                                            key={selectedNoteId} 
-                                            initialContent={activeNote.content} 
-                                            onChange={(newContent) => handleUpdateActiveNote({ content: newContent })} 
-                                            onStatusChange={setIsGlobalDirty}
-                                        />
-                                    </div>
-                                </div>
+                                <NoteEditor 
+                                    key={selectedNoteId} 
+                                    note={activeNote} 
+                                    onSave={handleUpdateActiveNote} 
+                                />
                             ) : (
-                                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/20"><div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle"><NotesIcon className="w-12 h-12 text-indigo-200" /></div><h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Workbench</h3><button onClick={handleCreateNote} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Start New Log</button></div>
+                                <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/20">
+                                    <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-8 animate-bounce-subtle">
+                                        <NotesIcon className="w-12 h-12 text-indigo-200" />
+                                    </div>
+                                    <h3 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Entry Vault</h3>
+                                    <p className="text-slate-400 text-sm mt-4 max-w-xs font-medium">Select a log from the sidebar to inspect its content or create a new institutional record.</p>
+                                    <button onClick={handleCreateNote} className="mt-8 px-10 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Start New Log</button>
+                                </div>
                             )}
                         </div>
                     </div>
                 )}
             </div>
-            {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
         </div>
     );
 };
