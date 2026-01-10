@@ -48,7 +48,8 @@ const MetricBreakdownModal: React.FC<{
     items: { label: string; amount: number; percentage: number }[];
     colorClass: string;
     total: number;
-}> = ({ isOpen, onClose, title, items, colorClass, total }) => {
+    isLoading: boolean;
+}> = ({ isOpen, onClose, title, items, colorClass, total, isLoading }) => {
     if (!isOpen) return null;
 
     return (
@@ -62,8 +63,13 @@ const MetricBreakdownModal: React.FC<{
                     <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                 </div>
                 
-                <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
-                    {items.length === 0 ? (
+                <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar relative">
+                    {isLoading ? (
+                        <div className="py-20 flex flex-col items-center justify-center gap-3">
+                            <div className="animate-spin h-10 w-10 border-4 border-indigo-500 border-t-transparent rounded-full" />
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest animate-pulse">Scanning Full Range...</p>
+                        </div>
+                    ) : items.length === 0 ? (
                         <div className="py-12 text-center text-slate-300 italic">No activity matching this metric in the current range.</div>
                     ) : (
                         <div className="space-y-3">
@@ -92,7 +98,11 @@ const MetricBreakdownModal: React.FC<{
 
                 <div className="p-5 bg-slate-50 border-t flex flex-col items-center gap-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selected Period Total</p>
-                    <p className={`text-2xl font-black ${colorClass}`}>${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                    {isLoading ? (
+                        <div className="h-8 w-24 bg-slate-200 animate-pulse rounded" />
+                    ) : (
+                        <p className={`text-2xl font-black ${colorClass}`}>${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                    )}
                 </div>
             </div>
         </div>
@@ -124,7 +134,11 @@ const AllTransactions: React.FC<{
   
   // Range Summary State
   const [rangeSummary, setRangeSummary] = useState({ incoming: 0, outgoing: 0, neutral: 0, investments: 0 });
+  
+  // Breakdown state (Dynamic Fetch)
   const [activeMetricBreakdown, setActiveMetricBreakdown] = useState<'inflow' | 'outflow' | 'investments' | null>(null);
+  const [breakdownData, setBreakdownData] = useState<{items: any[], total: number}>({ items: [], total: 0 });
+  const [isBreakdownLoading, setIsBreakdownLoading] = useState(false);
   
   // Filter & Search State
   const [searchTerm, setSearchTerm] = useState('');
@@ -182,6 +196,29 @@ const AllTransactions: React.FC<{
       return () => clearTimeout(handler);
   }, [fetchTransactions]);
 
+  // Fetch breakdown data when modal opens
+  useEffect(() => {
+      const fetchBreakdown = async () => {
+          if (!activeMetricBreakdown) return;
+          setIsBreakdownLoading(true);
+          try {
+              const params: any = {
+                type: activeMetricBreakdown,
+                search: searchTerm
+              };
+              if (datePreset !== 'allTime') {
+                  params.startDate = formatDate(start);
+                  params.endDate = formatDate(end);
+              }
+              const result = await api.getBreakdown(params);
+              setBreakdownData(result);
+          } finally {
+              setIsBreakdownLoading(false);
+          }
+      };
+      fetchBreakdown();
+  }, [activeMetricBreakdown, start, end, datePreset, searchTerm]);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const handleBulkDelete = () => {
@@ -209,43 +246,6 @@ const AllTransactions: React.FC<{
       setDatePreset('custom');
       setPage(0);
   };
-
-  // Logic to calculate top 15 grouped breakdown for a metric based on Counterparties
-  const metricBreakdownData = useMemo(() => {
-    if (!activeMetricBreakdown) return { items: [], total: 0 };
-    
-    const typeMap = new Map(transactionTypes.map(t => [t.id, t]));
-    const cpMap = new Map(counterparties.map(p => [p.id, p.name]));
-
-    const filtered = transactions.filter(tx => {
-        if (tx.isParent) return false;
-        const type = typeMap.get(tx.typeId);
-        if (!type) return false;
-
-        if (activeMetricBreakdown === 'inflow') return type.balanceEffect === 'incoming';
-        if (activeMetricBreakdown === 'outflow') return type.balanceEffect === 'outgoing';
-        if (activeMetricBreakdown === 'investments') return tx.typeId === 'type_investment';
-        return false;
-    });
-
-    const groups = new Map<string, number>();
-    filtered.forEach(tx => {
-        const cpName = cpMap.get(tx.counterpartyId || '') || tx.description || 'Unknown Entity';
-        groups.set(cpName, (groups.get(cpName) || 0) + Math.abs(tx.amount));
-    });
-
-    const total = Array.from(groups.values()).reduce((s, v) => s + v, 0);
-    const sorted = Array.from(groups.entries())
-        .map(([label, amount]) => ({ 
-            label, 
-            amount, 
-            percentage: total > 0 ? (amount / total) * 100 : 0 
-        }))
-        .sort((a, b) => b.amount - a.amount)
-        .slice(0, 15);
-
-    return { items: sorted, total };
-  }, [activeMetricBreakdown, transactions, transactionTypes, counterparties]);
 
   return (
     <div className="flex flex-col h-full gap-4">
@@ -433,8 +433,9 @@ const AllTransactions: React.FC<{
         isOpen={!!activeMetricBreakdown}
         onClose={() => setActiveMetricBreakdown(null)}
         title={activeMetricBreakdown === 'inflow' ? 'Total Inflow' : activeMetricBreakdown === 'outflow' ? 'Total Outflow' : 'Investments'}
-        items={metricBreakdownData.items}
-        total={metricBreakdownData.total}
+        items={breakdownData.items}
+        total={breakdownData.total}
+        isLoading={isBreakdownLoading}
         colorClass={activeMetricBreakdown === 'inflow' ? 'text-emerald-600' : activeMetricBreakdown === 'outflow' ? 'text-rose-600' : 'text-purple-600'}
       />
     </div>

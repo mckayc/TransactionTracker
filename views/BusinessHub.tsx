@@ -37,7 +37,7 @@ const Toast: React.FC<{ message: string; onClose: () => void }> = ({ message, on
     return (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[200] animate-slide-up">
             <div className="bg-slate-900/90 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3">
-                <div className="bg-indigo-500 rounded-full p-1">
+                <div className="bg-indigo-50 rounded-full p-1">
                     <CheckCircleIcon className="w-4 h-4 text-white" />
                 </div>
                 <span className="text-sm font-bold tracking-tight">{message}</span>
@@ -136,25 +136,18 @@ const serializeBlocksToMarkdown = (blocks: ContentBlock[]): string => {
     }).join('\n');
 };
 
+// Memoize the editor to prevent parent re-renders from interrupting input
 const BlockEditor: React.FC<{
     initialContent: string;
     onChange: (content: string) => void;
-    noteId: string;
-}> = ({ initialContent, onChange, noteId }) => {
-    // Local blocks state to ensure stable keys (UUIDs) during a single editing session
-    const [internalBlocks, setInternalBlocks] = useState<ContentBlock[]>([]);
+}> = React.memo(({ initialContent, onChange }) => {
+    // CRITICAL: Initialize state only once on mount. 
+    // The 'key' on the usage site ensures this component remounts correctly for different notes.
+    const [internalBlocks, setInternalBlocks] = useState<ContentBlock[]>(() => 
+        parseMarkdownToBlocks(initialContent)
+    );
     const [focusedId, setFocusedId] = useState<string | null>(null);
     const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const lastNoteId = useRef<string | null>(null);
-
-    // Only re-parse markdown into blocks when the Note ID changes.
-    // This prevents generating new UUIDs for existing lines on every keystroke.
-    useEffect(() => {
-        if (noteId !== lastNoteId.current) {
-            setInternalBlocks(parseMarkdownToBlocks(initialContent));
-            lastNoteId.current = noteId;
-        }
-    }, [noteId, initialContent]);
 
     const triggerChange = (updatedBlocks: ContentBlock[]) => {
         setInternalBlocks(updatedBlocks);
@@ -308,7 +301,7 @@ const BlockEditor: React.FC<{
             </div>
         </div>
     );
-};
+});
 
 const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, notes, onUpdateNotes }) => {
     const [activeTab, setActiveTab] = useState<'identity' | 'journal'>('identity');
@@ -592,7 +585,7 @@ const BusinessHub: React.FC<BusinessHubProps> = ({ profile, onUpdateProfile, not
                                     </div>
                                     <div className="flex-1 overflow-hidden p-6 flex flex-col min-h-0 bg-slate-50/20">
                                         <BlockEditor 
-                                            noteId={selectedNoteId}
+                                            key={selectedNoteId}
                                             initialContent={activeNote.content} 
                                             onChange={(newContent) => handleUpdateActiveNote({ content: newContent })} 
                                         />

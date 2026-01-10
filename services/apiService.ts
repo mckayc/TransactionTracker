@@ -52,6 +52,12 @@ export const api = {
         return await response.json();
     },
 
+    getBreakdown: async (params: Record<string, any> = {}): Promise<{ items: any[], total: number }> => {
+        const query = new URLSearchParams(params).toString();
+        const response = await fetchWithRetry(`/api/analytics/breakdown?${query}`);
+        return await response.json();
+    },
+
     getUsage: async (): Promise<any> => {
         const response = await fetchWithRetry('/api/analytics/usage');
         return await response.json();

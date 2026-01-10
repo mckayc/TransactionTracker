@@ -325,6 +325,43 @@ app.get('/api/analytics/summary', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/analytics/breakdown', (req, res) => {
+    try {
+        const { type } = req.query;
+        const { filterQuery, values } = buildTxFilters(req.query);
+        
+        let typeFilter = "";
+        if (type === 'inflow') typeFilter = " AND tt.balance_effect = 'incoming'";
+        else if (type === 'outflow') typeFilter = " AND tt.balance_effect = 'outgoing'";
+        else if (type === 'investments') typeFilter = " AND t.type_id = 'type_investment'";
+
+        const query = `
+            SELECT 
+                COALESCE(cp.name, t.description) as label,
+                SUM(ABS(t.amount)) as amount
+            FROM transactions t
+            JOIN transaction_types tt ON t.type_id = tt.id
+            LEFT JOIN counterparties cp ON t.counterparty_id = cp.id
+            ${filterQuery} ${typeFilter}
+            GROUP BY label
+            ORDER BY amount DESC
+            LIMIT 15
+        `;
+        
+        const results = db.prepare(query).all(...values);
+        const total = results.reduce((sum, r) => sum + r.amount, 0);
+        
+        res.json({
+            items: results.map(r => ({
+                label: r.label,
+                amount: r.amount,
+                percentage: total > 0 ? (r.amount / total) * 100 : 0
+            })),
+            total
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/transactions/batch', (req, res) => {
     try {
         const txs = req.body;

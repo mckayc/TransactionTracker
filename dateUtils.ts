@@ -36,11 +36,13 @@ export const formatDate = (date: Date | string): string => {
  */
 export const shiftDateRange = (start: Date, end: Date, direction: 'prev' | 'next'): { start: Date, end: Date } => {
     const newStart = new Date(start);
+    newStart.setHours(0,0,0,0);
     const newEnd = new Date(end);
+    newEnd.setHours(0,0,0,0);
     const dir = direction === 'next' ? 1 : -1;
     
     const diffTime = Math.abs(end.getTime() - start.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     
     // Special detection for "Calendar Month" (1st to Last)
     const isFullMonth = start.getDate() === 1 && end.getDate() === new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
@@ -48,11 +50,18 @@ export const shiftDateRange = (start: Date, end: Date, direction: 'prev' | 'next
     const isFullYear = start.getMonth() === 0 && start.getDate() === 1 && end.getMonth() === 11 && end.getDate() === 31;
     // Special detection for "Calendar Week" (Sun to Sat)
     const isFullWeek = diffDays === 6 && start.getDay() === 0 && end.getDay() === 6;
+    // Special detection for "Calendar Quarter"
+    const isFullQuarter = start.getDate() === 1 && 
+                         (start.getMonth() % 3 === 0) &&
+                         end.getDate() === new Date(start.getFullYear(), start.getMonth() + 3, 0).getDate();
 
     if (isFullYear) {
         newStart.setFullYear(start.getFullYear() + dir);
         newEnd.setFullYear(newStart.getFullYear());
         newEnd.setMonth(11, 31);
+    } else if (isFullQuarter) {
+        newStart.setMonth(start.getMonth() + (dir * 3), 1);
+        newEnd.setMonth(newStart.getMonth() + 3, 0);
     } else if (isFullMonth) {
         newStart.setMonth(start.getMonth() + dir, 1);
         newEnd.setFullYear(newStart.getFullYear());
