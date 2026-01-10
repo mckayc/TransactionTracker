@@ -240,6 +240,7 @@ const AllTransactions: React.FC<{
   };
 
   const handleDateShift = (direction: 'prev' | 'next') => {
+      // Use the current range to shift while preserving its scale
       const nextRange = shiftDateRange(start, end, direction);
       setCustomStart(formatDate(nextRange.start));
       setCustomEnd(formatDate(nextRange.end));
