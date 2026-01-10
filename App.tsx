@@ -131,7 +131,9 @@ const App: React.FC = () => {
             }
 
             try {
-                const txResponse = await api.getTransactions({ limit: 1000 });
+                // INCREASED LIMIT: Fetching 100,000 records instead of 1,000 
+                // to ensure the full history is available for the Calendar and Dashboard.
+                const txResponse = await api.getTransactions({ limit: 100000 });
                 if (txResponse && txResponse.data) setTransactions(txResponse.data.filter(Boolean));
             } catch (txErr) {
                 console.error("[APP] Tx fetch failed:", txErr);
