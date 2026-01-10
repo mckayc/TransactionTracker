@@ -1,3 +1,4 @@
+
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -454,7 +455,9 @@ app.post('/api/data/:key', (req, res) => {
     } else if (key === 'counterparties' && Array.isArray(value)) {
         db.prepare("DELETE FROM counterparties").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO counterparties (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
-        db.transaction(() => { value.forEach(p => stmt.run(p.id, name, p.parentId || null, p.notes || null, p.userId || null)); })();
+        db.transaction(() => {
+            value.forEach(p => stmt.run(p.id, p.name, p.parentId || null, p.notes || null, p.userId || null));
+        })();
     } else if (key === 'locations' && Array.isArray(value)) {
         db.prepare("DELETE FROM locations").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO locations (id, name, city, state, country) VALUES (?, ?, ?, ?, ?)");
