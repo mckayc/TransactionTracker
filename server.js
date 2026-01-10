@@ -57,120 +57,99 @@ if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true
 let db;
 
 /**
- * MIGRATION ENGINE
+ * MIGRATION ENGINE - DEEP SCAVENGE
  */
 const runMigrations = () => {
-    console.log("[MIGRATE] Checking system integrity...");
+    console.log("[MIGRATE] Running Deep Scavenge and Integrity Check...");
     
     const tableExists = (name) => db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name);
     const getColumns = (name) => db.prepare(`PRAGMA table_info(${name})`).all();
 
     db.transaction(() => {
-        // 1. Dedicated Rules Table
-        if (!tableExists('reconciliation_rules')) {
-            console.log("[MIGRATE] Initializing dedicated reconciliation_rules table...");
-            db.exec(`
-                CREATE TABLE reconciliation_rules (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    rule_category_id TEXT,
-                    priority INTEGER DEFAULT 0,
-                    skip_import INTEGER DEFAULT 0,
-                    is_ai_draft INTEGER DEFAULT 0,
-                    logic_json TEXT
-                )
-            `);
-            
-            // Migration from app_storage blob if exists
-            const legacy = db.prepare("SELECT value FROM app_storage WHERE key = 'reconciliationRules'").get();
-            if (legacy && legacy.value) {
-                try {
-                    const rules = JSON.parse(legacy.value);
-                    const insert = db.prepare("INSERT INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json) VALUES (?, ?, ?, ?, ?, ?)");
-                    rules.forEach(r => {
-                        // Deep transform legacy keys to standardized naming
-                        const cleanRule = { ...r };
-                        if (r.setPayeeId) { cleanRule.setCounterpartyId = r.setPayeeId; delete cleanRule.setPayeeId; }
-                        if (r.suggestedPayeeName) { cleanRule.suggestedCounterpartyName = r.suggestedPayeeName; delete cleanRule.suggestedPayeeName; }
-                        
-                        insert.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(cleanRule));
-                    });
-                    console.log(`[MIGRATE] Successfully migrated ${rules.length} rules to structured table.`);
-                    db.prepare("DELETE FROM app_storage WHERE key = 'reconciliationRules'").run();
-                } catch (e) {
-                    console.error("[MIGRATE] Legacy rule migration failed:", e.message);
-                }
-            }
-        }
-
-        // ALWAYS PERFORM DEEP SCAN FOR LEGACY KEYS IN LOGIC_JSON
-        // This ensures that even if rules were added via import later, they get standardized
-        try {
-            const rows = db.prepare("SELECT id, logic_json FROM reconciliation_rules").all();
-            const update = db.prepare("UPDATE reconciliation_rules SET logic_json = ? WHERE id = ?");
-            rows.forEach(row => {
-                if (row.logic_json && (row.logic_json.includes('setPayeeId') || row.logic_json.includes('suggestedPayeeName'))) {
-                    const r = JSON.parse(row.logic_json);
-                    let changed = false;
-                    if (r.setPayeeId) { r.setCounterpartyId = r.setPayeeId; delete r.setPayeeId; changed = true; }
-                    if (r.suggestedPayeeName) { r.suggestedCounterpartyName = r.suggestedPayeeName; delete r.suggestedPayeeName; changed = true; }
-                    
-                    if (changed) {
-                        update.run(JSON.stringify(r), row.id);
-                        console.log(`[MIGRATE] Deep-cleaned legacy logic for rule: ${row.id}`);
-                    }
-                }
-            });
-        } catch (e) { console.error("[MIGRATE] Rule deep-scan failed:", e); }
-
-        // 2. Standardize Transaction Types
-        if (tableExists('transaction_types')) {
-            const cols = getColumns('transaction_types');
-            if (cols.some(c => c.name === 'balanceEffect') && !cols.some(c => c.name === 'balance_effect')) {
-                db.exec("ALTER TABLE transaction_types RENAME COLUMN balanceEffect TO balance_effect");
-            }
-        }
-
-        // 3. Consolidate Payees/Merchants into Counterparties
+        // 1. Core Table: counterparties
         if (!tableExists('counterparties')) {
              db.exec("CREATE TABLE counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT)");
         }
-        
-        // Safe migration from legacy tables if they haven't been purged yet
+
+        // 2. SCAVENGE: Table Data (Payees/Merchants)
         if (tableExists('payees')) {
-            console.log("[MIGRATE] Ingesting records from legacy 'payees' table...");
+            console.log("[MIGRATE] Recovering records from legacy 'payees' table...");
             db.exec("INSERT OR IGNORE INTO counterparties (id, name, parent_id, notes, user_id) SELECT id, name, parentId, notes, userId FROM payees");
             db.exec("DROP TABLE payees");
         }
         if (tableExists('merchants')) {
-            console.log("[MIGRATE] Ingesting records from legacy 'merchants' table...");
+            console.log("[MIGRATE] Recovering records from legacy 'merchants' table...");
             db.exec("INSERT OR IGNORE INTO counterparties (id, name, notes) SELECT id, name, notes FROM merchants");
             db.exec("DROP TABLE merchants");
         }
 
-        // 4. Fix Casing
+        // 3. SCAVENGE: Blob Data (app_storage)
+        const scavengeKeys = ['payees', 'merchants', 'counterparties'];
+        scavengeKeys.forEach(key => {
+            const row = db.prepare("SELECT value FROM app_storage WHERE key = ?").get(key);
+            if (row && row.value) {
+                try {
+                    const items = JSON.parse(row.value);
+                    if (Array.isArray(items)) {
+                        console.log(`[MIGRATE] Draining ${items.length} records from app_storage blob: ${key}`);
+                        const insert = db.prepare("INSERT OR IGNORE INTO counterparties (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
+                        items.forEach(p => {
+                            if (p && p.id && p.name) {
+                                insert.run(p.id, p.name, p.parentId || p.parent_id || null, p.notes || null, p.userId || p.user_id || null);
+                            }
+                        });
+                        // Clear the blob once successfully ingested
+                        db.prepare("DELETE FROM app_storage WHERE key = ?").run(key);
+                    }
+                } catch (e) {
+                    console.error(`[MIGRATE] Failed to scavenge blob ${key}:`, e.message);
+                }
+            }
+        });
+
+        // 4. Rule Normalization (Logic JSON)
+        if (tableExists('reconciliation_rules')) {
+            try {
+                const rows = db.prepare("SELECT id, logic_json FROM reconciliation_rules").all();
+                const update = db.prepare("UPDATE reconciliation_rules SET logic_json = ? WHERE id = ?");
+                rows.forEach(row => {
+                    if (row.logic_json && (row.logic_json.includes('setPayeeId') || row.logic_json.includes('suggestedPayeeName'))) {
+                        const r = JSON.parse(row.logic_json);
+                        let changed = false;
+                        if (r.setPayeeId) { r.setCounterpartyId = r.setPayeeId; delete r.setPayeeId; changed = true; }
+                        if (r.suggestedPayeeName) { r.suggestedCounterpartyName = r.suggestedPayeeName; delete r.suggestedPayeeName; changed = true; }
+                        if (changed) update.run(JSON.stringify(r), row.id);
+                    }
+                });
+            } catch (e) { console.error("[MIGRATE] Rule deep-scan failed:", e); }
+        }
+
+        // 5. Column Standardization (Snake Case)
         const fixCasing = (table, oldCol, newCol) => {
             if (!tableExists(table)) return;
             const cols = getColumns(table);
             if (cols.some(c => c.name === oldCol) && !cols.some(c => c.name === newCol)) {
                 db.exec(`ALTER TABLE ${table} RENAME COLUMN ${oldCol} TO ${newCol}`);
+                console.log(`[MIGRATE] Fixed column casing: ${table}.${oldCol} -> ${newCol}`);
             }
         };
         fixCasing('accounts', 'accountTypeId', 'account_type_id');
         fixCasing('categories', 'parentId', 'parent_id');
         fixCasing('users', 'isDefault', 'is_default');
+        fixCasing('transaction_types', 'balanceEffect', 'balance_effect');
 
+        // 6. Transaction Identity Recovery
         if (tableExists('transactions')) {
             const cols = getColumns('transactions');
-            if (!cols.some(c => c.name === 'applied_rule_ids')) {
-                db.exec("ALTER TABLE transactions ADD COLUMN applied_rule_ids TEXT");
-            }
-            // Transition counterparty_id data from payee_id if found
+            if (!cols.some(c => c.name === 'applied_rule_ids')) db.exec("ALTER TABLE transactions ADD COLUMN applied_rule_ids TEXT");
+            
+            // Sync counterparty_id from legacy columns if data is missing
             if (cols.some(c => c.name === 'payee_id') && cols.some(c => c.name === 'counterparty_id')) {
                 db.exec("UPDATE transactions SET counterparty_id = payee_id WHERE counterparty_id IS NULL AND payee_id IS NOT NULL");
             }
         }
     })();
+    console.log("[MIGRATE] Scavenge complete.");
 };
 
 const createTables = () => {
@@ -208,6 +187,15 @@ const createTables = () => {
             is_completed INTEGER DEFAULT 0, 
             applied_rule_ids TEXT, 
             metadata TEXT
+        );
+        CREATE TABLE IF NOT EXISTS reconciliation_rules (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            rule_category_id TEXT,
+            priority INTEGER DEFAULT 0,
+            skip_import INTEGER DEFAULT 0,
+            is_ai_draft INTEGER DEFAULT 0,
+            logic_json TEXT
         );
       `);
 };
@@ -258,12 +246,10 @@ app.post('/api/reconciliation-rules', (req, res) => {
     try {
         const r = req.body;
         if (!r.id) return res.status(400).json({ error: "Missing ID" });
-        
         const insert = db.prepare(`
             INSERT OR REPLACE INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json)
             VALUES (?, ?, ?, ?, ?, ?)
         `);
-        
         insert.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r));
         res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -362,13 +348,11 @@ app.get('/api/analytics/breakdown', (req, res) => {
     try {
         const { type } = req.query;
         const { filterQuery, values } = buildTxFilters(req.query);
-        
         let typeFilter = "";
         if (type === 'inflow') typeFilter = " AND tt.balance_effect = 'incoming'";
         else if (type === 'outflow') typeFilter = " AND tt.balance_effect = 'outgoing'";
         else if (type === 'investments') typeFilter = " AND t.type_id = 'type_investment'";
 
-        // 1. Get Top 15 Breakdown
         const breakdownQuery = `
             SELECT 
                 COALESCE(cp.name, t.description) as label,
@@ -381,10 +365,7 @@ app.get('/api/analytics/breakdown', (req, res) => {
             ORDER BY amount DESC
             LIMIT 15
         `;
-        
         const results = db.prepare(breakdownQuery).all(...values);
-        
-        // 2. Get Actual Total for the entire period/type (ignores top-15 limit)
         const totalQuery = `
             SELECT SUM(ABS(t.amount)) as total
             FROM transactions t
@@ -393,7 +374,6 @@ app.get('/api/analytics/breakdown', (req, res) => {
         `;
         const totalResult = db.prepare(totalQuery).get(...values);
         const actualTotal = totalResult.total || 0;
-        
         res.json({
             items: results.map(r => ({
                 label: r.label,
@@ -454,18 +434,10 @@ app.post('/api/data/:key', (req, res) => {
   try {
     const key = req.params.key;
     const value = req.body;
-    
     if (key === 'reconciliationRules' && Array.isArray(value)) {
         db.prepare("DELETE FROM reconciliation_rules").run();
         const stmt = db.prepare("INSERT INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json) VALUES (?, ?, ?, ?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(r => {
-                // Standardization during batch save
-                if (r.setPayeeId) { r.setCounterpartyId = r.setPayeeId; delete r.setPayeeId; }
-                if (r.suggestedPayeeName) { r.suggestedCounterpartyName = r.suggestedPayeeName; delete r.suggestedPayeeName; }
-                stmt.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r));
-            });
-        })();
+        db.transaction(() => { value.forEach(r => stmt.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r))); })();
     } else if (key === 'categories' && Array.isArray(value)) {
         db.prepare("DELETE FROM categories").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO categories (id, name, parent_id) VALUES (?, ?, ?)");
@@ -493,9 +465,7 @@ app.post('/api/data/:key', (req, res) => {
     } else if (key === 'counterparties' && Array.isArray(value)) {
         db.prepare("DELETE FROM counterparties").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO counterparties (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
-        db.transaction(() => {
-            value.forEach(p => stmt.run(p.id, p.name, p.parentId || null, p.notes || null, p.userId || null));
-        })();
+        db.transaction(() => { value.forEach(p => stmt.run(p.id, p.name, p.parentId || null, p.notes || null, p.userId || null)); })();
     } else if (key === 'locations' && Array.isArray(value)) {
         db.prepare("DELETE FROM locations").run();
         const stmt = db.prepare("INSERT OR REPLACE INTO locations (id, name, city, state, country) VALUES (?, ?, ?, ?, ?)");
