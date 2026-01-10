@@ -225,6 +225,7 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
   let rawHeaders: string[] = [];
   const delimiter = lines[0].includes('\t') ? '\t' : ',';
 
+  // 1. Identify Headers
   for (let i = 0; i < Math.min(lines.length, 20); i++) {
     const lineLower = lines[i].toLowerCase();
     const parts = lineLower.split(delimiter).map(p => p.trim().replace(/"/g, ''));
@@ -236,21 +237,45 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     }
   }
 
-  if (headerIndex === -1) return transactions;
-
-  const lowerHeaders = rawHeaders.map(h => h.toLowerCase());
-  const colMap = {
-    date: lowerHeaders.findIndex(p => p.includes('date') || p === 'dt'),
-    name: lowerHeaders.findIndex(p => p === 'name' || p.includes('merchant') || p.includes('payee')),
-    description: lowerHeaders.findIndex(p => p.includes('description') || p === 'transaction'),
-    memo: lowerHeaders.findIndex(p => p.includes('memo') || p.includes('reference') || p.includes('note')),
-    amount: lowerHeaders.findIndex(p => p === 'amount' || p.includes('amount')),
-    credit: lowerHeaders.findIndex(p => p.includes('credit') || p.includes('deposit')),
-    debit: lowerHeaders.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdrawal')),
-    category: lowerHeaders.findIndex(p => p.includes('category')),
-    location: lowerHeaders.findIndex(p => p.includes('location') || p.includes('city') || p.includes('place') || p.includes('address')),
-    type: lowerHeaders.findIndex(p => p.includes('type'))
+  let colMap = {
+    date: -1,
+    name: -1,
+    description: -1,
+    memo: -1,
+    amount: -1,
+    credit: -1,
+    debit: -1,
+    category: -1,
+    location: -1,
+    type: -1
   };
+
+  // 2. Map Columns (Heuristic fallback if no header found)
+  if (headerIndex !== -1) {
+    const lowerHeaders = rawHeaders.map(h => h.toLowerCase());
+    colMap.date = lowerHeaders.findIndex(p => p.includes('date') || p === 'dt');
+    colMap.name = lowerHeaders.findIndex(p => p === 'name' || p.includes('merchant') || p.includes('payee'));
+    colMap.description = lowerHeaders.findIndex(p => p.includes('description') || p === 'transaction');
+    colMap.memo = lowerHeaders.findIndex(p => p.includes('memo') || p.includes('reference') || p.includes('note'));
+    colMap.amount = lowerHeaders.findIndex(p => p === 'amount' || p.includes('amount'));
+    colMap.credit = lowerHeaders.findIndex(p => p.includes('credit') || p.includes('deposit'));
+    colMap.debit = lowerHeaders.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdrawal'));
+    colMap.category = lowerHeaders.findIndex(p => p.includes('category'));
+    colMap.location = lowerHeaders.findIndex(p => p.includes('location') || p.includes('city') || p.includes('place') || p.includes('address'));
+    colMap.type = lowerHeaders.findIndex(p => p.includes('type'));
+  } else {
+    // HEURISTIC: No explicit headers found (common in manual paste). Try to guess based on first data row.
+    const firstRow = lines[0].split(delimiter).map(p => p.trim().replace(/"/g, ''));
+    if (firstRow.length >= 2) {
+        firstRow.forEach((val, idx) => {
+            if (colMap.date === -1 && parseDate(val)) colMap.date = idx;
+            else if (colMap.amount === -1 && !isNaN(parseFloat(val.replace(/[$,\s]/g, '')))) colMap.amount = idx;
+            else if (colMap.description === -1 && val.length > 5) colMap.description = idx;
+        });
+        // Start from row 0 since no header was identified
+        headerIndex = -1; 
+    }
+  }
 
   const expenseType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
   const incomeType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
@@ -269,14 +294,17 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
     let rawDesc = '';
     const nameVal = colMap.name > -1 ? parts[colMap.name] : '';
     const descVal = colMap.description > -1 ? parts[colMap.description] : '';
-    rawDesc = nameVal || descVal || 'Unspecified';
+    const memoVal = colMap.memo > -1 ? parts[colMap.memo] : '';
+    rawDesc = nameVal || descVal || memoVal || 'Unspecified';
 
     const cleanedDesc = cleanDescription(rawDesc);
     
     const metadata: Record<string, string> = { 
       _raw: line
     };
-    rawHeaders.forEach((h, idx) => { if (parts[idx] !== undefined) metadata[h] = parts[idx]; });
+    if (rawHeaders.length > 0) {
+        rawHeaders.forEach((h, idx) => { if (parts[idx] !== undefined) metadata[h] = parts[idx]; });
+    }
 
     let amount = 0;
     let isIncome = false;
@@ -301,12 +329,18 @@ const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: Trans
       } else {
           isIncome = val > 0;
       }
+    } else {
+        // Final fallback: look for any number that might be an amount if colMap.amount missed it
+        const possibleAmount = parts.find(p => !isNaN(parseFloat(p.replace(/[$,\s]/g, ''))));
+        if (possibleAmount) {
+            amount = Math.abs(parseFloat(possibleAmount.replace(/[$,\s]/g, '')));
+        }
     }
 
     transactions.push({
       date: formatDate(parsedDate),
       description: toTitleCase(cleanedDesc),
-      originalDescription: rawDesc, // Anchor the original bank string
+      originalDescription: rawDesc,
       amount: amount,
       category: colMap.category > -1 ? parts[colMap.category] : 'Uncategorized',
       accountId: accountId,
@@ -437,7 +471,9 @@ export const parseYouTubeReport = async (file: File, onProgress: (msg: string) =
 };
 
 export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-  onProgress('Parsing text...');
+  if (!text || !text.trim()) return [];
+  onProgress('Scanning line items...');
+  // Automatically detect tab-separated data vs comma
   return parseCSV_Tx(text.split('\n'), accountId, transactionTypes, 'Pasted Text');
 };
 

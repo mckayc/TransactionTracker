@@ -1,5 +1,5 @@
 {
-  "name": "Transaction Tracker - Saving Issues - v0.3.70",
+  "name": "Transaction Tracker - Counterparty Fix - v0.3.72",
   "description": "High-performance normalized SQLite architecture for millions of financial records.",
   "requestFramePermissions": []
 }

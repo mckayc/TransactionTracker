@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig, RuleForgePrompt } from '../types';
 // Added missing import for generateUUID
@@ -389,7 +388,7 @@ export const extractTransactionsFromText = async (
     if (!key) throw new Error("Missing API Key.");
     const ai = new GoogleGenAI({ apiKey: key });
 
-    onProgress("AI is parsing stream...");
+    onProgress("Neural parsing engaged...");
     const schema = {
         type: Type.OBJECT,
         properties: {
@@ -398,34 +397,43 @@ export const extractTransactionsFromText = async (
                 items: {
                     type: Type.OBJECT,
                     properties: {
-                        date: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        amount: { type: Type.NUMBER }
+                        date: { type: Type.STRING, description: "The date of the transaction (YYYY-MM-DD)" },
+                        description: { type: Type.STRING, description: "The merchant or description text" },
+                        amount: { type: Type.NUMBER, description: "The numeric value of the transaction" },
+                        isIncome: { type: Type.BOOLEAN, description: "True if this is a deposit or income" }
                     },
-                    required: ["date", "description", "amount"]
+                    required: ["date", "description", "amount", "isIncome"]
                 }
             }
         },
         required: ["transactions"]
     };
+
+    const prompt = `Identify every transaction in the provided text.
+    Convert to standard JSON.
+    Text: ${text}`;
+
     const response = await ai.models.generateContent({
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
-        contents: `Extract transactions from this raw data: ${text}`,
+        contents: prompt,
         config: {
+            systemInstruction: "You are a specialized financial parser. Return ONLY JSON matching the schema. Handle OCR noise or partial table data gracefully.",
             responseMimeType: "application/json",
             responseSchema: schema,
             thinkingConfig: { thinkingBudget: 0 }
         }
     });
+
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
 
+    const incomingType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
     const outgoingType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
 
     return txs.map((tx: any) => ({
         ...tx,
         accountId,
-        typeId: outgoingType.id
+        typeId: tx.isIncome ? incomingType.id : outgoingType.id
     }));
 };
 

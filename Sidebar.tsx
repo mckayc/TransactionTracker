@@ -1,8 +1,8 @@
 
 import React from 'react';
-import CalendarView from './CalendarView';
-import type { Transaction, View } from '../types';
-import { DashboardIcon, TableIcon, CalendarIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, WizardIcon, DocumentIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon, NotesIcon } from './Icons';
+import CalendarView from './components/CalendarView';
+import type { Transaction, View } from './types';
+import { DashboardIcon, TableIcon, CalendarIcon, ChartPieIcon, SettingsIcon, TasksIcon, LinkIcon, WizardIcon, DocumentIcon, ChatBubbleIcon, ChevronLeftIcon, ChevronRightIcon, PuzzleIcon, LightBulbIcon, ChecklistIcon, CloudArrowUpIcon, NotesIcon } from './components/Icons';
 
 interface SidebarProps {
   currentView: View;
