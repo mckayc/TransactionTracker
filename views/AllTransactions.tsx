@@ -4,19 +4,32 @@ import type { Transaction, Account, TransactionType, ReconciliationRule, Counter
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import BulkEditModal from '../components/BulkEditModal';
-// Added TrashIcon to the imports from components/Icons
-import { AddIcon, DeleteIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, DownloadIcon, SparklesIcon, CheckCircleIcon, CalendarIcon, TrendingUpIcon, ListIcon, TagIcon, WrenchIcon, TrashIcon } from '../components/Icons';
+import { AddIcon, DeleteIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, DownloadIcon, SparklesIcon, CheckCircleIcon, CalendarIcon, TrendingUpIcon, ListIcon, TagIcon, WrenchIcon, TrashIcon, InfoIcon, BarChartIcon } from '../components/Icons';
 import { api } from '../services/apiService';
 import { generateUUID } from '../utils';
 import { calculateDateRange, formatDate, shiftDateRange } from '../dateUtils';
 
-const MetricPill: React.FC<{ label: string, value: number, color: string, icon: React.ReactNode, isLoading?: boolean }> = ({ label, value, color, icon, isLoading }) => (
-    <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-slate-100 shadow-sm min-w-[140px]">
-        <div className={`p-2 rounded-lg ${color} bg-opacity-10`}>
+const MetricPill: React.FC<{ 
+    label: string, 
+    value: number, 
+    color: string, 
+    icon: React.ReactNode, 
+    isLoading?: boolean,
+    onClick?: () => void 
+}> = ({ label, value, color, icon, isLoading, onClick }) => (
+    <button 
+        onClick={onClick}
+        disabled={isLoading}
+        className={`flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-slate-100 shadow-sm min-w-[140px] text-left transition-all hover:border-indigo-200 hover:shadow-md active:scale-95 group ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
+    >
+        <div className={`p-2 rounded-lg ${color} bg-opacity-10 transition-colors group-hover:bg-opacity-20`}>
             {icon}
         </div>
         <div className="min-w-0">
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{label}</p>
+            <div className="flex items-center justify-between">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{label}</p>
+                {onClick && <InfoIcon className="w-2.5 h-2.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />}
+            </div>
             {isLoading ? (
                 <div className="h-5 w-16 bg-slate-100 animate-pulse rounded mt-0.5" />
             ) : (
@@ -25,8 +38,66 @@ const MetricPill: React.FC<{ label: string, value: number, color: string, icon: 
                 </p>
             )}
         </div>
-    </div>
+    </button>
 );
+
+const MetricBreakdownModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    title: string;
+    items: { label: string; amount: number; percentage: number }[];
+    colorClass: string;
+    total: number;
+}> = ({ isOpen, onClose, title, items, colorClass, total }) => {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                    <div>
+                        <h3 className="text-xl font-black text-slate-800">{title} Analysis</h3>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Top 15 Grouped Categories</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                </div>
+                
+                <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                    {items.length === 0 ? (
+                        <div className="py-12 text-center text-slate-300 italic">No activity matching this metric in the current range.</div>
+                    ) : (
+                        <div className="space-y-3">
+                            {items.map((item, idx) => (
+                                <div key={idx} className="space-y-1.5">
+                                    <div className="flex items-center justify-between text-xs font-bold">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-[10px] font-mono text-slate-300 w-4">{idx + 1}</span>
+                                            <span className="text-slate-700 truncate" title={item.label}>{item.label}</span>
+                                        </div>
+                                        <div className="text-right flex-shrink-0 ml-4">
+                                            <span className={`text-sm font-black font-mono ${colorClass}`}>${item.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                                        </div>
+                                    </div>
+                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                        <div 
+                                            className={`h-full transition-all duration-1000 ${colorClass.replace('text-', 'bg-')}`} 
+                                            style={{ width: `${item.percentage}%` }}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-5 bg-slate-50 border-t flex flex-col items-center gap-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Selected Period Total</p>
+                    <p className={`text-2xl font-black ${colorClass}`}>${total.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const AllTransactions: React.FC<{
   accounts: Account[];
@@ -53,6 +124,7 @@ const AllTransactions: React.FC<{
   
   // Range Summary State
   const [rangeSummary, setRangeSummary] = useState({ incoming: 0, outgoing: 0, neutral: 0, investments: 0 });
+  const [activeMetricBreakdown, setActiveMetricBreakdown] = useState<'inflow' | 'outflow' | 'investments' | null>(null);
   
   // Filter & Search State
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,7 +134,7 @@ const AllTransactions: React.FC<{
   
   // Pagination & Sorting State
   const [page, setPage] = useState(0);
-  const [limit, setLimit] = useState(100); // Default to 100 as requested
+  const [limit, setLimit] = useState(100);
   const [sortKey, setSortKey] = useState('date');
   const [sortDir, setSortDir] = useState('DESC');
 
@@ -91,7 +163,6 @@ const AllTransactions: React.FC<{
               params.endDate = formatDate(end);
           }
 
-          // Fetch transactions and summary in parallel for better responsiveness
           const [txResponse, summaryResponse] = await Promise.all([
               api.getTransactions(params),
               api.getSummary(params)
@@ -139,9 +210,50 @@ const AllTransactions: React.FC<{
       setPage(0);
   };
 
+  // Logic to calculate top 15 grouped breakdown for a metric
+  // Since we only have the paginated 'transactions' list in the component,
+  // showing the breakdown correctly usually requires the *entire* range set.
+  // In this app structure, we load up to 1000 items at a time, which might suffice for most periods.
+  // We'll calculate it from the available loaded transactions if they span the range.
+  const metricBreakdownData = useMemo(() => {
+    if (!activeMetricBreakdown) return { items: [], total: 0 };
+    
+    const typeMap = new Map(transactionTypes.map(t => [t.id, t]));
+    const catMap = new Map(categories.map(c => [c.id, c.name]));
+
+    const filtered = transactions.filter(tx => {
+        if (tx.isParent) return false;
+        const type = typeMap.get(tx.typeId);
+        if (!type) return false;
+
+        if (activeMetricBreakdown === 'inflow') return type.balanceEffect === 'incoming';
+        if (activeMetricBreakdown === 'outflow') return type.balanceEffect === 'outgoing';
+        if (activeMetricBreakdown === 'investments') return tx.typeId === 'type_investment';
+        return false;
+    });
+
+    const groups = new Map<string, number>();
+    filtered.forEach(tx => {
+        const catName = catMap.get(tx.categoryId) || 'Other';
+        groups.set(catName, (groups.get(catName) || 0) + Math.abs(tx.amount));
+    });
+
+    const total = Array.from(groups.values()).reduce((s, v) => s + v, 0);
+    const sorted = Array.from(groups.entries())
+        .map(([label, amount]) => ({ 
+            label, 
+            amount, 
+            percentage: total > 0 ? (amount / total) * 100 : 0 
+        }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 15);
+
+    return { items: sorted, total };
+  }, [activeMetricBreakdown, transactions, transactionTypes, categories]);
+
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* Metrics Row - Now reflects total date range view correctly */}
+      {/* Metrics Row */}
       <div className="flex flex-wrap gap-3 flex-shrink-0 animate-fade-in">
           <MetricPill 
             label="Net Cash Flow" 
@@ -156,6 +268,7 @@ const AllTransactions: React.FC<{
             color="text-emerald-600" 
             icon={<AddIcon className="w-4 h-4" />} 
             isLoading={isSummaryLoading}
+            onClick={() => setActiveMetricBreakdown('inflow')}
           />
           <MetricPill 
             label="Total Outflow" 
@@ -163,6 +276,7 @@ const AllTransactions: React.FC<{
             color="text-rose-600" 
             icon={<DeleteIcon className="w-4 h-4" />} 
             isLoading={isSummaryLoading}
+            onClick={() => setActiveMetricBreakdown('outflow')}
           />
           <MetricPill 
             label="Investments" 
@@ -170,6 +284,7 @@ const AllTransactions: React.FC<{
             color="text-purple-600" 
             icon={<SparklesIcon className="w-4 h-4" />} 
             isLoading={isSummaryLoading}
+            onClick={() => setActiveMetricBreakdown('investments')}
           />
       </div>
 
@@ -210,6 +325,7 @@ const AllTransactions: React.FC<{
                             <option value="lastMonth">Last Month</option>
                             <option value="last30Days">Last 30 Days</option>
                             <option value="thisYear">This Year</option>
+                            <option value="lastYear">Last Year</option>
                             <option value="custom">Manual Ranges...</option>
                         </select>
                     </div>
@@ -316,6 +432,15 @@ const AllTransactions: React.FC<{
             categories={categories}
           />
       )}
+
+      <MetricBreakdownModal 
+        isOpen={!!activeMetricBreakdown}
+        onClose={() => setActiveMetricBreakdown(null)}
+        title={activeMetricBreakdown === 'inflow' ? 'Total Inflow' : activeMetricBreakdown === 'outflow' ? 'Total Outflow' : 'Investments'}
+        items={metricBreakdownData.items}
+        total={metricBreakdownData.total}
+        colorClass={activeMetricBreakdown === 'inflow' ? 'text-emerald-600' : activeMetricBreakdown === 'outflow' ? 'text-rose-600' : 'text-purple-600'}
+      />
     </div>
   );
 };
