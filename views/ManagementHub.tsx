@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, Location } from '../types';
+import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, Location, Transaction } from '../types';
 import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, CloseIcon, BoxIcon, MapPinIcon, TrashIcon, CreditCardIcon, SearchCircleIcon, SparklesIcon } from '../components/Icons';
 import EntityEditor, { EntityType } from '../components/EntityEditor';
 
@@ -49,14 +49,12 @@ const TreeNode: React.FC<{
     searchFilter: string;
     onDelete: (id: string) => void;
 }> = ({ item, all, level, selectedId, onSelect, usageMap, expandedIds, onToggleExpand, bulkSelectedIds, onToggleBulk, searchFilter, onDelete }) => {
-    // Fixed: Use property check 'parentId' in x to handle union types without parentId (like Tag)
     const children = all.filter(x => 'parentId' in x && x.parentId === item.id).sort((a,b) => a.name.localeCompare(b.name));
     
     const matchesSearch = item.name.toLowerCase().includes(searchFilter.toLowerCase());
     
     const hasVisibleChild = (node: any): boolean => {
         if (node.name.toLowerCase().includes(searchFilter.toLowerCase())) return true;
-        // Fixed: Use property check 'parentId' in x to handle union types
         const sub = all.filter(x => 'parentId' in x && x.parentId === node.id);
         return sub.some(s => hasVisibleChild(s));
     };
@@ -102,7 +100,7 @@ const TreeNode: React.FC<{
             {isExpanded && children.map(child => (
                 <TreeNode 
                     key={child.id} item={child} all={all} level={level + 1} 
-                    selectedId={selectedId} onSelect={setSelectedId} 
+                    selectedId={selectedId} onSelect={onSelect} 
                     usageMap={usageMap} expandedIds={expandedIds} 
                     onToggleExpand={onToggleExpand} bulkSelectedIds={bulkSelectedIds}
                     onToggleBulk={onToggleBulk} searchFilter={searchFilter} onDelete={onDelete}
@@ -252,7 +250,6 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
-                        {/* Fixed: Use property check 'parentId' in x to handle union types without parentId (like Tag) */}
                         {activeList.filter(x => !('parentId' in x) || !x.parentId).map(item => (
                             <TreeNode 
                                 key={item.id} item={item} all={activeList} level={0} 
