@@ -19,7 +19,7 @@ interface Props {
     onSaveCounterparty: (p: Counterparty) => void;
     onSaveCounterparties: (ps: Counterparty[]) => void;
     onSaveLocation: (location: Location) => void;
-    onSaveLocations: (ls: Location[]) => void;
+    onSaveLocations: (locations: Location[]) => void;
     existingRules: ReconciliationRule[];
     batchStats: ImportBatchStats | null;
 }
@@ -88,8 +88,9 @@ const LogicForecastDrawer: React.FC<{
             return categories.find(c => c.id === id)?.name || (source === 'incoming' ? draft.suggestedCategoryName : null) || '--';
         }
         if (type === 'entity') {
-            const id = target.setCounterpartyId;
-            return payees.find(p => p.id === id)?.name || (source === 'incoming' ? draft.suggestedCounterpartyName : null) || '--';
+            // Check both new and legacy keys
+            const id = target.setCounterpartyId || (target as any).setPayeeId;
+            return payees.find(p => p.id === id)?.name || (source === 'incoming' ? (draft.suggestedCounterpartyName || (draft as any).suggestedPayeeName) : null) || '--';
         }
         if (type === 'type') {
             const id = target.setTransactionTypeId;
@@ -258,8 +259,10 @@ const RuleImportVerification: React.FC<Props> = ({
                     newCats.push({ id, name });
                 }
             }
-            if (d.mappingStatus.counterparty === 'create' && d.suggestedCounterpartyName) {
-                const name = d.suggestedCounterpartyName.trim();
+            // Compatibility for legacy 'suggestedPayeeName'
+            const suggestedCounterparty = d.suggestedCounterpartyName || (d as any).suggestedPayeeName;
+            if (d.mappingStatus.counterparty === 'create' && suggestedCounterparty) {
+                const name = suggestedCounterparty.trim();
                 if (!payeeMap.has(name.toLowerCase())) {
                     const id = generateUUID();
                     payeeMap.set(name.toLowerCase(), id);
@@ -287,8 +290,10 @@ const RuleImportVerification: React.FC<Props> = ({
             if (d.mappingStatus.category === 'create' && d.suggestedCategoryName) {
                 rule.setCategoryId = catMap.get(d.suggestedCategoryName.trim().toLowerCase());
             }
-            if (d.mappingStatus.counterparty === 'create' && d.suggestedCounterpartyName) {
-                rule.setCounterpartyId = payeeMap.get(d.suggestedCounterpartyName.trim().toLowerCase());
+            // Compatibility for legacy 'suggestedPayeeName'
+            const suggestedCounterparty = d.suggestedCounterpartyName || (d as any).suggestedPayeeName;
+            if (d.mappingStatus.counterparty === 'create' && suggestedCounterparty) {
+                rule.setCounterpartyId = payeeMap.get(suggestedCounterparty.trim().toLowerCase());
             }
             if (d.mappingStatus.location === 'create' && d.suggestedLocationName) {
                 rule.setLocationId = locMap.get(d.suggestedLocationName.trim().toLowerCase());
@@ -325,7 +330,7 @@ const RuleImportVerification: React.FC<Props> = ({
                 </div>
                 <div className="relative z-10 flex gap-3">
                     <button onClick={onCancel} className="px-6 py-2 font-black text-slate-400 hover:text-white transition-colors text-xs uppercase">Discard Batch</button>
-                    <button onClick={handleFinalCommit} disabled={selectionSet.size === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-900/20 transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
+                    <button onClick={handleFinalCommit} disabled={selectionSet.size === 0} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-900/40 transition-all disabled:opacity-30 text-xs uppercase active:scale-95">Commit Institutional Logic</button>
                 </div>
                 <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-10 text-indigo-400 pointer-events-none" />
             </div>
@@ -377,7 +382,7 @@ const RuleImportVerification: React.FC<Props> = ({
                                         </span>
                                     </td>
                                     <td className="px-4 py-4 border-b border-slate-50 min-w-[140px]">
-                                        <p className="text-xs font-bold text-slate-600">{payees.find(p => p.id === d.setCounterpartyId)?.name || d.suggestedCounterpartyName || '--'}</p>
+                                        <p className="text-xs font-bold text-slate-600">{payees.find(p => p.id === (d.setCounterpartyId || (d as any).setPayeeId))?.name || (d.suggestedCounterpartyName || (d as any).suggestedPayeeName) || '--'}</p>
                                     </td>
                                     <td className="px-4 py-4 border-b border-slate-50 min-w-[140px]">
                                         <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase ${d.mappingStatus.location === 'create' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'}`}>

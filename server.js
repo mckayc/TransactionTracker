@@ -88,7 +88,12 @@ const runMigrations = () => {
                     const rules = JSON.parse(legacy.value);
                     const insert = db.prepare("INSERT INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json) VALUES (?, ?, ?, ?, ?, ?)");
                     rules.forEach(r => {
-                        insert.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r));
+                        // Deep transform legacy keys to standardized naming
+                        const cleanRule = { ...r };
+                        if (r.setPayeeId) { cleanRule.setCounterpartyId = r.setPayeeId; delete cleanRule.setPayeeId; }
+                        if (r.suggestedPayeeName) { cleanRule.suggestedCounterpartyName = r.suggestedPayeeName; delete cleanRule.suggestedPayeeName; }
+                        
+                        insert.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(cleanRule));
                     });
                     console.log(`[MIGRATE] Successfully migrated ${rules.length} rules to structured table.`);
                     db.prepare("DELETE FROM app_storage WHERE key = 'reconciliationRules'").run();
@@ -96,6 +101,21 @@ const runMigrations = () => {
                     console.error("[MIGRATE] Legacy rule migration failed:", e.message);
                 }
             }
+        } else {
+            // 1b. If rules table exists, ensure JSON content is standardized (Counterparty vs Payee)
+            try {
+                const rows = db.prepare("SELECT id, logic_json FROM reconciliation_rules").all();
+                const update = db.prepare("UPDATE reconciliation_rules SET logic_json = ? WHERE id = ?");
+                rows.forEach(row => {
+                    if (row.logic_json && (row.logic_json.includes('setPayeeId') || row.logic_json.includes('suggestedPayeeName'))) {
+                        const r = JSON.parse(row.logic_json);
+                        if (r.setPayeeId) { r.setCounterpartyId = r.setPayeeId; delete r.setPayeeId; }
+                        if (r.suggestedPayeeName) { r.suggestedCounterpartyName = r.suggestedPayeeName; delete r.suggestedPayeeName; }
+                        update.run(JSON.stringify(r), row.id);
+                        console.log(`[MIGRATE] Standardized logic mapping for rule ${row.id}`);
+                    }
+                });
+            } catch (e) { console.error("[MIGRATE] Rule standardization failed:", e); }
         }
 
         // 2. Standardize Transaction Types
@@ -426,7 +446,12 @@ app.post('/api/data/:key', (req, res) => {
         db.prepare("DELETE FROM reconciliation_rules").run();
         const stmt = db.prepare("INSERT INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json) VALUES (?, ?, ?, ?, ?, ?)");
         db.transaction(() => {
-            value.forEach(r => stmt.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r)));
+            value.forEach(r => {
+                // Standardization during batch save
+                if (r.setPayeeId) { r.setCounterpartyId = r.setPayeeId; delete r.setPayeeId; }
+                if (r.suggestedPayeeName) { r.suggestedCounterpartyName = r.suggestedPayeeName; delete r.suggestedPayeeName; }
+                stmt.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r));
+            });
         })();
     } else if (key === 'categories' && Array.isArray(value)) {
         db.prepare("DELETE FROM categories").run();
