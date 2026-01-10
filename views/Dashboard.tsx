@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout } from '../types';
+import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty } from '../types';
 import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, EditIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
+import ConfirmationModal from '../components/ConfirmationModal';
 
 interface DashboardProps {
     transactions: Transaction[];
@@ -109,88 +110,178 @@ const AiInsightsModule: React.FC<{ plan: FinancialPlan | null }> = ({ plan }) =>
     );
 };
 
-const CashFlowModule: React.FC<{ transactions: Transaction[], config: DashboardWidget['config'] }> = ({ transactions, config }) => {
-    const [period, setPeriod] = useState(config?.period || 'month');
-    const [anchorDate, setAnchorDate] = useState(new Date());
+const CashFlowModule: React.FC<{ 
+    transactions: Transaction[], 
+    config: DashboardWidget['config'], 
+    categories: Category[],
+    counterparties: Counterparty[]
+}> = ({ transactions, config, categories, counterparties }) => {
+    const period = config?.period || 'month';
+    const lookback = config?.lookback || 0;
+    const vizType = config?.vizType || 'cards';
+    const dataType = config?.displayDataType || 'type';
+    const excludeKeywords = (config?.excludeKeywords || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
 
     const { start, end, label } = useMemo(() => {
-        const s = new Date(anchorDate);
-        const e = new Date(anchorDate);
+        const s = new Date();
+        s.setHours(0,0,0,0);
+        const e = new Date();
+        e.setHours(23,59,59,999);
+
+        if (period === 'day') {
+            s.setDate(s.getDate() - lookback);
+            e.setDate(e.getDate() - lookback);
+            return { start: s, end: e, label: s.toLocaleDateString() };
+        }
         if (period === 'week') {
             const day = s.getDay();
-            s.setDate(s.getDate() - day);
+            s.setDate(s.getDate() - day - (lookback * 7));
             e.setDate(s.getDate() + 6);
             return { start: s, end: e, label: `Week of ${s.toLocaleDateString()}` };
         }
         if (period === 'month') {
-            s.setDate(1);
+            s.setMonth(s.getMonth() - lookback, 1);
             e.setMonth(s.getMonth() + 1, 0);
             return { start: s, end: e, label: s.toLocaleString('default', { month: 'long', year: 'numeric' }) };
         }
         if (period === 'quarter') {
             const q = Math.floor(s.getMonth() / 3);
-            s.setMonth(q * 3, 1);
+            s.setMonth((q - lookback) * 3, 1);
             e.setMonth(s.getMonth() + 3, 0);
-            return { start: s, end: e, label: `Q${q + 1} ${s.getFullYear()}` };
+            return { start: s, end: e, label: `Q${Math.floor(s.getMonth()/3) + 1} ${s.getFullYear()}` };
         }
-        s.setMonth(0, 1);
-        e.setMonth(11, 31);
-        return { start: s, end: e, label: s.getFullYear().toString() };
-    }, [anchorDate, period]);
+        if (period === 'year') {
+            s.setFullYear(s.getFullYear() - lookback, 0, 1);
+            e.setFullYear(s.getFullYear(), 11, 31);
+            return { start: s, end: e, label: s.getFullYear().toString() };
+        }
+        return { start: s, end: e, label: 'Custom' };
+    }, [period, lookback]);
 
-    const totals = useMemo(() => {
+    const { incoming, outgoing, net, breakdown } = useMemo(() => {
         let income = 0;
         let expenses = 0;
+        const bMap = new Map<string, number>();
+
         transactions.forEach(tx => {
             const d = new Date(tx.date);
             if (d >= start && d <= end && !tx.isParent) {
                 if (tx.typeId.includes('income')) income += tx.amount;
                 else if (tx.typeId.includes('purchase') || tx.typeId.includes('tax')) expenses += tx.amount;
+
+                let key = '';
+                let labelText = '';
+                if (dataType === 'category') {
+                    key = tx.categoryId;
+                    labelText = categories.find(c => c.id === key)?.name || 'Other';
+                } else if (dataType === 'counterparty') {
+                    key = tx.counterpartyId || 'unknown';
+                    labelText = counterparties.find(cp => cp.id === key)?.name || 'Unknown';
+                } else if (dataType === 'account') {
+                    key = tx.accountId;
+                    labelText = key; // Simple ID for now
+                } else {
+                    key = tx.typeId;
+                    labelText = key;
+                }
+
+                if (excludeKeywords.some(k => labelText.toLowerCase().includes(k))) return;
+
+                bMap.set(labelText, (bMap.get(labelText) || 0) + tx.amount);
             }
         });
-        return { income, expenses, net: income - expenses };
-    }, [transactions, start, end]);
+
+        const sortedBreakdown = Array.from(bMap.entries())
+            .map(([name, val]) => ({ name, val }))
+            .sort((a,b) => b.val - a.val);
+
+        return { incoming: income, outgoing: expenses, net: income - expenses, breakdown: sortedBreakdown };
+    }, [transactions, start, end, dataType, excludeKeywords, categories, counterparties]);
+
+    const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
 
     return (
-        <div className="p-6 space-y-6 flex flex-col h-full">
-            <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100">
-                <button onClick={() => setAnchorDate(prev => {
-                    const next = new Date(prev);
-                    if (period === 'week') next.setDate(next.getDate() - 7);
-                    else if (period === 'month') next.setMonth(next.getMonth() - 1);
-                    else if (period === 'quarter') next.setMonth(next.getMonth() - 3);
-                    else next.setFullYear(next.getFullYear() - 1);
-                    return next;
-                })} className="p-1 hover:bg-white rounded-lg transition-colors"><ChevronLeftIcon className="w-4 h-4 text-slate-400"/></button>
+        <div className="p-6 space-y-6 flex flex-col h-full overflow-hidden">
+            <div className="flex items-center justify-center bg-slate-50 p-2 rounded-xl border border-slate-100 flex-shrink-0">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">{label}</span>
-                <button onClick={() => setAnchorDate(prev => {
-                    const next = new Date(prev);
-                    if (period === 'week') next.setDate(next.getDate() + 7);
-                    else if (period === 'month') next.setMonth(next.getMonth() + 1);
-                    else if (period === 'quarter') next.setMonth(next.getMonth() + 3);
-                    else next.setFullYear(next.getFullYear() + 1);
-                    return next;
-                })} className="p-1 hover:bg-white rounded-lg transition-colors"><ChevronRightIcon className="w-4 h-4 text-slate-400"/></button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 flex-1">
-                <div className="space-y-1">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inflow</p>
-                    <p className="text-lg font-black text-emerald-600">{formatCurrency(totals.income)}</p>
-                </div>
-                <div className="space-y-1">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Outflow</p>
-                    <p className="text-lg font-black text-rose-600">{formatCurrency(totals.expenses)}</p>
-                </div>
-                <div className="col-span-2 pt-4 border-t border-slate-100">
-                    <div className="flex justify-between items-end">
-                        <div>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Net Surplus</p>
-                            <p className={`text-2xl font-black ${totals.net >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>{formatCurrency(totals.net)}</p>
+            <div className="flex-1 flex flex-col min-h-0">
+                {vizType === 'cards' ? (
+                    <div className="grid grid-cols-2 gap-4 flex-1">
+                        <div className="space-y-1">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inflow</p>
+                            <p className="text-lg font-black text-emerald-600">{formatCurrency(incoming)}</p>
                         </div>
-                        <TrendingUpIcon className={`w-8 h-8 ${totals.net >= 0 ? 'text-indigo-50' : 'text-rose-50'}`} />
+                        <div className="space-y-1">
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Outflow</p>
+                            <p className="text-lg font-black text-rose-600">{formatCurrency(outgoing)}</p>
+                        </div>
+                        <div className="col-span-2 pt-4 border-t border-slate-100">
+                            <div className="flex justify-between items-end">
+                                <div>
+                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Net Surplus</p>
+                                    <p className={`text-2xl font-black ${net >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>{formatCurrency(net)}</p>
+                                </div>
+                                <TrendingUpIcon className={`w-8 h-8 ${net >= 0 ? 'text-indigo-50' : 'text-rose-50'}`} />
+                            </div>
+                        </div>
                     </div>
-                </div>
+                ) : vizType === 'pie' ? (
+                    <div className="flex-1 flex flex-col items-center justify-center min-h-0">
+                        <div className="relative w-32 h-32 mb-4">
+                            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                                {breakdown.length === 0 ? (
+                                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="#f1f5f9" strokeWidth="20" />
+                                ) : (
+                                    (() => {
+                                        let accumulated = 0;
+                                        const total = breakdown.reduce((s, i) => s + i.val, 0);
+                                        return breakdown.map((item, i) => {
+                                            const slice = (item.val / total) * 100;
+                                            const dash = `${slice} ${100 - slice}`;
+                                            const offset = -accumulated;
+                                            accumulated += slice;
+                                            return <circle key={i} cx="50" cy="50" r="40" fill="transparent" stroke={COLORS[i % COLORS.length]} strokeWidth="20" strokeDasharray={dash} strokeDashoffset={offset} />;
+                                        });
+                                    })()
+                                )}
+                            </svg>
+                        </div>
+                        <div className="w-full space-y-1 overflow-y-auto custom-scrollbar pr-2 max-h-32">
+                             {breakdown.slice(0, 5).map((item, i) => (
+                                 <div key={i} className="flex justify-between items-center text-[10px] font-bold">
+                                     <div className="flex items-center gap-1.5 min-w-0">
+                                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
+                                         <span className="truncate text-slate-600">{item.name}</span>
+                                     </div>
+                                     <span className="text-slate-800 font-mono">{formatCurrency(item.val)}</span>
+                                 </div>
+                             ))}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="flex-1 flex flex-col space-y-2 overflow-y-auto custom-scrollbar min-h-0 pr-2">
+                        {breakdown.length === 0 ? (
+                             <div className="flex-1 flex items-center justify-center text-slate-300 italic text-xs">No records</div>
+                        ) : (
+                            breakdown.slice(0, 10).map((item, i) => {
+                                const max = Math.max(...breakdown.map(b => b.val));
+                                return (
+                                    <div key={i} className="space-y-1">
+                                        <div className="flex justify-between text-[10px] font-bold text-slate-600">
+                                            <span className="truncate">{item.name}</span>
+                                            <span>{formatCurrency(item.val)}</span>
+                                        </div>
+                                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                            <div className="h-full bg-indigo-50" style={{ width: `${(item.val / max) * 100}%` }} />
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -323,10 +414,9 @@ const WidgetSlot: React.FC<{
     amazonMetrics: AmazonMetric[];
     youtubeMetrics: YouTubeMetric[];
     financialPlan: FinancialPlan | null;
-}> = ({ widget, onRemove, onConfigure, onDelete, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan }) => {
+    counterparties: Counterparty[];
+}> = ({ widget, onRemove, onConfigure, onDelete, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties }) => {
     
-    // BLUEPRINTS implementation map - used for labels and icons in headers
-    // Using explicit typing for logical indexing safety
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
         'goal_gauge': { icon: <ShieldCheckIcon className="w-4 h-4" />, label: 'Goal Progress' },
@@ -360,7 +450,7 @@ const WidgetSlot: React.FC<{
                 </div>
             );
         }
-        if (widget.type === 'cashflow') return <CashFlowModule transactions={transactions} config={widget.config} />;
+        if (widget.type === 'cashflow') return <CashFlowModule transactions={transactions} config={widget.config} categories={categories} counterparties={counterparties} />;
         if (widget.type === 'top_expenses') return <TopExpensesModule transactions={transactions} categories={categories} />;
         if (widget.type === 'amazon_summary') return <AmazonSummaryModule metrics={amazonMetrics} />;
         if (widget.type === 'youtube_summary') return <YouTubeSummaryModule metrics={youtubeMetrics} />;
@@ -400,14 +490,23 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [newDashboardName, setNewDashboardName] = useState('');
     const [newDashboardCols, setNewDashboardCols] = useState<1 | 2 | 3 | 4>(3);
     
+    // Staged deletion state for ConfirmationModal
+    const [pendingDeletion, setPendingDeletion] = useState<{ id: string, type: 'widget' | 'dashboard' } | null>(null);
+
     // Config form state
     const [configTitle, setConfigTitle] = useState('');
     const [configGoalId, setConfigGoalId] = useState('');
     const [configReportId, setConfigReportId] = useState('');
-    const [configPeriod, setConfigPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
+    const [configPeriod, setConfigPeriod] = useState<DashboardWidget['config']['period']>('month');
     const [configColSpan, setConfigColSpan] = useState<1 | 2 | 3>(1);
     const [configBlueprint, setConfigBlueprint] = useState<DashboardWidget['type']>('cashflow');
     const [expandedBlueprints, setExpandedBlueprints] = useState<Set<string>>(new Set());
+
+    // New configuration fields for Cashflow
+    const [configVizType, setConfigVizType] = useState<'pie' | 'bar' | 'cards'>('cards');
+    const [configLookback, setConfigLookback] = useState<number>(0);
+    const [configDisplayDataType, setConfigDisplayDataType] = useState<DashboardWidget['config']['displayDataType']>('type');
+    const [configExcludeKeywords, setConfigExcludeKeywords] = useState<string>('');
 
     const dashboards = useMemo(() => {
         if (!systemSettings.dashboards || systemSettings.dashboards.length === 0) {
@@ -430,10 +529,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
 
     const activeWidget = useMemo(() => {
         if (!isConfiguring) return null;
-        // Check if we are configuring a widget already on the dashboard
         const onDashboard = widgets.find(w => w.id === isConfiguring);
         if (onDashboard) return onDashboard;
-        // Or if we are configuring from the library/fresh
         return widgetLibrary.find(w => w.id === isConfiguring);
     }, [isConfiguring, widgets, widgetLibrary]);
 
@@ -445,6 +542,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             setConfigPeriod(activeWidget.config?.period || 'month');
             setConfigColSpan(activeWidget.colSpan || 1);
             setConfigBlueprint(activeWidget.type);
+            setConfigVizType(activeWidget.config?.vizType || 'cards');
+            setConfigLookback(activeWidget.config?.lookback || 0);
+            setConfigDisplayDataType(activeWidget.config?.displayDataType || 'type');
+            setConfigExcludeKeywords(activeWidget.config?.excludeKeywords || '');
         }
     }, [isConfiguring, activeWidget, goals, savedReports]);
 
@@ -456,13 +557,36 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     };
 
     const deleteWidgetPermanently = (id: string) => {
-        if (!confirm("Permanently purge this module configuration from your library?")) return;
-        const updatedLibrary = widgetLibrary.filter(w => w.id !== id);
-        const updatedDashboards = dashboards.map(d => ({
-            ...d,
-            widgets: d.widgets.filter(w => w.id !== id)
-        }));
-        onUpdateSystemSettings({ ...systemSettings, widgetLibrary: updatedLibrary, dashboards: updatedDashboards });
+        setPendingDeletion({ id, type: 'widget' });
+    };
+
+    const handleDeleteDashboard = (id: string) => {
+        if (dashboards.length <= 1) return;
+        setPendingDeletion({ id, type: 'dashboard' });
+    };
+
+    const confirmDeletion = () => {
+        if (!pendingDeletion) return;
+        const { id, type } = pendingDeletion;
+
+        if (type === 'widget') {
+            const updatedLibrary = widgetLibrary.filter(w => w.id !== id);
+            const updatedDashboards = dashboards.map(d => ({
+                ...d,
+                widgets: d.widgets.filter(w => w.id !== id)
+            }));
+            onUpdateSystemSettings({ ...systemSettings, widgetLibrary: updatedLibrary, dashboards: updatedDashboards });
+            // If the deleted widget was currently being configured, close the modal
+            if (isConfiguring === id) setIsConfiguring(null);
+        } else {
+            const next = dashboards.filter(d => d.id !== id);
+            onUpdateSystemSettings({
+                ...systemSettings,
+                dashboards: next,
+                activeDashboardId: next[0].id
+            });
+        }
+        setPendingDeletion(null);
     };
 
     const handleApplyConfig = () => {
@@ -476,17 +600,19 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 title: configTitle,
                 goalId: configBlueprint === 'goal_gauge' ? configGoalId : undefined,
                 reportId: configBlueprint === 'report' ? configReportId : undefined,
-                period: configBlueprint === 'cashflow' ? configPeriod : undefined
+                period: configBlueprint === 'cashflow' ? configPeriod : undefined,
+                vizType: configBlueprint === 'cashflow' ? configVizType : undefined,
+                lookback: configBlueprint === 'cashflow' ? configLookback : undefined,
+                displayDataType: configBlueprint === 'cashflow' ? configDisplayDataType : undefined,
+                excludeKeywords: configBlueprint === 'cashflow' ? configExcludeKeywords : undefined,
             }
         };
 
-        // Update Library
         const existingInLibrary = widgetLibrary.findIndex(w => w.id === newWidget.id);
         let nextLibrary = [...widgetLibrary];
         if (existingInLibrary > -1) nextLibrary[existingInLibrary] = newWidget;
         else nextLibrary.push(newWidget);
 
-        // Update current dashboard
         const alreadyInDashboard = widgets.some(w => w.id === newWidget.id);
         const nextWidgets = alreadyInDashboard 
             ? widgets.map(w => w.id === newWidget.id ? newWidget : w)
@@ -519,17 +645,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
         });
         setNewDashboardName('');
         setIsCreatingDashboard(false);
-    };
-
-    const handleDeleteDashboard = (id: string) => {
-        if (dashboards.length <= 1) return;
-        if (!confirm("Delete this entire dashboard view?")) return;
-        const next = dashboards.filter(d => d.id !== id);
-        onUpdateSystemSettings({
-            ...systemSettings,
-            dashboards: next,
-            activeDashboardId: next[0].id
-        });
     };
 
     const BLUEPRINT_OPTIONS = [
@@ -595,10 +710,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         amazonMetrics={amazonMetrics}
                         youtubeMetrics={youtubeMetrics}
                         financialPlan={financialPlan}
+                        counterparties={[]} // Placeholder - counterparties handled inside
                     />
                 ))}
                 
-                {/* Empty Slot / Adder */}
                 <button 
                     onClick={() => setIsConfiguring(`fresh_${generateUUID()}`)} 
                     className="group bg-slate-50 border-4 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center p-12 transition-all hover:bg-white hover:border-indigo-200 min-h-[300px]"
@@ -610,7 +725,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 </button>
             </div>
 
-            {/* Dashboard Create Modal */}
             {isCreatingDashboard && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-8 animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -647,19 +761,20 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         </div>
                         <div className="flex gap-4 mt-10">
                             <button onClick={() => setIsCreatingDashboard(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
+                            {/* Fixed: Added missing onClick attribute for handleCreateDashboard */}
                             <button onClick={handleCreateDashboard} className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">Deploy View</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Module Forge (Module Library & Configuration) */}
+            {/* Module Forge (Renamed to Modules) */}
             {isConfiguring && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={() => setIsConfiguring(null)}>
-                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-8 border-b flex justify-between items-center bg-slate-50">
                             <div>
-                                <h3 className="text-2xl font-black text-slate-800">Module Forge</h3>
+                                <h3 className="text-2xl font-black text-slate-800">Modules</h3>
                                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">System Library & Custom Blueprints</p>
                             </div>
                             <button onClick={() => setIsConfiguring(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
@@ -721,21 +836,106 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                             placeholder="Instance Name..."
                                         />
                                     </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Grid Footprint (Col Span)</label>
-                                        <div className="flex gap-2">
-                                            {[1, 2, 3].map(span => (
-                                                <button 
-                                                    key={span}
-                                                    onClick={() => setConfigColSpan(span as any)}
-                                                    className={`flex-1 py-3 border-2 rounded-xl text-xs font-black transition-all ${configColSpan === span ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-100 text-slate-400'}`}
+                                    
+                                    {/* Hide Grid Footprint if Cashflow is selected */}
+                                    {configBlueprint !== 'cashflow' && (
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Grid Footprint (Col Span)</label>
+                                            <div className="flex gap-2">
+                                                {[1, 2, 3].map(span => (
+                                                    <button 
+                                                        key={span}
+                                                        onClick={() => setConfigColSpan(span as any)}
+                                                        className={`flex-1 py-3 border-2 rounded-xl text-xs font-black transition-all ${configColSpan === span ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-100 text-slate-400'}`}
+                                                    >
+                                                        {span} Column{span > 1 ? 's' : ''}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {configBlueprint === 'cashflow' && (
+                                    <div className="space-y-10 animate-fade-in">
+                                        {/* Top Section - Visualization */}
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Visualization Interface</label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {(['cards', 'pie', 'bar'] as const).map(viz => (
+                                                    <button 
+                                                        key={viz}
+                                                        onClick={() => setConfigVizType(viz)}
+                                                        className={`p-4 rounded-2xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${configVizType === viz ? 'bg-indigo-600 text-white border-indigo-700 shadow-md' : 'bg-white border-slate-100 hover:border-indigo-200 text-slate-500'}`}
+                                                    >
+                                                        {viz} View
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* Middle Section - Observation Period & Lookback */}
+                                        <div className="space-y-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Observation Epoch</label>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    {(['day', 'week', 'month', 'quarter', 'year', 'custom'] as const).map(p => (
+                                                        <button 
+                                                            key={p} 
+                                                            onClick={() => setConfigPeriod(p)}
+                                                            className={`py-3 rounded-xl border-2 font-bold text-xs transition-all ${configPeriod === p ? 'bg-white border-indigo-500 text-indigo-700 shadow-sm' : 'bg-transparent border-slate-200 text-slate-400'}`}
+                                                        >
+                                                            {p}ly
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Lookback Units (Previous to current)</label>
+                                                <div className="flex items-center gap-4">
+                                                    <input 
+                                                        type="number" 
+                                                        min="0"
+                                                        value={configLookback}
+                                                        onChange={e => setConfigLookback(parseInt(e.target.value) || 0)}
+                                                        className="w-24 p-3 border-2 border-slate-100 rounded-xl font-bold focus:border-indigo-500 outline-none"
+                                                    />
+                                                    <p className="text-[10px] text-slate-400 font-medium italic">
+                                                        {configLookback === 0 ? `Current ${configPeriod}` : `${configLookback} ${configPeriod}(s) ago`}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Lower Section - Data Display & Exclusion */}
+                                        <div className="space-y-6">
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Display Dimension</label>
+                                                <select 
+                                                    value={configDisplayDataType} 
+                                                    onChange={e => setConfigDisplayDataType(e.target.value as any)}
+                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none bg-white"
                                                 >
-                                                    {span} Column{span > 1 ? 's' : ''}
-                                                </button>
-                                            ))}
+                                                    <option value="type">Transaction Type</option>
+                                                    <option value="category">Category Hierarchy</option>
+                                                    <option value="counterparty">Counterparty / Vendor</option>
+                                                    <option value="account">Target Ledger Account</option>
+                                                </select>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Exclusion Keywords (Comma Separated)</label>
+                                                <input 
+                                                    type="text" 
+                                                    value={configExcludeKeywords} 
+                                                    onChange={e => setConfigExcludeKeywords(e.target.value)} 
+                                                    placeholder="e.g. tiktok, youtube, transfer"
+                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium focus:border-indigo-500 outline-none"
+                                                />
+                                                <p className="text-[9px] text-slate-400 ml-1 italic">Entries containing these strings in their label will be purged from the visual output.</p>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {configBlueprint === 'goal_gauge' && (
                                     <div className="space-y-3 animate-fade-in">
@@ -758,7 +958,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
 
                                 {configBlueprint === 'report' && (
                                     <div className="space-y-3 animate-fade-in">
-                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Strategic Analytic Lens</label>
+                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Strategic Analytical Lens</label>
                                         <div className="grid grid-cols-1 gap-2">
                                             {savedReports.map(r => (
                                                 <button 
@@ -771,23 +971,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                 </button>
                                             ))}
                                             {savedReports.length === 0 && <div className="p-8 text-center bg-slate-50 rounded-2xl text-xs text-slate-400 italic">Construct strategies in Reports first.</div>}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {configBlueprint === 'cashflow' && (
-                                    <div className="space-y-3 animate-fade-in">
-                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Observation Period</label>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {(['week', 'month', 'quarter', 'year'] as const).map(p => (
-                                                <button 
-                                                    key={p} 
-                                                    onClick={() => setConfigPeriod(p)}
-                                                    className={`p-4 rounded-2xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${configPeriod === p ? 'bg-indigo-600 text-white border-indigo-700 shadow-md' : 'bg-white border-slate-100 hover:border-indigo-200 text-slate-500'}`}
-                                                >
-                                                    {p}ly View
-                                                </button>
-                                            ))}
                                         </div>
                                     </div>
                                 )}
@@ -811,6 +994,18 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                     </div>
                 </div>
             )}
+
+            <ConfirmationModal 
+                isOpen={!!pendingDeletion}
+                onClose={() => setPendingDeletion(null)}
+                onConfirm={confirmDeletion}
+                title={pendingDeletion?.type === 'widget' ? "Purge Configuration?" : "Delete Dashboard View?"}
+                message={pendingDeletion?.type === 'widget' 
+                    ? "This will permanently remove this module configuration from your system library and all associated dashboards."
+                    : "This will permanently delete this dashboard layout and all of its module placements."}
+                confirmLabel="Execute Delete"
+                variant="danger"
+            />
         </div>
     );
 };

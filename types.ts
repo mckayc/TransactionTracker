@@ -278,9 +278,13 @@ export interface DashboardWidget {
     config?: {
         title?: string;
         goalId?: string;
-        period?: 'week' | 'month' | 'quarter' | 'year';
+        period?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
         limit?: number;
         reportId?: string;
+        vizType?: 'pie' | 'bar' | 'cards';
+        lookback?: number;
+        displayDataType?: 'category' | 'counterparty' | 'account' | 'type';
+        excludeKeywords?: string;
     };
 }
 
