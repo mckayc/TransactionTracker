@@ -4,7 +4,7 @@ import type { Transaction, Template, ScheduledEvent, TaskCompletions, Transactio
 import ScheduleEventModal from '../components/ScheduleEventModal';
 import TransactionModal from './TransactionModal';
 import TaskModal from './TaskModal';
-import { CheckCircleIcon, ChecklistIcon, RepeatIcon, LinkIcon, UsersIcon, ExternalLinkIcon, HeartIcon, ChevronLeftIcon, ChevronRightIcon, AddIcon, CalendarIcon, CloseIcon, TableIcon, TasksIcon } from '../components/Icons';
+import { CheckCircleIcon, ChecklistIcon, RepeatIcon, LinkIcon, UsersIcon, ExternalLinkIcon, HeartIcon, ChevronLeftIcon, ChevronRightIcon, AddIcon, CalendarIcon, CloseIcon, TableIcon, TasksIcon, TrendingUpIcon, BoxIcon, SparklesIcon } from '../components/Icons';
 import { formatDate, parseISOLocal } from '../dateUtils';
 
 // Define the missing ViewMode type
@@ -31,13 +31,91 @@ interface CalendarPageProps {
   initialTaskId?: string;
 }
 
-const SummaryWidget: React.FC<{title: string, value: string, helpText: string, colorClass?: string, isFocus?: boolean}> = ({title, value, helpText, colorClass = "text-slate-800", isFocus}) => (
-    <div className={`bg-white p-3 rounded-xl shadow-sm border transition-all duration-300 ${isFocus ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'}`}>
-        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{title}</h3>
-        <p className={`text-xl font-bold mt-0.5 ${colorClass}`}>{value}</p>
+const SummaryWidget: React.FC<{
+  title: string; 
+  value: string; 
+  helpText: string; 
+  colorClass?: string; 
+  isFocus?: boolean;
+  onClick: () => void;
+}> = ({title, value, helpText, colorClass = "text-slate-800", isFocus, onClick}) => (
+    <button 
+        onClick={onClick}
+        className={`bg-white p-3 rounded-xl shadow-sm border text-left transition-all duration-300 group hover:border-indigo-400 hover:shadow-md ${isFocus ? 'border-indigo-500 ring-2 ring-indigo-200' : 'border-slate-200'}`}
+    >
+        <div className="flex justify-between items-center mb-0.5">
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{title}</h3>
+            <ChevronRightIcon className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+        <p className={`text-xl font-bold ${colorClass}`}>{value}</p>
         <p className={`text-[9px] font-medium mt-0.5 truncate ${isFocus ? 'text-indigo-600' : 'text-slate-400'}`}>{helpText}</p>
-    </div>
+    </button>
 );
+
+const MetricBreakdownModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    title: string;
+    transactions: Transaction[];
+    counterparties: Counterparty[];
+    total: number;
+    colorClass: string;
+}> = ({ isOpen, onClose, title, transactions, counterparties, total, colorClass }) => {
+    if (!isOpen) return null;
+
+    const counterpartyMap = new Map(counterparties.map(cp => [cp.id, cp.name]));
+
+    const breakdown = useMemo(() => {
+        const groups = new Map<string, number>();
+        transactions.forEach(tx => {
+            const label = tx.counterpartyId ? (counterpartyMap.get(tx.counterpartyId) || 'Unknown Entity') : (tx.description || 'Unspecified');
+            groups.set(label, (groups.get(label) || 0) + Math.abs(tx.amount));
+        });
+
+        return Array.from(groups.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10);
+    }, [transactions, counterpartyMap]);
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                    <div>
+                        <h3 className="text-xl font-black text-slate-800">{title} Breakdown</h3>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Top 10 Contributors</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                </div>
+                
+                <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                    {breakdown.length === 0 ? (
+                        <div className="py-12 text-center text-slate-400 italic">No records found for this metric.</div>
+                    ) : (
+                        <div className="space-y-2">
+                            {breakdown.map(([label, amount], idx) => (
+                                <div key={idx} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-200 transition-all">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className="w-6 h-6 bg-white border border-slate-200 rounded-lg flex items-center justify-center text-[10px] font-black text-slate-400 shadow-sm">{idx + 1}</div>
+                                        <span className="text-sm font-bold text-slate-700 truncate" title={label}>{label}</span>
+                                    </div>
+                                    <div className="text-right flex-shrink-0 ml-4">
+                                        <span className={`text-sm font-black font-mono ${colorClass}`}>${amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
+                                        <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{total > 0 ? ((amount / total) * 100).toFixed(0) : 0}% share</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-4 bg-slate-50 border-t flex justify-end">
+                    <button onClick={onClose} className="px-6 py-2 bg-white border border-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase hover:bg-slate-100 transition-all">Close</button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, scheduledEvents, tasks, taskCompletions, onAddEvent, onToggleTaskCompletion, onToggleTask, onSaveTask, transactionTypes, onUpdateTransaction, onAddTransaction, accounts, categories, tags, counterparties, users, initialTaskId }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('month');
@@ -52,6 +130,10 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set(users.map(u => u.id)));
+  
+  // Breakdown state
+  const [breakdownMetric, setBreakdownMetric] = useState<'incoming' | 'outgoing' | 'investments' | 'donations' | null>(null);
+
   const hasOpenedInitialTask = useRef(false);
 
   useEffect(() => {
@@ -106,17 +188,18 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
       setIsTaskModalOpen(false);
   }
 
-  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
   
   const transactionTypeMap = useMemo(() => new Map(transactionTypes.map(t => [t.id, t])), [transactionTypes]);
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
   const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a.name])), [accounts]);
 
   const { itemsByDay, monthlySummary } = useMemo(() => {
-    const map = new Map<string, { transactions: Transaction[], events: ScheduledEvent[], tasks: TaskItem[], income: number, expenses: number, neutral: number }>();
+    const map = new Map<string, { transactions: Transaction[], events: ScheduledEvent[], tasks: TaskItem[], income: number, expenses: number, investments: number, donations: number }>();
     let monthlyIncome = 0;
     let monthlyExpenses = 0;
-    let monthlyNeutral = 0;
+    let monthlyInvestments = 0;
+    let monthlyDonations = 0;
     
     const currentMonth = currentDate.getMonth();
     const currentYear = currentDate.getFullYear();
@@ -124,37 +207,45 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
     transactions.forEach(tx => {
         if (tx.userId && !selectedUserIds.has(tx.userId)) return;
 
-        // Use the ISO string directly to avoid timezone shifts
         const dateKey = tx.date; 
-        if (!map.has(dateKey)) map.set(dateKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, neutral: 0 });
+        if (!map.has(dateKey)) map.set(dateKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0 });
         
         const entry = map.get(dateKey)!;
         entry.transactions.push(tx);
         
         const type = transactionTypeMap.get(tx.typeId);
         if (type) {
-            if (type.balanceEffect === 'incoming') entry.income += tx.amount;
+            if (tx.typeId === 'type_investment') entry.investments += tx.amount;
+            else if (tx.typeId === 'type_donation') entry.donations += tx.amount;
+            else if (type.balanceEffect === 'incoming') entry.income += tx.amount;
             else if (type.balanceEffect === 'outgoing') entry.expenses += tx.amount;
-            else entry.neutral += tx.amount;
         }
 
-        // Parse local for month view checks
         const parsedDate = parseISOLocal(tx.date);
         if (parsedDate.getMonth() === currentMonth && parsedDate.getFullYear() === currentYear && !tx.isParent) {
-             if (type?.balanceEffect === 'incoming') monthlyIncome += tx.amount;
+             if (tx.typeId === 'type_investment') monthlyInvestments += tx.amount;
+             else if (tx.typeId === 'type_donation') monthlyDonations += tx.amount;
+             else if (type?.balanceEffect === 'incoming') monthlyIncome += tx.amount;
              else if (type?.balanceEffect === 'outgoing') monthlyExpenses += tx.amount;
-             else monthlyNeutral += tx.amount;
         }
     });
 
     tasks.forEach(task => {
         if (!task.dueDate) return;
         const key = task.dueDate;
-        if (!map.has(key)) map.set(key, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, neutral: 0 });
+        if (!map.has(key)) map.set(key, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0 });
         map.get(key)!.tasks.push(task);
     });
 
-    return { itemsByDay: map, monthlySummary: { income: monthlyIncome, expenses: monthlyExpenses, neutral: monthlyNeutral } };
+    return { 
+        itemsByDay: map, 
+        monthlySummary: { 
+            income: monthlyIncome, 
+            expenses: monthlyExpenses, 
+            investments: monthlyInvestments, 
+            donations: monthlyDonations 
+        } 
+    };
   }, [transactions, tasks, currentDate, selectedUserIds, transactionTypeMap]);
 
   const days = useMemo(() => {
@@ -220,12 +311,39 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   const activeSummary = useMemo(() => {
       if (selectedDate) {
           const key = formatDate(selectedDate);
-          return itemsByDay.get(key) || { income: 0, expenses: 0, neutral: 0, transactions: [], tasks: [] };
+          return itemsByDay.get(key) || { income: 0, expenses: 0, investments: 0, donations: 0, transactions: [], tasks: [] };
       }
       return { ...monthlySummary, transactions: [], tasks: [] };
   }, [selectedDate, monthlySummary, itemsByDay]);
 
   const summaryContextLabel = selectedDate ? `${formatDate(selectedDate)}` : 'Full Month';
+
+  const breakdownTransactions = useMemo(() => {
+      if (!breakdownMetric) return [];
+      
+      let pool: Transaction[] = [];
+      if (selectedDate) {
+          const key = formatDate(selectedDate);
+          pool = itemsByDay.get(key)?.transactions || [];
+      } else {
+          // If no date selected, look at the whole month based on currentDate
+          const curMonth = currentDate.getMonth();
+          const curYear = currentDate.getFullYear();
+          pool = transactions.filter(tx => {
+              const d = parseISOLocal(tx.date);
+              return d.getMonth() === curMonth && d.getFullYear() === curYear && !tx.isParent;
+          });
+      }
+
+      return pool.filter(tx => {
+          const type = transactionTypeMap.get(tx.typeId);
+          if (breakdownMetric === 'incoming') return type?.balanceEffect === 'incoming' && tx.typeId !== 'type_investment' && tx.typeId !== 'type_donation';
+          if (breakdownMetric === 'outgoing') return type?.balanceEffect === 'outgoing' && tx.typeId !== 'type_investment' && tx.typeId !== 'type_donation';
+          if (breakdownMetric === 'investments') return tx.typeId === 'type_investment';
+          if (breakdownMetric === 'donations') return tx.typeId === 'type_donation';
+          return false;
+      });
+  }, [breakdownMetric, selectedDate, itemsByDay, transactions, currentDate, transactionTypeMap]);
 
   return (
       <div className="space-y-4 h-full flex flex-col overflow-hidden">
@@ -262,10 +380,39 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 flex-shrink-0">
-              <SummaryWidget title="Incoming" value={formatCurrency(activeSummary.income)} helpText={summaryContextLabel} colorClass="text-emerald-600" isFocus={!!selectedDate} />
-              <SummaryWidget title="Outgoing" value={formatCurrency(activeSummary.expenses)} helpText={summaryContextLabel} colorClass="text-rose-600" isFocus={!!selectedDate} />
-              <SummaryWidget title="Neutral" value={formatCurrency(activeSummary.neutral || 0)} helpText={summaryContextLabel} colorClass="text-slate-600" isFocus={!!selectedDate} />
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 flex-shrink-0">
+              <SummaryWidget 
+                title="Incoming" 
+                value={formatCurrency(activeSummary.income)} 
+                helpText={summaryContextLabel} 
+                colorClass="text-emerald-600" 
+                isFocus={!!selectedDate} 
+                onClick={() => setBreakdownMetric('incoming')}
+              />
+              <SummaryWidget 
+                title="Outgoing" 
+                value={formatCurrency(activeSummary.expenses)} 
+                helpText={summaryContextLabel} 
+                colorClass="text-rose-600" 
+                isFocus={!!selectedDate} 
+                onClick={() => setBreakdownMetric('outgoing')}
+              />
+              <SummaryWidget 
+                title="Investments" 
+                value={formatCurrency(activeSummary.investments)} 
+                helpText={summaryContextLabel} 
+                colorClass="text-purple-600" 
+                isFocus={!!selectedDate} 
+                onClick={() => setBreakdownMetric('investments')}
+              />
+              <SummaryWidget 
+                title="Donations" 
+                value={formatCurrency(activeSummary.donations)} 
+                helpText={summaryContextLabel} 
+                colorClass="text-pink-600" 
+                isFocus={!!selectedDate} 
+                onClick={() => setBreakdownMetric('donations')}
+              />
           </div>
 
           {/* Main Calendar Section */}
@@ -553,6 +700,16 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
               onSave={handleSaveTaskWrapper} 
               task={editingTask} 
               initialMode="edit"
+          />
+
+          <MetricBreakdownModal 
+              isOpen={!!breakdownMetric}
+              onClose={() => setBreakdownMetric(null)}
+              title={breakdownMetric || ''}
+              transactions={breakdownTransactions}
+              counterparties={counterparties}
+              total={breakdownMetric === 'incoming' ? activeSummary.income : breakdownMetric === 'outgoing' ? activeSummary.expenses : breakdownMetric === 'investments' ? activeSummary.investments : activeSummary.donations}
+              colorClass={breakdownMetric === 'incoming' ? 'text-emerald-600' : breakdownMetric === 'outgoing' ? 'text-rose-600' : breakdownMetric === 'investments' ? 'text-purple-600' : 'text-pink-600'}
           />
       </div>
   );

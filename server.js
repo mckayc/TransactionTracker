@@ -153,6 +153,7 @@ const createTables = () => {
         CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT, color TEXT);
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
         CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
+        CREATE TABLE IF NOT EXISTS counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT);
         CREATE TABLE IF NOT EXISTS locations (id TEXT PRIMARY KEY, name TEXT, city TEXT, state TEXT, country TEXT);
         CREATE TABLE IF NOT EXISTS tags (id TEXT PRIMARY KEY, name TEXT, color TEXT);
         CREATE TABLE IF NOT EXISTS rule_categories (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
@@ -266,7 +267,7 @@ initDb();
 
 app.get('/api/admin/diagnose', (req, res) => {
     try {
-        const tables = db.prepare("SELECT name, sql FROM sqlite_master WHERE type='table'").all();
+        const tables = db.prepare("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
         const diagnostics = tables.map(t => {
             const count = db.prepare(`SELECT COUNT(*) as count FROM ${t.name}`).get().count;
             const columns = db.prepare(`PRAGMA table_info(${t.name})`).all();
@@ -279,7 +280,7 @@ app.get('/api/admin/diagnose', (req, res) => {
         });
         res.json({
             status: 'healthy',
-            databaseSize: fs.statSync(DB_PATH).size,
+            databaseSize: fs.existsSync(DB_PATH) ? fs.statSync(DB_PATH).size : 0,
             tables: diagnostics,
             timestamp: new Date().toISOString()
         });
@@ -357,20 +358,28 @@ app.get('/api/transactions', (req, res) => {
 app.get('/api/analytics/summary', (req, res) => {
     try {
         const { filterQuery, values } = buildTxFilters(req.query);
+        // Robust summary query returning distinct aggregates for the dashboard and ledger views
         const query = `
-            SELECT tt.balance_effect as effect, SUM(t.amount) as total
+            SELECT 
+                SUM(CASE WHEN tt.balance_effect = 'incoming' THEN t.amount ELSE 0 END) as incoming,
+                SUM(CASE WHEN tt.balance_effect = 'outgoing' THEN t.amount ELSE 0 END) as outgoing,
+                SUM(CASE WHEN tt.balance_effect = 'neutral' THEN t.amount ELSE 0 END) as neutral,
+                SUM(CASE WHEN t.type_id = 'type_investment' THEN t.amount ELSE 0 END) as investments
             FROM transactions t
             JOIN transaction_types tt ON t.type_id = tt.id
             ${filterQuery}
-            GROUP BY tt.balance_effect
         `;
-        const rows = db.prepare(query).all(...values);
-        const summary = rows.reduce((acc, row) => {
-            acc[row.effect] = row.total;
-            return acc;
-        }, {});
-        res.json(summary);
-    } catch (e) { res.status(500).json({ error: e.message }); }
+        const result = db.prepare(query).get(...values);
+        res.json({
+            incoming: result.incoming || 0,
+            outgoing: result.outgoing || 0,
+            neutral: result.neutral || 0,
+            investments: result.investments || 0
+        });
+    } catch (e) { 
+        console.error("[API] Summary error:", e.message);
+        res.status(500).json({ error: e.message }); 
+    }
 });
 
 app.post('/api/transactions/batch', (req, res) => {

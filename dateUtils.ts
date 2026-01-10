@@ -32,6 +32,39 @@ export const formatDate = (date: Date | string): string => {
 };
 
 /**
+ * Shifts a date range forward or backward based on its current duration and scale.
+ */
+export const shiftDateRange = (start: Date, end: Date, direction: 'prev' | 'next'): { start: Date, end: Date } => {
+    const newStart = new Date(start);
+    const newEnd = new Date(end);
+    
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    // Special detection for "Calendar Month" (1st to Last)
+    const isFullMonth = start.getDate() === 1 && end.getDate() === new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    // Special detection for "Calendar Year" (Jan 1 to Dec 31)
+    const isFullYear = start.getMonth() === 0 && start.getDate() === 1 && end.getMonth() === 11 && end.getDate() === 31;
+
+    if (isFullMonth) {
+        newStart.setMonth(start.getMonth() + (direction === 'next' ? 1 : -1), 1);
+        newEnd.setFullYear(newStart.getFullYear());
+        newEnd.setMonth(newStart.getMonth() + 1, 0);
+    } else if (isFullYear) {
+        newStart.setFullYear(start.getFullYear() + (direction === 'next' ? 1 : -1), 0, 1);
+        newEnd.setFullYear(newStart.getFullYear(), 11, 31);
+    } else {
+        // Shift by the duration of the window
+        const offsetDays = (diffDays + 1) * (direction === 'next' ? 1 : -1);
+        newStart.setDate(start.getDate() + offsetDays);
+        newEnd.setDate(end.getDate() + offsetDays);
+    }
+
+    // Ensure we don't return invalid dates
+    return { start: newStart, end: newEnd };
+};
+
+/**
  * Calculates the next due date based on a recurrence rule.
  */
 export const calculateNextDate = (currentDateStr: string, rule: RecurrenceRule): string => {

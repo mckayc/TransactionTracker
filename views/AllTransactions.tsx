@@ -8,18 +8,22 @@ import BulkEditModal from '../components/BulkEditModal';
 import { AddIcon, DeleteIcon, CloseIcon, SortIcon, ChevronLeftIcon, ChevronRightIcon, DownloadIcon, SparklesIcon, CheckCircleIcon, CalendarIcon, TrendingUpIcon, ListIcon, TagIcon, WrenchIcon, TrashIcon } from '../components/Icons';
 import { api } from '../services/apiService';
 import { generateUUID } from '../utils';
-import { calculateDateRange, formatDate } from '../dateUtils';
+import { calculateDateRange, formatDate, shiftDateRange } from '../dateUtils';
 
-const MetricPill: React.FC<{ label: string, value: number, color: string, icon: React.ReactNode }> = ({ label, value, color, icon }) => (
-    <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-slate-100 shadow-sm">
+const MetricPill: React.FC<{ label: string, value: number, color: string, icon: React.ReactNode, isLoading?: boolean }> = ({ label, value, color, icon, isLoading }) => (
+    <div className="flex items-center gap-3 px-4 py-2 bg-white rounded-2xl border border-slate-100 shadow-sm min-w-[140px]">
         <div className={`p-2 rounded-lg ${color} bg-opacity-10`}>
             {icon}
         </div>
-        <div>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
-            <p className={`text-sm font-black ${color}`}>
-                {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Math.abs(value))}
-            </p>
+        <div className="min-w-0">
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{label}</p>
+            {isLoading ? (
+                <div className="h-5 w-16 bg-slate-100 animate-pulse rounded mt-0.5" />
+            ) : (
+                <p className={`text-sm font-black ${color} truncate`}>
+                    {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(Math.abs(value))}
+                </p>
+            )}
         </div>
     </div>
 );
@@ -45,16 +49,20 @@ const AllTransactions: React.FC<{
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSummaryLoading, setIsSummaryLoading] = useState(false);
+  
+  // Range Summary State
+  const [rangeSummary, setRangeSummary] = useState({ incoming: 0, outgoing: 0, neutral: 0, investments: 0 });
   
   // Filter & Search State
   const [searchTerm, setSearchTerm] = useState('');
-  const [datePreset, setDatePreset] = useState<DateRangePreset | string>('allTime');
+  const [datePreset, setDatePreset] = useState<DateRangePreset | string>('thisMonth');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   
   // Pagination & Sorting State
   const [page, setPage] = useState(0);
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(100); // Default to 100 as requested
   const [sortKey, setSortKey] = useState('date');
   const [sortDir, setSortDir] = useState('DESC');
 
@@ -62,10 +70,14 @@ const AllTransactions: React.FC<{
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEditType, setBulkEditType] = useState<'categoryId' | 'date' | null>(null);
 
+  const { start, end, label } = useMemo(() => {
+      return calculateDateRange(datePreset, customStart, customEnd, []);
+  }, [datePreset, customStart, customEnd]);
+
   const fetchTransactions = useCallback(async () => {
       setIsLoading(true);
+      setIsSummaryLoading(true);
       try {
-          const { start, end } = calculateDateRange(datePreset, customStart, customEnd, []);
           const params: any = {
               limit,
               offset: page * limit,
@@ -79,13 +91,20 @@ const AllTransactions: React.FC<{
               params.endDate = formatDate(end);
           }
 
-          const response = await api.getTransactions(params);
-          setTransactions(response.data);
-          setTotalCount(response.total);
+          // Fetch transactions and summary in parallel for better responsiveness
+          const [txResponse, summaryResponse] = await Promise.all([
+              api.getTransactions(params),
+              api.getSummary(params)
+          ]);
+          
+          setTransactions(txResponse.data);
+          setTotalCount(txResponse.total);
+          setRangeSummary(summaryResponse as any);
       } finally {
           setIsLoading(false);
+          setIsSummaryLoading(false);
       }
-  }, [page, limit, searchTerm, sortKey, sortDir, datePreset, customStart, customEnd]);
+  }, [page, limit, searchTerm, sortKey, sortDir, datePreset, start, end]);
 
   useEffect(() => {
       const handler = setTimeout(fetchTransactions, 300);
@@ -93,22 +112,6 @@ const AllTransactions: React.FC<{
   }, [fetchTransactions]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const metrics = useMemo(() => {
-      let inflow = 0;
-      let outflow = 0;
-      let investments = 0;
-      
-      transactions.forEach(tx => {
-          if (tx.isParent) return;
-          const type = transactionTypes.find(t => t.id === tx.typeId);
-          if (type?.balanceEffect === 'incoming') inflow += tx.amount;
-          if (type?.balanceEffect === 'outgoing') outflow += tx.amount;
-          if (type?.id.includes('investment')) investments += tx.amount;
-      });
-
-      return { inflow, outflow, net: inflow - outflow, investments };
-  }, [transactions, transactionTypes]);
 
   const handleBulkDelete = () => {
       if (window.confirm(`Permanently delete ${selectedIds.size} selected transactions?`)) {
@@ -128,14 +131,46 @@ const AllTransactions: React.FC<{
       setBulkEditType(null);
   };
 
+  const handleDateShift = (direction: 'prev' | 'next') => {
+      const nextRange = shiftDateRange(start, end, direction);
+      setCustomStart(formatDate(nextRange.start));
+      setCustomEnd(formatDate(nextRange.end));
+      setDatePreset('custom');
+      setPage(0);
+  };
+
   return (
     <div className="flex flex-col h-full gap-4">
-      {/* Metrics Row */}
+      {/* Metrics Row - Now reflects total date range view correctly */}
       <div className="flex flex-wrap gap-3 flex-shrink-0 animate-fade-in">
-          <MetricPill label="Net Cash Flow" value={metrics.net} color={metrics.net >= 0 ? 'text-indigo-600' : 'text-rose-600'} icon={<TrendingUpIcon className="w-4 h-4" />} />
-          <MetricPill label="Total Inflow" value={metrics.inflow} color="text-emerald-600" icon={<AddIcon className="w-4 h-4" />} />
-          <MetricPill label="Total Outflow" value={metrics.outflow} color="text-rose-600" icon={<DeleteIcon className="w-4 h-4" />} />
-          <MetricPill label="Investments" value={metrics.investments} color="text-purple-600" icon={<SparklesIcon className="w-4 h-4" />} />
+          <MetricPill 
+            label="Net Cash Flow" 
+            value={rangeSummary.incoming - rangeSummary.outgoing} 
+            color={(rangeSummary.incoming - rangeSummary.outgoing) >= 0 ? 'text-indigo-600' : 'text-rose-600'} 
+            icon={<TrendingUpIcon className="w-4 h-4" />} 
+            isLoading={isSummaryLoading}
+          />
+          <MetricPill 
+            label="Total Inflow" 
+            value={rangeSummary.incoming} 
+            color="text-emerald-600" 
+            icon={<AddIcon className="w-4 h-4" />} 
+            isLoading={isSummaryLoading}
+          />
+          <MetricPill 
+            label="Total Outflow" 
+            value={rangeSummary.outgoing} 
+            color="text-rose-600" 
+            icon={<DeleteIcon className="w-4 h-4" />} 
+            isLoading={isSummaryLoading}
+          />
+          <MetricPill 
+            label="Investments" 
+            value={rangeSummary.investments} 
+            color="text-purple-600" 
+            icon={<SparklesIcon className="w-4 h-4" />} 
+            isLoading={isSummaryLoading}
+          />
       </div>
 
       <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 flex flex-col lg:flex-row justify-between items-center gap-4">
@@ -150,27 +185,43 @@ const AllTransactions: React.FC<{
                 />
             </div>
             
-            <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-2xl border border-slate-100">
-                <CalendarIcon className="w-4 h-4 text-slate-400 ml-2" />
-                <select 
-                    value={datePreset} 
-                    onChange={e => setDatePreset(e.target.value)}
-                    className="border-none bg-transparent text-xs font-black text-slate-600 uppercase tracking-tighter focus:ring-0 cursor-pointer"
+            <div className="flex items-center gap-1 bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-lg shadow-indigo-900/10">
+                <button 
+                    onClick={() => handleDateShift('prev')}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all active:scale-90"
+                    title="Previous Period"
                 >
-                    <option value="allTime">All History</option>
-                    <option value="thisMonth">This Month</option>
-                    <option value="lastMonth">Last Month</option>
-                    <option value="last30Days">Last 30 Days</option>
-                    <option value="thisYear">This Year</option>
-                    <option value="custom">Custom Range...</option>
-                </select>
-                {datePreset === 'custom' && (
-                    <div className="flex items-center gap-1 pr-2 animate-fade-in">
-                        <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="text-[10px] p-1 border-none bg-white rounded-lg focus:ring-0" />
-                        <span className="text-slate-300 text-[10px]">to</span>
-                        <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="text-[10px] p-1 border-none bg-white rounded-lg focus:ring-0" />
+                    <ChevronLeftIcon className="w-5 h-5" />
+                </button>
+
+                <div className="relative flex items-center gap-2 px-3 border-x border-white/5">
+                    <CalendarIcon className="w-3.5 h-3.5 text-indigo-400" />
+                    <div className="relative group">
+                        <span className="text-[11px] font-black text-slate-100 uppercase tracking-tight cursor-pointer whitespace-nowrap">
+                            {label}
+                        </span>
+                        <select 
+                            value={datePreset} 
+                            onChange={e => { setDatePreset(e.target.value); setPage(0); }}
+                            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        >
+                            <option value="allTime">All History</option>
+                            <option value="thisMonth">This Month</option>
+                            <option value="lastMonth">Last Month</option>
+                            <option value="last30Days">Last 30 Days</option>
+                            <option value="thisYear">This Year</option>
+                            <option value="custom">Manual Ranges...</option>
+                        </select>
                     </div>
-                )}
+                </div>
+
+                <button 
+                    onClick={() => handleDateShift('next')}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all active:scale-90"
+                    title="Next Period"
+                >
+                    <ChevronRightIcon className="w-5 h-5" />
+                </button>
             </div>
         </div>
 
@@ -220,15 +271,16 @@ const AllTransactions: React.FC<{
 
           <div className="p-3 bg-slate-50 border-t flex items-center justify-between">
               <div className="flex items-center gap-4">
-                  <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Page {page + 1} of {Math.ceil(totalCount / limit)}</span>
+                  <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Page {page + 1} of {Math.ceil(totalCount / limit) || 1}</span>
                   <div className="h-4 w-px bg-slate-200" />
                   <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Total Registry: {totalCount}</span>
               </div>
               <div className="flex items-center gap-4">
                   <select value={limit} onChange={e => { setLimit(Number(e.target.value)); setPage(0); }} className="text-[10px] font-black uppercase tracking-tighter border border-slate-200 p-1.5 rounded-xl bg-white text-slate-700">
-                      <option value={25}>25 per screen</option>
-                      <option value={50}>50 per screen</option>
                       <option value={100}>100 per screen</option>
+                      <option value={200}>200 per screen</option>
+                      <option value={500}>500 per screen</option>
+                      <option value={1000}>1000 per screen</option>
                   </select>
                   <div className="flex items-center gap-2">
                       <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0} className="p-2 border rounded-xl bg-white shadow-sm hover:bg-slate-50 disabled:opacity-30 disabled:hover:bg-white transition-all"><ChevronLeftIcon className="w-4 h-4 text-slate-600" /></button>
