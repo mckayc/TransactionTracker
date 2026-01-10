@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout } from '../types';
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, EditIcon, TrashIcon } from '../components/Icons';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, EditIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface DashboardProps {
@@ -21,30 +21,25 @@ const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { styl
 
 const GoalGaugeModule: React.FC<{ goals: FinancialGoal[], config: DashboardWidget['config'] }> = ({ goals, config }) => {
     const goal = goals.find(g => g.id === config?.goalId) || goals[0];
-    if (!goal) return <div className="p-6 text-center text-slate-400 text-xs italic">No goals defined in Financial Plan.</div>;
+    if (!goal) return <div className="p-6 text-center text-slate-400 text-xs italic">No goals defined.</div>;
 
     const progress = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
 
     return (
-        <div className="p-6 space-y-6 flex flex-col h-full">
-            <h4 className="font-bold text-slate-800 flex items-center gap-2 truncate">
-                <ShieldCheckIcon className="w-5 h-5 text-indigo-500" /> {config?.title || goal.title}
-            </h4>
-            <div className="flex-1 flex flex-col items-center justify-center space-y-4">
-                <div className="relative w-32 h-32">
-                    <svg className="w-full h-full transform -rotate-90">
-                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-100" />
-                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={364} strokeDashoffset={364 - (364 * progress) / 100} className="text-indigo-600 transition-all duration-1000" />
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-2xl font-black text-slate-800">{progress.toFixed(0)}%</span>
-                        <span className="text-[8px] font-black text-slate-400 uppercase">Target</span>
-                    </div>
+        <div className="p-6 space-y-6 flex flex-col h-full items-center justify-center">
+            <div className="relative w-32 h-32">
+                <svg className="w-full h-full transform -rotate-90">
+                    <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-100" />
+                    <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={364} strokeDashoffset={364 - (364 * progress) / 100} className="text-indigo-600 transition-all duration-1000" />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <span className="text-2xl font-black text-slate-800">{progress.toFixed(0)}%</span>
+                    <span className="text-[8px] font-black text-slate-400 uppercase">Target</span>
                 </div>
-                <div className="text-center">
-                    <p className="text-lg font-black text-slate-800">{formatCurrency(goal.currentAmount)}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">of {formatCurrency(goal.targetAmount)}</p>
-                </div>
+            </div>
+            <div className="text-center">
+                <p className="text-lg font-black text-slate-800">{formatCurrency(goal.currentAmount)}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">of {formatCurrency(goal.targetAmount)}</p>
             </div>
         </div>
     );
@@ -70,38 +65,32 @@ const TaxProjectionModule: React.FC<{ transactions: Transaction[] }> = ({ transa
     }, [transactions, currentYear]);
 
     return (
-        <div className="p-6 space-y-6 flex flex-col h-full bg-slate-50/50">
-            <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-orange-500" /> Tax Projector <span className="text-[10px] font-black text-slate-300 uppercase ml-auto">{currentYear}</span>
-            </h4>
+        <div className="p-6 space-y-6 flex flex-col h-full justify-center">
             <div className="space-y-4">
-                <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
+                <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm text-center">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Estimated Liability (25%)</p>
                     <p className="text-2xl font-black text-orange-600">{formatCurrency(stats.estimatedTax)}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-2">
+                    <div className="text-center p-2 bg-slate-50 rounded-xl">
                         <p className="text-[9px] font-black text-slate-400 uppercase">Taxable Basis</p>
                         <p className="text-sm font-bold text-slate-700">{formatCurrency(stats.taxable)}</p>
                     </div>
-                    <div className="text-center p-2">
+                    <div className="text-center p-2 bg-slate-50 rounded-xl">
                         <p className="text-[9px] font-black text-slate-400 uppercase">Net Income</p>
                         <p className="text-sm font-bold text-slate-700">{formatCurrency(stats.income)}</p>
                     </div>
                 </div>
             </div>
-            <p className="text-[9px] text-slate-400 italic text-center">Heuristic projection based on current ledger categorizations.</p>
+            <p className="text-[9px] text-slate-300 italic text-center uppercase tracking-tighter">Heuristic logic for {currentYear}</p>
         </div>
     );
 };
 
 const AiInsightsModule: React.FC<{ plan: FinancialPlan | null }> = ({ plan }) => {
     return (
-        <div className="p-6 space-y-4 flex flex-col h-full bg-indigo-900 text-white rounded-3xl overflow-hidden relative">
-            <div className="relative z-10 flex flex-col h-full">
-                <h4 className="font-bold flex items-center gap-2 mb-4">
-                    <SparklesIcon className="w-5 h-5 text-indigo-300" /> AI Wealth Strategy
-                </h4>
+        <div className="p-6 space-y-4 flex flex-col h-full bg-indigo-900 text-white relative">
+            <div className="relative z-10 flex flex-col h-full overflow-hidden">
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
                     {plan ? (
                         <p className="text-sm text-indigo-100 leading-relaxed italic line-clamp-6">
@@ -110,16 +99,10 @@ const AiInsightsModule: React.FC<{ plan: FinancialPlan | null }> = ({ plan }) =>
                     ) : (
                         <div className="h-full flex flex-col items-center justify-center text-center space-y-3">
                             <RobotIcon className="w-8 h-8 text-indigo-400 opacity-50" />
-                            <p className="text-xs text-indigo-300 font-medium">No strategy generated yet. Consult the Financial Architect.</p>
+                            <p className="text-xs text-indigo-300 font-medium">No strategy generated yet.</p>
                         </div>
                     )}
                 </div>
-                {plan && (
-                    <div className="pt-4 mt-auto border-t border-white/10 flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-indigo-400">
-                        <span>Updated {new Date(plan.createdAt).toLocaleDateString()}</span>
-                        <ChevronRightIcon className="w-4 h-4" />
-                    </div>
-                )}
             </div>
             <SparklesIcon className="absolute -right-12 -top-12 w-48 h-48 opacity-10 text-indigo-400 pointer-events-none" />
         </div>
@@ -168,30 +151,26 @@ const CashFlowModule: React.FC<{ transactions: Transaction[], config: DashboardW
         return { income, expenses, net: income - expenses };
     }, [transactions, start, end]);
 
-    const navigate = (dir: number) => {
-        const next = new Date(anchorDate);
-        if (period === 'week') next.setDate(next.getDate() + (dir * 7));
-        else if (period === 'month') next.setMonth(next.getMonth() + dir);
-        else if (period === 'quarter') next.setMonth(next.getMonth() + (dir * 3));
-        else next.setFullYear(next.getFullYear() + dir);
-        setAnchorDate(next);
-    };
-
     return (
         <div className="p-6 space-y-6 flex flex-col h-full">
-            <div className="flex justify-between items-center">
-                <h4 className="font-bold text-slate-800 flex items-center gap-2"><DollarSign className="w-5 h-5 text-indigo-500" /> {config?.title || 'Cash Flow'}</h4>
-                <div className="flex bg-slate-100 p-1 rounded-lg">
-                    {(['week', 'month', 'quarter', 'year'] as const).map(p => (
-                        <button key={p} onClick={() => setPeriod(p)} className={`px-2 py-1 text-[9px] font-black uppercase rounded-md transition-all ${period === p ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}>{p}</button>
-                    ))}
-                </div>
-            </div>
-
             <div className="flex items-center justify-between bg-slate-50 p-2 rounded-xl border border-slate-100">
-                <button onClick={() => navigate(-1)} className="p-1 hover:bg-white rounded-lg transition-colors"><ChevronLeftIcon className="w-4 h-4 text-slate-400"/></button>
-                <span className="text-xs font-black text-slate-600 uppercase tracking-tight">{label}</span>
-                <button onClick={() => navigate(1)} className="p-1 hover:bg-white rounded-lg transition-colors"><ChevronRightIcon className="w-4 h-4 text-slate-400"/></button>
+                <button onClick={() => setAnchorDate(prev => {
+                    const next = new Date(prev);
+                    if (period === 'week') next.setDate(next.getDate() - 7);
+                    else if (period === 'month') next.setMonth(next.getMonth() - 1);
+                    else if (period === 'quarter') next.setMonth(next.getMonth() - 3);
+                    else next.setFullYear(next.getFullYear() - 1);
+                    return next;
+                })} className="p-1 hover:bg-white rounded-lg transition-colors"><ChevronLeftIcon className="w-4 h-4 text-slate-400"/></button>
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">{label}</span>
+                <button onClick={() => setAnchorDate(prev => {
+                    const next = new Date(prev);
+                    if (period === 'week') next.setDate(next.getDate() + 7);
+                    else if (period === 'month') next.setMonth(next.getMonth() + 1);
+                    else if (period === 'quarter') next.setMonth(next.getMonth() + 3);
+                    else next.setFullYear(next.getFullYear() + 1);
+                    return next;
+                })} className="p-1 hover:bg-white rounded-lg transition-colors"><ChevronRightIcon className="w-4 h-4 text-slate-400"/></button>
             </div>
 
             <div className="grid grid-cols-2 gap-4 flex-1">
@@ -203,13 +182,13 @@ const CashFlowModule: React.FC<{ transactions: Transaction[], config: DashboardW
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Outflow</p>
                     <p className="text-lg font-black text-rose-600">{formatCurrency(totals.expenses)}</p>
                 </div>
-                <div className="col-span-2 pt-4 border-t">
+                <div className="col-span-2 pt-4 border-t border-slate-100">
                     <div className="flex justify-between items-end">
                         <div>
                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Net Surplus</p>
                             <p className={`text-2xl font-black ${totals.net >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>{formatCurrency(totals.net)}</p>
                         </div>
-                        <TrendingUpIcon className={`w-8 h-8 ${totals.net >= 0 ? 'text-indigo-100' : 'text-rose-100'}`} />
+                        <TrendingUpIcon className={`w-8 h-8 ${totals.net >= 0 ? 'text-indigo-50' : 'text-rose-50'}`} />
                     </div>
                 </div>
             </div>
@@ -239,9 +218,8 @@ const TopExpensesModule: React.FC<{ transactions: Transaction[], categories: Cat
     const totalExpense = topCats.reduce((s, c) => s + c.amt, 0);
 
     return (
-        <div className="p-6 space-y-4 flex flex-col h-full">
-            <h4 className="font-bold text-slate-800 flex items-center gap-2"><ChartPieIcon className="w-5 h-5 text-rose-500" /> Top Expenses <span className="text-[10px] font-black text-slate-300 uppercase ml-auto">THIS MONTH</span></h4>
-            <div className="flex-1 space-y-3">
+        <div className="p-6 space-y-4 flex flex-col h-full overflow-hidden">
+            <div className="flex-1 space-y-3 overflow-y-auto custom-scrollbar">
                 {topCats.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-full text-slate-300 opacity-50 italic text-xs"><p>No expense data yet.</p></div>
                 ) : (
@@ -278,22 +256,19 @@ const AmazonSummaryModule: React.FC<{ metrics: AmazonMetric[] }> = ({ metrics })
     }, [metrics]);
 
     return (
-        <div className="p-6 space-y-6 flex flex-col h-full">
-            <h4 className="font-bold text-slate-800 flex items-center gap-2"><BoxIcon className="w-5 h-5 text-orange-500" /> Amazon Influencer <span className="text-[10px] font-black text-slate-300 uppercase ml-auto">MTD</span></h4>
-            <div className="flex-1 grid grid-cols-1 gap-4">
-                <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100">
-                    <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Earnings</p>
-                    <p className="text-2xl font-black text-orange-700">{formatCurrency(stats.rev)}</p>
+        <div className="p-6 space-y-6 flex flex-col h-full justify-center">
+            <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 text-center">
+                <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest mb-1">MTD Earnings</p>
+                <p className="text-2xl font-black text-orange-700">{formatCurrency(stats.rev)}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clicks</p>
+                    <p className="text-lg font-black text-slate-700">{stats.clicks.toLocaleString()}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Clicks</p>
-                        <p className="text-lg font-black text-slate-700">{stats.clicks.toLocaleString()}</p>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Items</p>
-                        <p className="text-lg font-black text-slate-700">{stats.items.toLocaleString()}</p>
-                    </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Items</p>
+                    <p className="text-lg font-black text-slate-700">{stats.items.toLocaleString()}</p>
                 </div>
             </div>
         </div>
@@ -316,22 +291,19 @@ const YouTubeSummaryModule: React.FC<{ metrics: YouTubeMetric[] }> = ({ metrics 
     }, [metrics]);
 
     return (
-        <div className="p-6 space-y-6 flex flex-col h-full">
-            <h4 className="font-bold text-slate-800 flex items-center gap-2"><YoutubeIcon className="w-5 h-5 text-red-600" /> YouTube Content <span className="text-[10px] font-black text-slate-300 uppercase ml-auto">MTD</span></h4>
-            <div className="flex-1 grid grid-cols-1 gap-4">
-                <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-                    <p className="text-[9px] font-black text-red-400 uppercase tracking-widest">AdSense</p>
-                    <p className="text-2xl font-black text-red-700">{formatCurrency(stats.rev)}</p>
+        <div className="p-6 space-y-6 flex flex-col h-full justify-center">
+            <div className="p-4 bg-red-50 rounded-2xl border border-red-100 text-center">
+                <p className="text-[9px] font-black text-red-400 uppercase tracking-widest mb-1">MTD AdSense</p>
+                <p className="text-2xl font-black text-red-700">{formatCurrency(stats.rev)}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Views</p>
+                    <p className="text-lg font-black text-slate-700">{stats.views.toLocaleString()}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Views</p>
-                        <p className="text-lg font-black text-slate-700">{stats.views.toLocaleString()}</p>
-                    </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Subs</p>
-                        <p className="text-lg font-black text-slate-700">{stats.subs.toLocaleString()}</p>
-                    </div>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-center">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Subs</p>
+                    <p className="text-lg font-black text-slate-700">{stats.subs.toLocaleString()}</p>
                 </div>
             </div>
         </div>
@@ -342,6 +314,7 @@ const WidgetSlot: React.FC<{
     widget: DashboardWidget;
     onRemove: () => void;
     onConfigure: () => void;
+    onDelete: () => void;
     savedReports: SavedReport[];
     transactions: Transaction[];
     tasks: TaskItem[];
@@ -350,46 +323,41 @@ const WidgetSlot: React.FC<{
     amazonMetrics: AmazonMetric[];
     youtubeMetrics: YouTubeMetric[];
     financialPlan: FinancialPlan | null;
-}> = ({ widget, onRemove, onConfigure, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan }) => {
+}> = ({ widget, onRemove, onConfigure, onDelete, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan }) => {
     
+    const BLUEPRINTS = {
+        'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
+        'goal_gauge': { icon: <ShieldCheckIcon className="w-4 h-4" />, label: 'Goal Progress' },
+        'tax_projection': { icon: <CalendarIcon className="w-4 h-4" />, label: 'Tax Estimator' },
+        'ai_insights': { icon: <SparklesIcon className="w-4 h-4" />, label: 'AI Strategy' },
+        'top_expenses': { icon: <ChartPieIcon className="w-4 h-4" />, label: 'Expense Matrix' },
+        'tasks': { icon: <ChecklistIcon className="w-4 h-4" />, label: 'Action Queue' },
+        'amazon_summary': { icon: <BoxIcon className="w-4 h-4" />, label: 'Amazon Yield' },
+        'youtube_summary': { icon: <YoutubeIcon className="w-4 h-4" />, label: 'YouTube ROI' },
+        'report': { icon: <BarChartIcon className="w-4 h-4" />, label: 'Report Pivot' }
+    };
+
+    const blueprint = BLUEPRINTS[widget.type] || { icon: <InfoIcon className="w-4 h-4" />, label: 'Module' };
+
     const renderContent = () => {
         if (widget.type === 'report' && widget.config?.reportId) {
             const report = savedReports.find(r => r.id === widget.config?.reportId);
-            if (!report) return <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center"><p className="text-sm">Report blueprint missing.</p></div>;
-            
-            return (
-                <div className="h-full flex flex-col">
-                   <div className="p-4 border-b bg-slate-50 flex justify-between items-center">
-                        <h4 className="font-bold text-slate-700 truncate text-sm uppercase tracking-tight flex items-center gap-2"><ChartPieIcon className="w-4 h-4 text-indigo-500" /> {widget.config.title || report.name}</h4>
-                   </div>
-                   <div className="flex-1 p-4 flex flex-col items-center justify-center text-center bg-white">
-                        <ChartPieIcon className="w-16 h-16 text-indigo-50 mb-4" />
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Strategy Stream Active</p>
-                        <p className="text-xs text-slate-500 mt-1">Visit Strategic Hub for interactive view.</p>
-                   </div>
-                </div>
-            );
+            if (!report) return <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center bg-slate-50/50"><BarChartIcon className="w-10 h-10 mb-2 opacity-10" /><p className="text-xs uppercase font-black">Report Missing</p></div>;
+            return <div className="h-full flex-1 p-8 flex flex-col items-center justify-center text-center bg-white"><ChartPieIcon className="w-12 h-12 text-indigo-50 mb-3" /><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Analysis</p><p className="text-xs text-slate-500 mt-2 font-medium">Synced to "{report.name}"</p></div>;
         }
-
         if (widget.type === 'tasks') {
             const active = tasks.filter(t => !t.isCompleted).slice(0, 5);
             return (
-                <div className="p-6 space-y-4 flex flex-col h-full min-h-[300px]">
-                    <h4 className="font-bold text-slate-800 flex items-center gap-2"><ChecklistIcon className="w-5 h-5 text-indigo-500" /> {widget.config?.title || 'Action Queue'}</h4>
-                    <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
-                        {active.length === 0 ? (
-                             <div className="flex flex-col items-center justify-center h-full text-slate-300 opacity-50 italic text-xs"><p>All systems clear.</p></div>
-                        ) : active.map(t => (
-                            <div key={t.id} className="text-sm p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between items-center hover:border-indigo-200 transition-colors">
-                                <span className="truncate flex-1 font-medium">{t.title}</span>
-                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ml-2 ${t.priority === 'high' ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-600'}`}>{t.priority}</span>
-                            </div>
-                        ))}
-                    </div>
+                <div className="p-4 space-y-2 flex-1 overflow-y-auto custom-scrollbar">
+                    {active.length === 0 ? (<div className="flex flex-col items-center justify-center h-full text-slate-300 opacity-50 italic text-xs"><p>All systems clear.</p></div>
+                    ) : active.map(t => (
+                        <div key={t.id} className="text-[11px] p-2 bg-slate-50 rounded-lg border border-slate-100 flex justify-between items-center">
+                            <span className="truncate flex-1 font-medium">{t.title}</span>
+                        </div>
+                    ))}
                 </div>
             );
         }
-
         if (widget.type === 'cashflow') return <CashFlowModule transactions={transactions} config={widget.config} />;
         if (widget.type === 'top_expenses') return <TopExpensesModule transactions={transactions} categories={categories} />;
         if (widget.type === 'amazon_summary') return <AmazonSummaryModule metrics={amazonMetrics} />;
@@ -397,25 +365,29 @@ const WidgetSlot: React.FC<{
         if (widget.type === 'goal_gauge') return <GoalGaugeModule goals={goals} config={widget.config} />;
         if (widget.type === 'tax_projection') return <TaxProjectionModule transactions={transactions} />;
         if (widget.type === 'ai_insights') return <AiInsightsModule plan={financialPlan} />;
-
-        return (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center bg-slate-50/50">
-                <SettingsIcon className="w-12 h-12 mb-3 opacity-10" />
-                <p className="text-sm font-bold uppercase tracking-widest">Empty Slot</p>
-                <button onClick={onConfigure} className="mt-4 px-6 py-2 bg-white border border-slate-200 shadow-sm rounded-xl text-xs font-black text-indigo-600 uppercase hover:bg-slate-50 transition-all">Configure</button>
-            </div>
-        );
+        return null;
     };
 
     const spanClass = widget.colSpan === 3 ? 'md:col-span-3' : widget.colSpan === 2 ? 'md:col-span-2' : 'md:col-span-1';
 
     return (
-        <div className={`bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden group relative transition-all hover:shadow-md h-full min-h-[300px] ${spanClass}`}>
-            <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-20">
-                <button onClick={onConfigure} title="Edit Instance" className="p-2.5 bg-white/95 backdrop-blur border border-slate-100 rounded-xl text-slate-500 hover:text-indigo-600 shadow-xl transition-all active:scale-95"><SettingsIcon className="w-4 h-4"/></button>
-                <button onClick={onRemove} title="Purge Instance" className="p-2.5 bg-white/95 backdrop-blur border border-slate-100 rounded-xl text-slate-500 hover:text-red-600 shadow-xl transition-all active:scale-95"><CloseIcon className="w-4 h-4"/></button>
+        <div className={`bg-white rounded-[1.5rem] border border-slate-200 shadow-sm overflow-hidden group flex flex-col h-full min-h-[300px] transition-all hover:shadow-md ${spanClass}`}>
+            <header className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                    <div className="text-indigo-600 flex-shrink-0">{blueprint.icon}</div>
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight truncate">
+                        {widget.config?.title || blueprint.label}
+                    </h4>
+                </div>
+                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={onConfigure} title="Instance Settings" className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors"><SettingsIcon className="w-3.5 h-3.5" /></button>
+                    <button onClick={onRemove} title="Remove from Dashboard" className="p-1.5 text-slate-400 hover:text-orange-600 transition-colors"><CloseIcon className="w-3.5 h-3.5" /></button>
+                    <button onClick={onDelete} title="Purge Logical Config" className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"><TrashIcon className="w-3.5 h-3.5" /></button>
+                </div>
+            </header>
+            <div className="flex-1 min-h-0">
+                {renderContent()}
             </div>
-            {renderContent()}
         </div>
     );
 };
@@ -424,6 +396,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
     const [isCreatingDashboard, setIsCreatingDashboard] = useState(false);
     const [newDashboardName, setNewDashboardName] = useState('');
+    const [newDashboardCols, setNewDashboardCols] = useState<1 | 2 | 3 | 4>(3);
     
     // Config form state
     const [configTitle, setConfigTitle] = useState('');
@@ -431,12 +404,15 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [configReportId, setConfigReportId] = useState('');
     const [configPeriod, setConfigPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
     const [configColSpan, setConfigColSpan] = useState<1 | 2 | 3>(1);
+    const [configBlueprint, setConfigBlueprint] = useState<DashboardWidget['type']>('cashflow');
+    const [expandedBlueprints, setExpandedBlueprints] = useState<Set<string>>(new Set());
 
     const dashboards = useMemo(() => {
         if (!systemSettings.dashboards || systemSettings.dashboards.length === 0) {
             const defaultDash: DashboardLayout = {
                 id: 'dash_default',
-                name: 'Main Overview',
+                name: 'Overview',
+                columns: 3,
                 widgets: systemSettings.dashboardWidgets || []
             };
             return [defaultDash];
@@ -444,11 +420,20 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
         return systemSettings.dashboards;
     }, [systemSettings]);
 
+    const widgetLibrary = useMemo(() => systemSettings.widgetLibrary || [], [systemSettings]);
+
     const activeDashboardId = systemSettings.activeDashboardId || dashboards[0]?.id;
     const activeDashboard = useMemo(() => dashboards.find(d => d.id === activeDashboardId) || dashboards[0], [dashboards, activeDashboardId]);
     const widgets = activeDashboard?.widgets || [];
 
-    const activeWidget = useMemo(() => widgets.find(w => w.id === isConfiguring), [isConfiguring, widgets]);
+    const activeWidget = useMemo(() => {
+        if (!isConfiguring) return null;
+        // Check if we are configuring a widget already on the dashboard
+        const onDashboard = widgets.find(w => w.id === isConfiguring);
+        if (onDashboard) return onDashboard;
+        // Or if we are configuring from the library/fresh
+        return widgetLibrary.find(w => w.id === isConfiguring);
+    }, [isConfiguring, widgets, widgetLibrary]);
 
     useEffect(() => {
         if (activeWidget) {
@@ -457,43 +442,61 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             setConfigReportId(activeWidget.config?.reportId || savedReports[0]?.id || '');
             setConfigPeriod(activeWidget.config?.period || 'month');
             setConfigColSpan(activeWidget.colSpan || 1);
+            setConfigBlueprint(activeWidget.type);
         }
     }, [isConfiguring, activeWidget, goals, savedReports]);
 
-    const addWidget = () => {
-        const newWidget: DashboardWidget = { id: generateUUID(), type: 'cashflow', colSpan: 1 };
-        const updatedDashboards = dashboards.map(d => 
-            d.id === activeDashboardId ? { ...d, widgets: [...d.widgets, newWidget] } : d
-        );
-        onUpdateSystemSettings({ ...systemSettings, dashboards: updatedDashboards });
-        setIsConfiguring(newWidget.id);
-    };
-
-    const removeWidget = (id: string) => {
+    const removeWidgetFromDashboard = (id: string) => {
         const updatedDashboards = dashboards.map(d => 
             d.id === activeDashboardId ? { ...d, widgets: d.widgets.filter(w => w.id !== id) } : d
         );
         onUpdateSystemSettings({ ...systemSettings, dashboards: updatedDashboards });
     };
 
-    const handleApplyConfig = (type: DashboardWidget['type']) => {
+    const deleteWidgetPermanently = (id: string) => {
+        if (!confirm("Permanently purge this module configuration from your library?")) return;
+        const updatedLibrary = widgetLibrary.filter(w => w.id !== id);
+        const updatedDashboards = dashboards.map(d => ({
+            ...d,
+            widgets: d.widgets.filter(w => w.id !== id)
+        }));
+        onUpdateSystemSettings({ ...systemSettings, widgetLibrary: updatedLibrary, dashboards: updatedDashboards });
+    };
+
+    const handleApplyConfig = () => {
         if (!isConfiguring) return;
-        const newConfig = {
-            title: configTitle,
-            goalId: type === 'goal_gauge' ? configGoalId : undefined,
-            reportId: type === 'report' ? configReportId : undefined,
-            period: type === 'cashflow' ? configPeriod : undefined
-        };
         
+        const newWidget: DashboardWidget = {
+            id: isConfiguring.startsWith('fresh_') ? generateUUID() : isConfiguring,
+            type: configBlueprint,
+            colSpan: configColSpan,
+            config: {
+                title: configTitle,
+                goalId: configBlueprint === 'goal_gauge' ? configGoalId : undefined,
+                reportId: configBlueprint === 'report' ? configReportId : undefined,
+                period: configBlueprint === 'cashflow' ? configPeriod : undefined
+            }
+        };
+
+        // Update Library
+        const existingInLibrary = widgetLibrary.findIndex(w => w.id === newWidget.id);
+        let nextLibrary = [...widgetLibrary];
+        if (existingInLibrary > -1) nextLibrary[existingInLibrary] = newWidget;
+        else nextLibrary.push(newWidget);
+
+        // Update current dashboard
+        const alreadyInDashboard = widgets.some(w => w.id === newWidget.id);
+        const nextWidgets = alreadyInDashboard 
+            ? widgets.map(w => w.id === newWidget.id ? newWidget : w)
+            : [...widgets, newWidget];
+
         const updatedDashboards = dashboards.map(d => 
-            d.id === activeDashboardId ? { 
-                ...d, 
-                widgets: d.widgets.map(w => w.id === isConfiguring ? { ...w, type, config: newConfig, colSpan: configColSpan } : w) 
-            } : d
+            d.id === activeDashboardId ? { ...d, widgets: nextWidgets } : d
         );
 
         onUpdateSystemSettings({
             ...systemSettings,
+            widgetLibrary: nextLibrary,
             dashboards: updatedDashboards
         });
         setIsConfiguring(null);
@@ -504,6 +507,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
         const newDash: DashboardLayout = {
             id: generateUUID(),
             name: newDashboardName.trim(),
+            columns: newDashboardCols,
             widgets: []
         };
         onUpdateSystemSettings({
@@ -517,7 +521,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
 
     const handleDeleteDashboard = (id: string) => {
         if (dashboards.length <= 1) return;
-        if (!confirm("Permanently delete this dashboard layout?")) return;
+        if (!confirm("Delete this entire dashboard view?")) return;
         const next = dashboards.filter(d => d.id !== id);
         onUpdateSystemSettings({
             ...systemSettings,
@@ -526,89 +530,83 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
         });
     };
 
-    return (
-        <div className="space-y-8 pb-20 max-w-7xl mx-auto">
-            <div className="flex flex-col gap-6">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <h1 className="text-4xl font-black text-slate-800 tracking-tight">Executive Cockpit</h1>
-                        <p className="text-slate-500 mt-1 font-medium text-lg">Integrated telemetry for your financial ecosystem.</p>
-                    </div>
-                    <button onClick={addWidget} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95">
-                        <AddIcon className="w-5 h-5" /> Deploy Module
-                    </button>
-                </div>
+    const BLUEPRINTS = [
+        { id: 'cashflow', label: 'Cash Flow', icon: <DollarSign className="w-4 h-4" /> },
+        { id: 'goal_gauge', label: 'Goal Progress', icon: <ShieldCheckIcon className="w-4 h-4" /> },
+        { id: 'tax_projection', label: 'Tax Estimator', icon: <CalendarIcon className="w-4 h-4" /> },
+        { id: 'ai_insights', label: 'AI Strategy', icon: <SparklesIcon className="w-4 h-4" /> },
+        { id: 'top_expenses', label: 'Expense Matrix', icon: <ChartPieIcon className="w-4 h-4" /> },
+        { id: 'tasks', label: 'Action Queue', icon: <ChecklistIcon className="w-4 h-4" /> },
+        { id: 'amazon_summary', label: 'Amazon Yield', icon: <BoxIcon className="w-4 h-4" /> },
+        { id: 'youtube_summary', label: 'YouTube ROI', icon: <YoutubeIcon className="w-4 h-4" /> },
+        { id: 'report', label: 'Report Pivot', icon: <BarChartIcon className="w-4 h-4" /> }
+    ];
 
-                {/* Dashboard Switcher Bar */}
-                <div className="flex flex-wrap items-center gap-2 p-1.5 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto no-scrollbar">
-                    {dashboards.map(d => (
-                        <div key={d.id} className="flex items-center group relative">
+    const gridColsClass = activeDashboard?.columns === 4 ? 'md:grid-cols-4' : activeDashboard?.columns === 3 ? 'md:grid-cols-3' : activeDashboard?.columns === 2 ? 'md:grid-cols-2' : 'md:grid-cols-1';
+
+    return (
+        <div className="space-y-6 pb-20 max-w-7xl mx-auto">
+            
+            {/* Dashboard Tabs Bar */}
+            <div className="flex flex-wrap items-center gap-2 p-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto no-scrollbar flex-shrink-0">
+                {dashboards.map(d => (
+                    <div key={d.id} className="flex items-center group relative">
+                        <button 
+                            onClick={() => onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id })}
+                            className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeDashboardId === d.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            {d.name}
+                        </button>
+                        {dashboards.length > 1 && (
                             <button 
-                                onClick={() => onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id })}
-                                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeDashboardId === d.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}
+                                onClick={() => handleDeleteDashboard(d.id)}
+                                className="absolute -top-1 -right-1 p-1 bg-white border border-slate-200 text-red-500 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-all hover:bg-red-50"
                             >
-                                {d.name}
+                                <CloseIcon className="w-3 h-3" />
                             </button>
-                            {dashboards.length > 1 && (
-                                <button 
-                                    onClick={() => handleDeleteDashboard(d.id)}
-                                    className="absolute -top-1 -right-1 p-1 bg-white border border-slate-200 text-red-500 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-all hover:bg-red-50"
-                                >
-                                    <CloseIcon className="w-3 h-3" />
-                                </button>
-                            )}
-                        </div>
-                    ))}
-                    <button 
-                        onClick={() => setIsCreatingDashboard(true)}
-                        className="p-2.5 rounded-xl text-indigo-600 hover:bg-indigo-50 transition-all border-2 border-dashed border-indigo-100"
-                        title="New Dashboard View"
-                    >
-                        <AddIcon className="w-5 h-5" />
-                    </button>
-                </div>
+                        )}
+                    </div>
+                ))}
+                <button 
+                    onClick={() => setIsCreatingDashboard(true)}
+                    className="p-2.5 rounded-xl text-indigo-600 hover:bg-indigo-50 transition-all border-2 border-dashed border-indigo-100"
+                    title="Construct View"
+                >
+                    <AddIcon className="w-5 h-5" />
+                </button>
             </div>
 
-            {widgets.length === 0 ? (
-                <div className="bg-white p-24 rounded-[3.5rem] border-4 border-dashed border-slate-100 text-center space-y-6">
-                    <div className="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <TrendingUpIcon className="w-12 h-12 text-indigo-200" />
+            {/* Grid Container */}
+            <div className={`grid grid-cols-1 ${gridColsClass} gap-6 auto-rows-min`}>
+                {widgets.map(w => (
+                    <WidgetSlot 
+                        key={w.id} 
+                        widget={w} 
+                        onRemove={() => removeWidgetFromDashboard(w.id)} 
+                        onConfigure={() => setIsConfiguring(w.id)}
+                        onDelete={() => deleteWidgetPermanently(w.id)}
+                        savedReports={savedReports}
+                        transactions={transactions}
+                        tasks={tasks}
+                        goals={goals}
+                        categories={categories}
+                        amazonMetrics={amazonMetrics}
+                        youtubeMetrics={youtubeMetrics}
+                        financialPlan={financialPlan}
+                    />
+                ))}
+                
+                {/* Empty Slot / Adder */}
+                <button 
+                    onClick={() => setIsConfiguring(`fresh_${generateUUID()}`)} 
+                    className="group bg-slate-50 border-4 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center p-12 transition-all hover:bg-white hover:border-indigo-200 min-h-[300px]"
+                >
+                    <div className="p-4 bg-white rounded-full shadow-sm mb-4 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all">
+                        <AddIcon className="w-8 h-8" />
                     </div>
-                    <div>
-                        <h3 className="text-2xl font-black text-slate-800">Telemetry Engine Offline</h3>
-                        <p className="text-slate-400 max-w-sm mx-auto mt-2 font-medium">Construct your specialized cockpit for "{activeDashboard?.name}" by forging custom metrics, goal gauges, and AI strategy snips.</p>
-                    </div>
-                    <button onClick={addWidget} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">Launch Designer</button>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 auto-rows-min">
-                    {widgets.map(w => (
-                        <WidgetSlot 
-                            key={w.id} 
-                            widget={w} 
-                            onRemove={() => removeWidget(w.id)} 
-                            onConfigure={() => setIsConfiguring(w.id)}
-                            savedReports={savedReports}
-                            transactions={transactions}
-                            tasks={tasks}
-                            goals={goals}
-                            categories={categories}
-                            amazonMetrics={amazonMetrics}
-                            youtubeMetrics={youtubeMetrics}
-                            financialPlan={financialPlan}
-                        />
-                    ))}
-                    <button 
-                        onClick={addWidget} 
-                        className="group bg-slate-50 border-4 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center p-12 transition-all hover:bg-white hover:border-indigo-200 min-h-[300px]"
-                    >
-                        <div className="p-4 bg-white rounded-full shadow-sm mb-4 group-hover:scale-110 group-hover:bg-indigo-600 group-hover:text-white transition-all">
-                            <AddIcon className="w-8 h-8" />
-                        </div>
-                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest group-hover:text-indigo-600">Forge New Module</span>
-                    </button>
-                </div>
-            )}
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-indigo-600">Deploy Module</span>
+                </button>
+            </div>
 
             {/* Dashboard Create Modal */}
             {isCreatingDashboard && (
@@ -618,18 +616,34 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                             <h3 className="text-xl font-black text-slate-800">Construct View</h3>
                             <button onClick={() => setIsCreatingDashboard(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                         </div>
-                        <div className="space-y-4">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">View Designation</label>
-                            <input 
-                                type="text" 
-                                value={newDashboardName} 
-                                onChange={e => setNewDashboardName(e.target.value)} 
-                                className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none" 
-                                placeholder="e.g. Content Analytics"
-                                autoFocus
-                            />
+                        <div className="space-y-6">
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">View Designation</label>
+                                <input 
+                                    type="text" 
+                                    value={newDashboardName} 
+                                    onChange={e => setNewDashboardName(e.target.value)} 
+                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none mt-1" 
+                                    placeholder="e.g. ROI Breakdown"
+                                    autoFocus
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Grid Density (Columns)</label>
+                                <div className="grid grid-cols-4 gap-2 mt-1">
+                                    {([1, 2, 3, 4] as const).map(c => (
+                                        <button 
+                                            key={c}
+                                            onClick={() => setNewDashboardCols(c)}
+                                            className={`py-3 border-2 rounded-xl text-xs font-black transition-all ${newDashboardCols === c ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-100 text-slate-400'}`}
+                                        >
+                                            {c} Col
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
-                        <div className="flex gap-4 mt-8">
+                        <div className="flex gap-4 mt-10">
                             <button onClick={() => setIsCreatingDashboard(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
                             <button onClick={handleCreateDashboard} className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">Deploy View</button>
                         </div>
@@ -637,57 +651,76 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 </div>
             )}
 
+            {/* Module Forge (Module Library & Configuration) */}
             {isConfiguring && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={() => setIsConfiguring(null)}>
-                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-8 border-b flex justify-between items-center bg-slate-50">
                             <div>
                                 <h3 className="text-2xl font-black text-slate-800">Module Forge</h3>
-                                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Logic & Visual Definition</p>
+                                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">System Library & Custom Blueprints</p>
                             </div>
                             <button onClick={() => setIsConfiguring(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
                         
-                        <div className="flex flex-1 min-h-0">
+                        <div className="flex flex-1 min-h-[500px]">
                             {/* Blueprints Sidebar */}
-                            <div className="w-64 bg-slate-50/50 border-r border-slate-100 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-1.5">
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-2">Available Blueprints</p>
-                                {[
-                                    { id: 'cashflow', label: 'Cash Flow', icon: <DollarSign className="w-4 h-4" /> },
-                                    { id: 'goal_gauge', label: 'Goal Progress', icon: <ShieldCheckIcon className="w-4 h-4" /> },
-                                    { id: 'tax_projection', label: 'Tax Estimator', icon: <CalendarIcon className="w-4 h-4" /> },
-                                    { id: 'ai_insights', label: 'AI Strategy', icon: <SparklesIcon className="w-4 h-4" /> },
-                                    { id: 'top_expenses', label: 'Expense Matrix', icon: <ChartPieIcon className="w-4 h-4" /> },
-                                    { id: 'tasks', label: 'Action Queue', icon: <ChecklistIcon className="w-4 h-4" /> },
-                                    { id: 'amazon_summary', label: 'Amazon Yield', icon: <BoxIcon className="w-4 h-4" /> },
-                                    { id: 'youtube_summary', label: 'YouTube ROI', icon: <YoutubeIcon className="w-4 h-4" /> },
-                                    { id: 'report', label: 'Report Embed', icon: <BarChartIcon className="w-4 h-4" /> }
-                                ].map(bp => (
-                                    <button 
-                                        key={bp.id} 
-                                        onClick={() => handleApplyConfig(bp.id as any)}
-                                        className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-black uppercase tracking-tight transition-all ${activeWidget?.type === bp.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-white hover:text-indigo-600'}`}
-                                    >
-                                        {bp.icon} {bp.label}
-                                    </button>
-                                ))}
+                            <div className="w-72 bg-slate-50 border-r border-slate-100 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-1.5">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-2">Logical Blueprints</p>
+                                {BLUEPRINTS.map(bp => {
+                                    const isExpanded = expandedBlueprints.has(bp.id);
+                                    const instances = widgetLibrary.filter(w => w.type === bp.id);
+                                    
+                                    return (
+                                        <div key={bp.id} className="space-y-1">
+                                            <div 
+                                                onClick={() => {
+                                                    setConfigBlueprint(bp.id as any);
+                                                    setConfigTitle(bp.label);
+                                                    const next = new Set(expandedBlueprints);
+                                                    if(next.has(bp.id)) next.delete(bp.id); else next.add(bp.id);
+                                                    setExpandedBlueprints(next);
+                                                }}
+                                                className={`flex items-center justify-between gap-3 px-4 py-3 rounded-2xl text-xs font-black uppercase tracking-tight cursor-pointer transition-all ${configBlueprint === bp.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-white hover:text-indigo-600'}`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    {bp.icon} <span>{bp.label}</span>
+                                                </div>
+                                                {instances.length > 0 && <div className={`text-[10px] transition-transform ${isExpanded ? 'rotate-180' : ''}`}><ChevronDownIcon className="w-3 h-3" /></div>}
+                                            </div>
+                                            
+                                            {isExpanded && instances.map(inst => (
+                                                <div 
+                                                    key={inst.id}
+                                                    className={`ml-4 flex items-center justify-between group/inst p-2 pr-3 rounded-xl cursor-pointer transition-all border-2 ${isConfiguring === inst.id ? 'bg-white border-indigo-500 text-indigo-700' : 'border-transparent text-slate-400 hover:bg-white hover:text-slate-700'}`}
+                                                    onClick={() => setIsConfiguring(inst.id)}
+                                                >
+                                                    <span className="text-[10px] font-bold uppercase truncate">{inst.config?.title || 'Untitled Config'}</span>
+                                                    <div className="flex gap-1 opacity-0 group-hover/inst:opacity-100">
+                                                        <button onClick={(e) => { e.stopPropagation(); deleteWidgetPermanently(inst.id); }} className="p-1 hover:text-red-500"><TrashIcon className="w-3 h-3"/></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    );
+                                })}
                             </div>
 
                             {/* Configuration Panel */}
-                            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                                <div className="space-y-4">
+                            <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar bg-white">
+                                <div className="space-y-6">
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Instance Title Override</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Administrative Designation</label>
                                         <input 
                                             type="text" 
                                             value={configTitle} 
                                             onChange={e => setConfigTitle(e.target.value)} 
-                                            className="w-full font-bold text-lg p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none transition-all" 
-                                            placeholder="Defaults to Blueprint Name"
+                                            className="w-full font-bold text-2xl p-4 border-b-2 border-slate-100 focus:border-indigo-500 outline-none transition-all placeholder:text-slate-200" 
+                                            placeholder="Instance Name..."
                                         />
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bento Span (Width)</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Grid Footprint (Col Span)</label>
                                         <div className="flex gap-2">
                                             {[1, 2, 3].map(span => (
                                                 <button 
@@ -695,53 +728,54 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                     onClick={() => setConfigColSpan(span as any)}
                                                     className={`flex-1 py-3 border-2 rounded-xl text-xs font-black transition-all ${configColSpan === span ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-100 text-slate-400'}`}
                                                 >
-                                                    {span} Units
+                                                    {span} Column{span > 1 ? 's' : ''}
                                                 </button>
                                             ))}
                                         </div>
                                     </div>
                                 </div>
 
-                                {activeWidget?.type === 'goal_gauge' && (
+                                {configBlueprint === 'goal_gauge' && (
                                     <div className="space-y-3 animate-fade-in">
-                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Target Registry</label>
+                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Registry Objective</label>
                                         <div className="grid grid-cols-1 gap-2">
                                             {goals.map(g => (
                                                 <button 
                                                     key={g.id} 
                                                     onClick={() => setConfigGoalId(g.id)}
-                                                    className={`p-4 rounded-2xl border-2 text-left transition-all ${configGoalId === g.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}
+                                                    className={`p-4 rounded-2xl border-2 text-left transition-all ${configGoalId === g.id ? 'bg-indigo-50 border-indigo-500' : 'bg-slate-50 border-transparent hover:border-indigo-200'}`}
                                                 >
                                                     <p className="font-bold text-slate-800">{g.title}</p>
                                                     <p className="text-[10px] text-slate-400 font-bold uppercase">{formatCurrency(g.targetAmount)} Target</p>
                                                 </button>
                                             ))}
-                                            {goals.length === 0 && <p className="p-8 text-center text-slate-400 text-sm italic">Define wealth targets in Financial Plan.</p>}
+                                            {goals.length === 0 && <div className="p-8 text-center bg-slate-50 rounded-2xl text-xs text-slate-400 italic">No targets defined in Financial Plan.</div>}
                                         </div>
                                     </div>
                                 )}
 
-                                {activeWidget?.type === 'report' && (
+                                {configBlueprint === 'report' && (
                                     <div className="space-y-3 animate-fade-in">
-                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Strategic Blueprint</label>
+                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Strategic Analytic Lens</label>
                                         <div className="grid grid-cols-1 gap-2">
                                             {savedReports.map(r => (
                                                 <button 
                                                     key={r.id} 
                                                     onClick={() => setConfigReportId(r.id)}
-                                                    className={`p-4 rounded-2xl border-2 text-left transition-all ${configReportId === r.id ? 'bg-indigo-50 border-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'}`}
+                                                    className={`p-4 rounded-2xl border-2 text-left transition-all ${configReportId === r.id ? 'bg-indigo-50 border-indigo-500' : 'bg-slate-50 border-transparent hover:border-indigo-200'}`}
                                                 >
                                                     <p className="font-bold text-slate-800">{r.name}</p>
-                                                    <p className="text-[10px] text-slate-400 font-bold uppercase">{r.config.groupBy} Focus</p>
+                                                    <p className="text-[10px] text-slate-400 font-bold uppercase">{r.config.groupBy} Pivot</p>
                                                 </button>
                                             ))}
+                                            {savedReports.length === 0 && <div className="p-8 text-center bg-slate-50 rounded-2xl text-xs text-slate-400 italic">Construct strategies in Reports first.</div>}
                                         </div>
                                     </div>
                                 )}
 
-                                {activeWidget?.type === 'cashflow' && (
+                                {configBlueprint === 'cashflow' && (
                                     <div className="space-y-3 animate-fade-in">
-                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Default Temporal Context</label>
+                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Observation Period</label>
                                         <div className="grid grid-cols-2 gap-2">
                                             {(['week', 'month', 'quarter', 'year'] as const).map(p => (
                                                 <button 
@@ -756,20 +790,20 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                     </div>
                                 )}
 
-                                <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex items-start gap-4">
-                                    <InfoIcon className="w-5 h-5 text-slate-400 mt-0.5" />
-                                    <p className="text-xs text-slate-500 leading-relaxed font-medium">Changes made in the forge are localized to this dashboard instance. Strategic blue prints (Reports) are updated globally.</p>
+                                <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-start gap-4">
+                                    <InfoIcon className="w-5 h-5 text-indigo-300 mt-0.5" />
+                                    <p className="text-xs text-slate-400 leading-relaxed font-medium">Configurations are committed to your system library and can be deployed to any dashboard view.</p>
                                 </div>
                             </div>
                         </div>
 
                         <div className="p-6 border-t flex justify-end gap-3 bg-white">
-                            <button onClick={() => setIsConfiguring(null)} className="px-6 py-3 text-sm font-black uppercase text-slate-500 hover:bg-slate-100 rounded-2xl transition-all">Discard</button>
+                            <button onClick={() => setIsConfiguring(null)} className="px-6 py-3 text-sm font-black uppercase text-slate-400 hover:bg-slate-100 rounded-2xl transition-all">Discard</button>
                             <button 
-                                onClick={() => handleApplyConfig(activeWidget?.type || 'cashflow')} 
-                                className="px-10 py-3 bg-indigo-600 text-white font-black uppercase text-xs rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95"
+                                onClick={handleApplyConfig} 
+                                className="px-10 py-4 bg-indigo-600 text-white font-black uppercase text-xs rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center gap-2"
                             >
-                                Commit to Deck
+                                <CheckCircleIcon className="w-4 h-4" /> Commit to Deck
                             </button>
                         </div>
                     </div>

@@ -287,6 +287,7 @@ export interface DashboardWidget {
 export interface DashboardLayout {
     id: string;
     name: string;
+    columns: 1 | 2 | 3 | 4;
     widgets: DashboardWidget[];
 }
 
@@ -321,6 +322,7 @@ export interface SystemSettings {
     activeDashboardId?: string;
     aiConfig?: AiConfig;
     ruleForgePrompts?: RuleForgePrompt[];
+    widgetLibrary?: DashboardWidget[];
 }
 
 export type ReportGroupBy = 'category' | 'counterparty' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';

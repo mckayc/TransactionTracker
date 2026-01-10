@@ -25,9 +25,11 @@ import { api } from './services/apiService';
 import { generateUUID } from './utils';
 import { updateGeminiConfig } from './services/geminiService';
 
+const APP_INSTANCE_ID = generateUUID();
+
 const getSyncChannel = () => {
     try {
-        if (typeof BroadcastChannel !== 'undefined') return new BroadcastChannel('finparser_sync');
+        if (typeof BroadcastChannel !== 'undefined') return new BroadcastChannel('finparser_sync_v2');
     } catch (e) {}
     return null;
 };
@@ -76,26 +78,15 @@ const App: React.FC = () => {
     const isDirty = useRef<boolean>(false);
     const updateQueues = useRef<Record<string, Promise<void>>>({});
 
-    const executeQueuedUpdate = async (key: string, updateFn: () => Promise<void>) => {
-        const previousUpdate = updateQueues.current[key] || Promise.resolve();
-        const currentUpdate = previousUpdate.then(updateFn).catch(err => {
-            console.error(`[APP] Queued update failed for '${key}':`, err);
-        });
-        updateQueues.current[key] = currentUpdate;
-        return currentUpdate;
-    };
-
     const loadCoreData = async (showLoader = true) => {
-        if (isDirty.current) {
-            console.log("[APP] System is dirty (save in progress). Postponing background sync.");
-            return;
-        }
+        if (isDirty.current) return;
         if (showLoader) setIsLoading(true);
         else setIsSyncing(true);
 
         try {
             const data = await api.loadAll();
             
+            // Atomic Batch Update to prevent multiple renders
             setAccounts((data.accounts || []).filter(Boolean));
             setAccountTypes((data.accountTypes || []).filter(Boolean));
             setCategories((data.categories || []).filter(Boolean));
@@ -131,16 +122,14 @@ const App: React.FC = () => {
             }
 
             try {
-                // INCREASED LIMIT: Fetching 100,000 records instead of 1,000 
-                // to ensure the full history is available for the Calendar and Dashboard.
                 const txResponse = await api.getTransactions({ limit: 100000 });
                 if (txResponse && txResponse.data) setTransactions(txResponse.data.filter(Boolean));
             } catch (txErr) {
                 console.error("[APP] Tx fetch failed:", txErr);
             }
         } catch (err) {
-            console.error("[APP] Critical state load error:", err);
-            setLoadError(`Engine Connection Failure: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            console.error("[APP] State load error:", err);
+            setLoadError(`Database Connection Error: ${err instanceof Error ? err.message : 'Unknown'}`);
         } finally {
             if (showLoader) setIsLoading(false);
             setIsSyncing(false);
@@ -151,7 +140,11 @@ const App: React.FC = () => {
     useEffect(() => {
         loadCoreData();
         const handleSync = (event: MessageEvent) => { 
-            if (event.data === 'REFRESH_REQUIRED') {
+            // IGNORE refresh if this tab sent the message
+            if (event.data.origin === APP_INSTANCE_ID) return;
+            
+            if (event.data.type === 'REFRESH_REQUIRED') {
+                console.log("[SYNC] Remote change detected. Syncing...");
                 loadCoreData(false); 
             }
         };
@@ -159,16 +152,39 @@ const App: React.FC = () => {
         return () => { if (syncChannel) syncChannel.removeEventListener('message', handleSync); };
     }, []);
 
+    const executeQueuedUpdate = async (key: string, updateFn: () => Promise<void>) => {
+        const previousUpdate = updateQueues.current[key] || Promise.resolve();
+        const currentUpdate = previousUpdate.then(updateFn).catch(err => {
+            console.error(`[APP] Queue failure for '${key}':`, err);
+        });
+        updateQueues.current[key] = currentUpdate;
+        return currentUpdate;
+    };
+
+    // PROFESSIONAL UPDATE PATTERN: Optimistic update + origin-aware sync
     const updateData = async (key: string, value: any, setter: Function) => {
         return executeQueuedUpdate(key, async () => {
             isDirty.current = true;
             try {
+                // 1. Optimistic local update
+                setter(value); 
+                
+                // 2. Persist to DB
                 await api.save(key, value);
-                setter(value);
-                if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
+                
+                // 3. Signal other tabs (including origin ID so we don't trigger our own reload)
+                if (syncChannel) {
+                    syncChannel.postMessage({ 
+                        type: 'REFRESH_REQUIRED', 
+                        key, 
+                        origin: APP_INSTANCE_ID 
+                    });
+                }
             } catch (e) {
-                console.error(`[APP] Database write failed for '${key}':`, e);
-                alert(`Error saving ${key}. Changes may be lost.`);
+                console.error(`[APP] Save failed for '${key}':`, e);
+                // On failure, we might want to reload to restore server truth
+                loadCoreData(false);
+                alert(`Sync Error: Changes to ${key} could not be persisted.`);
             } finally {
                 isDirty.current = false;
             }
@@ -179,13 +195,18 @@ const App: React.FC = () => {
         return executeQueuedUpdate('reconciliationRules', async () => {
             isDirty.current = true;
             try {
-                await api.saveRule(rule);
+                // Update local list first
                 setRules(prev => {
                     const idx = prev.findIndex(r => r.id === rule.id);
                     if (idx > -1) return [...prev.slice(0, idx), rule, ...prev.slice(idx + 1)];
                     return [...prev, rule];
                 });
-                if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
+                
+                await api.saveRule(rule);
+                
+                if (syncChannel) {
+                    syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
+                }
             } finally {
                 isDirty.current = false;
             }
@@ -200,9 +221,9 @@ const App: React.FC = () => {
         return executeQueuedUpdate('reconciliationRules', async () => {
             isDirty.current = true;
             try {
-                await api.deleteRule(id);
                 setRules(prev => prev.filter(r => r.id !== id));
-                if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
+                await api.deleteRule(id);
+                if (syncChannel) syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
             } finally {
                 isDirty.current = false;
             }
@@ -224,14 +245,20 @@ const App: React.FC = () => {
         isDirty.current = true;
         try {
             if (newCategories.length > 0) {
-                await updateData('categories', [...categories, ...newCategories], setCategories);
+                const updatedCats = [...categories, ...newCategories];
+                setCategories(updatedCats);
+                await api.save('categories', updatedCats);
             }
+            
+            // Add to existing local state before signaling refresh
+            setTransactions(prev => [...newTxs.filter(Boolean), ...prev]);
+            
             await api.saveTransactions(newTxs.filter(Boolean));
-            await loadCoreData(false);
-            if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
+            
+            if (syncChannel) syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
         } catch (e) {
             console.error("[APP] Ingestion failure:", e);
-            alert("Ledger save failed.");
+            alert("Ledger synchronization failed.");
         } finally {
             isDirty.current = false;
         }
@@ -240,9 +267,9 @@ const App: React.FC = () => {
     const handleUpdateTransaction = async (tx: Transaction) => {
         isDirty.current = true;
         try {
-            await api.saveTransactions([tx]);
             setTransactions(prev => prev.map(t => t.id === tx.id ? tx : t));
-            if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
+            await api.saveTransactions([tx]);
+            if (syncChannel) syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
         } finally {
             isDirty.current = false;
         }
@@ -251,9 +278,9 @@ const App: React.FC = () => {
     const handleDeleteTransaction = async (id: string) => {
         isDirty.current = true;
         try {
-            await api.deleteTransaction(id);
             setTransactions(prev => prev.filter(t => t.id !== id));
-            if (syncChannel) syncChannel.postMessage('REFRESH_REQUIRED');
+            await api.deleteTransaction(id);
+            if (syncChannel) syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
         } finally {
             isDirty.current = false;
         }
@@ -263,17 +290,17 @@ const App: React.FC = () => {
         <div className="h-screen flex items-center justify-center bg-slate-50 p-6">
             <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border-2 border-red-100 text-center space-y-6">
                 <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto shadow-inner"><ExclamationTriangleIcon className="w-10 h-10" /></div>
-                <div><h1 className="text-2xl font-black text-slate-800">Boot Error</h1><p className="text-slate-500 mt-2 font-medium">{loadError}</p></div>
-                <button onClick={() => window.location.reload()} className="w-full py-3 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Retry Connection</button>
+                <div><h1 className="text-2xl font-black text-slate-800">Connection Error</h1><p className="text-slate-500 mt-2 font-medium">{loadError}</p></div>
+                <button onClick={() => window.location.reload()} className="w-full py-3 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-lg">Retry Connection</button>
             </div>
         </div>
     );
 
     if (isLoading) return (
-        <div className="h-screen flex items-center justify-center">
-            <div className="animate-pulse flex flex-col items-center">
+        <div className="h-screen flex items-center justify-center bg-slate-50">
+            <div className="flex flex-col items-center">
                 <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
-                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Waking Engine...</p>
+                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">FinParser Handshake...</p>
             </div>
         </div>
     );
@@ -292,7 +319,7 @@ const App: React.FC = () => {
                     <div className="flex items-center gap-4">
                         {isSyncing && <RepeatIcon className="w-4 h-4 animate-spin text-indigo-500" />}
                         <button onClick={() => setIsChatOpen(true)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"><SparklesIcon className="w-5 h-5" /></button>
-                        <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border-2 border-white shadow-sm">U</div>
+                        <div className="h-8 w-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border-2 border-white shadow-sm">{APP_INSTANCE_ID.substring(0,1).toUpperCase()}</div>
                     </div>
                 </header>
                 <div className="flex-1 overflow-y-auto p-4 md:p-8 relative custom-scrollbar bg-slate-50/50">
