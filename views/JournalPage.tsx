@@ -1,9 +1,8 @@
-
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { BusinessNote, BusinessProfile } from '../types';
-import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, BoxIcon, InfoIcon, RobotIcon, CopyIcon, FileTextIcon } from '../components/Icons';
+// Fixed: Removed non-existent FilterIcon and added missing DatabaseIcon
+import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, BoxIcon, InfoIcon, RobotIcon, CopyIcon, FileTextIcon, SaveIcon, DatabaseIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
-import { askAiAdvisor } from '../services/geminiService';
 
 interface JournalPageProps {
     notes: BusinessNote[];
@@ -28,7 +27,7 @@ const Toast: React.FC<{ message: string; onClose: () => void }> = ({ message, on
     }, [onClose]);
 
     return (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[250] animate-slide-up">
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[300] animate-slide-up">
             <div className="bg-slate-900/95 backdrop-blur-md text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3">
                 <div className="bg-indigo-500 rounded-full p-1">
                     <CheckCircleIcon className="w-4 h-4 text-white" />
@@ -98,8 +97,8 @@ const serializeBlocksToMarkdown = (blocks: ContentBlock[]): string => {
 const BlockEditor: React.FC<{
     initialContent: string;
     onChange: (content: string) => void;
-    onCopyRequest: (onDone: (m: string) => void) => void;
-}> = ({ initialContent, onChange, onCopyRequest }) => {
+    onCopyFiltered: (text: string) => void;
+}> = ({ initialContent, onChange, onCopyFiltered }) => {
     const [blocks, setBlocks] = useState<ContentBlock[]>(() => parseMarkdownToBlocks(initialContent));
     const [focusedId, setFocusedId] = useState<string | null>(null);
 
@@ -144,9 +143,12 @@ const BlockEditor: React.FC<{
         const newBlocks = [...blocks];
         [newBlocks[index], newBlocks[nextIndex]] = [newBlocks[nextIndex], newBlocks[index]];
         setBlocks(newBlocks);
+        setTimeout(() => document.getElementById(`block-${id}`)?.focus(), 10);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent, b: ContentBlock) => {
+        const index = blocks.findIndex(item => item.id === b.id);
+        
         if (e.key === 'Enter') {
             e.preventDefault();
             addBlock(b.id, b.type, b.indent);
@@ -157,6 +159,16 @@ const BlockEditor: React.FC<{
             e.preventDefault();
             const newIndent = e.shiftKey ? Math.max(0, b.indent - 1) : Math.min(5, b.indent + 1);
             updateBlock(b.id, { indent: newIndent });
+        } else if (e.key === 'ArrowUp') {
+            if (index > 0) {
+                e.preventDefault();
+                document.getElementById(`block-${blocks[index - 1].id}`)?.focus();
+            }
+        } else if (e.key === 'ArrowDown') {
+            if (index < blocks.length - 1) {
+                e.preventDefault();
+                document.getElementById(`block-${blocks[index + 1].id}`)?.focus();
+            }
         }
     };
 
@@ -166,43 +178,45 @@ const BlockEditor: React.FC<{
         setBlocks([...incomplete, ...complete]);
     };
 
-    const handleAIPaste = () => {
-        onCopyRequest((m) => {
-            const text = blocks
-                .filter(b => !b.checked)
-                .map(b => b.text)
-                .join('\n');
-            copyToClipboard(text, (msg) => alert(msg));
-        });
+    const handleCopyForAi = () => {
+        const text = blocks
+            .filter(b => !b.checked)
+            .map(b => b.text)
+            .join('\n');
+        onCopyFiltered(text);
     };
 
     return (
         <div className="flex flex-col h-full bg-white overflow-hidden rounded-2xl border border-slate-200 shadow-inner">
-            <div className="flex items-center justify-between p-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-20">
-                <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between p-1.5 bg-slate-50 border-b border-slate-200 sticky top-0 z-20">
+                <div className="flex items-center gap-1">
                     <div className="flex bg-white rounded-lg border border-slate-200 p-0.5 shadow-sm">
-                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all" title="Todo List"><ChecklistIcon className="w-3.5 h-3.5" /></button>
-                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all" title="Bulleted List"><ListIcon className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'todo' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all" title="Checkbox Item"><ChecklistIcon className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'bullet' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all" title="Bullet Item"><ListIcon className="w-3.5 h-3.5" /></button>
                         <button type="button" onClick={() => focusedId && updateBlock(focusedId, { type: 'h1' })} className="p-1.5 hover:bg-indigo-50 rounded-md text-slate-500 hover:text-indigo-600 transition-all font-black text-[10px] px-2" title="Header">H1</button>
                     </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button type="button" onClick={sortCheckedToBottom} className="flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-200 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
-                        <ArrowDownIcon className="w-3 h-3" /> Sink Completed
+                <div className="flex items-center gap-1.5">
+                    <button type="button" onClick={sortCheckedToBottom} className="flex items-center gap-1 px-2 py-1 bg-white border border-slate-200 text-slate-500 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm">
+                        <ArrowDownIcon className="w-3 h-3" /> Sink Done
+                    </button>
+                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                    <button type="button" onClick={handleCopyForAi} className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md">
+                        <RobotIcon className="w-3 h-3" /> Copy for AI
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-0.5 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto p-4 space-y-0.5 custom-scrollbar bg-slate-50/5">
                 {blocks.map((b) => (
                     <div 
                         key={b.id} 
-                        className={`group flex items-start gap-2 py-0.5 relative rounded-lg transition-colors ${focusedId === b.id ? 'bg-indigo-50/40' : 'hover:bg-slate-50/60'}`}
+                        className={`group flex items-start gap-1.5 py-0.5 relative rounded-lg transition-colors ${focusedId === b.id ? 'bg-indigo-50/50' : 'hover:bg-slate-50/60'}`}
                         style={{ paddingLeft: `${b.indent * 16}px` }}
                     >
-                        <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity absolute -left-6 top-1">
-                             <button onClick={() => moveBlock(b.id, 'up')} className="p-0.5 text-slate-300 hover:text-indigo-500"><ArrowUpIcon className="w-3 h-3"/></button>
-                             <button onClick={() => moveBlock(b.id, 'down')} className="p-0.5 text-slate-300 hover:text-indigo-500"><ArrowDownIcon className="w-3 h-3"/></button>
+                        <div className="flex flex-col gap-0 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-1">
+                             <button onClick={() => moveBlock(b.id, 'up')} className="p-0.5 text-slate-300 hover:text-indigo-500" title="Move Up"><ArrowUpIcon className="w-3 h-3"/></button>
+                             <button onClick={() => moveBlock(b.id, 'down')} className="p-0.5 text-slate-300 hover:text-indigo-500" title="Move Down"><ArrowDownIcon className="w-3 h-3"/></button>
                         </div>
 
                         <div className="flex-shrink-0 mt-1.5 w-4 flex justify-center">
@@ -210,14 +224,16 @@ const BlockEditor: React.FC<{
                                 <button 
                                     type="button"
                                     onClick={() => updateBlock(b.id, { checked: !b.checked })}
-                                    className={`w-3.5 h-3.5 rounded border transition-all flex items-center justify-center ${b.checked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300 hover:border-indigo-400'}`}
+                                    className={`w-3.5 h-3.5 rounded border transition-all flex items-center justify-center ${b.checked ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-slate-300 hover:border-indigo-400 shadow-sm'}`}
                                 >
                                     {b.checked && <CheckCircleIcon className="w-2.5 h-2.5" />}
                                 </button>
                             ) : b.type === 'bullet' ? (
                                 <div className="w-1 h-1 rounded-full bg-slate-300 mt-2" />
                             ) : b.type === 'h1' ? (
-                                <span className="text-[8px] font-black text-indigo-300 mt-1.5 uppercase">H</span>
+                                <span className="text-[8px] font-black text-indigo-400 mt-1.5 uppercase">H1</span>
+                            ) : b.type === 'number' ? (
+                                <span className="text-[9px] font-black text-slate-300 mt-1.5">1.</span>
                             ) : null}
                         </div>
                         <textarea
@@ -232,11 +248,12 @@ const BlockEditor: React.FC<{
                                     if (val === '- ') { type = 'bullet'; text = ''; }
                                     else if (val === '[] ') { type = 'todo'; text = ''; }
                                     else if (val === '# ') { type = 'h1'; text = ''; }
+                                    else if (val === '1. ') { type = 'number'; text = ''; }
                                 }
                                 updateBlock(b.id, { text, type });
                             }}
                             onKeyDown={(e) => handleKeyDown(e, b)}
-                            placeholder="Type '/' for commands..."
+                            placeholder="..."
                             rows={1}
                             className={`flex-1 bg-transparent border-none focus:ring-0 p-0 leading-relaxed resize-none overflow-hidden min-h-[1.4em] transition-all duration-200 ${b.type === 'h1' ? 'text-base font-black text-slate-800' : 'text-sm font-medium'} ${b.checked ? 'text-slate-400 line-through' : 'text-slate-700'}`}
                             onInput={(e) => {
@@ -245,14 +262,9 @@ const BlockEditor: React.FC<{
                                 target.style.height = target.scrollHeight + 'px';
                             }}
                         />
-                        <button type="button" onClick={() => deleteBlock(b.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-200 hover:text-rose-500 rounded-md transition-all"><TrashIcon className="w-3.5 h-3.5"/></button>
+                        <button type="button" onClick={() => deleteBlock(b.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-200 hover:text-rose-500 rounded-md transition-all self-start mt-0.5"><TrashIcon className="w-3.5 h-3.5"/></button>
                     </div>
                 ))}
-                {blocks.length === 0 && (
-                    <button onClick={() => addBlock('', 'paragraph')} className="w-full py-12 text-center text-slate-300 hover:text-indigo-400 border-2 border-dashed border-slate-100 rounded-xl transition-all">
-                         + Click to add content
-                    </button>
-                )}
             </div>
         </div>
     );
@@ -300,58 +312,59 @@ const JournalPage: React.FC<JournalPageProps> = ({ notes, onUpdateNotes, profile
         onUpdateNotes(notes.map(n => n.id === selectedNoteId ? { ...n, ...updates, updatedAt: new Date().toISOString() } : n));
     };
 
-    const handleCopyForAI = (onDone: (m: string) => void) => {
-        if (!activeNote) return;
-        const blocks = parseMarkdownToBlocks(activeNote.content);
-        const text = blocks
-            .filter(b => !b.checked)
-            .map(b => b.text)
-            .join('\n');
+    const handleCopyForAI = (text: string) => {
         copyToClipboard(text, (msg) => {
-            setToastMessage("Content Filtered (Excluded Checked Items)");
+            setToastMessage("Context Copied (Excludes Completed Tasks)");
         });
     };
 
     return (
         <div className="h-full flex flex-col gap-3 relative">
+            {/* COMPACT HEADER */}
             <div className="flex justify-between items-center px-1 flex-shrink-0">
-                <div>
-                    <h1 className="text-xl font-black text-slate-800 tracking-tight">Institutional Chronicle</h1>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Logic Registry & History</p>
+                <div className="flex items-center gap-3">
+                    <div className="p-2 bg-indigo-600 rounded-xl text-white shadow-lg shadow-indigo-100">
+                        <NotesIcon className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none">Chronicle</h1>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Operational History & Logic Vault</p>
+                    </div>
                 </div>
                 <button onClick={handleCreateNote} className="px-5 py-2 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95 text-[10px] uppercase tracking-widest">
-                    <AddIcon className="w-3.5 h-3.5" /> New Log
+                    <AddIcon className="w-3.5 h-3.5" /> Start New Entry
                 </button>
             </div>
 
-            <div className="flex-1 min-h-0 bg-white rounded-2xl border border-slate-200 shadow-sm flex overflow-hidden">
-                {/* Taxonomy Filter Bar */}
-                <div className="w-40 border-r border-slate-100 bg-slate-50/30 flex flex-col p-3 flex-shrink-0">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Taxonomy</p>
-                    <div className="space-y-1">
-                        {[
-                            { id: null, label: 'Global', icon: <FileTextIcon className="w-3.5 h-3.5" /> },
-                            { id: 'note', label: 'Logs', icon: <NotesIcon className="w-3.5 h-3.5 text-blue-500" /> },
-                            { id: 'bug', label: 'Bugs', icon: <BugIcon className="w-3.5 h-3.5 text-red-500" /> },
-                            { id: 'idea', label: 'Ideas', icon: <LightBulbIcon className="w-3.5 h-3.5 text-amber-500" /> },
-                            { id: 'task', label: 'Actions', icon: <ChecklistIcon className="w-3.5 h-3.5 text-green-500" /> }
-                        ].map(type => (
-                            <button key={type.label} onClick={() => setSelectedTypeFilter(type.id)} className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[10px] font-black uppercase transition-all ${selectedTypeFilter === type.id ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-100'}`}>
-                                {type.icon}
-                                <span className="truncate">{type.label}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-
-                {/* Entry Stream (Middle Column) */}
-                <div className="w-64 border-r border-slate-100 flex flex-col min-h-0 flex-shrink-0">
-                    <div className="p-3 border-b bg-slate-50/50">
+            <div className="flex-1 min-h-0 bg-white rounded-3xl border border-slate-200 shadow-sm flex overflow-hidden">
+                {/* UNIFIED SIDEBAR (FILTER + LIST) */}
+                <div className="w-72 border-r border-slate-100 flex flex-col min-h-0 flex-shrink-0 bg-slate-50/30">
+                    <div className="p-3 border-b bg-white space-y-3">
+                        <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+                            {[
+                                { id: null, icon: <FileTextIcon className="w-3 h-3" />, label: 'All' },
+                                { id: 'note', icon: <NotesIcon className="w-3 h-3 text-blue-500" />, label: 'Log' },
+                                { id: 'bug', icon: <BugIcon className="w-3 h-3 text-red-500" />, label: 'Bug' },
+                                { id: 'idea', icon: <LightBulbIcon className="w-3 h-3 text-amber-500" />, label: 'Idea' },
+                                { id: 'task', icon: <ChecklistIcon className="w-3 h-3 text-green-500" />, label: 'Act' }
+                            ].map(type => (
+                                <button 
+                                    key={type.label} 
+                                    onClick={() => setSelectedTypeFilter(type.id)} 
+                                    title={type.label}
+                                    className={`flex-1 flex flex-col items-center gap-1.5 p-1.5 rounded-lg transition-all ${selectedTypeFilter === type.id ? 'bg-white shadow text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                >
+                                    {type.icon}
+                                    <span className="text-[8px] font-black uppercase">{type.label}</span>
+                                </button>
+                            ))}
+                        </div>
                         <div className="relative">
-                            <input type="text" placeholder="Filter logs..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
+                            <input type="text" placeholder="Filter memory..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full pl-8 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none font-bold" />
                             <SearchCircleIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-300" />
                         </div>
                     </div>
+                    
                     <div className="flex-1 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
                         {filteredNotes.length === 0 ? (
                             <div className="p-8 text-center text-slate-300 italic flex flex-col items-center">
@@ -359,61 +372,66 @@ const JournalPage: React.FC<JournalPageProps> = ({ notes, onUpdateNotes, profile
                                 <p className="text-[9px] font-black uppercase">Archive empty</p>
                             </div>
                         ) : filteredNotes.map(n => (
-                            <div key={n.id} onClick={() => setSelectedNoteId(n.id)} className={`p-3 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-1 ${selectedNoteId === n.id ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}>
+                            <div key={n.id} onClick={() => setSelectedNoteId(n.id)} className={`p-3 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-1 ${selectedNoteId === n.id ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50 shadow-sm'}`}>
                                 <div className="flex justify-between items-start">
                                     <h4 className={`text-[11px] font-black truncate pr-2 ${n.isCompleted ? 'text-slate-300 line-through' : 'text-slate-800'}`}>{n.title || 'Untitled Entry'}</h4>
                                     <div className={`w-1.5 h-1.5 rounded-full mt-1 flex-shrink-0 ${n.type === 'bug' ? 'bg-red-500' : n.type === 'idea' ? 'bg-amber-500' : 'bg-blue-500'}`} />
                                 </div>
-                                <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">{new Date(n.updatedAt).toLocaleDateString()}</p>
+                                <div className="flex justify-between items-center mt-0.5">
+                                    <p className="text-[8px] text-slate-400 font-bold uppercase tracking-widest">{new Date(n.updatedAt).toLocaleDateString()}</p>
+                                    {n.isCompleted && <span className="text-[7px] font-black uppercase text-green-600 bg-green-50 px-1 rounded">Solved</span>}
+                                </div>
                             </div>
                         ))}
                     </div>
                 </div>
 
-                {/* Console (Editor) */}
+                {/* CONSOLE (EDITOR) */}
                 <div className="flex-1 flex flex-col min-h-0 bg-white relative">
                     {selectedNoteId && activeNote ? (
                         <div className="flex flex-col h-full animate-fade-in">
                             <div className="p-4 border-b flex justify-between items-center z-10 shadow-sm bg-white">
                                 <div className="flex-1 min-w-0 mr-4">
-                                    <input type="text" value={activeNote.title} onChange={e => handleUpdateActiveNote({ title: e.target.value })} className="text-xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full placeholder:text-slate-300" placeholder="Log Title" />
+                                    <input 
+                                        type="text" 
+                                        value={activeNote.title} 
+                                        onChange={e => handleUpdateActiveNote({ title: e.target.value })} 
+                                        className="text-xl font-black text-slate-800 bg-transparent border-none focus:ring-0 p-0 w-full placeholder:text-slate-300" 
+                                        placeholder="Entry Title" 
+                                    />
                                     <div className="flex items-center gap-2 mt-1.5">
-                                        <select value={activeNote.type} onChange={e => handleUpdateActiveNote({ type: e.target.value as any })} className="text-[8px] font-black uppercase bg-slate-100 border-none rounded-md py-0.5 px-1.5 focus:ring-0 cursor-pointer">
-                                            <option value="note">Log</option>
-                                            <option value="bug">Bug</option>
-                                            <option value="idea">Idea</option>
+                                        <select value={activeNote.type} onChange={e => handleUpdateActiveNote({ type: e.target.value as any })} className="text-[8px] font-black uppercase bg-slate-100 border-none rounded-md py-0.5 px-1.5 focus:ring-0 cursor-pointer text-slate-600">
+                                            <option value="note">Journal</option>
+                                            <option value="bug">Issue/Bug</option>
+                                            <option value="idea">Proposal</option>
                                             <option value="task">Action</option>
                                         </select>
                                         <div className="h-2 w-px bg-slate-200" />
-                                        <button onClick={() => handleUpdateActiveNote({ isCompleted: !activeNote.isCompleted })} className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md shadow-sm transition-all ${activeNote.isCompleted ? 'bg-green-100 text-green-700' : 'bg-slate-700 text-white hover:bg-slate-800'}`}>
-                                            {activeNote.isCompleted ? 'Resolved' : 'Resolve'}
+                                        <button 
+                                            onClick={() => handleUpdateActiveNote({ isCompleted: !activeNote.isCompleted })} 
+                                            className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-md shadow-sm transition-all flex items-center gap-1.5 ${activeNote.isCompleted ? 'bg-green-600 text-white' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                                        >
+                                            {activeNote.isCompleted ? <CheckCircleIcon className="w-2.5 h-2.5" /> : null}
+                                            {activeNote.isCompleted ? 'Resolved' : 'Mark Resolved'}
                                         </button>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                    <button 
-                                        onClick={() => handleCopyForAI((m) => alert(m))} 
-                                        className="p-2 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-all flex items-center gap-1.5"
-                                        title="Copy Context for AI (Excludes Completed Tasks)"
-                                    >
-                                        <RobotIcon className="w-4 h-4" />
-                                        <span className="text-[10px] font-black uppercase hidden sm:inline">AI Context</span>
-                                    </button>
-                                    <div className="h-4 w-px bg-slate-200 mx-1" />
-                                    <button onClick={() => { if(confirm("Discard this record?")) { onUpdateNotes(notes.filter(n => n.id !== selectedNoteId)); setSelectedNoteId(null); } }} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-all"><TrashIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => { if(confirm("Discard this record?")) { onUpdateNotes(notes.filter(n => n.id !== selectedNoteId)); setSelectedNoteId(null); } }} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-all" title="Delete Entry"><TrashIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => setSelectedNoteId(null)} className="p-2 text-slate-300 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-all"><CloseIcon className="w-6 h-6" /></button>
                                 </div>
                             </div>
-                            <div className="flex-1 overflow-hidden p-4 bg-slate-50/10">
-                                <BlockEditor key={selectedNoteId} initialContent={activeNote.content} onChange={(newContent) => handleUpdateActiveNote({ content: newContent })} onCopyRequest={handleCopyForAI} />
+                            <div className="flex-1 overflow-hidden p-3 bg-slate-50/10">
+                                <BlockEditor key={selectedNoteId} initialContent={activeNote.content} onChange={(newContent) => handleUpdateActiveNote({ content: newContent })} onCopyFiltered={handleCopyForAI} />
                             </div>
                         </div>
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/20">
                             <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-xl border border-slate-100 mb-6 animate-bounce-subtle">
-                                <NotesIcon className="w-8 h-8 text-indigo-200" />
+                                <DatabaseIcon className="w-8 h-8 text-indigo-200" />
                             </div>
-                            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Vault Selection Required</h3>
-                            <p className="text-slate-400 text-[11px] mt-2 max-w-xs font-medium uppercase tracking-widest leading-relaxed">Choose an entry to begin logic documentation or start a new proposition.</p>
+                            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Institutional Memory</h3>
+                            <p className="text-slate-400 text-[10px] mt-2 max-w-xs font-bold uppercase tracking-widest leading-relaxed">Choose an entry to begin logic documentation or start a new proposition for the system ledger.</p>
                             <button onClick={handleCreateNote} className="mt-6 px-8 py-2.5 bg-indigo-600 text-white font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-indigo-700 shadow-lg active:scale-95 transition-all">Launch New Record</button>
                         </div>
                     )}
