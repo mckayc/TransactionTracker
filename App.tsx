@@ -12,6 +12,7 @@ import TasksPage from './views/TasksPage';
 import RulesPage from './views/RulesPage';
 import ManagementHub from './views/ManagementHub';
 import BusinessHub from './views/BusinessHub';
+import JournalPage from './views/JournalPage';
 import DocumentsPage from './views/DocumentsPage';
 import FinancialPlanPage from './views/FinancialPlanPage';
 import IntegrationsPage from './views/IntegrationsPage';
@@ -75,11 +76,6 @@ const App: React.FC = () => {
     const isDirty = useRef<boolean>(false);
     const updateQueues = useRef<Record<string, Promise<void>>>({});
 
-    /**
-     * Sequential Execution Guard
-     * Ensures that multiple updates to the same key happen one after another,
-     * preventing older state from overwriting newer saves in race conditions.
-     */
     const executeQueuedUpdate = async (key: string, updateFn: () => Promise<void>) => {
         const previousUpdate = updateQueues.current[key] || Promise.resolve();
         const currentUpdate = previousUpdate.then(updateFn).catch(err => {
@@ -177,7 +173,6 @@ const App: React.FC = () => {
         });
     };
 
-    // Granular Rule Handlers
     const handleSaveRule = async (rule: ReconciliationRule) => {
         return executeQueuedUpdate('reconciliationRules', async () => {
             isDirty.current = true;
@@ -196,7 +191,6 @@ const App: React.FC = () => {
     };
 
     const handleSaveRules = async (newRules: ReconciliationRule[]) => {
-        // For bulk import, we still use the bulk save for efficiency but inside the queue
         return updateData('reconciliationRules', [...rules, ...newRules], setRules);
     };
 
@@ -310,6 +304,7 @@ const App: React.FC = () => {
                     {currentView === 'settings' && <SettingsPage transactions={transactions} transactionTypes={transactionTypes} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)} onRemoveTransactionType={(id) => { const next = transactionTypes.filter(x => x.id !== id); updateData('transactionTypes', next, setTransactionTypes); }} systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)} accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} rules={rules} templates={templates} scheduledEvents={scheduledEvents} tasks={tasks} taskCompletions={taskCompletions} users={users} businessProfile={businessProfile} businessNotes={businessNotes} documentFolders={documentFolders} businessDocuments={businessDocuments} onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments, businessDocuments)} onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders, documentFolders)} savedReports={savedReports} savedDateRanges={savedDateRanges} amazonMetrics={amazonMetrics} amazonVideos={amazonVideos} youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels} financialGoals={financialGoals} financialPlan={financialPlan} contentLinks={contentLinks} locations={locations} accountTypes={accountTypes} />}
                     {currentView === 'tasks' && <TasksPage tasks={tasks} onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks, tasks)} onDeleteTask={(id) => { const next = tasks.filter(t => t.id !== id); updateData('tasks', next, setTasks); }} onToggleTask={(id) => { const next = tasks.map(t => t.id === id ? {...t, isCompleted: !t.isCompleted} : t); updateData('tasks', next, setTasks); }} templates={templates} scheduledEvents={scheduledEvents} onSaveTemplate={(t) => bulkUpdateData('templates', [t], setTemplates, templates)} onRemoveTemplate={(id) => { const next = templates.filter(t => t.id !== id); updateData('templates', next, setTemplates); }} categories={categories} />}
                     {currentView === 'hub' && <BusinessHub profile={businessProfile} onUpdateProfile={(p) => updateData('businessProfile', p, setBusinessProfile)} notes={businessNotes} onUpdateNotes={(n) => updateData('businessNotes', n, setBusinessNotes)} chatSessions={chatSessions} onUpdateChatSessions={(s) => updateData('chatSessions', s, setChatSessions)} transactions={transactions} accounts={accounts} categories={categories} />}
+                    {currentView === 'journal' && <JournalPage notes={businessNotes} onUpdateNotes={(n) => updateData('businessNotes', n, setBusinessNotes)} profile={businessProfile} />}
                     {currentView === 'documents' && <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments, businessDocuments)} onRemoveDocument={(id) => { const next = businessDocuments.filter(d => d.id !== id); updateData('businessDocuments', next, setBusinessDocuments); }} onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders, documentFolders)} onDeleteFolder={(id) => { const next = documentFolders.filter(f => f.id !== id); updateData('documentFolders', next, setDocumentFolders); }} />}
                     {currentView === 'plan' && <FinancialPlanPage transactions={transactions} goals={financialGoals} onSaveGoals={(g) => updateData('financialGoals', g, setFinancialGoals)} plan={financialPlan} onSavePlan={(p) => updateData('financialPlan', p, setFinancialPlan)} categories={categories} businessProfile={businessProfile} />}
                     {currentView === 'integrations' && <IntegrationsPage onNavigate={setCurrentView} />}

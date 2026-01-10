@@ -44,16 +44,17 @@ export const getScaleLabel = (start: Date, end: Date): string => {
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     
     const isFirstOfMonth = start.getDate() === 1;
-    const isLastOfMonth = end.getDate() === new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
+    const isLastOfMonth = end.getDate() === new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+    
+    const isFullYear = isFirstOfMonth && isLastOfMonth && start.getMonth() === 0 && end.getMonth() === 11;
+    
+    const isFullQuarter = isFirstOfMonth && isLastOfMonth && 
+                         (start.getMonth() % 3 === 0) &&
+                         (end.getMonth() === start.getMonth() + 2);
+
     const isFullMonth = isFirstOfMonth && isLastOfMonth && start.getMonth() === end.getMonth();
 
-    const isFullYear = start.getMonth() === 0 && start.getDate() === 1 && end.getMonth() === 11 && end.getDate() === 31;
-    
     const isFullWeek = diffDays === 6; 
-
-    const isFullQuarter = isFirstOfMonth && 
-                         (start.getMonth() % 3 === 0) &&
-                         end.getDate() === new Date(start.getFullYear(), start.getMonth() + 3, 0).getDate();
 
     if (isFullYear) {
         return `${start.getFullYear()}`;
@@ -86,17 +87,24 @@ export const shiftDateRange = (start: Date, end: Date, direction: 'prev' | 'next
     const diffTime = Math.abs(end.getTime() - start.getTime());
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
     
-    const isFullMonth = start.getDate() === 1 && end.getDate() === new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate();
-    const isFullYear = start.getMonth() === 0 && start.getDate() === 1 && end.getMonth() === 11 && end.getDate() === 31;
-    const isFullWeek = diffDays === 6;
-    const isFullQuarter = start.getDate() === 1 && 
+    const isFirstOfMonth = start.getDate() === 1;
+    const isLastOfMonth = end.getDate() === new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+
+    const isFullYear = isFirstOfMonth && isLastOfMonth && start.getMonth() === 0 && end.getMonth() === 11;
+    
+    const isFullQuarter = isFirstOfMonth && isLastOfMonth && 
                          (start.getMonth() % 3 === 0) &&
-                         end.getDate() === new Date(start.getFullYear(), start.getMonth() + 3, 0).getDate();
+                         (end.getMonth() === start.getMonth() + 2);
+
+    const isFullMonth = isFirstOfMonth && isLastOfMonth && start.getMonth() === end.getMonth();
+
+    const isFullWeek = diffDays === 6;
 
     if (isFullYear) {
         newStart.setFullYear(start.getFullYear() + dir);
         newEnd.setFullYear(newStart.getFullYear());
-        newEnd.setMonth(11, 31);
+        newEnd.setMonth(0, 1); // Reset to Jan 1
+        newEnd.setMonth(11, 31); // Then Dec 31
     } else if (isFullQuarter) {
         newStart.setMonth(start.getMonth() + (dir * 3), 1);
         const qEnd = new Date(newStart.getFullYear(), newStart.getMonth() + 3, 0);
