@@ -57,7 +57,7 @@ const MetricBreakdownModal: React.FC<{
                 <div className="p-6 border-b flex justify-between items-center bg-slate-50">
                     <div>
                         <h3 className="text-xl font-black text-slate-800">{title} Analysis</h3>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Top 15 Grouped Categories</p>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Top 15 Grouped Entities</p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                 </div>
@@ -210,16 +210,12 @@ const AllTransactions: React.FC<{
       setPage(0);
   };
 
-  // Logic to calculate top 15 grouped breakdown for a metric
-  // Since we only have the paginated 'transactions' list in the component,
-  // showing the breakdown correctly usually requires the *entire* range set.
-  // In this app structure, we load up to 1000 items at a time, which might suffice for most periods.
-  // We'll calculate it from the available loaded transactions if they span the range.
+  // Logic to calculate top 15 grouped breakdown for a metric based on Counterparties
   const metricBreakdownData = useMemo(() => {
     if (!activeMetricBreakdown) return { items: [], total: 0 };
     
     const typeMap = new Map(transactionTypes.map(t => [t.id, t]));
-    const catMap = new Map(categories.map(c => [c.id, c.name]));
+    const cpMap = new Map(counterparties.map(p => [p.id, p.name]));
 
     const filtered = transactions.filter(tx => {
         if (tx.isParent) return false;
@@ -234,8 +230,8 @@ const AllTransactions: React.FC<{
 
     const groups = new Map<string, number>();
     filtered.forEach(tx => {
-        const catName = catMap.get(tx.categoryId) || 'Other';
-        groups.set(catName, (groups.get(catName) || 0) + Math.abs(tx.amount));
+        const cpName = cpMap.get(tx.counterpartyId || '') || tx.description || 'Unknown Entity';
+        groups.set(cpName, (groups.get(cpName) || 0) + Math.abs(tx.amount));
     });
 
     const total = Array.from(groups.values()).reduce((s, v) => s + v, 0);
@@ -249,7 +245,7 @@ const AllTransactions: React.FC<{
         .slice(0, 15);
 
     return { items: sorted, total };
-  }, [activeMetricBreakdown, transactions, transactionTypes, categories]);
+  }, [activeMetricBreakdown, transactions, transactionTypes, counterparties]);
 
   return (
     <div className="flex flex-col h-full gap-4">
