@@ -1,8 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan } from '../types';
-/* Added RobotIcon, BarChartIcon, and InfoIcon to imports */
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon } from '../components/Icons';
+import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout } from '../types';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, EditIcon, TrashIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 
 interface DashboardProps {
@@ -62,12 +61,11 @@ const TaxProjectionModule: React.FC<{ transactions: Transaction[] }> = ({ transa
             const d = new Date(tx.date);
             if (d.getFullYear() === currentYear && !tx.isParent) {
                 if (tx.typeId.includes('income')) income += tx.amount;
-                // High level heuristic for tax deductible
                 else if (tx.typeId.includes('tax') || tx.categoryId.includes('business') || tx.categoryId.includes('office')) deductible += tx.amount;
             }
         });
         const taxable = Math.max(0, income - deductible);
-        const estimatedTax = taxable * 0.25; // Simple 25% projection
+        const estimatedTax = taxable * 0.25; 
         return { estimatedTax, taxable, income };
     }, [transactions, currentYear]);
 
@@ -401,7 +399,7 @@ const WidgetSlot: React.FC<{
         if (widget.type === 'ai_insights') return <AiInsightsModule plan={financialPlan} />;
 
         return (
-            <div className="flex flex-col items-center justify-center h-[300px] text-slate-400 p-8 text-center bg-slate-50/50">
+            <div className="flex flex-col items-center justify-center h-full text-slate-400 p-8 text-center bg-slate-50/50">
                 <SettingsIcon className="w-12 h-12 mb-3 opacity-10" />
                 <p className="text-sm font-bold uppercase tracking-widest">Empty Slot</p>
                 <button onClick={onConfigure} className="mt-4 px-6 py-2 bg-white border border-slate-200 shadow-sm rounded-xl text-xs font-black text-indigo-600 uppercase hover:bg-slate-50 transition-all">Configure</button>
@@ -409,8 +407,10 @@ const WidgetSlot: React.FC<{
         );
     };
 
+    const spanClass = widget.colSpan === 3 ? 'md:col-span-3' : widget.colSpan === 2 ? 'md:col-span-2' : 'md:col-span-1';
+
     return (
-        <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden group relative transition-all hover:shadow-md h-full min-h-[300px]">
+        <div className={`bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden group relative transition-all hover:shadow-md h-full min-h-[300px] ${spanClass}`}>
             <div className="absolute top-4 right-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-20">
                 <button onClick={onConfigure} title="Edit Instance" className="p-2.5 bg-white/95 backdrop-blur border border-slate-100 rounded-xl text-slate-500 hover:text-indigo-600 shadow-xl transition-all active:scale-95"><SettingsIcon className="w-4 h-4"/></button>
                 <button onClick={onRemove} title="Purge Instance" className="p-2.5 bg-white/95 backdrop-blur border border-slate-100 rounded-xl text-slate-500 hover:text-red-600 shadow-xl transition-all active:scale-95"><CloseIcon className="w-4 h-4"/></button>
@@ -422,14 +422,32 @@ const WidgetSlot: React.FC<{
 
 const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, amazonMetrics, youtubeMetrics, financialPlan }) => {
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
+    const [isCreatingDashboard, setIsCreatingDashboard] = useState(false);
+    const [newDashboardName, setNewDashboardName] = useState('');
     
     // Config form state
     const [configTitle, setConfigTitle] = useState('');
     const [configGoalId, setConfigGoalId] = useState('');
     const [configReportId, setConfigReportId] = useState('');
     const [configPeriod, setConfigPeriod] = useState<'week' | 'month' | 'quarter' | 'year'>('month');
+    const [configColSpan, setConfigColSpan] = useState<1 | 2 | 3>(1);
 
-    const widgets = systemSettings.dashboardWidgets || [];
+    const dashboards = useMemo(() => {
+        if (!systemSettings.dashboards || systemSettings.dashboards.length === 0) {
+            const defaultDash: DashboardLayout = {
+                id: 'dash_default',
+                name: 'Main Overview',
+                widgets: systemSettings.dashboardWidgets || []
+            };
+            return [defaultDash];
+        }
+        return systemSettings.dashboards;
+    }, [systemSettings]);
+
+    const activeDashboardId = systemSettings.activeDashboardId || dashboards[0]?.id;
+    const activeDashboard = useMemo(() => dashboards.find(d => d.id === activeDashboardId) || dashboards[0], [dashboards, activeDashboardId]);
+    const widgets = activeDashboard?.widgets || [];
+
     const activeWidget = useMemo(() => widgets.find(w => w.id === isConfiguring), [isConfiguring, widgets]);
 
     useEffect(() => {
@@ -438,17 +456,24 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             setConfigGoalId(activeWidget.config?.goalId || goals[0]?.id || '');
             setConfigReportId(activeWidget.config?.reportId || savedReports[0]?.id || '');
             setConfigPeriod(activeWidget.config?.period || 'month');
+            setConfigColSpan(activeWidget.colSpan || 1);
         }
     }, [isConfiguring, activeWidget, goals, savedReports]);
 
     const addWidget = () => {
-        const newWidget: DashboardWidget = { id: generateUUID(), type: 'cashflow' };
-        onUpdateSystemSettings({ ...systemSettings, dashboardWidgets: [...widgets, newWidget] });
+        const newWidget: DashboardWidget = { id: generateUUID(), type: 'cashflow', colSpan: 1 };
+        const updatedDashboards = dashboards.map(d => 
+            d.id === activeDashboardId ? { ...d, widgets: [...d.widgets, newWidget] } : d
+        );
+        onUpdateSystemSettings({ ...systemSettings, dashboards: updatedDashboards });
         setIsConfiguring(newWidget.id);
     };
 
     const removeWidget = (id: string) => {
-        onUpdateSystemSettings({ ...systemSettings, dashboardWidgets: widgets.filter(w => w.id !== id) });
+        const updatedDashboards = dashboards.map(d => 
+            d.id === activeDashboardId ? { ...d, widgets: d.widgets.filter(w => w.id !== id) } : d
+        );
+        onUpdateSystemSettings({ ...systemSettings, dashboards: updatedDashboards });
     };
 
     const handleApplyConfig = (type: DashboardWidget['type']) => {
@@ -460,23 +485,88 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             period: type === 'cashflow' ? configPeriod : undefined
         };
         
+        const updatedDashboards = dashboards.map(d => 
+            d.id === activeDashboardId ? { 
+                ...d, 
+                widgets: d.widgets.map(w => w.id === isConfiguring ? { ...w, type, config: newConfig, colSpan: configColSpan } : w) 
+            } : d
+        );
+
         onUpdateSystemSettings({
             ...systemSettings,
-            dashboardWidgets: widgets.map(w => w.id === isConfiguring ? { ...w, type, config: newConfig } : w)
+            dashboards: updatedDashboards
         });
         setIsConfiguring(null);
     };
 
+    const handleCreateDashboard = () => {
+        if (!newDashboardName.trim()) return;
+        const newDash: DashboardLayout = {
+            id: generateUUID(),
+            name: newDashboardName.trim(),
+            widgets: []
+        };
+        onUpdateSystemSettings({
+            ...systemSettings,
+            dashboards: [...dashboards, newDash],
+            activeDashboardId: newDash.id
+        });
+        setNewDashboardName('');
+        setIsCreatingDashboard(false);
+    };
+
+    const handleDeleteDashboard = (id: string) => {
+        if (dashboards.length <= 1) return;
+        if (!confirm("Permanently delete this dashboard layout?")) return;
+        const next = dashboards.filter(d => d.id !== id);
+        onUpdateSystemSettings({
+            ...systemSettings,
+            dashboards: next,
+            activeDashboardId: next[0].id
+        });
+    };
+
     return (
         <div className="space-y-8 pb-20 max-w-7xl mx-auto">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
-                <div>
-                    <h1 className="text-4xl font-black text-slate-800 tracking-tight">Executive Dashboard</h1>
-                    <p className="text-slate-500 mt-1 font-medium text-lg">Integrated telemetry for your financial ecosystem.</p>
+            <div className="flex flex-col gap-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div>
+                        <h1 className="text-4xl font-black text-slate-800 tracking-tight">Executive Cockpit</h1>
+                        <p className="text-slate-500 mt-1 font-medium text-lg">Integrated telemetry for your financial ecosystem.</p>
+                    </div>
+                    <button onClick={addWidget} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95">
+                        <AddIcon className="w-5 h-5" /> Deploy Module
+                    </button>
                 </div>
-                <button onClick={addWidget} className="flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all active:scale-95">
-                    <AddIcon className="w-5 h-5" /> Deploy Module
-                </button>
+
+                {/* Dashboard Switcher Bar */}
+                <div className="flex flex-wrap items-center gap-2 p-1.5 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto no-scrollbar">
+                    {dashboards.map(d => (
+                        <div key={d.id} className="flex items-center group relative">
+                            <button 
+                                onClick={() => onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id })}
+                                className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeDashboardId === d.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}
+                            >
+                                {d.name}
+                            </button>
+                            {dashboards.length > 1 && (
+                                <button 
+                                    onClick={() => handleDeleteDashboard(d.id)}
+                                    className="absolute -top-1 -right-1 p-1 bg-white border border-slate-200 text-red-500 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-all hover:bg-red-50"
+                                >
+                                    <CloseIcon className="w-3 h-3" />
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                    <button 
+                        onClick={() => setIsCreatingDashboard(true)}
+                        className="p-2.5 rounded-xl text-indigo-600 hover:bg-indigo-50 transition-all border-2 border-dashed border-indigo-100"
+                        title="New Dashboard View"
+                    >
+                        <AddIcon className="w-5 h-5" />
+                    </button>
+                </div>
             </div>
 
             {widgets.length === 0 ? (
@@ -486,12 +576,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                     </div>
                     <div>
                         <h3 className="text-2xl font-black text-slate-800">Telemetry Engine Offline</h3>
-                        <p className="text-slate-400 max-w-sm mx-auto mt-2 font-medium">Construct your specialized cockpit by forging custom metrics, goal gauges, and AI strategy snips.</p>
+                        <p className="text-slate-400 max-w-sm mx-auto mt-2 font-medium">Construct your specialized cockpit for "{activeDashboard?.name}" by forging custom metrics, goal gauges, and AI strategy snips.</p>
                     </div>
                     <button onClick={addWidget} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">Launch Designer</button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 auto-rows-min">
                     {widgets.map(w => (
                         <WidgetSlot 
                             key={w.id} 
@@ -517,6 +607,33 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         </div>
                         <span className="text-xs font-black text-slate-400 uppercase tracking-widest group-hover:text-indigo-600">Forge New Module</span>
                     </button>
+                </div>
+            )}
+
+            {/* Dashboard Create Modal */}
+            {isCreatingDashboard && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-8 animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-xl font-black text-slate-800">Construct View</h3>
+                            <button onClick={() => setIsCreatingDashboard(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                        </div>
+                        <div className="space-y-4">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">View Designation</label>
+                            <input 
+                                type="text" 
+                                value={newDashboardName} 
+                                onChange={e => setNewDashboardName(e.target.value)} 
+                                className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none" 
+                                placeholder="e.g. Content Analytics"
+                                autoFocus
+                            />
+                        </div>
+                        <div className="flex gap-4 mt-8">
+                            <button onClick={() => setIsCreatingDashboard(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
+                            <button onClick={handleCreateDashboard} className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">Deploy View</button>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -558,15 +675,31 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
 
                             {/* Configuration Panel */}
                             <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Instance Title Override</label>
-                                    <input 
-                                        type="text" 
-                                        value={configTitle} 
-                                        onChange={e => setConfigTitle(e.target.value)} 
-                                        className="w-full font-bold text-lg p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none transition-all" 
-                                        placeholder="Defaults to Blueprint Name"
-                                    />
+                                <div className="space-y-4">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Instance Title Override</label>
+                                        <input 
+                                            type="text" 
+                                            value={configTitle} 
+                                            onChange={e => setConfigTitle(e.target.value)} 
+                                            className="w-full font-bold text-lg p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none transition-all" 
+                                            placeholder="Defaults to Blueprint Name"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bento Span (Width)</label>
+                                        <div className="flex gap-2">
+                                            {[1, 2, 3].map(span => (
+                                                <button 
+                                                    key={span}
+                                                    onClick={() => setConfigColSpan(span as any)}
+                                                    className={`flex-1 py-3 border-2 rounded-xl text-xs font-black transition-all ${configColSpan === span ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-100 text-slate-400'}`}
+                                                >
+                                                    {span} Units
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {activeWidget?.type === 'goal_gauge' && (

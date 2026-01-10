@@ -274,6 +274,7 @@ export interface BackupConfig {
 export interface DashboardWidget {
     id: string;
     type: 'report' | 'metric' | 'tasks' | 'calendar' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights';
+    colSpan: 1 | 2 | 3;
     config?: {
         title?: string;
         goalId?: string;
@@ -281,6 +282,12 @@ export interface DashboardWidget {
         limit?: number;
         reportId?: string;
     };
+}
+
+export interface DashboardLayout {
+    id: string;
+    name: string;
+    widgets: DashboardWidget[];
 }
 
 export interface AiConfig {
@@ -309,7 +316,9 @@ export interface RuleForgePrompt {
 
 export interface SystemSettings {
     backupConfig?: BackupConfig;
-    dashboardWidgets?: DashboardWidget[];
+    dashboardWidgets?: DashboardWidget[]; // Legacy
+    dashboards?: DashboardLayout[];
+    activeDashboardId?: string;
     aiConfig?: AiConfig;
     ruleForgePrompts?: RuleForgePrompt[];
 }
