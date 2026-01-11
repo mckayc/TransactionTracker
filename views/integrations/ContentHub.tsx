@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { AmazonMetric, YouTubeMetric, ContentLink, AmazonVideo } from '../../types';
 // Added WorkflowIcon and TrashIcon to the imports from components/Icons
 import { ChartPieIcon, YoutubeIcon, BoxIcon, TrendingUpIcon, LightBulbIcon, SearchCircleIcon, SparklesIcon, CheckCircleIcon, ExternalLinkIcon, SortIcon, InfoIcon, ShieldCheckIcon, CloudArrowUpIcon, CloseIcon, TableIcon, PlayIcon, LinkIcon, WorkflowIcon, TrashIcon } from '../../components/Icons';
@@ -17,10 +17,15 @@ interface ContentHubProps {
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
 
+/**
+ * Normalization helper - pre-compiled regex for speed
+ */
+const NORM_RE_1 = /[^a-z0-9]/g;
+const NORM_RE_2 = /\s+/g;
 const normalizeTitle = (title: string) => 
     (title || '').toLowerCase()
-    .replace(/[^a-z0-9]/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(NORM_RE_1, ' ')
+    .replace(NORM_RE_2, ' ')
     .trim();
 
 const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, contentLinks, onUpdateLinks }) => {
@@ -37,21 +42,38 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
     // 1. Unified Content Entity Mapping
     const unifiedEntities = useMemo(() => {
         // Group YouTube data by Video ID
-        const ytVideos = new Map<string, { id: string, title: string, revenue: number, views: number, date: string }>();
+        const ytVideos = new Map<string, { id: string, title: string, normTitle: string, revenue: number, views: number, date: string }>();
         youtubeMetrics.forEach(m => {
             if (!ytVideos.has(m.videoId)) {
-                ytVideos.set(m.videoId, { id: m.videoId, title: m.videoTitle, revenue: 0, views: 0, date: m.publishDate });
+                ytVideos.set(m.videoId, { 
+                    id: m.videoId, 
+                    title: m.videoTitle, 
+                    normTitle: normalizeTitle(m.videoTitle),
+                    revenue: 0, 
+                    views: 0, 
+                    date: m.publishDate 
+                });
             }
             const ex = ytVideos.get(m.videoId)!;
             ex.revenue += m.estimatedRevenue;
             ex.views += m.views;
         });
 
-        // Group Amazon Metrics for lookup
+        // Index Amazon Metrics by ASIN for fast linked lookup
         const amByAsin = new Map<string, AmazonMetric[]>();
+        // Index Amazon Metrics by Normalized Title for fast heuristic lookup
+        const amByNormTitle = new Map<string, AmazonMetric[]>();
+
         amazonMetrics.forEach(m => {
             if (!amByAsin.has(m.asin)) amByAsin.set(m.asin, []);
             amByAsin.get(m.asin)!.push(m);
+
+            const titleToNorm = m.videoTitle || m.ccTitle || m.productTitle || '';
+            if (titleToNorm) {
+                const nt = normalizeTitle(titleToNorm);
+                if (!amByNormTitle.has(nt)) amByNormTitle.set(nt, []);
+                amByNormTitle.get(nt)!.push(m);
+            }
         });
 
         // Create the composite list based on Links
@@ -73,19 +95,32 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
             };
 
             if (link) {
+                // $O(1)$ fast ASIN lookup
                 link.amazonAsins.forEach(asin => {
                     const metrics = amByAsin.get(asin) || [];
                     metrics.forEach(processMetric);
                 });
             } else {
-                // Heuristic match if no link exists
-                const normYt = normalizeTitle(yt.title);
-                amazonMetrics.forEach(m => {
-                    const normAm = normalizeTitle(m.videoTitle || m.ccTitle || m.productTitle || '');
-                    if (normAm && (normYt.includes(normAm) || normAm.includes(normYt))) {
-                        processMetric(m);
+                // Optimized Heuristic Match
+                // Try $O(1)$ exact title match first
+                const exactMatches = amByNormTitle.get(yt.normTitle);
+                if (exactMatches) {
+                    exactMatches.forEach(processMetric);
+                } else {
+                    // Fallback to fuzzy substring only if data size is manageable or for specific cases
+                    // We only do this for the top 500 items if there is a lot of data to prevent browser hang
+                    if (youtubeMetrics.length < 2000 && amazonMetrics.length < 5000) {
+                        amazonMetrics.forEach(m => {
+                            const titleToNorm = m.videoTitle || m.ccTitle || m.productTitle || '';
+                            if (titleToNorm) {
+                                const normAm = normalizeTitle(titleToNorm);
+                                if (normAm && (yt.normTitle.includes(normAm) || normAm.includes(yt.normTitle))) {
+                                    processMetric(m);
+                                }
+                            }
+                        });
                     }
-                });
+                }
             }
 
             const total = yt.revenue + amAffRev + amInfRev + ccOnRev + ccOffRev;
@@ -136,16 +171,29 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
         const newLinks = [...contentLinks];
         const existingYtIds = new Set(newLinks.map(l => l.youtubeVideoId));
 
+        // Pre-normalize staged videos for O(1) matching in loop
+        const amVideosByNormTitle = new Map<string, AmazonVideo>();
+        stagedAmVideos.forEach(v => {
+            amVideosByNormTitle.set(normalizeTitle(v.videoTitle), v);
+        });
+
         unifiedEntities.forEach(entity => {
             if (entity.isLinked) return;
             const yt = youtubeMetrics.find(m => m.videoId === entity.id);
             if (!yt) return;
 
             const normYt = normalizeTitle(yt.videoTitle);
-            const match = stagedAmVideos.find(v => {
-                const normAm = normalizeTitle(v.videoTitle);
-                return normAm.includes(normYt) || normYt.includes(normAm);
-            });
+            
+            // Try $O(1)$ fast match first
+            let match = amVideosByNormTitle.get(normYt);
+            
+            // Substring fallback only if necessary
+            if (!match) {
+                match = stagedAmVideos.find(v => {
+                    const normAm = normalizeTitle(v.videoTitle);
+                    return normAm.includes(normYt) || normYt.includes(normAm);
+                });
+            }
 
             if (match && match.asins) {
                 newLinks.push({
@@ -305,7 +353,7 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                                     <WorkflowIcon className="w-12 h-12" />
                                 </div>
                                 <h2 className="text-3xl font-black text-slate-800">Neural platform alignment</h2>
-                                <p className="text-slate-500 max-lg mx-auto leading-relaxed">Cross-reference video metadata with sales ASINs to unlock platform-agnostic ROI reporting.</p>
+                                <p className="text-slate-500 max-w-lg mx-auto leading-relaxed">Cross-reference video metadata with sales ASINs to unlock platform-agnostic ROI reporting.</p>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
