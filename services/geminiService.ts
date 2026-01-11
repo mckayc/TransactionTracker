@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig, RuleForgePrompt } from '../types';
 // Added missing import for generateUUID
@@ -571,4 +572,52 @@ export const generateFinancialStrategy = async (
         }
     });
     return JSON.parse(response.text || '{"strategy": "No response."}');
+};
+
+/**
+ * Uses Gemini to take a list of long, messy Amazon/YouTube titles and generate clean, short marketing names.
+ */
+export const simplifyProductNames = async (titles: string[]): Promise<Record<string, string>> => {
+    const key = getApiKey();
+    if (!key) return {};
+    const ai = new GoogleGenAI({ apiKey: key });
+    
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            mappings: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        original: { type: Type.STRING },
+                        simplified: { type: Type.STRING }
+                    },
+                    required: ["original", "simplified"]
+                }
+            }
+        },
+        required: ["mappings"]
+    };
+
+    const response = await ai.models.generateContent({
+        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
+        contents: `Simplify these long product/video titles into clean, concise names (2-4 words) for a dashboard.
+        
+        TITLES:
+        ${titles.join('\n')}`,
+        config: {
+            systemInstruction: "You are a branding specialist. Convert long SKU descriptions or video titles into human-friendly product names.",
+            responseMimeType: "application/json",
+            responseSchema: schema,
+            thinkingConfig: { thinkingBudget: 0 }
+        }
+    });
+
+    const result = JSON.parse(response.text || '{"mappings": []}');
+    const map: Record<string, string> = {};
+    (result.mappings || []).forEach((m: any) => {
+        map[m.original] = m.simplified;
+    });
+    return map;
 };

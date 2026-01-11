@@ -475,6 +475,8 @@ export interface ContentLink {
     amazonAsins: string[];
     title: string;
     manuallyLinked: boolean;
+    simplifiedName?: string;
+    notes?: string;
 }
 
 export interface AuditFinding {
