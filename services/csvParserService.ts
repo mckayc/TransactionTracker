@@ -1,3 +1,4 @@
+
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -402,6 +403,86 @@ export const parseAmazonReport = async (file: File, onProgress: (msg: string) =>
         });
     }
     return metrics;
+};
+
+/**
+ * Specialized parser for Amazon Video Metadata reports (Title, Date, Duration).
+ */
+export const parseAmazonVideoMetadata = async (file: File, onProgress: (msg: string) => void): Promise<Partial<AmazonVideo>[]> => {
+    onProgress(`Reading metadata from ${file.name}...`);
+    const reader = new FileReader();
+    const text = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsText(file);
+    });
+    const lines = text.split('\n');
+    const videos: Partial<AmazonVideo>[] = [];
+    if (lines.length < 2) return [];
+
+    let headerIndex = -1;
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+        const l = lines[i].toLowerCase();
+        if (l.includes('title') && (l.includes('date') || l.includes('duration'))) { headerIndex = i; break; }
+    }
+    if (headerIndex === -1) throw new Error("Invalid metadata format. Ensure headers contain 'Title' and 'Creation Date' or 'Duration'.");
+
+    const header = lines[headerIndex].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const colMap = {
+        title: header.findIndex(h => h === 'title' || h.includes('video title')),
+        date: header.findIndex(h => h.includes('date') || h.includes('created')),
+        duration: header.findIndex(h => h === 'duration' || h.includes('length'))
+    };
+
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+        const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
+        if (values.length <= colMap.title || !values[colMap.title]) continue;
+        
+        videos.push({
+            videoTitle: values[colMap.title],
+            uploadDate: values[colMap.date] ? formatDate(parseDate(values[colMap.date]) || new Date()) : undefined,
+            duration: values[colMap.duration] || undefined
+        });
+    }
+    return videos;
+};
+
+/**
+ * Specialized parser for Amazon Product Mapping reports (Title, ASIN).
+ */
+export const parseAmazonProductMapping = async (file: File, onProgress: (msg: string) => void): Promise<Partial<AmazonVideo>[]> => {
+    onProgress(`Reading product maps from ${file.name}...`);
+    const reader = new FileReader();
+    const text = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsText(file);
+    });
+    const lines = text.split('\n');
+    const mappings: Partial<AmazonVideo>[] = [];
+    if (lines.length < 2) return [];
+
+    let headerIndex = -1;
+    for (let i = 0; i < Math.min(lines.length, 10); i++) {
+        const l = lines[i].toLowerCase();
+        if (l.includes('title') && l.includes('asin')) { headerIndex = i; break; }
+    }
+    if (headerIndex === -1) throw new Error("Invalid mapping format. Ensure headers contain 'Title' and 'ASIN'.");
+
+    const header = lines[headerIndex].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const colMap = {
+        title: header.findIndex(h => h === 'title' || h.includes('video title')),
+        asin: header.findIndex(h => h === 'asin' || h.includes('product id'))
+    };
+
+    for (let i = headerIndex + 1; i < lines.length; i++) {
+        const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
+        if (values.length <= colMap.title || !values[colMap.title]) continue;
+        
+        mappings.push({
+            videoTitle: values[colMap.title],
+            asins: values[colMap.asin] ? [values[colMap.asin]] : undefined
+        });
+    }
+    return mappings;
 };
 
 export const parseAmazonVideos = async (file: File, onProgress: (msg: string) => void): Promise<AmazonVideo[]> => {

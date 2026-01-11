@@ -475,6 +475,8 @@ export interface ContentLink {
     amazonAsins: string[];
     title: string;
     manuallyLinked: boolean;
+    videoCreationDate?: string;
+    videoDuration?: string;
     simplifiedName?: string;
     notes?: string;
 }
