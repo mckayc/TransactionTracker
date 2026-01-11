@@ -488,29 +488,34 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         const total = videoMatches.length;
         setMergeProgress({ current: 0, total });
 
-        const updatedMetrics = [...metrics];
-        const batchSize = 100;
+        // Optimization: build a map of changes instead of O(N^2) search on full metrics array
+        const changedMetricsMap = new Map<string, AmazonMetric>();
         
+        const batchSize = 100;
         for (let i = 0; i < videoMatches.length; i += batchSize) {
             const chunk = videoMatches.slice(i, i + batchSize);
             chunk.forEach(match => {
-                const index = updatedMetrics.findIndex(m => m.id === match.salesMetric.id);
-                if (index !== -1) {
-                    updatedMetrics[index] = { 
-                        ...updatedMetrics[index], 
+                // Get the original metric or a previously updated one from this session
+                const original = metrics.find(m => m.id === match.salesMetric.id);
+                if (original) {
+                    const existingUpdate = changedMetricsMap.get(match.salesMetric.id) || original;
+                    changedMetricsMap.set(match.salesMetric.id, { 
+                        ...existingUpdate, 
                         videoTitle: match.videoData.videoTitle,
                         videoDuration: match.videoData.duration,
                         videoUrl: match.videoData.videoUrl,
                         uploadDate: match.videoData.uploadDate
-                    };
+                    });
                 }
             });
             setMergeProgress({ current: Math.min(i + batchSize, total), total });
             await new Promise(r => setTimeout(r, 10));
         }
 
-        onDeleteMetrics(metrics.map(m => m.id));
-        onAddMetrics(updatedMetrics);
+        // Apply only the DELTA (the records that actually changed)
+        // onAddMetrics uses bulkUpdateData which handles INSERT OR REPLACE logic
+        onAddMetrics(Array.from(changedMetricsMap.values()));
+        
         setMergeProgress(null);
         setVideoMatches([]);
         alert(`Successfully associated ${total} onsite sales records with video metadata.`);
@@ -523,24 +528,31 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
         const total = matchingMatches.length;
         setMergeProgress({ current: 0, total });
 
-        const updatedMetrics = [...metrics];
-        const batchSize = 50;
+        // Optimization: Only collect the modified records
+        const changedMetricsMap = new Map<string, AmazonMetric>();
+        const batchSize = 100;
         
         for (let i = 0; i < matchingMatches.length; i += batchSize) {
             const chunk = matchingMatches.slice(i, i + batchSize);
             chunk.forEach(match => {
-                const index = updatedMetrics.findIndex(m => m.id === match.creatorMetric.id);
-                if (index !== -1) {
-                    updatedMetrics[index] = { ...updatedMetrics[index], creatorConnectionsType: match.suggestedType };
+                const original = metrics.find(m => m.id === match.creatorMetric.id);
+                if (original) {
+                    changedMetricsMap.set(match.creatorMetric.id, { 
+                        ...original, 
+                        creatorConnectionsType: match.suggestedType 
+                    });
                 }
             });
             
             setMergeProgress({ current: Math.min(i + batchSize, total), total });
-            await new Promise(r => setTimeout(r, 20));
+            await new Promise(r => setTimeout(r, 10));
         }
 
-        onDeleteMetrics(metrics.map(m => m.id));
-        onAddMetrics(updatedMetrics);
+        // FINAL OPTIMIZATION: Only send the modified records to the save handler.
+        // The App's bulkUpdateData/onAddMetrics logic will merge these into the existing state
+        // and trigger a single save call to the server.
+        onAddMetrics(Array.from(changedMetricsMap.values()));
+        
         setMergeProgress(null);
         setMatchingMatches([]);
         alert(`Successfully accurately categorized ${total} creator connection records.`);
@@ -688,19 +700,15 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                         <tr>
                                             <th className="px-4 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Product / Video Information</th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('clicks')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('orderedItems')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Ordered {getSortIcon('orderedItems', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('conversionRate')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Conv. % {getSortIcon('conversionRate', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-[10px] font-bold text-slate-400 uppercase tracking-wider cursor-pointer hover:text-orange-600 transition-colors" onClick={() => handleSort('revenue')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Earnings {getSortIcon('revenue', String(insightsSortKey), insightsSortDir)}</div>
                                             </th>
                                         </tr>
@@ -811,20 +819,16 @@ const AmazonIntegration: React.FC<AmazonIntegrationProps> = ({ metrics, onAddMet
                                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('saleDate')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center gap-1">Date {getSortIcon('saleDate', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Type</th>
                                             <th className="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('productTitle')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center gap-1">Product / Video {getSortIcon('productTitle', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('clicks')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Clicks {getSortIcon('clicks', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                             <th className="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase cursor-pointer hover:bg-slate-100 group" onClick={() => handleDataSort('revenue')}>
-                                                {/* Fixed: Added string cast to key */}
                                                 <div className="flex items-center justify-end gap-1">Revenue {getSortIcon('revenue', String(dataSortKey), dataSortDir)}</div>
                                             </th>
                                         </tr>
