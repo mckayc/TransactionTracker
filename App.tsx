@@ -160,10 +160,13 @@ const App: React.FC = () => {
     };
 
     const updateData = async (key: string, value: any, setter: Function) => {
+        // Optimistic UI Update: Call setter immediately so the UI responds 0ms after click
+        setter(value);
+
+        // Queue background persistence
         return executeQueuedUpdate(key, async () => {
             isDirty.current = true;
             try {
-                setter(value); 
                 await api.save(key, value);
                 if (syncChannel) {
                     syncChannel.postMessage({ 
@@ -173,9 +176,9 @@ const App: React.FC = () => {
                     });
                 }
             } catch (e) {
-                console.error(`[APP] Save failed for '${key}':`, e);
+                console.error(`[APP] Background save failed for '${key}':`, e);
+                // On failure, reload data to revert UI to last known good state
                 loadCoreData(false);
-                alert(`Sync Error: Changes to ${key} could not be persisted.`);
             } finally {
                 isDirty.current = false;
             }
@@ -183,18 +186,23 @@ const App: React.FC = () => {
     };
 
     const handleSaveRule = async (rule: ReconciliationRule) => {
+        // Optimistic UI Update for rules
+        setRules(prev => {
+            const idx = prev.findIndex(r => r.id === rule.id);
+            if (idx > -1) return [...prev.slice(0, idx), rule, ...prev.slice(idx + 1)];
+            return [...prev, rule];
+        });
+
         return executeQueuedUpdate('reconciliationRules', async () => {
             isDirty.current = true;
             try {
-                setRules(prev => {
-                    const idx = prev.findIndex(r => r.id === rule.id);
-                    if (idx > -1) return [...prev.slice(0, idx), rule, ...prev.slice(idx + 1)];
-                    return [...prev, rule];
-                });
                 await api.saveRule(rule);
                 if (syncChannel) {
                     syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
                 }
+            } catch (e) {
+                console.error("[APP] Rule save failed:", e);
+                loadCoreData(false);
             } finally {
                 isDirty.current = false;
             }
@@ -206,14 +214,19 @@ const App: React.FC = () => {
     };
 
     const handleDeleteRule = async (id: string) => {
+        // Optimistic UI delete
+        setRules(prev => prev.filter(r => r.id !== id));
+
         return executeQueuedUpdate('reconciliationRules', async () => {
             isDirty.current = true;
             try {
-                setRules(prev => prev.filter(r => r.id !== id));
                 await api.deleteRule(id);
                 if (syncChannel) {
                     syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
                 }
+            } catch (e) {
+                console.error("[APP] Rule delete failed:", e);
+                loadCoreData(false);
             } finally {
                 isDirty.current = false;
             }
@@ -251,26 +264,32 @@ const App: React.FC = () => {
     };
 
     const handleUpdateTransaction = async (tx: Transaction) => {
+        setTransactions(prev => prev.map(t => t.id === tx.id ? tx : t));
         isDirty.current = true;
         try {
-            setTransactions(prev => prev.map(t => t.id === tx.id ? tx : t));
             await api.saveTransactions([tx]);
             if (syncChannel) {
                 syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
             }
+        } catch (e) {
+            console.error("[APP] Tx update failed:", e);
+            loadCoreData(false);
         } finally {
             isDirty.current = false;
         }
     };
 
     const handleDeleteTransaction = async (id: string) => {
+        setTransactions(prev => prev.filter(t => t.id !== id));
         isDirty.current = true;
         try {
-            setTransactions(prev => prev.filter(t => t.id !== id));
             await api.deleteTransaction(id);
             if (syncChannel) {
                 syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
             }
+        } catch (e) {
+            console.error("[APP] Tx delete failed:", e);
+            loadCoreData(false);
         } finally {
             isDirty.current = false;
         }
