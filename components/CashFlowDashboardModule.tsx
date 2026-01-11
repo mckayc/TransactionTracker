@@ -32,17 +32,20 @@ interface BreakdownNode {
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 
-// Variable Radius SVG Pie Chart Implementation
+/**
+ * Universal Pie/Donut Chart supporting multiple logic styles
+ */
 const DynamicArcChart: React.FC<{ 
     data: { label: string; value: number; color: string; transactions: Transaction[] }[]; 
     total: number;
+    style?: 'standard' | 'magnified' | 'labeled' | 'callout';
     onSegmentClick: (node: any) => void;
-}> = ({ data, total, onSegmentClick }) => {
+}> = ({ data, total, style = 'standard', onSegmentClick }) => {
     const [hovered, setHovered] = useState<number | null>(null);
     const size = 200;
     const center = size / 2;
-    const innerRadius = 30;
-    const baseOuterRadius = 60;
+    const innerRadius = style === 'standard' ? 40 : 30;
+    const baseOuterRadius = 65;
 
     let cumulativeAngle = 0;
 
@@ -51,8 +54,13 @@ const DynamicArcChart: React.FC<{
         if (percentage <= 0) return null;
 
         const isHovered = hovered === i;
-        // Logic: Outer radius varies by percentage + hover state to create the "pulsing" look
-        const radius = isHovered ? baseOuterRadius + 22 : baseOuterRadius + (percentage * 30);
+        
+        // STYLE LOGIC: Radius varies based on configuration
+        let radius = baseOuterRadius;
+        if (style === 'magnified') {
+            radius = baseOuterRadius + (percentage * 25);
+        }
+        if (isHovered) radius += 10;
         
         const angle = percentage * 360;
         const startAngle = cumulativeAngle;
@@ -62,6 +70,7 @@ const DynamicArcChart: React.FC<{
         // Convert to Radians (shifted by -90 to start at 12 o'clock)
         const rad = (deg: number) => (deg - 90) * (Math.PI / 180);
         
+        // Arc points
         const x1 = center + radius * Math.cos(rad(startAngle));
         const y1 = center + radius * Math.sin(rad(startAngle));
         const x2 = center + radius * Math.cos(rad(endAngle));
@@ -83,23 +92,57 @@ const DynamicArcChart: React.FC<{
             'Z'
         ].join(' ');
 
+        // Label Centroid (Center of slice)
+        const midAngle = startAngle + (angle / 2);
+        const labelRadius = style === 'callout' ? radius + 20 : (radius + innerRadius) / 2;
+        const lx = center + labelRadius * Math.cos(rad(midAngle));
+        const ly = center + labelRadius * Math.sin(rad(midAngle));
+
+        const px = center + (radius) * Math.cos(rad(midAngle));
+        const py = center + (radius) * Math.sin(rad(midAngle));
+
         return (
-            <path
-                key={item.label + i}
-                d={d}
-                fill={item.color}
-                className="transition-all duration-300 ease-out cursor-pointer hover:opacity-100 opacity-90"
-                onMouseEnter={() => setHovered(i)}
-                onMouseLeave={() => setHovered(null)}
-                onClick={() => onSegmentClick(item)}
-                stroke="white"
-                strokeWidth="2"
-            />
+            <g key={item.label + i} className="group/slice">
+                <path
+                    d={d}
+                    fill={item.color}
+                    className="transition-all duration-300 ease-out cursor-pointer hover:opacity-100 opacity-90"
+                    onMouseEnter={() => setHovered(i)}
+                    onMouseLeave={() => setHovered(null)}
+                    onClick={() => onSegmentClick(item)}
+                    stroke="white"
+                    strokeWidth="2"
+                />
+                
+                {style === 'labeled' && percentage > 0.05 && (
+                    <text
+                        x={lx}
+                        y={ly}
+                        fill="white"
+                        textAnchor="middle"
+                        alignmentBaseline="middle"
+                        className="pointer-events-none text-[8px] font-black drop-shadow-sm select-none"
+                    >
+                        {Math.round(percentage * 100)}%
+                    </text>
+                )}
+
+                {style === 'callout' && percentage > 0.03 && (
+                    <g className={`transition-opacity duration-300 ${isHovered ? 'opacity-100' : 'opacity-40'}`}>
+                        <line 
+                            x1={px} y1={py} x2={lx} y2={ly} 
+                            stroke={item.color} strokeWidth="1" strokeDasharray="2,2" 
+                        />
+                        <circle cx={lx} cy={ly} r="3" fill={item.color} />
+                    </g>
+                )}
+            </g>
         );
     });
 
     return (
         <div className="flex flex-col items-center">
+            {/* Legend / Info Header (Above Chart) */}
             <div className="h-20 flex flex-col items-center justify-center text-center px-4 mb-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate w-full">
                     {hovered !== null ? data[hovered].label : 'Net Volume'}
@@ -212,6 +255,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
     const period = config?.period || 'month';
     const lookbackUnits = config?.lookback || 0;
     const vizType = config?.vizType || 'cards';
+    const pieStyle = config?.pieStyle || 'standard';
     const dataType = config?.displayDataType || 'type';
     const excludeUnknown = config?.excludeUnknown !== false;
     const hiddenIds = useMemo(() => new Set(config?.hiddenDataIds || []), [config?.hiddenDataIds]);
@@ -284,7 +328,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                 const txType = typeRegistry.get(tx.typeId);
                 const effect = txType?.balanceEffect || 'outgoing';
 
-                // FIX: Respect strict balance effects
+                // Respect strict balance effects
                 if (effect === 'incoming' && config?.showIncome === false) return;
                 if (effect === 'outgoing' && config?.showExpenses === false) return;
                 if (tx.typeId === 'type_investment' && config?.showInvestments === false) return;
@@ -310,7 +354,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                     label = txType?.name || 'Other';
                 }
 
-                // FIX: Keyword Exclusion Logic
+                // Keyword Exclusion Logic
                 if (keywords.length > 0) {
                     const searchTarget = `${tx.description} ${tx.originalDescription || ''} ${label}`.toLowerCase();
                     if (keywords.some(kw => searchTarget.includes(kw))) return;
@@ -405,6 +449,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                         <DynamicArcChart 
                             data={visibleTree.map(n => ({ label: n.label, value: n.value, color: n.color, transactions: n.transactions }))} 
                             total={totalVisible} 
+                            style={pieStyle}
                             onSegmentClick={(segment) => setInspectingNode(segment as any)}
                         />
                     )}

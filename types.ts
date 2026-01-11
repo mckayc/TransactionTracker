@@ -282,6 +282,7 @@ export interface DashboardWidget {
         limit?: number;
         reportId?: string;
         vizType?: 'pie' | 'bar' | 'cards';
+        pieStyle?: 'standard' | 'magnified' | 'labeled' | 'callout';
         lookback?: number;
         displayDataType?: 'category' | 'counterparty' | 'account' | 'type';
         excludeKeywords?: string;

@@ -10,25 +10,7 @@ import { GoalGaugeModule, TaxProjectionModule, AiInsightsModule, TopExpensesModu
 // Added missing formatCurrency helper function
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
-interface DashboardProps {
-    transactions: Transaction[];
-    savedReports: SavedReport[];
-    tasks: TaskItem[];
-    goals: FinancialGoal[];
-    systemSettings: SystemSettings;
-    onUpdateSystemSettings: (s: SystemSettings) => void;
-    categories: Category[];
-    counterparties: Counterparty[];
-    amazonMetrics: AmazonMetric[];
-    youtubeMetrics: YouTubeMetric[];
-    financialPlan: FinancialPlan | null;
-    accounts: Account[];
-    tags: Tag[];
-    transactionTypes: TransactionType[];
-    users: User[];
-}
-
-const WidgetSlot: React.FC<{
+interface WidgetSlotProps {
     widget: DashboardWidget;
     onRemove: () => void;
     onConfigure: () => void;
@@ -47,7 +29,28 @@ const WidgetSlot: React.FC<{
     tags: Tag[];
     transactionTypes: TransactionType[];
     users: User[];
-}> = ({ widget, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users }) => {
+}
+
+// Added missing DashboardProps interface to fix line 115 error
+interface DashboardProps {
+    transactions: Transaction[];
+    savedReports: SavedReport[];
+    tasks: TaskItem[];
+    goals: FinancialGoal[];
+    systemSettings: SystemSettings;
+    onUpdateSystemSettings: (settings: SystemSettings) => void;
+    categories: Category[];
+    counterparties: Counterparty[];
+    amazonMetrics: AmazonMetric[];
+    youtubeMetrics: YouTubeMetric[];
+    financialPlan: FinancialPlan | null;
+    accounts: Account[];
+    tags: Tag[];
+    transactionTypes: TransactionType[];
+    users: User[];
+}
+
+const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users }) => {
     
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
@@ -145,6 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [expandedBlueprints, setExpandedBlueprints] = useState<Set<string>>(new Set());
 
     const [configVizType, setConfigVizType] = useState<'pie' | 'bar' | 'cards'>('cards');
+    const [configPieStyle, setConfigPieStyle] = useState<NonNullable<DashboardWidget['config']>['pieStyle']>('standard');
     const [configLookback, setConfigLookback] = useState<number>(0);
     const [configDisplayDataType, setConfigDisplayDataType] = useState<NonNullable<DashboardWidget['config']>['displayDataType']>('type');
     const [configExcludeKeywords, setConfigExcludeKeywords] = useState<string>('');
@@ -189,6 +193,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             setConfigColSpan(activeWidget.colSpan || 1);
             setConfigBlueprint(activeWidget.type);
             setConfigVizType(activeWidget.config?.vizType || 'cards');
+            setConfigPieStyle(activeWidget.config?.pieStyle || 'standard');
             setConfigLookback(activeWidget.config?.lookback || 0);
             setConfigDisplayDataType(activeWidget.config?.displayDataType || 'type');
             setConfigExcludeKeywords(activeWidget.config?.excludeKeywords || '');
@@ -253,6 +258,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 reportId: configBlueprint === 'report' ? configReportId : undefined,
                 period: configBlueprint === 'cashflow' ? configPeriod : undefined,
                 vizType: configBlueprint === 'cashflow' ? configVizType : undefined,
+                pieStyle: configBlueprint === 'cashflow' ? configPieStyle : undefined,
                 lookback: configBlueprint === 'cashflow' ? configLookback : undefined,
                 displayDataType: configBlueprint === 'cashflow' ? configDisplayDataType : undefined,
                 excludeKeywords: configBlueprint === 'cashflow' ? configExcludeKeywords : undefined,
@@ -507,7 +513,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                     
                                     {configBlueprint !== 'cashflow' && (
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Grid Footprint (Col Span)</label>
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Grid Footprint (Col Span)</label>
                                             <div className="flex gap-2">
                                                 {[1, 2, 3].map(span => (
                                                     <button 
@@ -541,6 +547,23 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                         ))}
                                                     </div>
                                                 </div>
+
+                                                {configVizType === 'pie' && (
+                                                    <div className="space-y-3">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Chart Stylization</label>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {(['standard', 'magnified', 'labeled', 'callout'] as const).map(style => (
+                                                                <button
+                                                                    key={style}
+                                                                    onClick={() => setConfigPieStyle(style)}
+                                                                    className={`p-3 rounded-xl border-2 font-bold text-xs capitalize transition-all ${configPieStyle === style ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-slate-100 text-slate-400'}`}
+                                                                >
+                                                                    {style}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                                 <div className="space-y-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
                                                     <div className="space-y-3">
