@@ -343,8 +343,9 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                     parentId = cat?.parentId;
                 } else if (dataType === 'counterparty') {
                     const cp = counterparties.find(c => c.id === tx.counterpartyId);
-                    key = tx.counterpartyId || 'unknown';
-                    label = cp?.name || 'Unknown Entity';
+                    // IMPROVED: Fallback to description so unlinked transactions still show in this dimension
+                    key = tx.counterpartyId || `desc_${tx.description}`;
+                    label = cp?.name || tx.description || 'Unknown Entity';
                     parentId = cp?.parentId;
                 } else if (dataType === 'account') {
                     key = tx.accountId;
@@ -361,7 +362,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                 }
 
                 if (excludeUnknown) {
-                    const isUnknown = key === 'unknown' || key === 'no-counterparty' || label === 'Unallocated' || label === 'Unknown Entity' || label === 'Unknown Account';
+                    const isUnknown = key === 'unknown' || key === 'no-counterparty' || label === 'Unallocated' || label === 'Unknown Entity' || label === 'Unknown Account' || tx.categoryId === 'cat_other';
                     if (isUnknown) return;
                 }
 
@@ -400,7 +401,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
         roots.forEach(calculateAggregate);
         
         // Final sanity check: remove roots that ended up empty due to filtering
-        const activeRoots = roots.filter(r => r.value !== 0);
+        const activeRoots = roots.filter(r => Math.abs(r.value) > 0);
         activeRoots.sort((a, b) => b.value - a.value);
         activeRoots.forEach((root, i) => sortAndColorRecursive(root, COLORS[i % COLORS.length]));
 
