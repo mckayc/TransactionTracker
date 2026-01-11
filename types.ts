@@ -294,6 +294,7 @@ export interface DashboardWidget {
         excludeUnknown?: boolean;
         comparisonBaseId?: string;
         comparisonTargetId?: string;
+        isHidden?: boolean;
     };
 }
 

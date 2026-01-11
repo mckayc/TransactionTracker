@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User } from '../types';
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon } from '../components/Icons';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { CashFlowDashboardModule } from '../components/CashFlowDashboardModule';
@@ -68,6 +68,14 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
     };
 
     const identity = COMPONENT_IDENTITY_MAP[widget.type] || { icon: <InfoIcon className="w-4 h-4" />, label: 'Module' };
+    const isHidden = widget.config?.isHidden;
+
+    const handleToggleVisibility = () => {
+        onUpdateConfig({
+            ...widget.config,
+            isHidden: !isHidden
+        });
+    };
 
     const renderContent = () => {
         if (widget.type === 'report' && widget.config?.reportId) {
@@ -126,22 +134,26 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
     const spanClass = widget.colSpan === 3 ? 'md:col-span-3' : widget.colSpan === 2 ? 'md:col-span-2' : 'md:col-span-1';
 
     return (
-        <div className={`bg-white rounded-[1.5rem] border border-slate-200 shadow-sm overflow-hidden group flex flex-col h-full min-h-[300px] transition-all hover:shadow-md ${spanClass}`}>
+        <div className={`bg-white rounded-[1.5rem] border border-slate-200 shadow-sm overflow-hidden group flex flex-col h-full transition-all hover:shadow-md ${spanClass} ${isHidden ? 'min-h-0' : 'min-h-[300px]'}`}>
             <header className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-shrink-0">
                 <div className="flex items-center gap-2 min-w-0">
                     <div className="text-indigo-600 flex-shrink-0">{identity.icon}</div>
                     <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight truncate">
                         {widget.config?.title || identity.label}
                     </h4>
+                    {isHidden && <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase ml-2">Hidden</span>}
                 </div>
                 <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={handleToggleVisibility} title={isHidden ? "Show Module" : "Hide Module"} className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors">
+                        {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
+                    </button>
                     <button onClick={onConfigure} title="Instance Settings" className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors"><SettingsIcon className="w-3.5 h-3.5" /></button>
                     <button onClick={onRemove} title="Remove from Dashboard" className="p-1.5 text-slate-400 hover:text-orange-600 transition-colors"><CloseIcon className="w-3.5 h-3.5" /></button>
                     <button onClick={onDelete} title="Purge Logical Config" className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"><TrashIcon className="w-3.5 h-3.5" /></button>
                 </div>
             </header>
             <div className="flex-1 min-h-0">
-                {renderContent()}
+                {!isHidden && renderContent()}
             </div>
         </div>
     );
