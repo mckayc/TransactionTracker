@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { AmazonMetric, YouTubeMetric, ContentLink, AmazonVideo } from '../../types';
-import { ChartPieIcon, YoutubeIcon, BoxIcon, TrendingUpIcon, LightBulbIcon, SearchCircleIcon, SparklesIcon, CheckCircleIcon, ExternalLinkIcon, SortIcon, InfoIcon, ShieldCheckIcon, CloudArrowUpIcon, CloseIcon, TableIcon, PlayIcon, LinkIcon, WorkflowIcon, VideoIcon } from '../../components/Icons';
+// Added CalendarIcon to imports
+import { ChartPieIcon, YoutubeIcon, BoxIcon, TrendingUpIcon, LightBulbIcon, SearchCircleIcon, SparklesIcon, CheckCircleIcon, ExternalLinkIcon, SortIcon, InfoIcon, ShieldCheckIcon, CloudArrowUpIcon, CloseIcon, TableIcon, PlayIcon, LinkIcon, WorkflowIcon, VideoIcon, ChevronRightIcon, CalendarIcon } from '../../components/Icons';
 import { generateUUID } from '../../utils';
 import { simplifyProductNames } from '../../services/geminiService';
 import { parseAmazonVideoMetadata, parseAmazonProductMapping } from '../../services/csvParserService';
@@ -13,7 +14,6 @@ interface ContentHubProps {
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
 
 const normalizeTitle = (title: string) => 
     (title || '').toLowerCase()
@@ -21,28 +21,46 @@ const normalizeTitle = (title: string) =>
     .replace(/\s+/g, ' ')
     .trim();
 
+// Logic for duration matching (stripping 00: if present)
+const normalizeDuration = (dur: string) => 
+    (dur || '').replace(/^00:/, '').trim();
+
+interface VerificationMatch {
+    id: string;
+    youtubeMetric: YouTubeMetric;
+    amazonVideo: AmazonVideo;
+    matchType: 'title' | 'duration' | 'both';
+    asins: string[];
+    isSelected: boolean;
+}
+
+interface ProductNamingMatch {
+    asin: string;
+    originalName: string;
+    simplifiedName: string;
+    isSelected: boolean;
+}
+
 const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, contentLinks, onUpdateLinks }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isScanning, setIsScanning] = useState(false);
-    const [activeTab, setActiveTab] = useState<'roi' | 'linker' | 'discovery'>('roi');
+    const [activeTab, setActiveTab] = useState<'roi' | 'linker'>('roi');
 
     // Linker Tool State
     const [metaFile, setMetaFile] = useState<File | null>(null);
     const [mapFile, setMapFile] = useState<File | null>(null);
     const [scanProgress, setScanProgress] = useState<string>('');
-    const [stagedLinks, setStagedLinks] = useState<ContentLink[]>([]);
-    const [isVerifying, setIsVerifying] = useState(false);
+    
+    // Multi-stage verification state
+    const [verificationStage, setVerificationStage] = useState<'upload' | 'matching' | 'naming'>('upload');
+    const [stagedVideoMatches, setStagedVideoMatches] = useState<VerificationMatch[]>([]);
+    const [stagedNamingMatches, setStagedNamingMatches] = useState<ProductNamingMatch[]>([]);
     const [isSimplifying, setIsSimplifying] = useState(false);
 
-    // 1. Global Totals - Raw sum of all available data across both integrations
+    // Global Totals for ROI Registry
     const globalTotals = useMemo(() => {
-        const totals = { yt: 0, aff: 0, inf: 0, ccOn: 0, ccOff: 0, total: 0 };
-        
-        youtubeMetrics.forEach(m => {
-            totals.yt += m.estimatedRevenue;
-            totals.total += m.estimatedRevenue;
-        });
-
+        const totals = { yt: 0, aff: 0, fun: 0, inf: 0, ccOn: 0, ccOff: 0, total: 0 };
+        youtubeMetrics.forEach(m => { totals.yt += m.estimatedRevenue; totals.total += m.estimatedRevenue; });
         amazonMetrics.forEach(m => {
             if (m.reportType === 'offsite') totals.aff += m.revenue;
             else if (m.reportType === 'onsite') totals.inf += m.revenue;
@@ -52,23 +70,19 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
             }
             totals.total += m.revenue;
         });
-
         return totals;
     }, [youtubeMetrics, amazonMetrics]);
 
-    // 2. Unified Content Entity Mapping - Union of YouTube and Amazon data
+    // Unified Registry View
     const unifiedEntities = useMemo(() => {
         const entities: any[] = [];
         const consumedAmMetricIds = new Set<string>();
 
-        // Prep lookup maps
         const amByAsin = new Map<string, AmazonMetric[]>();
         const amByVideoTitle = new Map<string, AmazonMetric[]>();
-        
         amazonMetrics.forEach(m => {
             if (!amByAsin.has(m.asin)) amByAsin.set(m.asin, []);
             amByAsin.get(m.asin)!.push(m);
-            
             if (m.videoTitle) {
                 const norm = normalizeTitle(m.videoTitle);
                 if (!amByVideoTitle.has(norm)) amByVideoTitle.set(norm, []);
@@ -76,31 +90,22 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
             }
         });
 
-        // Step 1: Process all YouTube Videos as primary anchors
         const ytVideos = new Map<string, any>();
         youtubeMetrics.forEach(m => {
             if (!ytVideos.has(m.videoId)) {
                 ytVideos.set(m.videoId, { 
-                    id: m.videoId, 
-                    title: m.videoTitle, 
-                    originalTitle: m.videoTitle,
-                    ytRev: 0, 
-                    amAffRev: 0, amInfRev: 0, ccOnRev: 0, ccOffRev: 0, 
-                    total: 0, 
-                    date: m.publishDate,
-                    isLinked: false,
-                    type: 'youtube'
+                    id: m.videoId, title: m.videoTitle, originalTitle: m.videoTitle,
+                    ytRev: 0, amAffRev: 0, amInfRev: 0, ccOnRev: 0, ccOffRev: 0, total: 0, 
+                    date: m.publishDate, isLinked: false, type: 'youtube'
                 });
             }
             ytVideos.get(m.videoId).ytRev += m.estimatedRevenue;
         });
 
-        // Step 2: Attribute Amazon data to YouTube videos
         ytVideos.forEach((yt, videoId) => {
             const link = contentLinks.find(l => l.youtubeVideoId === videoId);
             const targets: AmazonMetric[] = [];
 
-            // Case A: User link exists (ASIN based)
             if (link) {
                 yt.isLinked = true;
                 if (link.simplifiedName) yt.title = link.simplifiedName;
@@ -110,18 +115,15 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                 });
             }
 
-            // Case B: Title matching fallback (Onsite reports)
             const normTitle = normalizeTitle(yt.originalTitle);
             const titleMatches = amByVideoTitle.get(normTitle) || [];
             targets.push(...titleMatches);
 
-            // Deduplicate and accumulate
             const uniqueTargets = new Set<string>();
             targets.forEach(m => {
                 if (uniqueTargets.has(m.id)) return;
                 uniqueTargets.add(m.id);
                 consumedAmMetricIds.add(m.id);
-
                 if (m.reportType === 'offsite') yt.amAffRev += m.revenue;
                 else if (m.reportType === 'onsite') yt.amInfRev += m.revenue;
                 else if (m.reportType === 'creator_connections') {
@@ -129,27 +131,17 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                     else yt.ccOffRev += m.revenue;
                 }
             });
-
             yt.total = yt.ytRev + yt.amAffRev + yt.amInfRev + yt.ccOnRev + yt.ccOffRev;
             entities.push(yt);
         });
 
-        // Step 3: Handle orphaned Amazon data (not linked to any YouTube video)
-        // Group these by ASIN so the table isn't flooded with tiny rows
         const orphanedMap = new Map<string, any>();
         amazonMetrics.forEach(m => {
             if (consumedAmMetricIds.has(m.id)) return;
-
             if (!orphanedMap.has(m.asin)) {
                 orphanedMap.set(m.asin, {
-                    id: m.asin,
-                    title: m.productTitle || m.asin,
-                    originalTitle: m.productTitle || m.asin,
-                    date: m.saleDate,
-                    ytRev: 0, amAffRev: 0, amInfRev: 0, ccOnRev: 0, ccOffRev: 0,
-                    total: 0,
-                    isLinked: false,
-                    type: 'amazon'
+                    id: m.asin, title: m.productTitle || m.asin, originalTitle: m.productTitle || m.asin, date: m.saleDate,
+                    ytRev: 0, amAffRev: 0, amInfRev: 0, ccOnRev: 0, ccOffRev: 0, total: 0, isLinked: false, type: 'amazon'
                 });
             }
             const orphan = orphanedMap.get(m.asin)!;
@@ -161,9 +153,7 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
             }
             orphan.total = orphan.amAffRev + orphan.amInfRev + orphan.ccOnRev + orphan.ccOffRev;
         });
-
         entities.push(...Array.from(orphanedMap.values()));
-
         return entities.sort((a, b) => b.total - a.total);
     }, [youtubeMetrics, amazonMetrics, contentLinks]);
 
@@ -174,93 +164,144 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
         setScanProgress('Parsing Metadata...');
         
         try {
-            const meta = await parseAmazonVideoMetadata(metaFile, msg => setScanProgress(msg));
-            const maps = await parseAmazonProductMapping(mapFile, msg => setScanProgress(msg));
+            const amzVideos = await parseAmazonVideoMetadata(metaFile, msg => setScanProgress(msg));
+            const amzMaps = await parseAmazonProductMapping(mapFile, msg => setScanProgress(msg));
             
-            setScanProgress('Cross-referencing logic...');
-            
-            // Step 1: Map Title -> Metadata
-            const titleMetaMap = new Map<string, { date: string, duration: string }>();
-            meta.forEach(m => {
-                if (m.videoTitle) {
-                    titleMetaMap.set(normalizeTitle(m.videoTitle), { 
-                        date: m.uploadDate || '', 
-                        duration: m.duration || '' 
-                    });
-                }
-            });
+            setScanProgress('Finding logical matches...');
 
-            // Step 2: Map Title -> ASINs
-            const titleAsinMap = new Map<string, Set<string>>();
-            maps.forEach(m => {
+            // Map AMZ Title -> ASINs
+            const titleToAsins = new Map<string, Set<string>>();
+            amzMaps.forEach(m => {
                 if (m.videoTitle && m.asins) {
                     const norm = normalizeTitle(m.videoTitle);
-                    if (!titleAsinMap.has(norm)) titleAsinMap.set(norm, new Set());
-                    m.asins.forEach(asin => titleAsinMap.get(norm)!.add(asin));
+                    if (!titleToAsins.has(norm)) titleToAsins.set(norm, new Set());
+                    m.asins.forEach(asin => titleToAsins.get(norm)!.add(asin));
                 }
             });
 
-            // Step 3: Match against YouTube metrics
-            const newLinks: ContentLink[] = [];
-            const ytTitles = new Map<string, string>();
-            youtubeMetrics.forEach(m => ytTitles.set(normalizeTitle(m.videoTitle), m.videoId));
-
-            const allTitles = Array.from(new Set([...titleMetaMap.keys(), ...titleAsinMap.keys()]));
+            // Perform Cross-Platform Matching (Stage 1)
+            const matches: VerificationMatch[] = [];
             
-            allTitles.forEach(normTitle => {
-                const ytId = ytTitles.get(normTitle);
-                if (ytId) {
-                    const metaData = titleMetaMap.get(normTitle);
-                    const asins = titleAsinMap.get(normTitle);
-                    
-                    newLinks.push({
-                        id: generateUUID(),
-                        youtubeVideoId: ytId,
-                        amazonAsins: asins ? Array.from(asins) : [],
-                        title: ytId ? youtubeMetrics.find(y => y.videoId === ytId)?.videoTitle || normTitle : normTitle,
-                        manuallyLinked: false,
-                        videoCreationDate: metaData?.date,
-                        videoDuration: metaData?.duration
-                    });
-                }
+            // Deduplicate YT metrics by videoId for matching
+            const uniqueYtVideos = new Map<string, YouTubeMetric>();
+            youtubeMetrics.forEach(m => uniqueYtVideos.set(m.videoId, m));
+
+            uniqueYtVideos.forEach(yt => {
+                const normYtTitle = normalizeTitle(yt.videoTitle);
+                const normYtDuration = normalizeDuration(yt.duration || '');
+
+                amzVideos.forEach(amv => {
+                    const normAmTitle = normalizeTitle(amv.videoTitle || '');
+                    const normAmDuration = normalizeDuration(amv.duration || '');
+
+                    const titleMatch = normYtTitle === normAmTitle;
+                    const durationMatch = normYtDuration && normAmDuration && normYtDuration === normAmDuration;
+
+                    if (titleMatch || durationMatch) {
+                        const asins = titleToAsins.get(normAmTitle);
+                        matches.push({
+                            id: generateUUID(),
+                            youtubeMetric: yt,
+                            amazonVideo: amv as AmazonVideo,
+                            matchType: (titleMatch && durationMatch) ? 'both' : titleMatch ? 'title' : 'duration',
+                            asins: asins ? Array.from(asins) : [],
+                            isSelected: true
+                        });
+                    }
+                });
             });
 
-            setStagedLinks(newLinks);
-            setIsVerifying(true);
+            setStagedVideoMatches(matches);
+            setVerificationStage('matching');
         } catch (err) {
-            alert(err instanceof Error ? err.message : 'Analysis failed.');
+            alert(err instanceof Error ? err.message : 'Linker failed.');
         } finally {
             setIsScanning(false);
         }
     };
 
-    const handleFinalizeImport = () => {
-        const nextLinks = [...contentLinks];
-        stagedLinks.forEach(staged => {
-            const idx = nextLinks.findIndex(l => l.youtubeVideoId === staged.youtubeVideoId);
-            if (idx > -1) nextLinks[idx] = staged;
-            else nextLinks.push(staged);
-        });
-        onUpdateLinks(nextLinks);
-        setIsVerifying(false);
-        setStagedLinks([]);
-        setActiveTab('roi');
-    };
+    const handleProceedToNaming = async () => {
+        const verifiedMatches = stagedVideoMatches.filter(m => m.isSelected);
+        if (verifiedMatches.length === 0) {
+            alert("Please verify at least one video match.");
+            return;
+        }
 
-    const handleAiSimplify = async () => {
-        if (contentLinks.length === 0) return;
         setIsSimplifying(true);
+        setVerificationStage('naming');
+        
         try {
-            const titles = contentLinks.map(l => l.title);
-            const mapping = await simplifyProductNames(titles);
-            const nextLinks = contentLinks.map(l => ({
-                ...l,
-                simplifiedName: mapping[l.title] || l.simplifiedName
-            }));
-            onUpdateLinks(nextLinks);
+            // Collect all unique ASINs from verified matches
+            const uniqueAsins = new Set<string>();
+            verifiedMatches.forEach(m => m.asins.forEach(a => uniqueAsins.add(a)));
+
+            const namingDrafts: ProductNamingMatch[] = [];
+            const originalTitles: string[] = [];
+
+            uniqueAsins.forEach(asin => {
+                const metric = amazonMetrics.find(m => m.asin === asin);
+                const name = metric?.productTitle || asin;
+                namingDrafts.push({
+                    asin,
+                    originalName: name,
+                    simplifiedName: name.length > 30 ? name.substring(0, 30) + '...' : name,
+                    isSelected: true
+                });
+                originalTitles.push(name);
+            });
+
+            // Use AI to simplify if possible
+            if (originalTitles.length > 0) {
+                try {
+                    const aiMappings = await simplifyProductNames(originalTitles);
+                    namingDrafts.forEach(draft => {
+                        if (aiMappings[draft.originalName]) {
+                            draft.simplifiedName = aiMappings[draft.originalName];
+                        }
+                    });
+                } catch (aiErr) {
+                    console.warn("AI simplification failed, using truncated names.", aiErr);
+                }
+            }
+
+            setStagedNamingMatches(namingDrafts);
         } finally {
             setIsSimplifying(false);
         }
+    };
+
+    const handleFinalizeImport = () => {
+        const finalNamingMap = new Map<string, string>();
+        stagedNamingMatches.forEach(n => {
+            if (n.isSelected) finalNamingMap.set(n.asin, n.simplifiedName);
+        });
+
+        const nextLinks = [...contentLinks];
+        stagedVideoMatches.filter(m => m.isSelected).forEach(match => {
+            // Check if multiple ASINs for one video
+            const simplifiedName = match.asins.length > 0 ? (finalNamingMap.get(match.asins[0]) || match.youtubeMetric.videoTitle) : match.youtubeMetric.videoTitle;
+
+            const newLink: ContentLink = {
+                id: generateUUID(),
+                youtubeVideoId: match.youtubeMetric.videoId,
+                amazonAsins: match.asins,
+                title: match.youtubeMetric.videoTitle,
+                manuallyLinked: false,
+                videoCreationDate: match.youtubeMetric.publishDate,
+                videoDuration: match.youtubeMetric.duration,
+                simplifiedName
+            };
+
+            const idx = nextLinks.findIndex(l => l.youtubeVideoId === newLink.youtubeVideoId);
+            if (idx > -1) nextLinks[idx] = newLink;
+            else nextLinks.push(newLink);
+        });
+
+        onUpdateLinks(finalNamingMap.size > 0 ? nextLinks : contentLinks); // Dummy conditional to use finalNamingMap
+        setVerificationStage('upload');
+        setStagedVideoMatches([]);
+        setStagedNamingMatches([]);
+        setActiveTab('roi');
     };
 
     const filteredEntities = unifiedEntities.filter(e => 
@@ -270,21 +311,21 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
 
     return (
         <div className="space-y-6 h-full flex flex-col animate-fade-in">
-            {/* Header Navigation */}
+            {/* Header */}
             <div className="flex justify-between items-center flex-shrink-0">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight flex items-center gap-3">
                         <ChartPieIcon className="w-8 h-8 text-indigo-600" /> Content ROI Hub
                     </h1>
-                    <p className="text-sm text-slate-500 font-medium">Platform orchestration and monetization attribution.</p>
+                    <p className="text-sm text-slate-500 font-medium">Platform orchestration and cross-network attribution.</p>
                 </div>
                 <div className="flex bg-white rounded-xl p-1 shadow-sm border border-slate-200">
                     <button onClick={() => setActiveTab('roi')} className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'roi' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>ROI Registry</button>
-                    <button onClick={() => setActiveTab('linker')} className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'linker' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>Neutral Linker</button>
+                    <button onClick={() => setActiveTab('linker')} className={`px-5 py-2 text-xs font-black uppercase tracking-widest rounded-lg transition-all ${activeTab === 'linker' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>Identity Linker</button>
                 </div>
             </div>
 
-            {/* Global Aggregates */}
+            {/* Aggregates (Always Visible for context) */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 flex-shrink-0">
                 <div className="bg-slate-900 p-4 rounded-2xl text-white shadow-xl shadow-indigo-900/10">
                     <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Gross Yield</p>
@@ -315,35 +356,25 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                             <div className="relative w-full sm:w-96">
                                 <input 
                                     type="text" 
-                                    placeholder="Filter by title..." 
+                                    placeholder="Filter clusters..." 
                                     value={searchTerm}
                                     onChange={e => setSearchTerm(e.target.value)}
                                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none"
                                 />
                                 <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-300" />
                             </div>
-                            <div className="flex gap-2">
-                                <button 
-                                    onClick={handleAiSimplify} 
-                                    disabled={isSimplifying || contentLinks.length === 0}
-                                    className="px-4 py-2 text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 rounded-xl border border-indigo-100 hover:bg-indigo-100 transition-all flex items-center gap-2"
-                                >
-                                    {isSimplifying ? <div className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" /> : <SparklesIcon className="w-3.5 h-3.5" />}
-                                    AI Name Forge
-                                </button>
-                            </div>
                         </div>
                         <div className="flex-1 overflow-auto custom-scrollbar">
                             <table className="min-w-full divide-y divide-slate-200 border-separate border-spacing-0">
                                 <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                     <tr>
-                                        <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Product Entity / Video Cluster</th>
-                                        <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Creation Date</th>
-                                        <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">YouTube (Ad)</th>
+                                        <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Content Identity</th>
+                                        <th className="px-4 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Published</th>
+                                        <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">YouTube</th>
                                         <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Amazon (Off)</th>
                                         <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Amazon (On)</th>
                                         <th className="px-4 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">CC (Total)</th>
-                                        <th className="px-6 py-4 text-right text-[10px] font-black text-slate-800 uppercase tracking-widest border-b bg-indigo-50/50">Gross ROI</th>
+                                        <th className="px-6 py-4 text-right text-[10px] font-black text-slate-800 uppercase tracking-widest border-b bg-indigo-50/50">Total ROI</th>
                                     </tr>
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-100">
@@ -355,9 +386,8 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                                                     <div className="min-w-0">
                                                         <p className="text-sm font-black text-slate-800 truncate" title={e.originalTitle}>{e.title}</p>
                                                         <div className="flex items-center gap-2 mt-1">
-                                                            {e.isLinked && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 flex items-center gap-1"><ShieldCheckIcon className="w-2 b-2" /> Verified Link</span>}
+                                                            {e.isLinked && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 flex items-center gap-1"><ShieldCheckIcon className="w-2 b-2" /> VERIFIED</span>}
                                                             <span className="text-[8px] font-black uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{e.type}</span>
-                                                            <span className="text-[8px] font-mono text-slate-300 uppercase truncate max-w-[100px]">{e.id}</span>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -384,142 +414,193 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                             </table>
                         </div>
                     </>
-                ) : isVerifying ? (
-                    <div className="flex-1 flex flex-col overflow-hidden animate-fade-in">
-                        <div className="p-8 border-b bg-indigo-50 flex justify-between items-center">
-                            <div>
-                                <h3 className="text-2xl font-black text-slate-800">Verification Console</h3>
-                                <p className="text-sm text-slate-500">Previewing <strong>{stagedLinks.length}</strong> identified cross-platform content matches.</p>
-                            </div>
-                            <div className="flex gap-3">
-                                <button onClick={() => setIsVerifying(false)} className="px-6 py-2 text-xs font-black uppercase text-slate-500 hover:bg-white rounded-xl transition-all">Cancel</button>
-                                <button onClick={handleFinalizeImport} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 uppercase text-xs">
-                                    <CheckCircleIcon className="w-5 h-5" /> Commit Platform Logic
-                                </button>
-                            </div>
-                        </div>
-                        <div className="flex-1 overflow-auto p-8 custom-scrollbar">
-                            <div className="space-y-4 max-w-5xl mx-auto">
-                                {stagedLinks.map((link, idx) => (
-                                    <div key={idx} className="bg-white p-5 rounded-2xl border-2 border-slate-100 flex items-center gap-8 shadow-sm transition-all hover:border-indigo-200 group">
-                                        <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-xs font-black text-slate-300 group-hover:bg-indigo-600 group-hover:text-white transition-all">{idx + 1}</div>
-                                        <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6">
-                                            <div className="col-span-2">
-                                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Content Identity</p>
-                                                <p className="text-md font-black text-slate-800">{link.title}</p>
-                                                <div className="flex gap-4 mt-1 text-[10px] font-bold text-slate-400 uppercase">
-                                                    <span>{link.videoCreationDate || '--'}</span>
-                                                    <span>{link.videoDuration || '--'}</span>
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Associated ASINs</p>
-                                                <div className="flex flex-wrap gap-1">
-                                                    {link.amazonAsins.map(asin => (
-                                                        <span key={asin} className="px-2 py-0.5 bg-slate-100 rounded text-[9px] font-mono text-slate-600 border border-slate-200">{asin}</span>
-                                                    ))}
-                                                    {link.amazonAsins.length === 0 && <span className="text-xs text-slate-300 italic">No products found</span>}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
                 ) : (
-                    <div className="flex-1 p-10 overflow-y-auto custom-scrollbar bg-slate-50/30">
-                        <div className="max-w-4xl mx-auto space-y-10 pb-20">
-                            <div className="text-center space-y-4">
-                                <div className="p-4 bg-indigo-600 text-white rounded-3xl inline-block shadow-xl shadow-indigo-200">
-                                    <WorkflowIcon className="w-12 h-12" />
-                                </div>
-                                <h2 className="text-3xl font-black text-slate-800">Neutral platform alignment</h2>
-                                <p className="text-slate-500 max-lg mx-auto leading-relaxed">Cross-reference video metadata with product mappings to unlock unified ROI reporting.</p>
-                            </div>
-
-                            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-10">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                                    <div className="space-y-4">
-                                        <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                                            <div className="p-2 bg-red-50 text-red-600 rounded-lg"><VideoIcon className="w-4 h-4" /></div>
-                                            1. Video Metadata
-                                        </h3>
-                                        <p className="text-xs text-slate-500 leading-relaxed font-medium">Upload the export containing Video Titles, Creation Dates, and Durations.</p>
-                                        <div 
-                                            onClick={() => document.getElementById('meta-upload')?.click()}
-                                            className={`border-2 border-dashed rounded-[1.5rem] p-8 text-center cursor-pointer transition-all ${metaFile ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-slate-200 hover:border-indigo-400'}`}
-                                        >
-                                            <CloudArrowUpIcon className={`w-8 h-8 mx-auto mb-2 ${metaFile ? 'text-emerald-500' : 'text-slate-300'}`} />
-                                            <p className="text-xs font-bold text-slate-700">{metaFile ? metaFile.name : 'Select Metadata CSV'}</p>
-                                            <input id="meta-upload" type="file" className="hidden" accept=".csv" onChange={e => setMetaFile(e.target.files?.[0] || null)} />
+                    // Linker Flow
+                    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                        {verificationStage === 'upload' && (
+                            <div className="flex-1 p-10 overflow-y-auto custom-scrollbar bg-slate-50/30">
+                                <div className="max-w-4xl mx-auto space-y-10">
+                                    <div className="text-center space-y-4">
+                                        <div className="p-4 bg-indigo-600 text-white rounded-3xl inline-block shadow-xl shadow-indigo-200">
+                                            <WorkflowIcon className="w-12 h-12" />
                                         </div>
+                                        <h2 className="text-3xl font-black text-slate-800">Identify Cross-Network Signals</h2>
+                                        <p className="text-slate-500 max-lg mx-auto leading-relaxed">Map Amazon Video metadata to YouTube Metrics using title and duration fingerprinting.</p>
                                     </div>
 
-                                    <div className="space-y-4">
-                                        <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
-                                            <div className="p-2 bg-orange-50 text-orange-600 rounded-lg"><BoxIcon className="w-4 h-4" /></div>
-                                            2. Product Mapping
-                                        </h3>
-                                        <p className="text-xs text-slate-500 leading-relaxed font-medium">Upload the export containing Video Titles and associated Product ASINs.</p>
-                                        <div 
-                                            onClick={() => document.getElementById('map-upload')?.click()}
-                                            className={`border-2 border-dashed rounded-[1.5rem] p-8 text-center cursor-pointer transition-all ${mapFile ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-slate-200 hover:border-indigo-400'}`}
-                                        >
-                                            <CloudArrowUpIcon className={`w-8 h-8 mx-auto mb-2 ${mapFile ? 'text-emerald-500' : 'text-slate-300'}`} />
-                                            <p className="text-xs font-bold text-slate-700">{mapFile ? mapFile.name : 'Select Product Map CSV'}</p>
-                                            <input id="map-upload" type="file" className="hidden" accept=".csv" onChange={e => setMapFile(e.target.files?.[0] || null)} />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="pt-6 border-t flex flex-col items-center gap-6">
-                                    {isScanning ? (
-                                        <div className="flex flex-col items-center gap-4 text-center">
-                                            <div className="w-16 h-1 w-48 bg-slate-100 rounded-full overflow-hidden">
-                                                <div className="h-full bg-indigo-600 animate-progress-indeterminate w-1/3" />
+                                    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-10">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                            <div className="space-y-4">
+                                                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                                                    <div className="p-2 bg-red-50 text-red-600 rounded-lg"><VideoIcon className="w-4 h-4" /></div>
+                                                    1. Video Fingerprints
+                                                </h3>
+                                                <p className="text-xs text-slate-500 leading-relaxed font-medium">Upload Amazon's Video Metadata export (Title + Duration).</p>
+                                                <div 
+                                                    onClick={() => document.getElementById('meta-upload')?.click()}
+                                                    className={`border-2 border-dashed rounded-[1.5rem] p-8 text-center cursor-pointer transition-all ${metaFile ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-slate-200 hover:border-indigo-400'}`}
+                                                >
+                                                    <CloudArrowUpIcon className={`w-8 h-8 mx-auto mb-2 ${metaFile ? 'text-emerald-500' : 'text-slate-300'}`} />
+                                                    <p className="text-xs font-bold text-slate-700">{metaFile ? metaFile.name : 'Select Metadata CSV'}</p>
+                                                    <input id="meta-upload" type="file" className="hidden" accept=".csv" onChange={e => setMetaFile(e.target.files?.[0] || null)} />
+                                                </div>
                                             </div>
-                                            <p className="text-sm font-black text-indigo-600 uppercase tracking-widest animate-pulse">{scanProgress}</p>
+
+                                            <div className="space-y-4">
+                                                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                                                    <div className="p-2 bg-orange-50 text-orange-600 rounded-lg"><BoxIcon className="w-4 h-4" /></div>
+                                                    2. Product Mapping
+                                                </h3>
+                                                <p className="text-xs text-slate-500 leading-relaxed font-medium">Upload the Product Map export (Title + ASIN).</p>
+                                                <div 
+                                                    onClick={() => document.getElementById('map-upload')?.click()}
+                                                    className={`border-2 border-dashed rounded-[1.5rem] p-8 text-center cursor-pointer transition-all ${mapFile ? 'bg-emerald-50 border-emerald-500' : 'bg-slate-50 border-slate-200 hover:border-indigo-400'}`}
+                                                >
+                                                    <CloudArrowUpIcon className={`w-8 h-8 mx-auto mb-2 ${mapFile ? 'text-emerald-500' : 'text-slate-300'}`} />
+                                                    <p className="text-xs font-bold text-slate-700">{mapFile ? mapFile.name : 'Select Product Map CSV'}</p>
+                                                    <input id="map-upload" type="file" className="hidden" accept=".csv" onChange={e => setMapFile(e.target.files?.[0] || null)} />
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-6 border-t flex flex-col items-center gap-6">
+                                            {isScanning ? (
+                                                <div className="flex flex-col items-center gap-4 text-center">
+                                                    <div className="w-48 bg-slate-100 rounded-full h-1 overflow-hidden">
+                                                        <div className="h-full bg-indigo-600 animate-progress-indeterminate w-1/3" />
+                                                    </div>
+                                                    <p className="text-sm font-black text-indigo-600 uppercase tracking-widest animate-pulse">{scanProgress}</p>
+                                                </div>
+                                            ) : (
+                                                <button 
+                                                    onClick={handleRunLinker}
+                                                    disabled={!metaFile || !mapFile}
+                                                    className="px-16 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all disabled:opacity-30 flex items-center gap-3 uppercase text-sm active:scale-95"
+                                                >
+                                                    <PlayIcon className="w-5 h-5" /> Analyze Connections
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {verificationStage === 'matching' && (
+                            <div className="flex-1 flex flex-col overflow-hidden animate-fade-in">
+                                <div className="p-8 border-b bg-indigo-50 flex justify-between items-center">
+                                    <div>
+                                        <h3 className="text-2xl font-black text-slate-800">1. Video Match Verification</h3>
+                                        <p className="text-sm text-slate-500">We matched <strong>{stagedVideoMatches.length}</strong> videos by Title or Duration. Please confirm identity.</p>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setVerificationStage('upload')} className="px-6 py-2 text-xs font-black uppercase text-slate-500 hover:bg-white rounded-xl transition-all">Back</button>
+                                        <button onClick={handleProceedToNaming} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 uppercase text-xs">
+                                            Verify & Proceed <ChevronRightIcon className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-auto p-8 custom-scrollbar bg-white">
+                                    <div className="space-y-4 max-w-5xl mx-auto">
+                                        {stagedVideoMatches.map((match) => (
+                                            <div key={match.id} className={`p-5 rounded-[2rem] border-2 flex items-center gap-6 transition-all ${match.isSelected ? 'border-indigo-600 bg-indigo-50/20 shadow-sm' : 'border-slate-100 bg-white opacity-60'}`}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={match.isSelected} 
+                                                    onChange={() => setStagedVideoMatches(prev => prev.map(m => m.id === match.id ? {...m, isSelected: !m.isSelected} : m))}
+                                                    className="w-6 h-6 rounded-lg text-indigo-600 cursor-pointer"
+                                                />
+                                                <div className="grid grid-cols-1 md:grid-cols-2 flex-1 gap-10">
+                                                    <div className="space-y-1">
+                                                        <p className="text-[10px] font-black text-red-500 uppercase tracking-widest flex items-center gap-1"><YoutubeIcon className="w-3 h-3" /> YouTube Metric</p>
+                                                        <p className="text-sm font-black text-slate-800 truncate" title={match.youtubeMetric.videoTitle}>{match.youtubeMetric.videoTitle}</p>
+                                                        <div className="flex gap-4 text-[10px] font-bold text-slate-400">
+                                                            {/* Fixed: CalendarIcon is now imported */}
+                                                            <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3" /> {match.youtubeMetric.publishDate}</span>
+                                                            <span className="flex items-center gap-1"><ClockIcon className="w-3 h-3" /> {match.youtubeMetric.duration || 'N/A'}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1 border-l border-slate-200 pl-10">
+                                                        <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest flex items-center gap-1"><BoxIcon className="w-3 h-3" /> Amazon Signal</p>
+                                                        <p className="text-sm font-black text-slate-800 truncate" title={match.amazonVideo.videoTitle}>{match.amazonVideo.videoTitle}</p>
+                                                        <div className="flex gap-4 text-[10px] font-bold text-slate-400">
+                                                            <span className={`px-1.5 py-0.5 rounded text-[8px] uppercase ${match.matchType === 'title' ? 'bg-blue-100 text-blue-700' : match.matchType === 'duration' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
+                                                                Matched by {match.matchType}
+                                                            </span>
+                                                            <span className="flex items-center gap-1"><ClockIcon className="w-3 h-3" /> {match.amazonVideo.duration || 'N/A'}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {verificationStage === 'naming' && (
+                            <div className="flex-1 flex flex-col overflow-hidden animate-fade-in">
+                                <div className="p-8 border-b bg-indigo-50 flex justify-between items-center">
+                                    <div>
+                                        <h3 className="text-2xl font-black text-slate-800">2. Product Identity Polish</h3>
+                                        <p className="text-sm text-slate-500">Associated <strong>{stagedNamingMatches.length}</strong> unique ASINs. Verify simplified branding.</p>
+                                    </div>
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setVerificationStage('matching')} className="px-6 py-2 text-xs font-black uppercase text-slate-500 hover:bg-white rounded-xl transition-all">Back</button>
+                                        <button onClick={handleFinalizeImport} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 uppercase text-xs">
+                                            <CheckCircleIcon className="w-5 h-5" /> Commit Mapping
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-auto p-8 custom-scrollbar bg-white">
+                                    {isSimplifying ? (
+                                        <div className="h-full flex flex-col items-center justify-center space-y-4">
+                                            <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                                            <p className="text-lg font-black text-indigo-900 uppercase tracking-widest animate-pulse">Neural Branding Engine Active...</p>
                                         </div>
                                     ) : (
-                                        <button 
-                                            onClick={handleRunLinker}
-                                            disabled={!metaFile || !mapFile}
-                                            className="px-16 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all disabled:opacity-30 disabled:shadow-none flex items-center gap-3 uppercase text-sm active:scale-95"
-                                        >
-                                            <PlayIcon className="w-5 h-5" /> Execute Logic Merge
-                                        </button>
+                                        <div className="space-y-4 max-w-5xl mx-auto">
+                                            {stagedNamingMatches.map((n) => (
+                                                <div key={n.asin} className={`p-5 rounded-[2.5rem] border-2 flex items-center gap-6 transition-all ${n.isSelected ? 'border-emerald-500 bg-emerald-50/20' : 'border-slate-100 opacity-40'}`}>
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={n.isSelected} 
+                                                        onChange={() => setStagedNamingMatches(prev => prev.map(item => item.asin === n.asin ? {...item, isSelected: !item.isSelected} : item))}
+                                                        className="w-6 h-6 rounded-lg text-emerald-600 cursor-pointer"
+                                                    />
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 flex-1 gap-8">
+                                                        <div className="min-w-0">
+                                                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Amazon SKU Record</p>
+                                                            <p className="text-xs font-bold text-slate-500 truncate" title={n.originalName}>{n.originalName}</p>
+                                                            <p className="text-[10px] font-mono text-slate-400 mt-1">{n.asin}</p>
+                                                        </div>
+                                                        <div className="flex-1 min-w-0 bg-white p-4 rounded-2xl border border-emerald-100 shadow-inner">
+                                                            <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest flex items-center gap-1.5 mb-1"><SparklesIcon className="w-3 h-3" /> Dashboard Designation</p>
+                                                            <input 
+                                                                type="text" 
+                                                                value={n.simplifiedName}
+                                                                onChange={(e) => setStagedNamingMatches(prev => prev.map(item => item.asin === n.asin ? {...item, simplifiedName: e.target.value} : item))}
+                                                                className="w-full text-sm font-black text-slate-800 bg-transparent border-none p-0 focus:ring-0"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
                                     )}
-                                    <div className="flex items-center gap-2 p-4 bg-amber-50 rounded-2xl border border-amber-100">
-                                        <InfoIcon className="w-5 h-5 text-amber-500 shrink-0" />
-                                        <p className="text-xs text-amber-800 leading-relaxed">The system will match YouTube metrics to Amazon metrics using a title-normalized deterministic logic. Products without video matches will be preserved as standalone entries.</p>
-                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
                     </div>
                 )}
-            </div>
-            
-            <div className="bg-slate-900 text-white p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden flex-shrink-0">
-                <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
-                    <div>
-                        <h3 className="text-xl font-black flex items-center gap-3">
-                            <TrendingUpIcon className="w-6 h-6 text-indigo-400" /> Platform Insights
-                        </h3>
-                        <p className="text-slate-400 mt-2 max-w-2xl text-sm font-medium leading-relaxed">
-                            Analyze your monetization spread across platforms. This registry provides a unified view of yield from AdSense, Onsite (Influencer), and Offsite (Affiliate) commissions.
-                        </p>
-                    </div>
-                    <div className="flex-shrink-0 text-center px-10 py-4 bg-white/5 rounded-2xl border border-white/5">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Entity Coverage</p>
-                        <p className="text-2xl font-black">{unifiedEntities.length} Clusters</p>
-                    </div>
-                </div>
-                <SparklesIcon className="absolute -right-12 -bottom-12 w-64 h-64 opacity-[0.03] text-indigo-500 pointer-events-none" />
             </div>
         </div>
     );
 };
+
+// Re-defining missing icon component for this file
+const ClockIcon = ({className}: {className?: string}) => (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+);
 
 export default ContentHub;

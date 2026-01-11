@@ -1,4 +1,3 @@
-
 export type BalanceEffect = 'incoming' | 'outgoing' | 'neutral';
 
 export interface TransactionType {
@@ -451,6 +450,7 @@ export interface YouTubeMetric {
     ctr: number;
     channelId?: string;
     reportYear?: string;
+    duration?: string;
 }
 
 export interface FinancialGoal {

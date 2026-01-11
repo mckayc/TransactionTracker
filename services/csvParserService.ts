@@ -1,4 +1,3 @@
-
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -528,7 +527,8 @@ export const parseYouTubeReport = async (file: File, onProgress: (msg: string) =
         title: header.findIndex(h => h.includes('title')), 
         views: header.indexOf('views'), 
         rev: header.findIndex(h => h.includes('revenue')), 
-        date: header.findIndex(h => h.includes('date') || h.includes('time')) 
+        date: header.findIndex(h => h.includes('date') || h.includes('time')),
+        duration: header.findIndex(h => h.includes('duration') || h.includes('length'))
     };
     for (let i = headerIndex + 1; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -545,7 +545,8 @@ export const parseYouTubeReport = async (file: File, onProgress: (msg: string) =
             subscribersGained: 0,
             estimatedRevenue: parseFloat(values[colMap.rev]?.replace(/[$,]/g, '')) || 0,
             impressions: 0,
-            ctr: 0
+            ctr: 0,
+            duration: colMap.duration > -1 ? values[colMap.duration] : undefined
         });
     }
     return metrics;
