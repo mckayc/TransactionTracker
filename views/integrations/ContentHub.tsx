@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
 import type { AmazonMetric, YouTubeMetric, ContentLink, AmazonVideo } from '../../types';
-// Added missing WorkflowIcon and VideoIcon imports
 import { ChartPieIcon, YoutubeIcon, BoxIcon, TrendingUpIcon, LightBulbIcon, SearchCircleIcon, SparklesIcon, CheckCircleIcon, ExternalLinkIcon, SortIcon, InfoIcon, ShieldCheckIcon, CloudArrowUpIcon, CloseIcon, TableIcon, PlayIcon, LinkIcon, WorkflowIcon, VideoIcon } from '../../components/Icons';
 import { generateUUID } from '../../utils';
 import { simplifyProductNames } from '../../services/geminiService';
@@ -13,7 +12,7 @@ interface ContentHubProps {
     onUpdateLinks: (links: ContentLink[]) => void;
 }
 
-const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
+const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
 
 const normalizeTitle = (title: string) => 
@@ -35,88 +34,138 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
     const [isVerifying, setIsVerifying] = useState(false);
     const [isSimplifying, setIsSimplifying] = useState(false);
 
-    // 1. Unified Content Entity Mapping
-    const unifiedEntities = useMemo(() => {
-        // Group YouTube data by Video ID
-        const ytVideos = new Map<string, { id: string, title: string, revenue: number, views: number, date: string }>();
+    // 1. Global Totals - Raw sum of all available data across both integrations
+    const globalTotals = useMemo(() => {
+        const totals = { yt: 0, aff: 0, inf: 0, ccOn: 0, ccOff: 0, total: 0 };
+        
         youtubeMetrics.forEach(m => {
-            if (!ytVideos.has(m.videoId)) {
-                ytVideos.set(m.videoId, { id: m.videoId, title: m.videoTitle, revenue: 0, views: 0, date: m.publishDate });
-            }
-            const ex = ytVideos.get(m.videoId)!;
-            ex.revenue += m.estimatedRevenue;
-            ex.views += m.views;
+            totals.yt += m.estimatedRevenue;
+            totals.total += m.estimatedRevenue;
         });
 
-        // Group Amazon Metrics for lookup
+        amazonMetrics.forEach(m => {
+            if (m.reportType === 'offsite') totals.aff += m.revenue;
+            else if (m.reportType === 'onsite') totals.inf += m.revenue;
+            else if (m.reportType === 'creator_connections') {
+                if (m.creatorConnectionsType === 'onsite') totals.ccOn += m.revenue;
+                else totals.ccOff += m.revenue;
+            }
+            totals.total += m.revenue;
+        });
+
+        return totals;
+    }, [youtubeMetrics, amazonMetrics]);
+
+    // 2. Unified Content Entity Mapping - Union of YouTube and Amazon data
+    const unifiedEntities = useMemo(() => {
+        const entities: any[] = [];
+        const consumedAmMetricIds = new Set<string>();
+
+        // Prep lookup maps
         const amByAsin = new Map<string, AmazonMetric[]>();
+        const amByVideoTitle = new Map<string, AmazonMetric[]>();
+        
         amazonMetrics.forEach(m => {
             if (!amByAsin.has(m.asin)) amByAsin.set(m.asin, []);
             amByAsin.get(m.asin)!.push(m);
+            
+            if (m.videoTitle) {
+                const norm = normalizeTitle(m.videoTitle);
+                if (!amByVideoTitle.has(norm)) amByVideoTitle.set(norm, []);
+                amByVideoTitle.get(norm)!.push(m);
+            }
         });
 
-        // Create the composite list based on Links
-        return Array.from(ytVideos.values()).map(yt => {
-            const link = contentLinks.find(l => l.youtubeVideoId === yt.id);
-            
-            let amAffRev = 0;
-            let amInfRev = 0;
-            let ccOnRev = 0;
-            let ccOffRev = 0;
-
-            const processMetric = (m: AmazonMetric) => {
-                if (m.reportType === 'offsite') amAffRev += m.revenue;
-                else if (m.reportType === 'onsite') amInfRev += m.revenue;
-                else if (m.reportType === 'creator_connections') {
-                    if (m.creatorConnectionsType === 'onsite') ccOnRev += m.revenue;
-                    else ccOffRev += m.revenue;
-                }
-            };
-
-            if (link) {
-                link.amazonAsins.forEach(asin => {
-                    const metrics = amByAsin.get(asin) || [];
-                    metrics.forEach(processMetric);
+        // Step 1: Process all YouTube Videos as primary anchors
+        const ytVideos = new Map<string, any>();
+        youtubeMetrics.forEach(m => {
+            if (!ytVideos.has(m.videoId)) {
+                ytVideos.set(m.videoId, { 
+                    id: m.videoId, 
+                    title: m.videoTitle, 
+                    originalTitle: m.videoTitle,
+                    ytRev: 0, 
+                    amAffRev: 0, amInfRev: 0, ccOnRev: 0, ccOffRev: 0, 
+                    total: 0, 
+                    date: m.publishDate,
+                    isLinked: false,
+                    type: 'youtube'
                 });
-            } else {
-                // Try to find Amazon metrics that have this exact video title associated (Onsite metrics often include videoTitle)
-                const normYt = normalizeTitle(yt.title);
-                amazonMetrics.forEach(m => {
-                    const normAmVideo = normalizeTitle(m.videoTitle || '');
-                    if (normAmVideo && normAmVideo === normYt) {
-                        processMetric(m);
-                    }
+            }
+            ytVideos.get(m.videoId).ytRev += m.estimatedRevenue;
+        });
+
+        // Step 2: Attribute Amazon data to YouTube videos
+        ytVideos.forEach((yt, videoId) => {
+            const link = contentLinks.find(l => l.youtubeVideoId === videoId);
+            const targets: AmazonMetric[] = [];
+
+            // Case A: User link exists (ASIN based)
+            if (link) {
+                yt.isLinked = true;
+                if (link.simplifiedName) yt.title = link.simplifiedName;
+                link.amazonAsins.forEach(asin => {
+                    const matches = amByAsin.get(asin) || [];
+                    targets.push(...matches);
                 });
             }
 
-            const total = yt.revenue + amAffRev + amInfRev + ccOnRev + ccOffRev;
+            // Case B: Title matching fallback (Onsite reports)
+            const normTitle = normalizeTitle(yt.originalTitle);
+            const titleMatches = amByVideoTitle.get(normTitle) || [];
+            targets.push(...titleMatches);
 
-            return {
-                id: yt.id,
-                title: link?.simplifiedName || yt.title,
-                originalTitle: yt.title,
-                date: link?.videoCreationDate || yt.date,
-                ytRev: yt.revenue,
-                amAffRev,
-                amInfRev,
-                ccOnRev,
-                ccOffRev,
-                total,
-                isLinked: !!link
-            };
-        }).sort((a, b) => b.total - a.total);
+            // Deduplicate and accumulate
+            const uniqueTargets = new Set<string>();
+            targets.forEach(m => {
+                if (uniqueTargets.has(m.id)) return;
+                uniqueTargets.add(m.id);
+                consumedAmMetricIds.add(m.id);
+
+                if (m.reportType === 'offsite') yt.amAffRev += m.revenue;
+                else if (m.reportType === 'onsite') yt.amInfRev += m.revenue;
+                else if (m.reportType === 'creator_connections') {
+                    if (m.creatorConnectionsType === 'onsite') yt.ccOnRev += m.revenue;
+                    else yt.ccOffRev += m.revenue;
+                }
+            });
+
+            yt.total = yt.ytRev + yt.amAffRev + yt.amInfRev + yt.ccOnRev + yt.ccOffRev;
+            entities.push(yt);
+        });
+
+        // Step 3: Handle orphaned Amazon data (not linked to any YouTube video)
+        // Group these by ASIN so the table isn't flooded with tiny rows
+        const orphanedMap = new Map<string, any>();
+        amazonMetrics.forEach(m => {
+            if (consumedAmMetricIds.has(m.id)) return;
+
+            if (!orphanedMap.has(m.asin)) {
+                orphanedMap.set(m.asin, {
+                    id: m.asin,
+                    title: m.productTitle || m.asin,
+                    originalTitle: m.productTitle || m.asin,
+                    date: m.saleDate,
+                    ytRev: 0, amAffRev: 0, amInfRev: 0, ccOnRev: 0, ccOffRev: 0,
+                    total: 0,
+                    isLinked: false,
+                    type: 'amazon'
+                });
+            }
+            const orphan = orphanedMap.get(m.asin)!;
+            if (m.reportType === 'offsite') orphan.amAffRev += m.revenue;
+            else if (m.reportType === 'onsite') orphan.amInfRev += m.revenue;
+            else if (m.reportType === 'creator_connections') {
+                if (m.creatorConnectionsType === 'onsite') orphan.ccOnRev += m.revenue;
+                else orphan.ccOffRev += m.revenue;
+            }
+            orphan.total = orphan.amAffRev + orphan.amInfRev + orphan.ccOnRev + orphan.ccOffRev;
+        });
+
+        entities.push(...Array.from(orphanedMap.values()));
+
+        return entities.sort((a, b) => b.total - a.total);
     }, [youtubeMetrics, amazonMetrics, contentLinks]);
-
-    const globalTotals = useMemo(() => {
-        return unifiedEntities.reduce((acc, curr) => ({
-            yt: acc.yt + curr.ytRev,
-            aff: acc.aff + curr.amAffRev,
-            inf: acc.inf + curr.amInfRev,
-            ccOn: acc.ccOn + curr.ccOnRev,
-            ccOff: acc.ccOff + curr.ccOffRev,
-            total: acc.total + curr.total
-        }), { yt: 0, aff: 0, inf: 0, ccOn: 0, ccOff: 0, total: 0 });
-    }, [unifiedEntities]);
 
     // HANDLERS
     const handleRunLinker = async () => {
@@ -299,7 +348,7 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                                 </thead>
                                 <tbody className="bg-white divide-y divide-slate-100">
                                     {filteredEntities.map((e, idx) => (
-                                        <tr key={e.id} className="hover:bg-slate-50 transition-colors group">
+                                        <tr key={idx} className="hover:bg-slate-50 transition-colors group">
                                             <td className="px-6 py-4 max-w-md">
                                                 <div className="flex items-center gap-4">
                                                     <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-black text-slate-400 group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">#{idx+1}</div>
@@ -307,6 +356,7 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                                                         <p className="text-sm font-black text-slate-800 truncate" title={e.originalTitle}>{e.title}</p>
                                                         <div className="flex items-center gap-2 mt-1">
                                                             {e.isLinked && <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100 flex items-center gap-1"><ShieldCheckIcon className="w-2 b-2" /> Verified Link</span>}
+                                                            <span className="text-[8px] font-black uppercase text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">{e.type}</span>
                                                             <span className="text-[8px] font-mono text-slate-300 uppercase truncate max-w-[100px]">{e.id}</span>
                                                         </div>
                                                     </div>
@@ -385,7 +435,7 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                                     <WorkflowIcon className="w-12 h-12" />
                                 </div>
                                 <h2 className="text-3xl font-black text-slate-800">Neutral platform alignment</h2>
-                                <p className="text-slate-500 max-w-lg mx-auto leading-relaxed">Cross-reference video metadata with product mappings to unlock unified ROI reporting.</p>
+                                <p className="text-slate-500 max-lg mx-auto leading-relaxed">Cross-reference video metadata with product mappings to unlock unified ROI reporting.</p>
                             </div>
 
                             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm space-y-10">
@@ -455,18 +505,15 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                 <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
                     <div>
                         <h3 className="text-xl font-black flex items-center gap-3">
-                            <TrendingUpIcon className="w-6 h-6 text-indigo-400" /> Attribution Matrix
+                            <TrendingUpIcon className="w-6 h-6 text-indigo-400" /> Platform Insights
                         </h3>
                         <p className="text-slate-400 mt-2 max-w-2xl text-sm font-medium leading-relaxed">
-                            Your content strategy generates 
-                            <strong className="text-white mx-1">{((globalTotals.yt + globalTotals.aff + globalTotals.ccOff) / (globalTotals.total || 1) * 100).toFixed(0)}%</strong> 
-                            of its value from external traffic acquisition (YouTube), while platform-native search (Amazon Onsite) contributes 
-                            <strong className="text-white mx-1">{((globalTotals.inf + globalTotals.ccOn) / (globalTotals.total || 1) * 100).toFixed(0)}%</strong>.
+                            Analyze your monetization spread across platforms. This registry provides a unified view of yield from AdSense, Onsite (Influencer), and Offsite (Affiliate) commissions.
                         </p>
                     </div>
                     <div className="flex-shrink-0 text-center px-10 py-4 bg-white/5 rounded-2xl border border-white/5">
-                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Leading Ecosystem</p>
-                        <p className="text-2xl font-black">{globalTotals.yt + globalTotals.aff + globalTotals.ccOff > globalTotals.inf + globalTotals.ccOn ? 'Social Push' : 'Market Pull'}</p>
+                        <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Entity Coverage</p>
+                        <p className="text-2xl font-black">{unifiedEntities.length} Clusters</p>
                     </div>
                 </div>
                 <SparklesIcon className="absolute -right-12 -bottom-12 w-64 h-64 opacity-[0.03] text-indigo-500 pointer-events-none" />
