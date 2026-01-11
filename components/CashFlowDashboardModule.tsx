@@ -1,0 +1,400 @@
+
+import React, { useState, useMemo } from 'react';
+import type { Transaction, Category, Counterparty, DashboardWidget, Account, Tag, TransactionType, User } from '../types';
+import { ChevronRightIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TrendingUpIcon, BoxIcon, TableIcon, CloseIcon } from './Icons';
+import { parseISOLocal } from '../dateUtils';
+import TransactionTable from './TransactionTable';
+
+interface CashFlowDashboardModuleProps {
+    widget: DashboardWidget;
+    transactions: Transaction[];
+    categories: Category[];
+    counterparties: Counterparty[];
+    accounts: Account[];
+    tags: Tag[];
+    transactionTypes: TransactionType[];
+    users: User[];
+    onUpdateConfig: (newConfig: DashboardWidget['config']) => void;
+}
+
+const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
+
+interface BreakdownNode {
+    id: string;
+    label: string;
+    value: number;
+    color: string;
+    transactions: Transaction[];
+    children: BreakdownNode[];
+    parentId?: string;
+}
+
+const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+
+const DonutChart: React.FC<{ 
+    data: { label: string; value: number; color: string; transactions: Transaction[] }[]; 
+    total: number;
+    onSegmentClick: (node: any) => void;
+}> = ({ data, total, onSegmentClick }) => {
+    let accumulated = 0;
+    const radius = 35;
+    const circ = 2 * Math.PI * radius;
+    const [hovered, setHovered] = useState<number | null>(null);
+
+    return (
+        <div className="relative w-44 h-44 mx-auto flex items-center justify-center">
+            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+                {data.map((item, i) => {
+                    const pct = total > 0 ? (item.value / total) : 0;
+                    if (pct <= 0) return null;
+                    const offset = -accumulated * circ;
+                    const strokeDash = `${pct * circ} ${circ}`;
+                    accumulated += pct;
+                    const isHovered = hovered === i;
+                    
+                    return (
+                        <circle
+                            key={item.label + i}
+                            cx="50"
+                            cy="50"
+                            r={radius}
+                            fill="transparent"
+                            stroke={item.color}
+                            strokeWidth={isHovered ? 12 : 10}
+                            strokeDasharray={strokeDash}
+                            strokeDashoffset={offset}
+                            strokeLinecap="round"
+                            className="transition-all duration-300 ease-out cursor-pointer"
+                            onMouseEnter={() => setHovered(i)}
+                            onMouseLeave={() => setHovered(null)}
+                            onClick={() => onSegmentClick(item)}
+                        />
+                    );
+                })}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center px-4">
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5 truncate w-full">
+                    {hovered !== null ? data[hovered].label : 'Visible'}
+                </p>
+                <p className="text-base font-black text-slate-800 leading-none">
+                    {formatCurrency(hovered !== null ? data[hovered].value : total)}
+                </p>
+                {hovered !== null && total > 0 && (
+                    <p className="text-[9px] font-bold text-indigo-600 mt-0.5">
+                        {((data[hovered].value / total) * 100).toFixed(0)}%
+                    </p>
+                )}
+            </div>
+        </div>
+    );
+};
+
+const BreakdownRow: React.FC<{
+    node: BreakdownNode;
+    total: number;
+    maxVal: number;
+    hiddenIds: Set<string>;
+    expandedIds: Set<string>;
+    onToggleVisibility: (id: string) => void;
+    onToggleExpand: (id: string) => void;
+    onInspect: (node: BreakdownNode) => void;
+    depth?: number;
+}> = ({ node, total, maxVal, hiddenIds, expandedIds, onToggleVisibility, onToggleExpand, onInspect, depth = 0 }) => {
+    const isHidden = hiddenIds.has(node.id);
+    const isExpanded = expandedIds.has(node.id);
+    const hasChildren = node.children.length > 0;
+    const percentage = total > 0 ? (node.value / total) * 100 : 0;
+
+    return (
+        <div className="select-none">
+            <div 
+                className={`group flex items-center gap-2 p-1.5 rounded-xl transition-all cursor-pointer ${isHidden ? 'opacity-30 grayscale bg-slate-50' : 'hover:bg-slate-50'}`}
+                style={{ paddingLeft: `${depth * 12 + 4}px` }}
+                onClick={() => onInspect(node)}
+            >
+                <div className="w-4 flex justify-center flex-shrink-0">
+                    {hasChildren && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onToggleExpand(node.id); }}
+                            className="p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-white"
+                        >
+                            <ChevronRightIcon className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
+                    )}
+                </div>
+
+                <div className="w-2 h-2 rounded-full flex-shrink-0 shadow-sm" style={{ backgroundColor: node.color }} />
+                
+                <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-0.5">
+                        <span className={`text-[11px] font-bold truncate pr-2 ${isHidden ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                            {node.label}
+                        </span>
+                        <span className={`text-[11px] font-black font-mono ${isHidden ? 'text-slate-300' : 'text-slate-900'}`}>
+                            {formatCurrency(node.value)}
+                        </span>
+                    </div>
+                    {!isHidden && percentage > 0.5 && (
+                        <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                            <div className="h-full transition-all duration-1000" style={{ width: `${(node.value / maxVal) * 100}%`, backgroundColor: node.color }} />
+                        </div>
+                    )}
+                </div>
+
+                <button 
+                    onClick={(e) => { e.stopPropagation(); onToggleVisibility(node.id); }}
+                    className={`p-1 rounded-md transition-all ${isHidden ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 opacity-0 group-hover:opacity-100 hover:text-indigo-600 hover:bg-white shadow-sm'}`}
+                >
+                    {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
+                </button>
+            </div>
+
+            {isExpanded && hasChildren && (
+                <div className="mt-0.5">
+                    {node.children.sort((a,b) => b.value - a.value).map(child => (
+                        <BreakdownRow 
+                            key={child.id} 
+                            node={child} 
+                            total={total} 
+                            maxVal={maxVal}
+                            onToggleVisibility={onToggleVisibility} 
+                            onInspect={onInspect} 
+                            hiddenIds={hiddenIds} 
+                            expandedIds={expandedIds} 
+                            onToggleExpand={onToggleExpand} 
+                            depth={depth + 1} 
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = ({ 
+    widget, transactions, categories, counterparties, accounts, tags, transactionTypes, users, onUpdateConfig 
+}) => {
+    const config = widget.config;
+    const period = config?.period || 'month';
+    const lookbackUnits = config?.lookback || 0;
+    const vizType = config?.vizType || 'cards';
+    const dataType = config?.displayDataType || 'type';
+    const excludeUnknown = config?.excludeUnknown !== false; // Default to true
+    const hiddenIds = useMemo(() => new Set(config?.hiddenDataIds || []), [config?.hiddenDataIds]);
+
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+    const [inspectingNode, setInspectingNode] = useState<BreakdownNode | null>(null);
+
+    // Date Logic
+    const { start, end, label } = useMemo(() => {
+        const s = new Date();
+        s.setHours(0,0,0,0);
+        const e = new Date();
+        e.setHours(23,59,59,999);
+
+        if (period === 'month') {
+            s.setMonth(s.getMonth() - lookbackUnits, 1);
+            e.setMonth(s.getMonth() + 1, 0);
+        } else if (period === 'year') {
+            s.setFullYear(s.getFullYear() - lookbackUnits, 0, 1);
+            e.setFullYear(s.getFullYear(), 11, 31);
+        }
+        return { start: s, end: e, label: s.toLocaleString('default', { month: 'short', year: 'numeric' }) };
+    }, [period, lookbackUnits]);
+
+    // Tree Engine
+    const tree = useMemo(() => {
+        const nodeMap = new Map<string, BreakdownNode>();
+        
+        const getOrCreateNode = (id: string, label: string, parentId?: string): BreakdownNode => {
+            if (!nodeMap.has(id)) {
+                nodeMap.set(id, { id, label, value: 0, color: '', transactions: [], children: [], parentId });
+            }
+            return nodeMap.get(id)!;
+        };
+
+        transactions.forEach(tx => {
+            const txDate = parseISOLocal(tx.date);
+            if (txDate >= start && txDate <= end && !tx.isParent) {
+                // Filter Visibility
+                const isIncome = tx.typeId.includes('income');
+                const isInvestment = tx.typeId === 'type_investment';
+                const isDonation = tx.typeId === 'type_donation';
+                const isExpense = tx.typeId.includes('purchase') || tx.typeId.includes('tax');
+
+                if (isIncome && config?.showIncome === false) return;
+                if (isExpense && config?.showExpenses === false) return;
+                if (isInvestment && config?.showInvestments === false) return;
+                if (isDonation && config?.showDonations === false) return;
+
+                let key = '', label = '', parentId: string | undefined = undefined;
+
+                if (dataType === 'category') {
+                    key = tx.categoryId;
+                    const cat = categories.find(c => c.id === key);
+                    label = cat?.name || 'Unallocated';
+                    parentId = cat?.parentId;
+                } else if (dataType === 'counterparty') {
+                    key = tx.counterpartyId || 'unknown';
+                    const cp = counterparties.find(c => c.id === key);
+                    label = cp?.name || 'Unknown Entity';
+                    parentId = cp?.parentId;
+                } else if (dataType === 'account') {
+                    key = tx.accountId;
+                    label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
+                } else {
+                    key = tx.typeId;
+                    label = transactionTypes.find(t => t.id === key)?.name || 'Other';
+                }
+
+                // Logic: Exclude Unknown if config requested
+                if (excludeUnknown) {
+                    const isUnknown = key === 'unknown' || key === 'no-counterparty' || label === 'Unallocated' || label === 'Unknown Entity' || label === 'Unknown Account';
+                    if (isUnknown) return;
+                }
+
+                const node = getOrCreateNode(key, label, parentId);
+                node.value += tx.amount;
+                node.transactions.push(tx);
+            }
+        });
+
+        // Hierarchy Build
+        const allNodes = Array.from(nodeMap.values());
+        allNodes.forEach(node => {
+            if (node.parentId && nodeMap.has(node.parentId)) {
+                const p = nodeMap.get(node.parentId)!;
+                if (!p.children.find(c => c.id === node.id)) p.children.push(node);
+            }
+        });
+
+        const roots = allNodes.filter(n => !n.parentId || !nodeMap.has(n.parentId));
+
+        // Aggregate & Color (Recursive)
+        const processRecursive = (node: BreakdownNode, color: string): number => {
+            let aggregate = node.value;
+            node.children.forEach(child => {
+                aggregate += processRecursive(child, color);
+                node.transactions = [...node.transactions, ...child.transactions];
+            });
+            node.value = aggregate;
+            node.color = color;
+            return aggregate;
+        };
+
+        // First calculate aggregates so we can sort properly
+        roots.forEach(root => {
+            let agg = root.value;
+            const calc = (n: BreakdownNode) => {
+                n.children.forEach(c => { agg += c.value; calc(c); });
+            };
+            // The processRecursive already does this aggregation, but we need to sort roots by their final calculated values
+        });
+
+        // Use a simple initial aggregation pass
+        const getFinalValue = (n: BreakdownNode): number => {
+            return n.value + n.children.reduce((s, c) => s + getFinalValue(c), 0);
+        };
+
+        // Deep Sort children by final aggregated value
+        const sortRecursive = (n: BreakdownNode) => {
+            n.children.sort((a, b) => getFinalValue(b) - getFinalValue(a));
+            n.children.forEach(sortRecursive);
+        };
+
+        roots.sort((a, b) => getFinalValue(b) - getFinalValue(a));
+        roots.forEach(sortRecursive);
+
+        // Final color assignment pass
+        roots.forEach((root, i) => {
+            processRecursive(root, COLORS[i % COLORS.length]);
+        });
+
+        return roots;
+    }, [transactions, start, end, dataType, categories, counterparties, accounts, transactionTypes, config, excludeUnknown]);
+
+    const visibleTree = useMemo(() => tree.filter(n => !hiddenIds.has(n.id)), [tree, hiddenIds]);
+    const totalVisible = useMemo(() => visibleTree.reduce((s, n) => s + n.value, 0), [visibleTree]);
+    const maxVal = useMemo(() => Math.max(...tree.map(n => n.value), 1), [tree]);
+
+    const toggleVisibility = (id: string) => {
+        const next = new Set(hiddenIds);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        onUpdateConfig({ ...config, hiddenDataIds: Array.from(next) });
+    };
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden">
+            <div className="flex-1 p-6 flex flex-col min-h-0">
+                <div className="flex-shrink-0 mb-8">
+                    {vizType === 'cards' ? (
+                        <div className="p-6 bg-slate-900 rounded-[2rem] text-white relative overflow-hidden shadow-xl">
+                            <div className="relative z-10">
+                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Dynamic Volume</p>
+                                <p className="text-3xl font-black">{formatCurrency(totalVisible)}</p>
+                            </div>
+                            <TrendingUpIcon className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-5" />
+                        </div>
+                    ) : (
+                        <DonutChart 
+                            data={visibleTree.map(n => ({ label: n.label, value: n.value, color: n.color, transactions: n.transactions }))} 
+                            total={totalVisible} 
+                            onSegmentClick={(segment) => setInspectingNode(segment as any)}
+                        />
+                    )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Composition</p>
+                    {tree.length === 0 ? (
+                        <div className="py-12 text-center text-slate-300 italic text-sm">No data in this period.</div>
+                    ) : (
+                        tree.map(node => (
+                            <BreakdownRow 
+                                key={node.id} 
+                                node={node} 
+                                total={totalVisible} 
+                                maxVal={maxVal}
+                                hiddenIds={hiddenIds} 
+                                expandedIds={expandedIds}
+                                onToggleVisibility={toggleVisibility}
+                                onToggleExpand={(id) => setExpandedIds(prev => { const n = new Set(prev); if(n.has(id)) n.delete(id); else n.add(id); return n; })}
+                                onInspect={setInspectingNode}
+                            />
+                        ))
+                    )}
+                </div>
+            </div>
+
+            {inspectingNode && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 rounded-2xl bg-white shadow-sm" style={{ color: inspectingNode.color }}>
+                                    <TableIcon className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-800">{inspectingNode.label}</h3>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">{inspectingNode.transactions.length} items total {formatCurrency(inspectingNode.value)}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setInspectingNode(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                        </div>
+                        <div className="flex-1 overflow-hidden relative">
+                            <TransactionTable 
+                                transactions={inspectingNode.transactions}
+                                accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users}
+                                onUpdateTransaction={() => {}} onDeleteTransaction={() => {}}
+                                visibleColumns={new Set(['date', 'description', 'account', 'amount'])}
+                            />
+                        </div>
+                        <div className="p-6 border-t bg-white flex justify-end">
+                            <button onClick={() => setInspectingNode(null)} className="px-8 py-3 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 uppercase text-[10px] tracking-widest">Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};

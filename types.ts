@@ -290,6 +290,7 @@ export interface DashboardWidget {
         showInvestments?: boolean;
         showDonations?: boolean;
         hiddenDataIds?: string[];
+        excludeUnknown?: boolean;
     };
 }
 
