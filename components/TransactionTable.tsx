@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, Counterparty, Category, User, Tag } from '../types';
-import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon, WrenchIcon } from './Icons';
+import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon, WrenchIcon, EditIcon } from './Icons';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -13,6 +13,7 @@ interface TransactionTableProps {
   users: User[];
   onUpdateTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
+  onEditTransaction?: (transaction: Transaction) => void;
   onCreateRule?: (transaction: Transaction) => void;
   onEditRule?: (ruleId: string, transaction: Transaction) => void;
   showCheckboxes?: boolean;
@@ -113,6 +114,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   users,
   onUpdateTransaction, 
   onDeleteTransaction,
+  onEditTransaction,
   onCreateRule,
   onEditRule,
   showCheckboxes = false,
@@ -176,7 +178,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         const next = new Set(expandedGroups);
         if (next.has(groupId)) next.delete(groupId);
         else next.add(groupId);
-        // Fix: changed from setExpandedIds to setExpandedGroups to match defined state
         setExpandedGroups(next);
     };
 
@@ -285,6 +286,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                                     {appliedIds.length > 0 && onEditRule && (
                                                         <button onClick={() => onEditRule(appliedIds[0], tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Edit Applied Rule"><WrenchIcon className="w-4 h-4" /></button>
                                                     )}
+                                                    <button onClick={() => onEditTransaction?.(tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Edit Transaction"><EditIcon className="w-4 h-4" /></button>
                                                     <button onClick={() => setInspectedTx(tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Inspect Record"><DatabaseIcon className="w-4 h-4" /></button>
                                                     <button onClick={() => onSplit?.(tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Split Transaction"><SplitIcon className="w-4 h-4" /></button>
                                                     <button onClick={() => onDeleteTransaction(tx.id)} className="p-1.5 text-slate-300 hover:text-red-600 rounded-lg transition-all" title="Delete Record"><DeleteIcon className="w-4 h-4" /></button>

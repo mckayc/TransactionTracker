@@ -122,6 +122,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEditType, setBulkEditType] = useState<'categoryId' | 'date' | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [ruleContextTx, setRuleContextTx] = useState<Transaction | null>(null);
 
@@ -177,6 +178,11 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
       }
   };
 
+  const handleEditTransaction = (tx: Transaction) => {
+      setEditingTransaction(tx);
+      setIsModalOpen(true);
+  };
+
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="flex flex-wrap gap-3 flex-shrink-0 animate-fade-in">
@@ -216,12 +222,11 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
                     <span className="px-3 text-[10px] font-black uppercase">{selectedIds.size} Selected</span>
                     <button onClick={() => setBulkEditType('categoryId')} className="p-2 hover:bg-white/10 rounded-xl text-indigo-400"><TagIcon className="w-4 h-4"/></button>
                     <button onClick={() => setBulkEditType('date')} className="p-2 hover:bg-white/10 rounded-xl text-amber-400"><CalendarIcon className="w-4 h-4"/></button>
-                    {/* Fix: changed handleBulkDelete to onClick={handleBulkDelete} to match standard button attributes */}
                     <button onClick={handleBulkDelete} className="p-2 hover:bg-white/10 rounded-xl text-rose-400"><TrashIcon className="w-4 h-4"/></button>
                     <button onClick={() => setSelectedIds(new Set())} className="p-2 text-slate-500 hover:text-white"><CloseIcon className="w-4 h-4"/></button>
                 </div>
             )}
-            <button onClick={() => setIsModalOpen(true)} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all active:scale-95 whitespace-nowrap">
+            <button onClick={() => { setEditingTransaction(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all active:scale-95 whitespace-nowrap">
                 <AddIcon className="w-4 h-4"/> Add Entry
             </button>
         </div>
@@ -233,6 +238,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
             <TransactionTable 
                 transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} 
                 onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} 
+                onEditTransaction={handleEditTransaction}
                 showCheckboxes={true} selectedTxIds={selectedIds} 
                 onToggleSelection={(id) => { const n = new Set(selectedIds); if (n.has(id)) n.delete(id); else n.add(id); setSelectedIds(n); }} 
                 onToggleSelectAll={() => { if (selectedIds.size === transactions.length) setSelectedIds(new Set()); else setSelectedIds(new Set(transactions.map(t => t.id))); }} 
@@ -256,7 +262,20 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
           </div>
       </div>
 
-      <TransactionModal isOpen={isModalOpen} transaction={null} onClose={() => setIsModalOpen(false)} onSave={(tx) => { onAddTransaction({ ...tx, id: generateUUID() } as any); setIsModalOpen(false); }} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onSaveCounterparty={onSaveCounterparty} onSaveCategory={onSaveCategory} />
+      <TransactionModal 
+        isOpen={isModalOpen} 
+        transaction={editingTransaction} 
+        onClose={() => { setIsModalOpen(false); setEditingTransaction(null); }} 
+        onSave={(formData) => { 
+            if (editingTransaction) {
+                onUpdateTransaction({ ...formData, id: editingTransaction.id });
+            } else {
+                onAddTransaction({ ...formData, id: generateUUID() } as any);
+            }
+            setIsModalOpen(false); 
+        }} 
+        accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onSaveCounterparty={onSaveCounterparty} onSaveCategory={onSaveCategory} 
+      />
       {bulkEditType && <BulkEditModal type={bulkEditType} isOpen={!!bulkEditType} onClose={() => setBulkEditType(null)} onConfirm={(val) => handleBulkUpdate(bulkEditType, val)} categories={categories} />}
       <MetricBreakdownModal isOpen={!!activeMetricBreakdown} onClose={() => setActiveMetricBreakdown(null)} title={activeMetricBreakdown === 'inflow' ? 'Total Inflow' : activeMetricBreakdown === 'outflow' ? 'Total Outflow' : 'Investments'} items={breakdownData.items} total={breakdownData.total} isLoading={isBreakdownLoading} colorClass={activeMetricBreakdown === 'inflow' ? 'text-emerald-600' : activeMetricBreakdown === 'outflow' ? 'text-rose-600' : 'text-purple-600'} />
       
