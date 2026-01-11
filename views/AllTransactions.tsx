@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, User, Tag, SavedReport, DateRangePreset } from '../types';
+import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, User, Tag, SavedReport, DateRangePreset, RuleCategory, Location } from '../types';
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import BulkEditModal from '../components/BulkEditModal';
+import RuleModal from '../components/RuleModal';
 import { AddIcon, DeleteIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, SparklesIcon, CalendarIcon, TrendingUpIcon, TagIcon, TrashIcon, InfoIcon } from '../components/Icons';
 import { api } from '../services/apiService';
 import { generateUUID } from '../utils';
@@ -74,7 +75,7 @@ const MetricBreakdownModal: React.FC<{
     );
 };
 
-const AllTransactions: React.FC<{
+interface AllTransactionsProps {
   accounts: Account[];
   categories: Category[];
   tags: Tag[];
@@ -91,7 +92,17 @@ const AllTransactions: React.FC<{
   onSaveTag: (tag: Tag) => void;
   onAddTransactionType: (type: TransactionType) => void;
   onSaveReport: (report: SavedReport) => void;
-}> = ({ accounts, categories, tags, transactionTypes, counterparties, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onAddTransactionType, onSaveReport }) => {
+  rules: ReconciliationRule[];
+  ruleCategories: RuleCategory[];
+  onSaveRuleCategory: (rc: RuleCategory) => void;
+  locations: Location[];
+  onDeleteRule: (id: string) => void;
+}
+
+const AllTransactions: React.FC<AllTransactionsProps> = ({ 
+    accounts, categories, tags, transactionTypes, counterparties, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onAddTransactionType, onSaveReport,
+    rules, ruleCategories, onSaveRuleCategory, locations, onDeleteRule
+}) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -111,6 +122,8 @@ const AllTransactions: React.FC<{
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkEditType, setBulkEditType] = useState<'categoryId' | 'date' | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
+  const [ruleContextTx, setRuleContextTx] = useState<Transaction | null>(null);
 
   const { start, end, label } = useMemo(() => calculateDateRange(datePreset, customStart, customEnd, []), [datePreset, customStart, customEnd]);
 
@@ -149,6 +162,19 @@ const AllTransactions: React.FC<{
   const handleDateShift = (direction: 'prev' | 'next') => {
       const nextRange = shiftDateRange(start, end, direction);
       setCustomStart(formatDate(nextRange.start)); setCustomEnd(formatDate(nextRange.end)); setDatePreset('custom'); setPage(0);
+  };
+
+  const handleEditRule = (ruleId: string, transaction: Transaction) => {
+      const rule = rules.find(r => r.id === ruleId);
+      if (rule) {
+          setRuleContextTx({
+              ...transaction,
+              ...rule,
+              id: rule.id,
+              description: rule.conditions[0]?.value || transaction.description
+          } as any);
+          setIsRuleModalOpen(true);
+      }
   };
 
   return (
@@ -190,6 +216,7 @@ const AllTransactions: React.FC<{
                     <span className="px-3 text-[10px] font-black uppercase">{selectedIds.size} Selected</span>
                     <button onClick={() => setBulkEditType('categoryId')} className="p-2 hover:bg-white/10 rounded-xl text-indigo-400"><TagIcon className="w-4 h-4"/></button>
                     <button onClick={() => setBulkEditType('date')} className="p-2 hover:bg-white/10 rounded-xl text-amber-400"><CalendarIcon className="w-4 h-4"/></button>
+                    {/* Fix: changed handleBulkDelete to onClick={handleBulkDelete} to match standard button attributes */}
                     <button onClick={handleBulkDelete} className="p-2 hover:bg-white/10 rounded-xl text-rose-400"><TrashIcon className="w-4 h-4"/></button>
                     <button onClick={() => setSelectedIds(new Set())} className="p-2 text-slate-500 hover:text-white"><CloseIcon className="w-4 h-4"/></button>
                 </div>
@@ -203,7 +230,14 @@ const AllTransactions: React.FC<{
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200 flex-1 overflow-hidden flex flex-col relative">
           {isLoading && <div className="absolute inset-0 bg-white/30 backdrop-blur-[1px] z-20 flex items-center justify-center"><div className="animate-spin h-10 w-10 border-4 border-indigo-500 border-t-transparent rounded-full" /></div>}
           <div className="flex-1 overflow-auto">
-            <TransactionTable transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} showCheckboxes={true} selectedTxIds={selectedIds} onToggleSelection={(id) => { const n = new Set(selectedIds); if (n.has(id)) n.delete(id); else n.add(id); setSelectedIds(n); }} onToggleSelectAll={() => { if (selectedIds.size === transactions.length) setSelectedIds(new Set()); else setSelectedIds(new Set(transactions.map(t => t.id))); }} />
+            <TransactionTable 
+                transactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} 
+                onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} 
+                showCheckboxes={true} selectedTxIds={selectedIds} 
+                onToggleSelection={(id) => { const n = new Set(selectedIds); if (n.has(id)) n.delete(id); else n.add(id); setSelectedIds(n); }} 
+                onToggleSelectAll={() => { if (selectedIds.size === transactions.length) setSelectedIds(new Set()); else setSelectedIds(new Set(transactions.map(t => t.id))); }} 
+                onEditRule={handleEditRule}
+            />
           </div>
 
           <div className="p-3 bg-slate-50 border-t flex items-center justify-between">
@@ -225,6 +259,19 @@ const AllTransactions: React.FC<{
       <TransactionModal isOpen={isModalOpen} transaction={null} onClose={() => setIsModalOpen(false)} onSave={(tx) => { onAddTransaction({ ...tx, id: generateUUID() } as any); setIsModalOpen(false); }} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onSaveCounterparty={onSaveCounterparty} onSaveCategory={onSaveCategory} />
       {bulkEditType && <BulkEditModal type={bulkEditType} isOpen={!!bulkEditType} onClose={() => setBulkEditType(null)} onConfirm={(val) => handleBulkUpdate(bulkEditType, val)} categories={categories} />}
       <MetricBreakdownModal isOpen={!!activeMetricBreakdown} onClose={() => setActiveMetricBreakdown(null)} title={activeMetricBreakdown === 'inflow' ? 'Total Inflow' : activeMetricBreakdown === 'outflow' ? 'Total Outflow' : 'Investments'} items={breakdownData.items} total={breakdownData.total} isLoading={isBreakdownLoading} colorClass={activeMetricBreakdown === 'inflow' ? 'text-emerald-600' : activeMetricBreakdown === 'outflow' ? 'text-rose-600' : 'text-purple-600'} />
+      
+      {isRuleModalOpen && (
+          <RuleModal 
+            isOpen={isRuleModalOpen} 
+            onClose={() => { setIsRuleModalOpen(false); setRuleContextTx(null); }} 
+            onSaveRule={(r) => { onSaveRule(r); setIsRuleModalOpen(false); fetchTransactions(); }}
+            onDeleteRule={(id) => { onDeleteRule(id); setIsRuleModalOpen(false); fetchTransactions(); }}
+            accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} counterparties={counterparties} locations={locations} users={users} transaction={ruleContextTx}
+            ruleCategories={ruleCategories} onSaveRuleCategory={onSaveRuleCategory}
+            onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveTag={onSaveTag} 
+            existingRules={rules}
+          />
+      )}
     </div>
   );
 };

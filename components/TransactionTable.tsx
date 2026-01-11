@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, Counterparty, Category, User, Tag } from '../types';
-import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon } from './Icons';
+import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon, WrenchIcon } from './Icons';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -14,6 +14,7 @@ interface TransactionTableProps {
   onUpdateTransaction: (transaction: Transaction) => void;
   onDeleteTransaction: (transactionId: string) => void;
   onCreateRule?: (transaction: Transaction) => void;
+  onEditRule?: (ruleId: string, transaction: Transaction) => void;
   showCheckboxes?: boolean;
   selectedTxIds?: Set<string>;
   onToggleSelection?: (id: string) => void;
@@ -113,6 +114,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onUpdateTransaction, 
   onDeleteTransaction,
   onCreateRule,
+  onEditRule,
   showCheckboxes = false,
   selectedTxIds = new Set(),
   onToggleSelection = (_id) => {},
@@ -174,6 +176,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         const next = new Set(expandedGroups);
         if (next.has(groupId)) next.delete(groupId);
         else next.add(groupId);
+        // Fix: changed from setExpandedIds to setExpandedGroups to match defined state
         setExpandedGroups(next);
     };
 
@@ -258,6 +261,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                             if (item.type === 'single') {
                                 const tx = item.tx;
                                 const isSelected = selectedTxIds.has(tx.id);
+                                const appliedIds = tx.appliedRuleIds || (tx.appliedRuleId ? [tx.appliedRuleId] : []);
+
                                 return (
                                     <tr key={tx.id} className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-indigo-50/50' : ''}`}>
                                         {showCheckboxes && <td className="p-4 text-center"><input type="checkbox" checked={isSelected} onChange={() => onToggleSelection?.(tx.id)} className="rounded text-indigo-600 cursor-pointer" /></td>}
@@ -277,6 +282,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                         {visibleColumns.has('actions') && (
                                             <td className="px-4 py-3 text-center">
                                                 <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    {appliedIds.length > 0 && onEditRule && (
+                                                        <button onClick={() => onEditRule(appliedIds[0], tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Edit Applied Rule"><WrenchIcon className="w-4 h-4" /></button>
+                                                    )}
                                                     <button onClick={() => setInspectedTx(tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Inspect Record"><DatabaseIcon className="w-4 h-4" /></button>
                                                     <button onClick={() => onSplit?.(tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Split Transaction"><SplitIcon className="w-4 h-4" /></button>
                                                     <button onClick={() => onDeleteTransaction(tx.id)} className="p-1.5 text-slate-300 hover:text-red-600 rounded-lg transition-all" title="Delete Record"><DeleteIcon className="w-4 h-4" /></button>

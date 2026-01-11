@@ -100,7 +100,6 @@ const DynamicArcChart: React.FC<{
 
     return (
         <div className="flex flex-col items-center">
-            {/* Legend / Info Header (Above Chart) */}
             <div className="h-20 flex flex-col items-center justify-center text-center px-4 mb-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate w-full">
                     {hovered !== null ? data[hovered].label : 'Net Volume'}
@@ -220,7 +219,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [inspectingNode, setInspectingNode] = useState<BreakdownNode | null>(null);
 
-    // FIX: Date Logic properly isolated ranges
+    // Date Logic
     const { start, end, displayLabel } = useMemo(() => {
         const s = new Date();
         s.setHours(0,0,0,0);
@@ -228,11 +227,10 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
         e.setHours(23,59,59,999);
 
         if (period === 'month') {
-            s.setDate(1); // Set to 1st first to avoid overflow logic errors
+            s.setDate(1); 
             s.setMonth(s.getMonth() - lookbackUnits);
-            
             e.setTime(s.getTime());
-            e.setMonth(e.getMonth() + 1, 0); // Last day of that specific month
+            e.setMonth(e.getMonth() + 1, 0); 
         } else if (period === 'year') {
             s.setFullYear(s.getFullYear() - lookbackUnits, 0, 1);
             e.setFullYear(s.getFullYear() - lookbackUnits, 11, 31);
@@ -256,15 +254,17 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
         onUpdateConfig({ ...config, lookback: nextLookback });
     };
 
-    // Tree Engine with recursive parent recovery
+    // Calculation Engine
     const tree = useMemo(() => {
         const nodeMap = new Map<string, BreakdownNode>();
+        const typeRegistry = new Map(transactionTypes.map(t => [t.id, t]));
         
+        // Parse exclusion keywords
+        const keywords = (config?.excludeKeywords || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+
         const getOrCreateNode = (id: string, label: string, parentId?: string): BreakdownNode => {
             if (!nodeMap.has(id)) {
                 nodeMap.set(id, { id, label, value: 0, directValue: 0, color: '', transactions: [], children: [], parentId });
-                
-                // RECURSIVE: Ensure ancestors exist even without direct transactions
                 if (parentId) {
                     if (dataType === 'category') {
                         const p = categories.find(c => c.id === parentId);
@@ -281,26 +281,25 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
         transactions.forEach(tx => {
             const txDate = parseISOLocal(tx.date);
             if (txDate >= start && txDate <= end && !tx.isParent) {
-                const isIncome = tx.typeId.includes('income');
-                const isInvestment = tx.typeId === 'type_investment';
-                const isDonation = tx.typeId === 'type_donation';
-                const isExpense = tx.typeId.includes('purchase') || tx.typeId.includes('tax');
+                const txType = typeRegistry.get(tx.typeId);
+                const effect = txType?.balanceEffect || 'outgoing';
 
-                if (isIncome && config?.showIncome === false) return;
-                if (isExpense && config?.showExpenses === false) return;
-                if (isInvestment && config?.showInvestments === false) return;
-                if (isDonation && config?.showDonations === false) return;
+                // FIX: Respect strict balance effects
+                if (effect === 'incoming' && config?.showIncome === false) return;
+                if (effect === 'outgoing' && config?.showExpenses === false) return;
+                if (tx.typeId === 'type_investment' && config?.showInvestments === false) return;
+                if (tx.typeId === 'type_donation' && config?.showDonations === false) return;
 
                 let key = '', label = '', parentId: string | undefined = undefined;
 
                 if (dataType === 'category') {
+                    const cat = categories.find(c => c.id === tx.categoryId);
                     key = tx.categoryId;
-                    const cat = categories.find(c => c.id === key);
                     label = cat?.name || 'Unallocated';
                     parentId = cat?.parentId;
                 } else if (dataType === 'counterparty') {
+                    const cp = counterparties.find(c => c.id === tx.counterpartyId);
                     key = tx.counterpartyId || 'unknown';
-                    const cp = counterparties.find(c => c.id === key);
                     label = cp?.name || 'Unknown Entity';
                     parentId = cp?.parentId;
                 } else if (dataType === 'account') {
@@ -308,7 +307,13 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                     label = accounts.find(a => a.id === key)?.name || 'Unknown Account';
                 } else {
                     key = tx.typeId;
-                    label = transactionTypes.find(t => t.id === key)?.name || 'Other';
+                    label = txType?.name || 'Other';
+                }
+
+                // FIX: Keyword Exclusion Logic
+                if (keywords.length > 0) {
+                    const searchTarget = `${tx.description} ${tx.originalDescription || ''} ${label}`.toLowerCase();
+                    if (keywords.some(kw => searchTarget.includes(kw))) return;
                 }
 
                 if (excludeUnknown) {
@@ -322,7 +327,6 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
             }
         });
 
-        // Link Hierarchy
         const allNodes = Array.from(nodeMap.values());
         allNodes.forEach(node => {
             if (node.parentId && nodeMap.has(node.parentId)) {
@@ -333,7 +337,6 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
 
         const roots = allNodes.filter(n => !n.parentId || !nodeMap.has(n.parentId));
 
-        // Sorting & Aggregation pass
         const calculateAggregate = (node: BreakdownNode): number => {
             let sum = node.directValue;
             node.children.forEach(c => { 
@@ -351,10 +354,13 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
         };
 
         roots.forEach(calculateAggregate);
-        roots.sort((a, b) => b.value - a.value);
-        roots.forEach((root, i) => sortAndColorRecursive(root, COLORS[i % COLORS.length]));
+        
+        // Final sanity check: remove roots that ended up empty due to filtering
+        const activeRoots = roots.filter(r => r.value !== 0);
+        activeRoots.sort((a, b) => b.value - a.value);
+        activeRoots.forEach((root, i) => sortAndColorRecursive(root, COLORS[i % COLORS.length]));
 
-        return roots;
+        return activeRoots;
     }, [transactions, start, end, dataType, categories, counterparties, accounts, transactionTypes, config, excludeUnknown]);
 
     const visibleTree = useMemo(() => tree.filter(n => !hiddenIds.has(n.id)), [tree, hiddenIds]);
@@ -369,7 +375,6 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
-            {/* Period Navigation Header */}
             <div className="px-6 py-4 flex items-center justify-between flex-shrink-0 bg-white border-b border-slate-50">
                 <button onClick={() => handleShiftPeriod('prev')} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
                     <ChevronLeftIcon className="w-5 h-5" />
