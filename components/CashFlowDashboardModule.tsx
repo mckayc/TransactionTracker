@@ -328,9 +328,14 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                 const txType = typeRegistry.get(tx.typeId);
                 const effect = txType?.balanceEffect || 'outgoing';
 
-                // Respect strict balance effects
+                // FIX: Strictly exclude neutral transactions from cash flow totals
+                if (effect === 'neutral') return;
+
+                // Respect user visibility filters
                 if (effect === 'incoming' && config?.showIncome === false) return;
                 if (effect === 'outgoing' && config?.showExpenses === false) return;
+                
+                // Specific logical exclusions
                 if (tx.typeId === 'type_investment' && config?.showInvestments === false) return;
                 if (tx.typeId === 'type_donation' && config?.showDonations === false) return;
 
@@ -343,7 +348,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                     parentId = cat?.parentId;
                 } else if (dataType === 'counterparty') {
                     const cp = counterparties.find(c => c.id === tx.counterpartyId);
-                    // IMPROVED: Fallback to description so unlinked transactions still show in this dimension
+                    // Fallback to description so unlinked transactions still show in this dimension
                     key = tx.counterpartyId || `desc_${tx.description}`;
                     label = cp?.name || tx.description || 'Unknown Entity';
                     parentId = cp?.parentId;
