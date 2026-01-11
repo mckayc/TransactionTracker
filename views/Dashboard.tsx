@@ -13,6 +13,7 @@ interface DashboardProps {
     systemSettings: SystemSettings;
     onUpdateSystemSettings: (s: SystemSettings) => void;
     categories: Category[];
+    counterparties: Counterparty[];
     amazonMetrics: AmazonMetric[];
     youtubeMetrics: YouTubeMetric[];
     financialPlan: FinancialPlan | null;
@@ -520,7 +521,7 @@ const WidgetSlot: React.FC<{
     );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, amazonMetrics, youtubeMetrics, financialPlan }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan }) => {
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
     const [isCreatingDashboard, setIsCreatingDashboard] = useState(false);
     const [newDashboardName, setNewDashboardName] = useState('');
@@ -771,10 +772,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         tasks={tasks}
                         goals={goals}
                         categories={categories}
+                        counterparties={counterparties}
                         amazonMetrics={amazonMetrics}
                         youtubeMetrics={youtubeMetrics}
                         financialPlan={financialPlan}
-                        counterparties={[]} 
                     />
                 ))}
                 

@@ -140,9 +140,7 @@ const App: React.FC = () => {
     useEffect(() => {
         loadCoreData();
         const handleSync = (event: MessageEvent) => { 
-            // IGNORE refresh if this tab sent the message
             if (event.data.origin === APP_INSTANCE_ID) return;
-            
             if (event.data.type === 'REFRESH_REQUIRED') {
                 console.log("[SYNC] Remote change detected. Syncing...");
                 loadCoreData(false); 
@@ -161,18 +159,12 @@ const App: React.FC = () => {
         return currentUpdate;
     };
 
-    // PROFESSIONAL UPDATE PATTERN: Optimistic update + origin-aware sync
     const updateData = async (key: string, value: any, setter: Function) => {
         return executeQueuedUpdate(key, async () => {
             isDirty.current = true;
             try {
-                // 1. Optimistic local update
                 setter(value); 
-                
-                // 2. Persist to DB
                 await api.save(key, value);
-                
-                // 3. Signal other tabs (including origin ID so we don't trigger our own reload)
                 if (syncChannel) {
                     syncChannel.postMessage({ 
                         type: 'REFRESH_REQUIRED', 
@@ -182,7 +174,6 @@ const App: React.FC = () => {
                 }
             } catch (e) {
                 console.error(`[APP] Save failed for '${key}':`, e);
-                // On failure, we might want to reload to restore server truth
                 loadCoreData(false);
                 alert(`Sync Error: Changes to ${key} could not be persisted.`);
             } finally {
@@ -195,15 +186,12 @@ const App: React.FC = () => {
         return executeQueuedUpdate('reconciliationRules', async () => {
             isDirty.current = true;
             try {
-                // Update local list first
                 setRules(prev => {
                     const idx = prev.findIndex(r => r.id === rule.id);
                     if (idx > -1) return [...prev.slice(0, idx), rule, ...prev.slice(idx + 1)];
                     return [...prev, rule];
                 });
-                
                 await api.saveRule(rule);
-                
                 if (syncChannel) {
                     syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
                 }
@@ -249,12 +237,8 @@ const App: React.FC = () => {
                 setCategories(updatedCats);
                 await api.save('categories', updatedCats);
             }
-            
-            // Add to existing local state before signaling refresh
             setTransactions(prev => [...newTxs.filter(Boolean), ...prev]);
-            
             await api.saveTransactions(newTxs.filter(Boolean));
-            
             if (syncChannel) syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
         } catch (e) {
             console.error("[APP] Ingestion failure:", e);
@@ -323,7 +307,8 @@ const App: React.FC = () => {
                     </div>
                 </header>
                 <div className="flex-1 overflow-y-auto p-4 md:p-8 relative custom-scrollbar bg-slate-50/50">
-                    {currentView === 'dashboard' && <Dashboard transactions={transactions} savedReports={savedReports} tasks={tasks} goals={financialGoals} systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)} categories={categories} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} financialPlan={financialPlan} />}
+                    {/* Fixed: Pass counterparties to Dashboard */}
+                    {currentView === 'dashboard' && <Dashboard transactions={transactions} savedReports={savedReports} tasks={tasks} goals={financialGoals} systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)} categories={categories} counterparties={counterparties} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} financialPlan={financialPlan} />}
                     {currentView === 'import' && <ImportPage transactions={transactions} accounts={accounts} accountTypes={accountTypes} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={rules} counterparties={counterparties} locations={locations} users={users} documentFolders={documentFolders} onTransactionsAdded={handleTransactionsAdded} onAddAccount={(a) => bulkUpdateData('accounts', [a], setAccounts, accounts)} onAddAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes, accountTypes)} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories, categories)} onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties, counterparties)} onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations, locations)} onSaveUser={(u) => bulkUpdateData('users', [u], setUsers, users)} onSaveTag={(t) => bulkUpdateData('tags', [t], setTags, tags)} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments, businessDocuments)} onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders, documentFolders)} ruleCategories={ruleCategories} onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories, ruleCategories)} onSaveCounterparties={(ps) => bulkUpdateData('counterparties', ps, setCounterparties, counterparties)} onSaveLocations={(ls) => bulkUpdateData('locations', ls, setLocations, locations)} onSaveCategories={(cs) => bulkUpdateData('categories', cs, setCategories, categories)} />}
                     {currentView === 'transactions' && <AllTransactions accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={async (ids) => { for(const id of ids) await api.deleteTransaction(id); await loadCoreData(false); }} onAddTransaction={(tx) => handleTransactionsAdded([tx])} onSaveRule={handleSaveRule} onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories, categories)} onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties, counterparties)} onSaveTag={(t) => bulkUpdateData('tags', [t], setTags, tags)} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)} onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports, savedReports)} />}
                     {currentView === 'calendar' && <CalendarPage transactions={transactions} tasks={tasks} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} users={users} onAddEvent={(e) => bulkUpdateData('scheduledEvents', [e], setScheduledEvents, scheduledEvents)} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={(tx) => handleTransactionsAdded([tx])} onToggleTaskCompletion={async (d, eid, tid) => { const next = {...taskCompletions, [`${d}_${eid}_${tid}`]: !taskCompletions[`${d}_${eid}_${tid}`]}; updateData('taskCompletions', next, setTaskCompletions); }} onToggleTask={(id) => { const next = {...taskCompletions, [id]: !taskCompletions[id]}; updateData('taskCompletions', next, setTaskCompletions); }} onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks, tasks)} transactionTypes={transactionTypes} />}
