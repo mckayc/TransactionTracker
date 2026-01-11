@@ -1,6 +1,5 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-/* Added missing imports: Account, Tag, User to fix errors on lines 169, 171, and 174 */
 import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, TransactionType, Account, Tag, User } from '../types';
 import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, EditIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TableIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
@@ -20,6 +19,11 @@ interface DashboardProps {
     amazonMetrics: AmazonMetric[];
     youtubeMetrics: YouTubeMetric[];
     financialPlan: FinancialPlan | null;
+    // Added missing context props
+    accounts: Account[];
+    tags: Tag[];
+    transactionTypes: TransactionType[];
+    users: User[];
 }
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
@@ -135,7 +139,7 @@ const BreakdownRow: React.FC<{
                 </div>
 
                 <button 
-                    onClick={(e) => { e.stopPropagation(); onToggleVisibility(id); }}
+                    onClick={(e) => { e.stopPropagation(); onToggleVisibility(item.id); }}
                     className={`p-1.5 rounded-lg transition-all ${isHidden ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 opacity-0 group-hover:opacity-100 hover:text-indigo-600 hover:bg-white shadow-sm'}`}
                 >
                     {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
@@ -218,8 +222,13 @@ const CashFlowModule: React.FC<{
     transactions: Transaction[], 
     categories: Category[],
     counterparties: Counterparty[],
-    onUpdateConfig: (newConfig: DashboardWidget['config']) => void
-}> = ({ widget, transactions, categories, counterparties, onUpdateConfig }) => {
+    onUpdateConfig: (newConfig: DashboardWidget['config']) => void,
+    // Add missing labels context for inspector
+    accounts: Account[],
+    tags: Tag[],
+    transactionTypes: TransactionType[],
+    users: User[]
+}> = ({ widget, transactions, categories, counterparties, onUpdateConfig, accounts, tags, transactionTypes, users }) => {
     const config = widget.config;
     const period = config?.period || 'month';
     const lookbackUnits = config?.lookback || 0;
@@ -304,9 +313,12 @@ const CashFlowModule: React.FC<{
                     const cp = counterparties.find(c => c.id === key);
                     label = cp?.name || 'Unknown Entity';
                     parentId = cp?.parentId;
+                } else if (dataType === 'account') {
+                    key = tx.accountId;
+                    label = accounts.find(a => a.id === key)?.name || key;
                 } else {
                     key = tx.typeId;
-                    label = tx.typeId.split('_')[1]?.toUpperCase() || 'Other';
+                    label = transactionTypes.find(t => t.id === key)?.name || key.split('_')[1]?.toUpperCase() || 'Other';
                 }
 
                 if (excludeKeywords.some(k => label.toLowerCase().includes(k))) return;
@@ -346,12 +358,9 @@ const CashFlowModule: React.FC<{
         });
 
         return roots;
-    }, [transactions, start, end, dataType, excludeKeywords, categories, counterparties, config]);
+    }, [transactions, start, end, dataType, excludeKeywords, categories, counterparties, accounts, transactionTypes, config]);
 
     const visibleTree = useMemo(() => {
-        const filterRecursive = (nodes: BreakdownItem[]): BreakdownItem[] => {
-            return nodes.filter(n => !hiddenIds.has(n.id));
-        };
         return tree.filter(n => !hiddenIds.has(n.id));
     }, [tree, hiddenIds]);
 
@@ -367,7 +376,8 @@ const CashFlowModule: React.FC<{
 
     const toggleExpand = (id: string) => {
         const next = new Set(expandedIds);
-        if (next.has(id)) next.delete(id); else next.add(id);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
         setExpandedIds(next);
     };
 
@@ -425,12 +435,12 @@ const CashFlowModule: React.FC<{
                 isOpen={!!inspectedItem} 
                 onClose={() => setInspectedItem(null)} 
                 item={inspectedItem}
-                accounts={[]} 
+                accounts={accounts} 
                 categories={categories}
-                tags={[]}
-                transactionTypes={[]}
+                tags={tags}
+                transactionTypes={transactionTypes}
                 counterparties={counterparties}
-                users={[]}
+                users={users}
             />
         </div>
     );
@@ -655,7 +665,12 @@ const WidgetSlot: React.FC<{
     youtubeMetrics: YouTubeMetric[];
     financialPlan: FinancialPlan | null;
     counterparties: Counterparty[];
-}> = ({ widget, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties }) => {
+    // Add missing labels context for inspector
+    accounts: Account[];
+    tags: Tag[];
+    transactionTypes: TransactionType[];
+    users: User[];
+}> = ({ widget, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users }) => {
     
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
@@ -690,7 +705,7 @@ const WidgetSlot: React.FC<{
                 </div>
             );
         }
-        if (widget.type === 'cashflow') return <CashFlowModule widget={widget} transactions={transactions} categories={categories} counterparties={counterparties} onUpdateConfig={onUpdateConfig} />;
+        if (widget.type === 'cashflow') return <CashFlowModule widget={widget} transactions={transactions} categories={categories} counterparties={counterparties} onUpdateConfig={onUpdateConfig} accounts={accounts} tags={tags} transactionTypes={transactionTypes} users={users} />;
         if (widget.type === 'top_expenses') return <TopExpensesModule transactions={transactions} categories={categories} />;
         if (widget.type === 'amazon_summary') return <AmazonSummaryModule metrics={amazonMetrics} />;
         if (widget.type === 'youtube_summary') return <YouTubeSummaryModule metrics={youtubeMetrics} />;
@@ -724,7 +739,7 @@ const WidgetSlot: React.FC<{
     );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users }) => {
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
     const [isCreatingDashboard, setIsCreatingDashboard] = useState(false);
     const [newDashboardName, setNewDashboardName] = useState('');
@@ -972,6 +987,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         amazonMetrics={amazonMetrics}
                         youtubeMetrics={youtubeMetrics}
                         financialPlan={financialPlan}
+                        accounts={accounts}
+                        tags={tags}
+                        transactionTypes={transactionTypes}
+                        users={users}
                     />
                 ))}
                 

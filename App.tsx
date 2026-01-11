@@ -211,7 +211,9 @@ const App: React.FC = () => {
             try {
                 setRules(prev => prev.filter(r => r.id !== id));
                 await api.deleteRule(id);
-                if (syncChannel) syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
+                if (syncChannel) {
+                    syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
+                }
             } finally {
                 isDirty.current = false;
             }
@@ -253,7 +255,9 @@ const App: React.FC = () => {
         try {
             setTransactions(prev => prev.map(t => t.id === tx.id ? tx : t));
             await api.saveTransactions([tx]);
-            if (syncChannel) syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
+            if (syncChannel) {
+                syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
+            }
         } finally {
             isDirty.current = false;
         }
@@ -307,8 +311,8 @@ const App: React.FC = () => {
                     </div>
                 </header>
                 <div className="flex-1 overflow-y-auto p-4 md:p-8 relative custom-scrollbar bg-slate-50/50">
-                    {/* Fixed: Pass counterparties to Dashboard */}
-                    {currentView === 'dashboard' && <Dashboard transactions={transactions} savedReports={savedReports} tasks={tasks} goals={financialGoals} systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)} categories={categories} counterparties={counterparties} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} financialPlan={financialPlan} />}
+                    {/* Fixed: Pass all required data to Dashboard for proper inspector labels */}
+                    {currentView === 'dashboard' && <Dashboard transactions={transactions} savedReports={savedReports} tasks={tasks} goals={financialGoals} systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)} categories={categories} counterparties={counterparties} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} financialPlan={financialPlan} accounts={accounts} tags={tags} transactionTypes={transactionTypes} users={users} />}
                     {currentView === 'import' && <ImportPage transactions={transactions} accounts={accounts} accountTypes={accountTypes} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={rules} counterparties={counterparties} locations={locations} users={users} documentFolders={documentFolders} onTransactionsAdded={handleTransactionsAdded} onAddAccount={(a) => bulkUpdateData('accounts', [a], setAccounts, accounts)} onAddAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes, accountTypes)} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories, categories)} onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties, counterparties)} onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations, locations)} onSaveUser={(u) => bulkUpdateData('users', [u], setUsers, users)} onSaveTag={(t) => bulkUpdateData('tags', [t], setTags, tags)} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments, businessDocuments)} onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders, documentFolders)} ruleCategories={ruleCategories} onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories, ruleCategories)} onSaveCounterparties={(ps) => bulkUpdateData('counterparties', ps, setCounterparties, counterparties)} onSaveLocations={(ls) => bulkUpdateData('locations', ls, setLocations, locations)} onSaveCategories={(cs) => bulkUpdateData('categories', cs, setCategories, categories)} />}
                     {currentView === 'transactions' && <AllTransactions accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={async (ids) => { for(const id of ids) await api.deleteTransaction(id); await loadCoreData(false); }} onAddTransaction={(tx) => handleTransactionsAdded([tx])} onSaveRule={handleSaveRule} onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories, categories)} onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties, counterparties)} onSaveTag={(t) => bulkUpdateData('tags', [t], setTags, tags)} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes, transactionTypes)} onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports, savedReports)} />}
                     {currentView === 'calendar' && <CalendarPage transactions={transactions} tasks={tasks} templates={templates} scheduledEvents={scheduledEvents} taskCompletions={taskCompletions} accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} users={users} onAddEvent={(e) => bulkUpdateData('scheduledEvents', [e], setScheduledEvents, scheduledEvents)} onUpdateTransaction={handleUpdateTransaction} onAddTransaction={(tx) => handleTransactionsAdded([tx])} onToggleTaskCompletion={async (d, eid, tid) => { const next = {...taskCompletions, [`${d}_${eid}_${tid}`]: !taskCompletions[`${d}_${eid}_${tid}`]}; updateData('taskCompletions', next, setTaskCompletions); }} onToggleTask={(id) => { const next = {...taskCompletions, [id]: !taskCompletions[id]}; updateData('taskCompletions', next, setTaskCompletions); }} onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks, tasks)} transactionTypes={transactionTypes} />}
