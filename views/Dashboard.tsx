@@ -1,9 +1,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty } from '../types';
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, EditIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon } from '../components/Icons';
+/* Added missing imports: Account, Tag, User to fix errors on lines 169, 171, and 174 */
+import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, TransactionType, Account, Tag, User } from '../types';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, EditIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TableIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
+import { parseISOLocal, formatDate } from '../dateUtils';
 import ConfirmationModal from '../components/ConfirmationModal';
+import TransactionTable from '../components/TransactionTable';
 
 interface DashboardProps {
     transactions: Transaction[];
@@ -20,6 +23,418 @@ interface DashboardProps {
 }
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+
+const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
+
+const lightColor = (hex: string, opacity: number) => {
+    return hex + Math.round(opacity * 255).toString(16).padStart(2, '0');
+};
+
+const DonutChart: React.FC<{ 
+    data: { label: string; value: number; color: string }[]; 
+    total: number 
+}> = ({ data, total }) => {
+    let accumulated = 0;
+    const radius = 35;
+    const circ = 2 * Math.PI * radius;
+
+    return (
+        <div className="relative w-48 h-48 mx-auto flex items-center justify-center">
+            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90 transform transition-all duration-700">
+                {data.map((item, i) => {
+                    const pct = total > 0 ? (item.value / total) : 0;
+                    if (pct === 0) return null;
+                    const offset = -accumulated * circ;
+                    const strokeDash = `${pct * circ} ${circ}`;
+                    accumulated += pct;
+                    return (
+                        <circle
+                            key={i}
+                            cx="50"
+                            cy="50"
+                            r={radius}
+                            fill="transparent"
+                            stroke={item.color}
+                            strokeWidth="12"
+                            strokeDasharray={strokeDash}
+                            strokeDashoffset={offset}
+                            strokeLinecap="round"
+                            className="transition-all duration-1000 ease-out hover:stroke-[15px] cursor-pointer"
+                            style={{ transitionDelay: `${i * 50}ms` }}
+                        />
+                    );
+                })}
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total</p>
+                <p className="text-xl font-black text-slate-800">{formatCurrency(total)}</p>
+            </div>
+        </div>
+    );
+};
+
+interface BreakdownItem {
+    id: string;
+    label: string;
+    value: number;
+    color: string;
+    transactions: Transaction[];
+    children: BreakdownItem[];
+    parentId?: string;
+}
+
+const BreakdownRow: React.FC<{
+    item: BreakdownItem;
+    total: number;
+    onToggleVisibility: (id: string) => void;
+    onInspect: (item: BreakdownItem) => void;
+    hiddenIds: Set<string>;
+    expandedIds: Set<string>;
+    onToggleExpand: (id: string) => void;
+    depth?: number;
+}> = ({ item, total, onToggleVisibility, onInspect, hiddenIds, expandedIds, onToggleExpand, depth = 0 }) => {
+    const isHidden = hiddenIds.has(item.id);
+    const isExpanded = expandedIds.has(item.id);
+    const hasChildren = item.children.length > 0;
+    const percentage = total > 0 ? (item.value / total) * 100 : 0;
+
+    return (
+        <div className="select-none">
+            <div 
+                className={`group flex items-center gap-2 p-1.5 rounded-xl transition-all cursor-pointer ${isHidden ? 'opacity-40 grayscale bg-slate-50' : 'hover:bg-slate-50'}`}
+                style={{ paddingLeft: `${depth * 16 + 8}px` }}
+                onClick={() => onInspect(item)}
+            >
+                <div className="w-5 flex justify-center flex-shrink-0">
+                    {hasChildren && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onToggleExpand(item.id); }}
+                            className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-white"
+                        >
+                            <ChevronRightIcon className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
+                    )}
+                </div>
+
+                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: item.color }} />
+                
+                <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-1">
+                        <span className={`text-xs font-black truncate pr-4 ${isHidden ? 'text-slate-400 line-through' : 'text-slate-700'}`}>
+                            {item.label}
+                        </span>
+                        <span className={`text-xs font-black font-mono ${isHidden ? 'text-slate-300' : 'text-slate-900'}`}>
+                            {formatCurrency(item.value)}
+                        </span>
+                    </div>
+                    {!isHidden && percentage > 0.5 && (
+                        <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                            <div className="h-full transition-all duration-1000" style={{ width: `${percentage}%`, backgroundColor: item.color }} />
+                        </div>
+                    )}
+                </div>
+
+                <button 
+                    onClick={(e) => { e.stopPropagation(); onToggleVisibility(id); }}
+                    className={`p-1.5 rounded-lg transition-all ${isHidden ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 opacity-0 group-hover:opacity-100 hover:text-indigo-600 hover:bg-white shadow-sm'}`}
+                >
+                    {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
+                </button>
+            </div>
+
+            {isExpanded && hasChildren && (
+                <div className="space-y-0.5 mt-0.5">
+                    {item.children.sort((a,b) => b.value - a.value).map(child => (
+                        <BreakdownRow 
+                            key={child.id} 
+                            item={child} 
+                            total={total} 
+                            onToggleVisibility={onToggleVisibility} 
+                            onInspect={onInspect} 
+                            hiddenIds={hiddenIds} 
+                            expandedIds={expandedIds} 
+                            onToggleExpand={onToggleExpand} 
+                            depth={depth + 1} 
+                        />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
+const GroupInspector: React.FC<{ 
+    isOpen: boolean; 
+    onClose: () => void; 
+    item: BreakdownItem | null;
+    accounts: Account[];
+    categories: Category[];
+    tags: Tag[];
+    transactionTypes: TransactionType[];
+    counterparties: Counterparty[];
+    users: User[];
+}> = ({ isOpen, onClose, item, accounts, categories, tags, transactionTypes, counterparties, users }) => {
+    if (!isOpen || !item) return null;
+
+    return (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                <div className="p-8 border-b bg-slate-50 flex justify-between items-center flex-shrink-0">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-2xl" style={{ backgroundColor: lightColor(item.color, 0.1), color: item.color }}>
+                            <TableIcon className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <h3 className="text-2xl font-black text-slate-800">{item.label}</h3>
+                            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">{item.transactions.length} records totaling {formatCurrency(item.value)}</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
+                </div>
+                <div className="flex-1 overflow-hidden relative">
+                    <TransactionTable 
+                        transactions={item.transactions}
+                        accounts={accounts}
+                        categories={categories}
+                        tags={tags}
+                        transactionTypes={transactionTypes}
+                        counterparties={counterparties}
+                        users={users}
+                        onUpdateTransaction={() => {}}
+                        onDeleteTransaction={() => {}}
+                        visibleColumns={new Set(['date', 'description', 'account', 'amount'])}
+                    />
+                </div>
+                <div className="p-6 border-t bg-white flex justify-end">
+                    <button onClick={onClose} className="px-8 py-3 bg-slate-100 text-slate-600 font-black rounded-xl hover:bg-slate-200 transition-all uppercase text-[10px] tracking-widest">Close Explorer</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const CashFlowModule: React.FC<{ 
+    widget: DashboardWidget,
+    transactions: Transaction[], 
+    categories: Category[],
+    counterparties: Counterparty[],
+    onUpdateConfig: (newConfig: DashboardWidget['config']) => void
+}> = ({ widget, transactions, categories, counterparties, onUpdateConfig }) => {
+    const config = widget.config;
+    const period = config?.period || 'month';
+    const lookbackUnits = config?.lookback || 0;
+    const vizType = config?.vizType || 'cards';
+    const dataType = config?.displayDataType || 'type';
+    const excludeKeywords = (config?.excludeKeywords || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+    const hiddenIds = useMemo(() => new Set(config?.hiddenDataIds || []), [config?.hiddenDataIds]);
+
+    const [navOffset, setNavOffset] = useState(0);
+    const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+    const [inspectedItem, setInspectedItem] = useState<BreakdownItem | null>(null);
+
+    const { start, end, label } = useMemo(() => {
+        const totalOffset = lookbackUnits + navOffset;
+        const s = new Date();
+        s.setHours(0,0,0,0);
+        const e = new Date();
+        e.setHours(23,59,59,999);
+
+        if (period === 'day') {
+            s.setDate(s.getDate() - totalOffset);
+            e.setDate(e.getDate() - totalOffset);
+            return { start: s, end: e, label: s.toLocaleDateString() };
+        }
+        if (period === 'week') {
+            const day = s.getDay();
+            s.setDate(s.getDate() - day - (totalOffset * 7));
+            e.setDate(s.getDate() - s.getDay() + 6);
+            return { start: s, end: e, label: `Week of ${s.toLocaleDateString()}` };
+        }
+        if (period === 'month') {
+            s.setMonth(s.getMonth() - totalOffset, 1);
+            e.setMonth(s.getMonth() - totalOffset + 1, 0);
+            return { start: s, end: e, label: s.toLocaleString('default', { month: 'long', year: 'numeric' }) };
+        }
+        if (period === 'quarter') {
+            const q = Math.floor(s.getMonth() / 3);
+            s.setMonth((q - totalOffset) * 3, 1);
+            e.setMonth(s.getMonth() + 3, 0);
+            return { start: s, end: e, label: `Q${Math.floor(s.getMonth()/3) + 1} ${s.getFullYear()}` };
+        }
+        if (period === 'year') {
+            s.setFullYear(s.getFullYear() - totalOffset, 0, 1);
+            e.setFullYear(s.getFullYear() - totalOffset, 11, 31);
+            return { start: s, end: e, label: s.getFullYear().toString() };
+        }
+        return { start: s, end: e, label: 'Custom' };
+    }, [period, lookbackUnits, navOffset]);
+
+    const tree = useMemo(() => {
+        const nodeMap = new Map<string, BreakdownItem>();
+        
+        const getNode = (id: string, label: string, parentId?: string): BreakdownItem => {
+            if (!nodeMap.has(id)) {
+                nodeMap.set(id, { id, label, value: 0, color: '', transactions: [], children: [], parentId });
+            }
+            return nodeMap.get(id)!;
+        };
+
+        transactions.forEach(tx => {
+            const txDate = parseISOLocal(tx.date);
+            if (txDate >= start && txDate <= end && !tx.isParent) {
+                const isIncome = tx.typeId.includes('income');
+                const isInvestment = tx.typeId === 'type_investment';
+                const isDonation = tx.typeId === 'type_donation';
+                const isExpense = tx.typeId.includes('purchase') || tx.typeId.includes('tax');
+
+                if (isIncome && config?.showIncome === false) return;
+                if (isExpense && config?.showExpenses === false) return;
+                if (isInvestment && config?.showInvestments === false) return;
+                if (isDonation && config?.showDonations === false) return;
+
+                let key = '', label = '', parentId: string | undefined = undefined;
+
+                if (dataType === 'category') {
+                    key = tx.categoryId;
+                    const cat = categories.find(c => c.id === key);
+                    label = cat?.name || 'Unallocated';
+                    parentId = cat?.parentId;
+                } else if (dataType === 'counterparty') {
+                    key = tx.counterpartyId || 'unknown';
+                    const cp = counterparties.find(c => c.id === key);
+                    label = cp?.name || 'Unknown Entity';
+                    parentId = cp?.parentId;
+                } else {
+                    key = tx.typeId;
+                    label = tx.typeId.split('_')[1]?.toUpperCase() || 'Other';
+                }
+
+                if (excludeKeywords.some(k => label.toLowerCase().includes(k))) return;
+
+                const node = getNode(key, label, parentId);
+                node.value += tx.amount;
+                node.transactions.push(tx);
+            }
+        });
+
+        // Hierarchy construction
+        const allNodes = Array.from(nodeMap.values());
+        allNodes.forEach(node => {
+            if (node.parentId && nodeMap.has(node.parentId)) {
+                const parent = nodeMap.get(node.parentId)!;
+                if (!parent.children.find(c => c.id === node.id)) {
+                    parent.children.push(node);
+                }
+            }
+        });
+
+        const roots = allNodes.filter(n => !n.parentId || !nodeMap.has(n.parentId));
+
+        // Aggregation and coloring
+        const process = (node: BreakdownItem, depth: number, baseColor: string): number => {
+            const originalVal = node.value;
+            node.children.forEach(child => {
+                node.value += process(child, depth + 1, baseColor);
+                node.transactions = [...node.transactions, ...child.transactions];
+            });
+            node.color = depth === 0 ? baseColor : baseColor; // Could implement shading here
+            return node.value;
+        };
+
+        roots.sort((a,b) => b.value - a.value).forEach((root, i) => {
+            process(root, 0, COLORS[i % COLORS.length]);
+        });
+
+        return roots;
+    }, [transactions, start, end, dataType, excludeKeywords, categories, counterparties, config]);
+
+    const visibleTree = useMemo(() => {
+        const filterRecursive = (nodes: BreakdownItem[]): BreakdownItem[] => {
+            return nodes.filter(n => !hiddenIds.has(n.id));
+        };
+        return tree.filter(n => !hiddenIds.has(n.id));
+    }, [tree, hiddenIds]);
+
+    const totalVisible = useMemo(() => {
+        return visibleTree.reduce((s, n) => s + n.value, 0);
+    }, [visibleTree]);
+
+    const toggleVisibility = (id: string) => {
+        const next = new Set(hiddenIds);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        onUpdateConfig({ ...config, hiddenDataIds: Array.from(next) });
+    };
+
+    const toggleExpand = (id: string) => {
+        const next = new Set(expandedIds);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        setExpandedIds(next);
+    };
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden">
+            <div className="px-6 pt-4 flex items-center justify-between flex-shrink-0">
+                <button onClick={() => setNavOffset(prev => prev + 1)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition-all"><ChevronLeftIcon className="w-4 h-4" /></button>
+                <div className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">{label}</span>
+                </div>
+                <button onClick={() => setNavOffset(prev => Math.max(prev - 1, -lookbackUnits))} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition-all"><ChevronRightIcon className="w-4 h-4" /></button>
+            </div>
+
+            <div className="flex-1 p-6 flex flex-col min-h-0">
+                <div className="flex-shrink-0 mb-8">
+                    {vizType === 'cards' ? (
+                        <div className="p-6 bg-slate-900 rounded-[2rem] text-white relative overflow-hidden">
+                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 relative z-10">Active Volume</p>
+                            <p className="text-3xl font-black relative z-10">{formatCurrency(totalVisible)}</p>
+                            <TrendingUpIcon className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-5" />
+                        </div>
+                    ) : (
+                        <DonutChart 
+                            data={visibleTree.map(n => ({ label: n.label, value: n.value, color: n.color }))} 
+                            total={totalVisible} 
+                        />
+                    )}
+                </div>
+
+                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 ml-2">Breakdown Registry</p>
+                    {tree.length === 0 ? (
+                        <div className="py-12 text-center text-slate-300 italic text-sm flex flex-col items-center">
+                            <BoxIcon className="w-10 h-10 mb-2 opacity-10" />
+                            No data found for this period.
+                        </div>
+                    ) : (
+                        tree.map(item => (
+                            <BreakdownRow 
+                                key={item.id} 
+                                item={item} 
+                                total={totalVisible} 
+                                onToggleVisibility={toggleVisibility}
+                                onInspect={setInspectedItem}
+                                hiddenIds={hiddenIds}
+                                expandedIds={expandedIds}
+                                onToggleExpand={toggleExpand}
+                            />
+                        ))
+                    )}
+                </div>
+            </div>
+
+            <GroupInspector 
+                isOpen={!!inspectedItem} 
+                onClose={() => setInspectedItem(null)} 
+                item={inspectedItem}
+                accounts={[]} 
+                categories={categories}
+                tags={[]}
+                transactionTypes={[]}
+                counterparties={counterparties}
+                users={[]}
+            />
+        </div>
+    );
+};
 
 const GoalGaugeModule: React.FC<{ goals: FinancialGoal[], config: DashboardWidget['config'] }> = ({ goals, config }) => {
     const goal = goals.find(g => g.id === config?.goalId) || goals[0];
@@ -55,7 +470,7 @@ const TaxProjectionModule: React.FC<{ transactions: Transaction[] }> = ({ transa
         let income = 0;
         let deductible = 0;
         transactions.forEach(tx => {
-            const d = new Date(tx.date);
+            const d = parseISOLocal(tx.date);
             if (d.getFullYear() === currentYear && !tx.isParent) {
                 if (tx.typeId.includes('income')) income += tx.amount;
                 else if (tx.typeId.includes('tax') || tx.categoryId.includes('business') || tx.categoryId.includes('office')) deductible += tx.amount;
@@ -111,218 +526,6 @@ const AiInsightsModule: React.FC<{ plan: FinancialPlan | null }> = ({ plan }) =>
     );
 };
 
-const CashFlowModule: React.FC<{ 
-    widget: DashboardWidget,
-    transactions: Transaction[], 
-    categories: Category[],
-    counterparties: Counterparty[],
-    onUpdateConfig: (newConfig: DashboardWidget['config']) => void
-}> = ({ widget, transactions, categories, counterparties, onUpdateConfig }) => {
-    const config = widget.config;
-    const period = config?.period || 'month';
-    const lookbackUnits = config?.lookback || 0;
-    const vizType = config?.vizType || 'cards';
-    const dataType = config?.displayDataType || 'type';
-    const excludeKeywords = (config?.excludeKeywords || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
-    const hiddenIds = useMemo(() => new Set(config?.hiddenDataIds || []), [config?.hiddenDataIds]);
-
-    const [navOffset, setNavOffset] = useState(0);
-
-    const { start, end, label } = useMemo(() => {
-        const totalOffset = lookbackUnits + navOffset;
-        const s = new Date();
-        s.setHours(0,0,0,0);
-        const e = new Date();
-        e.setHours(23,59,59,999);
-
-        if (period === 'day') {
-            s.setDate(s.getDate() - totalOffset);
-            e.setDate(e.getDate() - totalOffset);
-            return { start: s, end: e, label: s.toLocaleDateString() };
-        }
-        if (period === 'week') {
-            const day = s.getDay();
-            s.setDate(s.getDate() - day - (totalOffset * 7));
-            e.setDate(s.getDate() - s.getDay() + 6);
-            return { start: s, end: e, label: `Week of ${s.toLocaleDateString()}` };
-        }
-        if (period === 'month') {
-            s.setMonth(s.getMonth() - totalOffset, 1);
-            e.setMonth(s.getMonth() - totalOffset + 1, 0);
-            return { start: s, end: e, label: s.toLocaleString('default', { month: 'long', year: 'numeric' }) };
-        }
-        if (period === 'quarter') {
-            const q = Math.floor(s.getMonth() / 3);
-            s.setMonth((q - totalOffset) * 3, 1);
-            e.setMonth(s.getMonth() + 3, 0);
-            return { start: s, end: e, label: `Q${Math.floor(s.getMonth()/3) + 1} ${s.getFullYear()}` };
-        }
-        if (period === 'year') {
-            s.setFullYear(s.getFullYear() - totalOffset, 0, 1);
-            e.setFullYear(s.getFullYear() - totalOffset, 11, 31);
-            return { start: s, end: e, label: s.getFullYear().toString() };
-        }
-        return { start: s, end: e, label: 'Custom' };
-    }, [period, lookbackUnits, navOffset]);
-
-    const { incoming, outgoing, net, breakdown, visibleTotal } = useMemo(() => {
-        let income = 0;
-        let expenses = 0;
-        const bMap = new Map<string, { id: string, name: string, amount: number }>();
-
-        transactions.forEach(tx => {
-            const d = new Date(tx.date);
-            if (d >= start && d <= end && !tx.isParent) {
-                const isIncome = tx.typeId.includes('income');
-                const isInvestment = tx.typeId === 'type_investment';
-                const isDonation = tx.typeId === 'type_donation';
-                const isExpense = tx.typeId.includes('purchase') || tx.typeId.includes('tax');
-
-                if (isIncome && config?.showIncome === false) return;
-                if (isExpense && config?.showExpenses === false) return;
-                if (isInvestment && config?.showInvestments === false) return;
-                if (isDonation && config?.showDonations === false) return;
-
-                if (isIncome) income += tx.amount;
-                else if (isExpense || isInvestment || isDonation) expenses += tx.amount;
-
-                let key = '';
-                let labelText = '';
-                if (dataType === 'category') {
-                    key = tx.categoryId;
-                    labelText = categories.find(c => c.id === key)?.name || 'Other';
-                } else if (dataType === 'counterparty') {
-                    key = tx.counterpartyId || 'unknown';
-                    labelText = counterparties.find(cp => cp.id === key)?.name || 'Unknown';
-                } else if (dataType === 'account') {
-                    key = tx.accountId;
-                    labelText = key; 
-                } else {
-                    key = tx.typeId;
-                    labelText = key;
-                }
-
-                if (excludeKeywords.some(k => labelText.toLowerCase().includes(k))) return;
-
-                const current = bMap.get(key) || { id: key, name: labelText, amount: 0 };
-                current.amount += tx.amount;
-                bMap.set(key, current);
-            }
-        });
-
-        const allItems = Array.from(bMap.values()).sort((a,b) => b.amount - a.amount);
-        const visibleSum = allItems.reduce((s, i) => s + (hiddenIds.has(i.id) ? 0 : i.amount), 0);
-
-        return { incoming: income, outgoing: expenses, net: income - expenses, breakdown: allItems, visibleTotal: visibleSum };
-    }, [transactions, start, end, dataType, excludeKeywords, categories, counterparties, config, hiddenIds]);
-
-    const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
-
-    const toggleHidden = (id: string) => {
-        const next = new Set(hiddenIds);
-        if (next.has(id)) next.delete(id); else next.add(id);
-        onUpdateConfig({ ...config, hiddenDataIds: Array.from(next) });
-    };
-
-    return (
-        <div className="flex flex-col h-full overflow-hidden">
-            <div className="px-6 pt-4 flex items-center justify-between flex-shrink-0">
-                <button onClick={() => setNavOffset(prev => prev + 1)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition-all"><ChevronLeftIcon className="w-4 h-4" /></button>
-                <div className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">{label}</span>
-                </div>
-                <button onClick={() => setNavOffset(prev => Math.max(prev - 1, -lookbackUnits))} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition-all"><ChevronRightIcon className="w-4 h-4" /></button>
-            </div>
-
-            <div className="flex-1 p-6 flex flex-col min-h-0">
-                {vizType === 'cards' ? (
-                    <div className="grid grid-cols-2 gap-4 flex-shrink-0 mb-6">
-                        <div className="space-y-1">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inflow</p>
-                            <p className="text-lg font-black text-emerald-600">{formatCurrency(incoming)}</p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Outflow</p>
-                            <p className="text-lg font-black text-rose-600">{formatCurrency(outgoing)}</p>
-                        </div>
-                        <div className="col-span-2 pt-4 border-t border-slate-100">
-                            <div className="flex justify-between items-end">
-                                <div>
-                                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Net Surplus</p>
-                                    <p className={`text-2xl font-black ${net >= 0 ? 'text-indigo-600' : 'text-rose-600'}`}>{formatCurrency(net)}</p>
-                                </div>
-                                <TrendingUpIcon className={`w-8 h-8 ${net >= 0 ? 'text-indigo-50' : 'text-rose-50'}`} />
-                            </div>
-                        </div>
-                    </div>
-                ) : vizType === 'pie' ? (
-                    <div className="flex-shrink-0 flex flex-col items-center justify-center mb-6">
-                        <div className="relative w-32 h-32">
-                            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                                {breakdown.length === 0 ? (
-                                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="#f1f5f9" strokeWidth="20" />
-                                ) : (
-                                    (() => {
-                                        let accumulated = 0;
-                                        const visibleItems = breakdown.filter(i => !hiddenIds.has(i.id));
-                                        const total = visibleItems.reduce((s, i) => s + i.amount, 0);
-                                        return visibleItems.map((item, i) => {
-                                            const slice = (item.amount / total) * 100;
-                                            const dash = `${slice} ${100 - slice}`;
-                                            const offset = -accumulated;
-                                            accumulated += slice;
-                                            return <circle key={item.id} cx="50" cy="50" r="40" fill="transparent" stroke={COLORS[i % COLORS.length]} strokeWidth="20" strokeDasharray={dash} strokeDashoffset={offset} />;
-                                        });
-                                    })()
-                                )}
-                            </svg>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex-shrink-0 space-y-4 mb-6">
-                        <div className="p-4 bg-slate-900 rounded-2xl text-white">
-                            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Visible Volume</p>
-                            <p className="text-2xl font-black">{formatCurrency(visibleTotal)}</p>
-                        </div>
-                    </div>
-                )}
-
-                <div className="flex-1 flex flex-col space-y-2 overflow-y-auto custom-scrollbar min-h-0 pr-2">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Breakdown Registry</p>
-                    {breakdown.length === 0 ? (
-                            <div className="flex-1 flex items-center justify-center text-slate-300 italic text-xs">No records</div>
-                    ) : (
-                        breakdown.map((item, i) => {
-                            const isHidden = hiddenIds.has(item.id);
-                            return (
-                                <div key={item.id} className={`flex items-center justify-between group/row p-1.5 rounded-lg transition-all ${isHidden ? 'opacity-40 grayscale bg-slate-50' : 'hover:bg-slate-50'}`}>
-                                    <div className="flex-1 min-w-0 mr-3">
-                                        <div className="flex justify-between text-[10px] font-bold text-slate-600 mb-1">
-                                            <span className="truncate">{item.name}</span>
-                                            <span>{formatCurrency(item.amount)}</span>
-                                        </div>
-                                        {!isHidden && (
-                                            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-                                                <div className="h-full bg-indigo-500" style={{ width: `${(item.amount / (Math.max(...breakdown.map(b => b.amount)) || 1)) * 100}%` }} />
-                                            </div>
-                                        )}
-                                    </div>
-                                    <button 
-                                        onClick={() => toggleHidden(item.id)}
-                                        className={`p-1.5 rounded-md transition-all ${isHidden ? 'text-slate-400 bg-slate-200 opacity-100' : 'text-slate-300 opacity-0 group-hover/row:opacity-100 hover:text-indigo-600 hover:bg-white shadow-sm'}`}
-                                    >
-                                        {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
-                                    </button>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
 const TopExpensesModule: React.FC<{ transactions: Transaction[], categories: Category[] }> = ({ transactions, categories }) => {
     const topCats = useMemo(() => {
         const now = new Date();
@@ -330,7 +533,7 @@ const TopExpensesModule: React.FC<{ transactions: Transaction[], categories: Cat
         const map = new Map<string, number>();
         
         transactions.forEach(tx => {
-            const d = new Date(tx.date);
+            const d = parseISOLocal(tx.date);
             if (d >= start && (tx.typeId.includes('purchase') || tx.typeId.includes('tax')) && !tx.isParent) {
                 map.set(tx.categoryId, (map.get(tx.categoryId) || 0) + tx.amount);
             }
@@ -527,23 +730,18 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [newDashboardName, setNewDashboardName] = useState('');
     const [newDashboardCols, setNewDashboardCols] = useState<1 | 2 | 3 | 4>(3);
     
-    // Staged deletion state for ConfirmationModal
     const [pendingDeletion, setPendingDeletion] = useState<{ id: string, type: 'widget' | 'dashboard' } | null>(null);
 
-    // Config form state
     const [configTitle, setConfigTitle] = useState('');
     const [configGoalId, setConfigGoalId] = useState('');
     const [configReportId, setConfigReportId] = useState('');
-    // Use NonNullable to access optional config type safely
     const [configPeriod, setConfigPeriod] = useState<NonNullable<DashboardWidget['config']>['period']>('month');
     const [configColSpan, setConfigColSpan] = useState<1 | 2 | 3>(1);
     const [configBlueprint, setConfigBlueprint] = useState<DashboardWidget['type']>('cashflow');
     const [expandedBlueprints, setExpandedBlueprints] = useState<Set<string>>(new Set());
 
-    // New configuration fields for Cashflow
     const [configVizType, setConfigVizType] = useState<'pie' | 'bar' | 'cards'>('cards');
     const [configLookback, setConfigLookback] = useState<number>(0);
-    // Use NonNullable to access optional config type safely
     const [configDisplayDataType, setConfigDisplayDataType] = useState<NonNullable<DashboardWidget['config']>['displayDataType']>('type');
     const [configExcludeKeywords, setConfigExcludeKeywords] = useState<string>('');
     const [configShowIncome, setConfigShowIncome] = useState(true);
@@ -728,7 +926,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     return (
         <div className="space-y-6 pb-20 max-w-7xl mx-auto">
             
-            {/* Dashboard Tabs Bar */}
             <div className="flex flex-wrap items-center gap-2 p-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto no-scrollbar flex-shrink-0">
                 {dashboards.map(d => (
                     <div key={d.id} className="flex items-center group relative">
@@ -757,7 +954,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 </button>
             </div>
 
-            {/* Grid Container */}
             <div className={`grid grid-cols-1 ${gridColsClass} gap-6 auto-rows-min`}>
                 {widgets.map(w => (
                     <WidgetSlot 
@@ -825,16 +1021,15 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                             </div>
                         </div>
                         <div className="flex gap-4 mt-10">
-                            <button onClick={() => setIsCreatingDashboard(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
+                            <button onClick={() => setIsCreatingDashboard(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-bold rounded-2xl hover:bg-slate-200 transition-colors">Cancel</button>
                             <button onClick={handleCreateDashboard} className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all">Deploy View</button>
                         </div>
                     </div>
                 </div>
             )}
 
-            {/* Modules Overlay */}
             {isConfiguring && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={() => setIsConfiguring(null)}>
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setIsConfiguring(null)}>
                     <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-5xl h-[90vh] overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-8 border-b flex justify-between items-center bg-slate-50 flex-shrink-0">
                             <div>
@@ -845,7 +1040,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         </div>
                         
                         <div className="flex flex-1 min-h-0">
-                            {/* Blueprints Sidebar */}
                             <div className="w-72 bg-slate-50 border-r border-slate-100 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-1.5 flex-shrink-0">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-2">Logical Blueprints</p>
                                 {BLUEPRINT_OPTIONS.map(bp => {
@@ -873,7 +1067,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                             {isExpanded && instances.map(inst => (
                                                 <div 
                                                     key={inst.id}
-                                                    className={`ml-4 flex items-center justify-between group/inst p-2 pr-3 rounded-xl cursor-pointer transition-all border-2 ${isConfiguring === inst.id ? 'bg-white border-indigo-500 text-indigo-700' : 'border-transparent text-slate-400 hover:bg-white hover:text-slate-700'}`}
+                                                    className={`ml-4 flex items-center justify-between group/inst p-2 pr-3 rounded-xl cursor-pointer transition-all border-2 ${isConfiguring === inst.id ? 'bg-white border-indigo-50 border-indigo-500 text-indigo-700' : 'border-transparent text-slate-400 hover:bg-white hover:text-slate-700'}`}
                                                     onClick={() => setIsConfiguring(inst.id)}
                                                 >
                                                     <span className="text-[10px] font-bold uppercase truncate">{inst.config?.title || 'Untitled Config'}</span>
@@ -887,7 +1081,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                 })}
                             </div>
 
-                            {/* Configuration Panel */}
                             <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar bg-white">
                                 <div className="space-y-6">
                                     <div className="space-y-1">
@@ -946,7 +1139,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                                 <button 
                                                                     key={p} 
                                                                     onClick={() => setConfigPeriod(p)}
-                                                                    className={`py-3 rounded-xl border-2 font-bold text-xs transition-all ${configPeriod === p ? 'bg-white border-indigo-500 text-indigo-700 shadow-sm' : 'bg-transparent border-slate-200 text-slate-400'}`}
+                                                                    className={`py-3 rounded-xl border-2 font-bold text-xs transition-all ${configPeriod === p ? 'bg-white border-indigo-50 text-indigo-700 shadow-sm' : 'bg-transparent border-slate-200 text-slate-400'}`}
                                                                 >
                                                                     {p}ly
                                                                 </button>
@@ -1065,7 +1258,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                             </div>
                         </div>
 
-                        <div className="p-6 border-t flex justify-end gap-3 bg-white flex-shrink-0">
+                        <div className="p-6 border-t border-slate-100 flex justify-end gap-3 bg-white flex-shrink-0">
                             <button onClick={() => setIsConfiguring(null)} className="px-6 py-3 text-sm font-black uppercase text-slate-400 hover:bg-slate-100 rounded-2xl transition-all">Discard</button>
                             <button 
                                 onClick={handleApplyConfig} 
