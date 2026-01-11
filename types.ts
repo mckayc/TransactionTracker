@@ -285,6 +285,11 @@ export interface DashboardWidget {
         lookback?: number;
         displayDataType?: 'category' | 'counterparty' | 'account' | 'type';
         excludeKeywords?: string;
+        showIncome?: boolean;
+        showExpenses?: boolean;
+        showInvestments?: boolean;
+        showDonations?: boolean;
+        hiddenDataIds?: string[];
     };
 }
 

@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty } from '../types';
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, EditIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon } from '../components/Icons';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, EditIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
 
@@ -111,63 +111,79 @@ const AiInsightsModule: React.FC<{ plan: FinancialPlan | null }> = ({ plan }) =>
 };
 
 const CashFlowModule: React.FC<{ 
+    widget: DashboardWidget,
     transactions: Transaction[], 
-    config: DashboardWidget['config'], 
     categories: Category[],
-    counterparties: Counterparty[]
-}> = ({ transactions, config, categories, counterparties }) => {
+    counterparties: Counterparty[],
+    onUpdateConfig: (newConfig: DashboardWidget['config']) => void
+}> = ({ widget, transactions, categories, counterparties, onUpdateConfig }) => {
+    const config = widget.config;
     const period = config?.period || 'month';
-    const lookback = config?.lookback || 0;
+    const lookbackUnits = config?.lookback || 0;
     const vizType = config?.vizType || 'cards';
     const dataType = config?.displayDataType || 'type';
     const excludeKeywords = (config?.excludeKeywords || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+    const hiddenIds = useMemo(() => new Set(config?.hiddenDataIds || []), [config?.hiddenDataIds]);
+
+    const [navOffset, setNavOffset] = useState(0);
 
     const { start, end, label } = useMemo(() => {
+        const totalOffset = lookbackUnits + navOffset;
         const s = new Date();
         s.setHours(0,0,0,0);
         const e = new Date();
         e.setHours(23,59,59,999);
 
         if (period === 'day') {
-            s.setDate(s.getDate() - lookback);
-            e.setDate(e.getDate() - lookback);
+            s.setDate(s.getDate() - totalOffset);
+            e.setDate(e.getDate() - totalOffset);
             return { start: s, end: e, label: s.toLocaleDateString() };
         }
         if (period === 'week') {
             const day = s.getDay();
-            s.setDate(s.getDate() - day - (lookback * 7));
-            e.setDate(s.getDate() + 6);
+            s.setDate(s.getDate() - day - (totalOffset * 7));
+            e.setDate(s.getDate() - s.getDay() + 6);
             return { start: s, end: e, label: `Week of ${s.toLocaleDateString()}` };
         }
         if (period === 'month') {
-            s.setMonth(s.getMonth() - lookback, 1);
-            e.setMonth(s.getMonth() + 1, 0);
+            s.setMonth(s.getMonth() - totalOffset, 1);
+            e.setMonth(s.getMonth() - totalOffset + 1, 0);
             return { start: s, end: e, label: s.toLocaleString('default', { month: 'long', year: 'numeric' }) };
         }
         if (period === 'quarter') {
             const q = Math.floor(s.getMonth() / 3);
-            s.setMonth((q - lookback) * 3, 1);
+            s.setMonth((q - totalOffset) * 3, 1);
             e.setMonth(s.getMonth() + 3, 0);
             return { start: s, end: e, label: `Q${Math.floor(s.getMonth()/3) + 1} ${s.getFullYear()}` };
         }
         if (period === 'year') {
-            s.setFullYear(s.getFullYear() - lookback, 0, 1);
-            e.setFullYear(s.getFullYear(), 11, 31);
+            s.setFullYear(s.getFullYear() - totalOffset, 0, 1);
+            e.setFullYear(s.getFullYear() - totalOffset, 11, 31);
             return { start: s, end: e, label: s.getFullYear().toString() };
         }
         return { start: s, end: e, label: 'Custom' };
-    }, [period, lookback]);
+    }, [period, lookbackUnits, navOffset]);
 
-    const { incoming, outgoing, net, breakdown } = useMemo(() => {
+    const { incoming, outgoing, net, breakdown, visibleTotal } = useMemo(() => {
         let income = 0;
         let expenses = 0;
-        const bMap = new Map<string, number>();
+        const bMap = new Map<string, { id: string, name: string, amount: number }>();
 
         transactions.forEach(tx => {
             const d = new Date(tx.date);
             if (d >= start && d <= end && !tx.isParent) {
-                if (tx.typeId.includes('income')) income += tx.amount;
-                else if (tx.typeId.includes('purchase') || tx.typeId.includes('tax')) expenses += tx.amount;
+                const isIncome = tx.typeId.includes('income');
+                const isInvestment = tx.typeId === 'type_investment';
+                const isDonation = tx.typeId === 'type_donation';
+                const isExpense = tx.typeId.includes('purchase') || tx.typeId.includes('tax');
+
+                if (isIncome && config?.showIncome === false) return;
+                if (isExpense && config?.showExpenses === false) return;
+                if (isInvestment && config?.showInvestments === false) return;
+                if (isDonation && config?.showDonations === false) return;
+
+                if (isIncome) income += tx.amount;
+                else if (isExpense || isInvestment || isDonation) expenses += tx.amount;
 
                 let key = '';
                 let labelText = '';
@@ -187,28 +203,39 @@ const CashFlowModule: React.FC<{
 
                 if (excludeKeywords.some(k => labelText.toLowerCase().includes(k))) return;
 
-                bMap.set(labelText, (bMap.get(labelText) || 0) + tx.amount);
+                const current = bMap.get(key) || { id: key, name: labelText, amount: 0 };
+                current.amount += tx.amount;
+                bMap.set(key, current);
             }
         });
 
-        const sortedBreakdown = Array.from(bMap.entries())
-            .map(([name, val]) => ({ name, val }))
-            .sort((a,b) => b.val - a.val);
+        const allItems = Array.from(bMap.values()).sort((a,b) => b.amount - a.amount);
+        const visibleSum = allItems.reduce((s, i) => s + (hiddenIds.has(i.id) ? 0 : i.amount), 0);
 
-        return { incoming: income, outgoing: expenses, net: income - expenses, breakdown: sortedBreakdown };
-    }, [transactions, start, end, dataType, excludeKeywords, categories, counterparties]);
+        return { incoming: income, outgoing: expenses, net: income - expenses, breakdown: allItems, visibleTotal: visibleSum };
+    }, [transactions, start, end, dataType, excludeKeywords, categories, counterparties, config, hiddenIds]);
 
     const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
 
+    const toggleHidden = (id: string) => {
+        const next = new Set(hiddenIds);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        onUpdateConfig({ ...config, hiddenDataIds: Array.from(next) });
+    };
+
     return (
-        <div className="p-6 space-y-6 flex flex-col h-full overflow-hidden">
-            <div className="flex items-center justify-center bg-slate-50 p-2 rounded-xl border border-slate-100 flex-shrink-0">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">{label}</span>
+        <div className="flex flex-col h-full overflow-hidden">
+            <div className="px-6 pt-4 flex items-center justify-between flex-shrink-0">
+                <button onClick={() => setNavOffset(prev => prev + 1)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition-all"><ChevronLeftIcon className="w-4 h-4" /></button>
+                <div className="bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-100">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-tight">{label}</span>
+                </div>
+                <button onClick={() => setNavOffset(prev => Math.max(prev - 1, -lookbackUnits))} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400 transition-all"><ChevronRightIcon className="w-4 h-4" /></button>
             </div>
 
-            <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 p-6 flex flex-col min-h-0">
                 {vizType === 'cards' ? (
-                    <div className="grid grid-cols-2 gap-4 flex-1">
+                    <div className="grid grid-cols-2 gap-4 flex-shrink-0 mb-6">
                         <div className="space-y-1">
                             <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Inflow</p>
                             <p className="text-lg font-black text-emerald-600">{formatCurrency(incoming)}</p>
@@ -228,60 +255,68 @@ const CashFlowModule: React.FC<{
                         </div>
                     </div>
                 ) : vizType === 'pie' ? (
-                    <div className="flex-1 flex flex-col items-center justify-center min-h-0">
-                        <div className="relative w-32 h-32 mb-4">
+                    <div className="flex-shrink-0 flex flex-col items-center justify-center mb-6">
+                        <div className="relative w-32 h-32">
                             <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
                                 {breakdown.length === 0 ? (
                                     <circle cx="50" cy="50" r="40" fill="transparent" stroke="#f1f5f9" strokeWidth="20" />
                                 ) : (
                                     (() => {
                                         let accumulated = 0;
-                                        const total = breakdown.reduce((s, i) => s + i.val, 0);
-                                        return breakdown.map((item, i) => {
-                                            const slice = (item.val / total) * 100;
+                                        const visibleItems = breakdown.filter(i => !hiddenIds.has(i.id));
+                                        const total = visibleItems.reduce((s, i) => s + i.amount, 0);
+                                        return visibleItems.map((item, i) => {
+                                            const slice = (item.amount / total) * 100;
                                             const dash = `${slice} ${100 - slice}`;
                                             const offset = -accumulated;
                                             accumulated += slice;
-                                            return <circle key={i} cx="50" cy="50" r="40" fill="transparent" stroke={COLORS[i % COLORS.length]} strokeWidth="20" strokeDasharray={dash} strokeDashoffset={offset} />;
+                                            return <circle key={item.id} cx="50" cy="50" r="40" fill="transparent" stroke={COLORS[i % COLORS.length]} strokeWidth="20" strokeDasharray={dash} strokeDashoffset={offset} />;
                                         });
                                     })()
                                 )}
                             </svg>
                         </div>
-                        <div className="w-full space-y-1 overflow-y-auto custom-scrollbar pr-2 max-h-32">
-                             {breakdown.slice(0, 5).map((item, i) => (
-                                 <div key={i} className="flex justify-between items-center text-[10px] font-bold">
-                                     <div className="flex items-center gap-1.5 min-w-0">
-                                         <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }} />
-                                         <span className="truncate text-slate-600">{item.name}</span>
-                                     </div>
-                                     <span className="text-slate-800 font-mono">{formatCurrency(item.val)}</span>
-                                 </div>
-                             ))}
-                        </div>
                     </div>
                 ) : (
-                    <div className="flex-1 flex flex-col space-y-2 overflow-y-auto custom-scrollbar min-h-0 pr-2">
-                        {breakdown.length === 0 ? (
-                             <div className="flex-1 flex items-center justify-center text-slate-300 italic text-xs">No records</div>
-                        ) : (
-                            breakdown.slice(0, 10).map((item, i) => {
-                                const max = Math.max(...breakdown.map(b => b.val));
-                                return (
-                                    <div key={i} className="space-y-1">
-                                        <div className="flex justify-between text-[10px] font-bold text-slate-600">
-                                            <span className="truncate">{item.name}</span>
-                                            <span>{formatCurrency(item.val)}</span>
-                                        </div>
-                                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                            <div className="h-full bg-indigo-50" style={{ width: `${(item.val / max) * 100}%` }} />
-                                        </div>
-                                    </div>
-                                );
-                            })
-                        )}
+                    <div className="flex-shrink-0 space-y-4 mb-6">
+                        <div className="p-4 bg-slate-900 rounded-2xl text-white">
+                            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Visible Volume</p>
+                            <p className="text-2xl font-black">{formatCurrency(visibleTotal)}</p>
+                        </div>
                     </div>
                 )}
+
+                <div className="flex-1 flex flex-col space-y-2 overflow-y-auto custom-scrollbar min-h-0 pr-2">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Breakdown Registry</p>
+                    {breakdown.length === 0 ? (
+                            <div className="flex-1 flex items-center justify-center text-slate-300 italic text-xs">No records</div>
+                    ) : (
+                        breakdown.map((item, i) => {
+                            const isHidden = hiddenIds.has(item.id);
+                            return (
+                                <div key={item.id} className={`flex items-center justify-between group/row p-1.5 rounded-lg transition-all ${isHidden ? 'opacity-40 grayscale bg-slate-50' : 'hover:bg-slate-50'}`}>
+                                    <div className="flex-1 min-w-0 mr-3">
+                                        <div className="flex justify-between text-[10px] font-bold text-slate-600 mb-1">
+                                            <span className="truncate">{item.name}</span>
+                                            <span>{formatCurrency(item.amount)}</span>
+                                        </div>
+                                        {!isHidden && (
+                                            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                                                <div className="h-full bg-indigo-500" style={{ width: `${(item.amount / (Math.max(...breakdown.map(b => b.amount)) || 1)) * 100}%` }} />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <button 
+                                        onClick={() => toggleHidden(item.id)}
+                                        className={`p-1.5 rounded-md transition-all ${isHidden ? 'text-slate-400 bg-slate-200 opacity-100' : 'text-slate-300 opacity-0 group-hover/row:opacity-100 hover:text-indigo-600 hover:bg-white shadow-sm'}`}
+                                    >
+                                        {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
+                                    </button>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -321,7 +356,7 @@ const TopExpensesModule: React.FC<{ transactions: Transaction[], categories: Cat
                                 <span className="text-slate-800">{formatCurrency(c.amt)}</span>
                             </div>
                             <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                <div className="h-full bg-rose-50" style={{ width: `${(c.amt / totalExpense) * 100}%` }} />
+                                <div className="h-full bg-rose-500" style={{ width: `${(c.amt / totalExpense) * 100}%` }} />
                             </div>
                         </div>
                     ))
@@ -406,6 +441,7 @@ const WidgetSlot: React.FC<{
     onRemove: () => void;
     onConfigure: () => void;
     onDelete: () => void;
+    onUpdateConfig: (newConfig: DashboardWidget['config']) => void;
     savedReports: SavedReport[];
     transactions: Transaction[];
     tasks: TaskItem[];
@@ -415,7 +451,7 @@ const WidgetSlot: React.FC<{
     youtubeMetrics: YouTubeMetric[];
     financialPlan: FinancialPlan | null;
     counterparties: Counterparty[];
-}> = ({ widget, onRemove, onConfigure, onDelete, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties }) => {
+}> = ({ widget, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties }) => {
     
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
@@ -450,7 +486,7 @@ const WidgetSlot: React.FC<{
                 </div>
             );
         }
-        if (widget.type === 'cashflow') return <CashFlowModule transactions={transactions} config={widget.config} categories={categories} counterparties={counterparties} />;
+        if (widget.type === 'cashflow') return <CashFlowModule widget={widget} transactions={transactions} categories={categories} counterparties={counterparties} onUpdateConfig={onUpdateConfig} />;
         if (widget.type === 'top_expenses') return <TopExpensesModule transactions={transactions} categories={categories} />;
         if (widget.type === 'amazon_summary') return <AmazonSummaryModule metrics={amazonMetrics} />;
         if (widget.type === 'youtube_summary') return <YouTubeSummaryModule metrics={youtubeMetrics} />;
@@ -509,6 +545,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     // Use NonNullable to access optional config type safely
     const [configDisplayDataType, setConfigDisplayDataType] = useState<NonNullable<DashboardWidget['config']>['displayDataType']>('type');
     const [configExcludeKeywords, setConfigExcludeKeywords] = useState<string>('');
+    const [configShowIncome, setConfigShowIncome] = useState(true);
+    const [configShowExpenses, setConfigShowExpenses] = useState(true);
+    const [configShowInvestments, setConfigShowInvestments] = useState(true);
+    const [configShowDonations, setConfigShowDonations] = useState(true);
 
     const dashboards = useMemo(() => {
         if (!systemSettings.dashboards || systemSettings.dashboards.length === 0) {
@@ -548,6 +588,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             setConfigLookback(activeWidget.config?.lookback || 0);
             setConfigDisplayDataType(activeWidget.config?.displayDataType || 'type');
             setConfigExcludeKeywords(activeWidget.config?.excludeKeywords || '');
+            setConfigShowIncome(activeWidget.config?.showIncome !== false);
+            setConfigShowExpenses(activeWidget.config?.showExpenses !== false);
+            setConfigShowInvestments(activeWidget.config?.showInvestments !== false);
+            setConfigShowDonations(activeWidget.config?.showDonations !== false);
         }
     }, [isConfiguring, activeWidget, goals, savedReports]);
 
@@ -598,6 +642,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             type: configBlueprint,
             colSpan: configColSpan,
             config: {
+                ...activeWidget?.config,
                 title: configTitle,
                 goalId: configBlueprint === 'goal_gauge' ? configGoalId : undefined,
                 reportId: configBlueprint === 'report' ? configReportId : undefined,
@@ -606,6 +651,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 lookback: configBlueprint === 'cashflow' ? configLookback : undefined,
                 displayDataType: configBlueprint === 'cashflow' ? configDisplayDataType : undefined,
                 excludeKeywords: configBlueprint === 'cashflow' ? configExcludeKeywords : undefined,
+                showIncome: configBlueprint === 'cashflow' ? configShowIncome : undefined,
+                showExpenses: configBlueprint === 'cashflow' ? configShowExpenses : undefined,
+                showInvestments: configBlueprint === 'cashflow' ? configShowInvestments : undefined,
+                showDonations: configBlueprint === 'cashflow' ? configShowDonations : undefined,
             }
         };
 
@@ -629,6 +678,19 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             dashboards: updatedDashboards
         });
         setIsConfiguring(null);
+    };
+
+    const handleUpdateWidgetConfig = (widgetId: string, newConfig: DashboardWidget['config']) => {
+        const updatedDashboards = dashboards.map(d => {
+            if (d.id === activeDashboardId) {
+                return {
+                    ...d,
+                    widgets: d.widgets.map(w => w.id === widgetId ? { ...w, config: newConfig } : w)
+                };
+            }
+            return d;
+        });
+        onUpdateSystemSettings({ ...systemSettings, dashboards: updatedDashboards });
     };
 
     const handleCreateDashboard = () => {
@@ -703,6 +765,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         onRemove={() => removeWidgetFromDashboard(w.id)} 
                         onConfigure={() => setIsConfiguring(w.id)}
                         onDelete={() => deleteWidgetPermanently(w.id)}
+                        onUpdateConfig={(newConf) => handleUpdateWidgetConfig(w.id, newConf)}
                         savedReports={savedReports}
                         transactions={transactions}
                         tasks={tasks}
@@ -771,8 +834,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             {/* Modules Overlay */}
             {isConfiguring && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-4" onClick={() => setIsConfiguring(null)}>
-                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
-                        <div className="p-8 border-b flex justify-between items-center bg-slate-50">
+                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-5xl h-[90vh] overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-8 border-b flex justify-between items-center bg-slate-50 flex-shrink-0">
                             <div>
                                 <h3 className="text-2xl font-black text-slate-800">Modules</h3>
                                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">System Library & Custom Blueprints</p>
@@ -780,9 +843,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                             <button onClick={() => setIsConfiguring(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
                         
-                        <div className="flex flex-1 min-h-[500px]">
+                        <div className="flex flex-1 min-h-0">
                             {/* Blueprints Sidebar */}
-                            <div className="w-72 bg-slate-50 border-r border-slate-100 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-1.5">
+                            <div className="w-72 bg-slate-50 border-r border-slate-100 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-1.5 flex-shrink-0">
                                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-2">Logical Blueprints</p>
                                 {BLUEPRINT_OPTIONS.map(bp => {
                                     const isExpanded = expandedBlueprints.has(bp.id);
@@ -857,76 +920,102 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
 
                                 {configBlueprint === 'cashflow' && (
                                     <div className="space-y-10 animate-fade-in">
-                                        <div className="space-y-3">
-                                            <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Visualization Interface</label>
-                                            <div className="grid grid-cols-3 gap-2">
-                                                {(['cards', 'pie', 'bar'] as const).map(viz => (
-                                                    <button 
-                                                        key={viz}
-                                                        onClick={() => setConfigVizType(viz)}
-                                                        className={`p-4 rounded-2xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${configVizType === viz ? 'bg-indigo-600 text-white border-indigo-700 shadow-md' : 'bg-white border-slate-100 hover:border-indigo-200 text-slate-500'}`}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                            <div className="space-y-6">
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Visualization Interface</label>
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        {(['cards', 'pie', 'bar'] as const).map(viz => (
+                                                            <button 
+                                                                key={viz}
+                                                                onClick={() => setConfigVizType(viz)}
+                                                                className={`p-4 rounded-2xl border-2 font-black uppercase tracking-widest text-[10px] transition-all ${configVizType === viz ? 'bg-indigo-600 text-white border-indigo-700 shadow-md' : 'bg-white border-slate-100 hover:border-indigo-200 text-slate-500'}`}
+                                                            >
+                                                                {viz} View
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
+                                                    <div className="space-y-3">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Observation Epoch</label>
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            {(['day', 'week', 'month', 'quarter', 'year', 'custom'] as const).map(p => (
+                                                                <button 
+                                                                    key={p} 
+                                                                    onClick={() => setConfigPeriod(p)}
+                                                                    className={`py-3 rounded-xl border-2 font-bold text-xs transition-all ${configPeriod === p ? 'bg-white border-indigo-500 text-indigo-700 shadow-sm' : 'bg-transparent border-slate-200 text-slate-400'}`}
+                                                                >
+                                                                    {p}ly
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-3">
+                                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Lookback Units</label>
+                                                        <div className="flex items-center gap-4">
+                                                            <input 
+                                                                type="number" 
+                                                                min="0"
+                                                                value={configLookback}
+                                                                onChange={e => setConfigLookback(parseInt(e.target.value) || 0)}
+                                                                className="w-24 p-3 border-2 border-slate-100 rounded-xl font-bold focus:border-indigo-500 outline-none"
+                                                            />
+                                                            <p className="text-[10px] text-slate-400 font-medium italic">
+                                                                {configLookback === 0 ? `Current ${configPeriod}` : `${configLookback} ${configPeriod}(s) ago`}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-6">
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Visibility Filters</label>
+                                                    <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50 rounded-[2rem] border border-slate-100">
+                                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                                            <input type="checkbox" checked={configShowIncome} onChange={e => setConfigShowIncome(e.target.checked)} className="rounded text-emerald-600" />
+                                                            <span className="text-xs font-bold text-slate-600 group-hover:text-slate-800">Show Inflow</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                                            <input type="checkbox" checked={configShowExpenses} onChange={e => setConfigShowExpenses(e.target.checked)} className="rounded text-rose-600" />
+                                                            <span className="text-xs font-bold text-slate-600 group-hover:text-slate-800">Show Outflow</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                                            <input type="checkbox" checked={configShowInvestments} onChange={e => setConfigShowInvestments(e.target.checked)} className="rounded text-purple-600" />
+                                                            <span className="text-xs font-bold text-slate-600 group-hover:text-slate-800">Investments</span>
+                                                        </label>
+                                                        <label className="flex items-center gap-2 cursor-pointer group">
+                                                            <input type="checkbox" checked={configShowDonations} onChange={e => setConfigShowDonations(e.target.checked)} className="rounded text-pink-600" />
+                                                            <span className="text-xs font-bold text-slate-600 group-hover:text-slate-800">Donations</span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Display Dimension</label>
+                                                    <select 
+                                                        value={configDisplayDataType} 
+                                                        onChange={e => setConfigDisplayDataType(e.target.value as any)}
+                                                        className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none bg-white"
                                                     >
-                                                        {viz} View
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-100">
-                                            <div className="space-y-3">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Observation Epoch</label>
-                                                <div className="grid grid-cols-3 gap-2">
-                                                    {(['day', 'week', 'month', 'quarter', 'year', 'custom'] as const).map(p => (
-                                                        <button 
-                                                            key={p} 
-                                                            onClick={() => setConfigPeriod(p)}
-                                                            className={`py-3 rounded-xl border-2 font-bold text-xs transition-all ${configPeriod === p ? 'bg-white border-indigo-500 text-indigo-700 shadow-sm' : 'bg-transparent border-slate-200 text-slate-400'}`}
-                                                        >
-                                                            {p}ly
-                                                        </button>
-                                                    ))}
+                                                        <option value="type">Transaction Type</option>
+                                                        <option value="category">Category Hierarchy</option>
+                                                        <option value="counterparty">Counterparty / Vendor</option>
+                                                        <option value="account">Target Ledger Account</option>
+                                                    </select>
                                                 </div>
-                                            </div>
-                                            <div className="space-y-3">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Lookback Units</label>
-                                                <div className="flex items-center gap-4">
+                                                <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Exclusion Keywords (Comma Separated)</label>
                                                     <input 
-                                                        type="number" 
-                                                        min="0"
-                                                        value={configLookback}
-                                                        onChange={e => setConfigLookback(parseInt(e.target.value) || 0)}
-                                                        className="w-24 p-3 border-2 border-slate-100 rounded-xl font-bold focus:border-indigo-500 outline-none"
+                                                        type="text" 
+                                                        value={configExcludeKeywords} 
+                                                        onChange={e => setConfigExcludeKeywords(e.target.value)} 
+                                                        placeholder="e.g. tiktok, youtube, transfer"
+                                                        className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium focus:border-indigo-500 outline-none"
                                                     />
-                                                    <p className="text-[10px] text-slate-400 font-medium italic">
-                                                        {configLookback === 0 ? `Current ${configPeriod}` : `${configLookback} ${configPeriod}(s) ago`}
-                                                    </p>
                                                 </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-6">
-                                            <div className="space-y-3">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Display Dimension</label>
-                                                <select 
-                                                    value={configDisplayDataType} 
-                                                    onChange={e => setConfigDisplayDataType(e.target.value as any)}
-                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none bg-white"
-                                                >
-                                                    <option value="type">Transaction Type</option>
-                                                    <option value="category">Category Hierarchy</option>
-                                                    <option value="counterparty">Counterparty / Vendor</option>
-                                                    <option value="account">Target Ledger Account</option>
-                                                </select>
-                                            </div>
-                                            <div className="space-y-3">
-                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Exclusion Keywords (Comma Separated)</label>
-                                                <input 
-                                                    type="text" 
-                                                    value={configExcludeKeywords} 
-                                                    onChange={e => setConfigExcludeKeywords(e.target.value)} 
-                                                    placeholder="e.g. tiktok, youtube, transfer"
-                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium focus:border-indigo-500 outline-none"
-                                                />
                                             </div>
                                         </div>
                                     </div>
@@ -967,10 +1056,15 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                         </div>
                                     </div>
                                 )}
+                                
+                                <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-start gap-4">
+                                    <InfoIcon className="w-5 h-5 text-indigo-300 mt-0.5" />
+                                    <p className="text-xs text-slate-400 leading-relaxed font-medium">Configurations are committed to your system library and can be deployed to any dashboard view.</p>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="p-6 border-t flex justify-end gap-3 bg-white">
+                        <div className="p-6 border-t flex justify-end gap-3 bg-white flex-shrink-0">
                             <button onClick={() => setIsConfiguring(null)} className="px-6 py-3 text-sm font-black uppercase text-slate-400 hover:bg-slate-100 rounded-2xl transition-all">Discard</button>
                             <button 
                                 onClick={handleApplyConfig} 
