@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { FinancialGoal, FinancialPlan, Transaction, Category, BusinessProfile, ChatMessage } from '../types';
-// Add TrashIcon to the imports
-import { LightBulbIcon, SparklesIcon, CheckCircleIcon, AddIcon, DeleteIcon, EditIcon, CurrencyDollarIcon, HeartIcon, CloseIcon, TrendingUpIcon, CalendarIcon, RobotIcon, ExclamationTriangleIcon, RepeatIcon, SendIcon, ShieldCheckIcon, TrashIcon } from '../components/Icons';
+// Added missing DatabaseIcon import
+import { LightBulbIcon, SparklesIcon, CheckCircleIcon, AddIcon, DeleteIcon, EditIcon, CurrencyDollarIcon, HeartIcon, CloseIcon, TrendingUpIcon, CalendarIcon, RobotIcon, ExclamationTriangleIcon, RepeatIcon, SendIcon, ShieldCheckIcon, TrashIcon, ChevronRightIcon, DatabaseIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { hasApiKey, generateFinancialStrategy, streamTaxAdvice } from '../services/geminiService';
 
@@ -15,6 +16,13 @@ interface FinancialPlanPageProps {
     businessProfile?: BusinessProfile;
 }
 
+const STRATEGY_STEPS = [
+    { id: 'foundation', label: 'Foundational Audit', icon: <DatabaseIcon className="w-4 h-4" /> },
+    { id: 'targets', label: 'Milestone Registry', icon: <ShieldCheckIcon className="w-4 h-4" /> },
+    { id: 'synthesis', label: 'Neural Synthesis', icon: <SparklesIcon className="w-4 h-4" /> },
+    { id: 'execution', label: 'Strategic Roadmap', icon: <TrendingUpIcon className="w-4 h-4" /> }
+];
+
 const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goals, onSaveGoals, plan, onSavePlan, categories, businessProfile }) => {
     const [isGenerating, setIsGenerating] = useState(false);
     const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -23,6 +31,7 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
     const [discoveryChat, setDiscoveryChat] = useState<ChatMessage[]>([]);
     const [discoveryInput, setDiscoveryInput] = useState('');
     const [isDiscoveryLoading, setIsDiscoveryLoading] = useState(false);
+    const [activeStep, setActiveStep] = useState<string>('foundation');
 
     // Goal form state
     const [goalTitle, setGoalTitle] = useState('');
@@ -80,6 +89,7 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
     const handleGenerateStrategy = async () => {
         if (!apiKeyAvailable) return;
         setIsGenerating(true);
+        setActiveStep('synthesis');
         try {
             const results = await generateFinancialStrategy(transactions, goals, categories, businessProfile || { info: {}, tax: {}, completedSteps: [] });
             onSavePlan({
@@ -88,9 +98,11 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
                 strategy: results.strategy || "Detailed roadmap generated.",
                 suggestedBudgets: results.suggestedBudgets || []
             });
+            setActiveStep('execution');
         } catch (e) {
             console.error(e);
             alert("Pattern analysis failed. Please check your connection.");
+            setActiveStep('targets');
         } finally {
             setIsGenerating(false);
         }
@@ -157,6 +169,28 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
                         <AddIcon className="w-5 h-5 inline-block mr-1" /> New Target
                     </button>
                 </div>
+            </div>
+
+            {/* Stepper Logic */}
+            <div className="flex items-center justify-between bg-white px-8 py-4 rounded-3xl border border-slate-200 shadow-sm overflow-x-auto no-scrollbar">
+                {STRATEGY_STEPS.map((s, idx) => {
+                    const isPassed = plan ? true : (idx < STRATEGY_STEPS.findIndex(step => step.id === activeStep));
+                    const isCurrent = activeStep === s.id;
+                    return (
+                        <React.Fragment key={s.id}>
+                            <button 
+                                onClick={() => !isGenerating && setActiveStep(s.id)}
+                                className={`flex items-center gap-3 transition-all ${isCurrent ? 'scale-105' : 'opacity-60 hover:opacity-100'}`}
+                            >
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${isPassed ? 'bg-green-500 text-white shadow-green-100' : isCurrent ? 'bg-indigo-600 text-white shadow-indigo-100' : 'bg-slate-100 text-slate-400'}`}>
+                                    {isPassed ? <CheckCircleIcon className="w-5 h-5" /> : s.icon}
+                                </div>
+                                <span className={`text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${isCurrent ? 'text-indigo-900' : 'text-slate-400'}`}>{s.label}</span>
+                            </button>
+                            {idx < STRATEGY_STEPS.length - 1 && <div className="h-px w-8 bg-slate-100 mx-2 flex-shrink-0" />}
+                        </React.Fragment>
+                    );
+                })}
             </div>
 
             {/* Overall Progress Gauge */}
@@ -242,7 +276,7 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
                                         <p className="text-[10px] text-indigo-400 uppercase font-black tracking-widest mt-0.5">Gemini 3 Analytical Forge</p>
                                     </div>
                                 </div>
-                                {plan && <button onClick={() => onSavePlan(null)} className="text-[10px] font-black text-slate-500 hover:text-white uppercase transition-colors">Clear Analysis</button>}
+                                {plan && <button onClick={() => { onSavePlan(null); setActiveStep('foundation'); }} className="text-[10px] font-black text-slate-500 hover:text-white uppercase transition-colors">Clear Analysis</button>}
                             </div>
 
                             {!plan ? (
@@ -259,7 +293,7 @@ const FinancialPlanPage: React.FC<FinancialPlanPageProps> = ({ transactions, goa
                                         disabled={isGenerating || goals.length === 0} 
                                         className="px-12 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-500 shadow-xl shadow-indigo-900/40 disabled:opacity-30 flex items-center gap-3 transition-all active:scale-95"
                                     >
-                                        {isGenerating ? <div className="w-5 h-5 border-2 border-t-white rounded-full animate-spin"></div> : <SparklesIcon className="w-5 h-5" />} 
+                                        {isGenerating ? <div className="w-5 h-5 border-4 border-t-white rounded-full animate-spin"></div> : <SparklesIcon className="w-5 h-5" />} 
                                         {isGenerating ? 'Synthesizing...' : 'Generate Wealth Strategy'}
                                     </button>
                                     {goals.length === 0 && <p className="text-[10px] text-red-400 font-bold uppercase tracking-widest">Requires at least 1 Active Target</p>}

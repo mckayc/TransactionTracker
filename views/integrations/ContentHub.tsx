@@ -141,7 +141,7 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
             const yt = youtubeMetrics.find(m => m.videoId === entity.id);
             if (!yt) return;
 
-            const normYt = normalizeTitle(yt.title);
+            const normYt = normalizeTitle(yt.videoTitle);
             const match = stagedAmVideos.find(v => {
                 const normAm = normalizeTitle(v.videoTitle);
                 return normAm.includes(normYt) || normYt.includes(normAm);
@@ -305,7 +305,7 @@ const ContentHub: React.FC<ContentHubProps> = ({ amazonMetrics, youtubeMetrics, 
                                     <WorkflowIcon className="w-12 h-12" />
                                 </div>
                                 <h2 className="text-3xl font-black text-slate-800">Neural platform alignment</h2>
-                                <p className="text-slate-500 max-w-lg mx-auto leading-relaxed">Cross-reference video metadata with sales ASINs to unlock platform-agnostic ROI reporting.</p>
+                                <p className="text-slate-500 max-lg mx-auto leading-relaxed">Cross-reference video metadata with sales ASINs to unlock platform-agnostic ROI reporting.</p>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
