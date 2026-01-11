@@ -1,17 +1,19 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User } from '../types';
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon } from '../components/Icons';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { CashFlowDashboardModule } from '../components/CashFlowDashboardModule';
 import { GoalGaugeModule, TaxProjectionModule, AiInsightsModule, TopExpensesModule, AmazonSummaryModule, YouTubeSummaryModule } from '../components/DashboardWidgets';
+import { ComparisonModule } from '../components/ComparisonModule';
 
 // Added missing formatCurrency helper function
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
 interface WidgetSlotProps {
     widget: DashboardWidget;
+    allWidgets: DashboardWidget[];
     onRemove: () => void;
     onConfigure: () => void;
     onDelete: () => void;
@@ -50,7 +52,7 @@ interface DashboardProps {
     users: User[];
 }
 
-const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users }) => {
+const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users }) => {
     
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
@@ -61,7 +63,8 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, onRemove, onConfigure, 
         'tasks': { icon: <ChecklistIcon className="w-4 h-4" />, label: 'Action Queue' },
         'amazon_summary': { icon: <BoxIcon className="w-4 h-4" />, label: 'Amazon Yield' },
         'youtube_summary': { icon: <YoutubeIcon className="w-4 h-4" />, label: 'YouTube ROI' },
-        'report': { icon: <BarChartIcon className="w-4 h-4" />, label: 'Report Pivot' }
+        'report': { icon: <BarChartIcon className="w-4 h-4" />, label: 'Report Pivot' },
+        'comparison': { icon: <RepeatIcon className="w-4 h-4" />, label: 'Variance Audit' }
     };
 
     const identity = COMPONENT_IDENTITY_MAP[widget.type] || { icon: <InfoIcon className="w-4 h-4" />, label: 'Module' };
@@ -96,6 +99,19 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, onRemove, onConfigure, 
                 transactionTypes={transactionTypes} 
                 users={users} 
                 onUpdateConfig={onUpdateConfig} 
+            />
+        );
+        if (widget.type === 'comparison') return (
+            <ComparisonModule 
+                widget={widget} 
+                allWidgets={allWidgets} 
+                transactions={transactions} 
+                categories={categories} 
+                counterparties={counterparties} 
+                accounts={accounts} 
+                transactionTypes={transactionTypes} 
+                users={users} 
+                tags={tags}
             />
         );
         if (widget.type === 'top_expenses') return <TopExpensesModule transactions={transactions} categories={categories} />;
@@ -142,6 +158,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [configTitle, setConfigTitle] = useState('');
     const [configGoalId, setConfigGoalId] = useState('');
     const [configReportId, setConfigReportId] = useState('');
+    const [configComparisonBaseId, setConfigComparisonBaseId] = useState('');
+    const [configComparisonTargetId, setConfigComparisonTargetId] = useState('');
     const [configPeriod, setConfigPeriod] = useState<NonNullable<DashboardWidget['config']>['period']>('month');
     const [configColSpan, setConfigColSpan] = useState<1 | 2 | 3>(1);
     const [configBlueprint, setConfigBlueprint] = useState<DashboardWidget['type']>('cashflow');
@@ -189,6 +207,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             setConfigTitle(activeWidget.config?.title || '');
             setConfigGoalId(activeWidget.config?.goalId || goals[0]?.id || '');
             setConfigReportId(activeWidget.config?.reportId || savedReports[0]?.id || '');
+            setConfigComparisonBaseId(activeWidget.config?.comparisonBaseId || '');
+            setConfigComparisonTargetId(activeWidget.config?.comparisonTargetId || '');
             setConfigPeriod(activeWidget.config?.period || 'month');
             setConfigColSpan(activeWidget.colSpan || 1);
             setConfigBlueprint(activeWidget.type);
@@ -256,6 +276,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 title: configTitle,
                 goalId: configBlueprint === 'goal_gauge' ? configGoalId : undefined,
                 reportId: configBlueprint === 'report' ? configReportId : undefined,
+                comparisonBaseId: configBlueprint === 'comparison' ? configComparisonBaseId : undefined,
+                comparisonTargetId: configBlueprint === 'comparison' ? configComparisonTargetId : undefined,
                 period: configBlueprint === 'cashflow' ? configPeriod : undefined,
                 vizType: configBlueprint === 'cashflow' ? configVizType : undefined,
                 pieStyle: configBlueprint === 'cashflow' ? configPieStyle : undefined,
@@ -324,6 +346,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
 
     const BLUEPRINT_OPTIONS = [
         { id: 'cashflow', label: 'Cash Flow', icon: <DollarSign className="w-4 h-4" /> },
+        { id: 'comparison', label: 'Variance Audit', icon: <RepeatIcon className="w-4 h-4" /> },
         { id: 'goal_gauge', label: 'Goal Progress', icon: <ShieldCheckIcon className="w-4 h-4" /> },
         { id: 'tax_projection', label: 'Tax Estimator', icon: <CalendarIcon className="w-4 h-4" /> },
         { id: 'ai_insights', label: 'AI Strategy', icon: <SparklesIcon className="w-4 h-4" /> },
@@ -335,6 +358,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     ];
 
     const gridColsClass = activeDashboard?.columns === 4 ? 'md:grid-cols-4' : activeDashboard?.columns === 3 ? 'md:grid-cols-3' : activeDashboard?.columns === 2 ? 'md:grid-cols-2' : 'md:grid-cols-1';
+
+    const availableCashflowWidgets = useMemo(() => {
+        return widgetLibrary.filter(w => w.type === 'cashflow');
+    }, [widgetLibrary]);
 
     return (
         <div className="space-y-6 pb-20 max-w-7xl mx-auto">
@@ -372,6 +399,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                     <WidgetSlot 
                         key={w.id} 
                         widget={w} 
+                        allWidgets={widgetLibrary}
                         onRemove={() => removeWidgetFromDashboard(w.id)} 
                         onConfigure={() => setIsConfiguring(w.id)}
                         onDelete={() => deleteWidgetPermanently(w.id)}
@@ -511,7 +539,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                         />
                                     </div>
                                     
-                                    {configBlueprint !== 'cashflow' && (
+                                    {configBlueprint !== 'cashflow' && configBlueprint !== 'comparison' && (
                                         <div className="space-y-2">
                                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Grid Footprint (Col Span)</label>
                                             <div className="flex gap-2">
@@ -528,6 +556,45 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                         </div>
                                     )}
                                 </div>
+
+                                {configBlueprint === 'comparison' && (
+                                    <div className="space-y-10 animate-fade-in">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Base Ledger Logic (Period A)</label>
+                                                <select 
+                                                    value={configComparisonBaseId} 
+                                                    onChange={e => setConfigComparisonBaseId(e.target.value)}
+                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none bg-white"
+                                                >
+                                                    <option value="">Select Module...</option>
+                                                    {availableCashflowWidgets.map(w => (
+                                                        <option key={w.id} value={w.id}>{w.config?.title || 'Untitled Cashflow'}</option>
+                                                    ))}
+                                                </select>
+                                                <p className="text-[10px] text-slate-400 italic">This period acts as the denominator for variance calculations.</p>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest ml-1">Target Ledger Logic (Period B)</label>
+                                                <select 
+                                                    value={configComparisonTargetId} 
+                                                    onChange={e => setConfigComparisonTargetId(e.target.value)}
+                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none bg-white"
+                                                >
+                                                    <option value="">Select Module...</option>
+                                                    {availableCashflowWidgets.map(w => (
+                                                        <option key={w.id} value={w.id}>{w.config?.title || 'Untitled Cashflow'}</option>
+                                                    ))}
+                                                </select>
+                                                <p className="text-[10px] text-slate-400 italic">This period's performance is compared against the base.</p>
+                                            </div>
+                                        </div>
+                                        <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-start gap-4">
+                                            <RepeatIcon className="w-5 h-5 text-indigo-300 mt-0.5" />
+                                            <p className="text-xs text-slate-400 leading-relaxed font-medium">The comparison engine automatically aligns categories and vendors across both modules. Ensure both base modules use the same "Display Dimension" for accurate results.</p>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {configBlueprint === 'cashflow' && (
                                     <div className="space-y-10 animate-fade-in">

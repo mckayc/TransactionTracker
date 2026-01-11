@@ -273,7 +273,7 @@ export interface BackupConfig {
 
 export interface DashboardWidget {
     id: string;
-    type: 'report' | 'tasks' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights';
+    type: 'report' | 'tasks' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights' | 'comparison';
     colSpan: 1 | 2 | 3;
     config?: {
         title?: string;
@@ -292,6 +292,8 @@ export interface DashboardWidget {
         showDonations?: boolean;
         hiddenDataIds?: string[];
         excludeUnknown?: boolean;
+        comparisonBaseId?: string;
+        comparisonTargetId?: string;
     };
 }
 
