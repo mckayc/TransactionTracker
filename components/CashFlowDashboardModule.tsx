@@ -22,7 +22,8 @@ const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6'
 interface BreakdownNode {
     id: string;
     label: string;
-    value: number;
+    value: number; // Aggregate value (self + children)
+    directValue: number; // Direct transactions only
     color: string;
     transactions: Transaction[];
     children: BreakdownNode[];
@@ -41,7 +42,7 @@ const DynamicArcChart: React.FC<{
     const size = 200;
     const center = size / 2;
     const innerRadius = 30;
-    const baseOuterRadius = 65;
+    const baseOuterRadius = 60;
 
     let cumulativeAngle = 0;
 
@@ -50,8 +51,8 @@ const DynamicArcChart: React.FC<{
         if (percentage <= 0) return null;
 
         const isHovered = hovered === i;
-        // Different arcs: Radius scales with magnitude + hover state
-        const radius = isHovered ? baseOuterRadius + 18 : baseOuterRadius + (percentage * 25);
+        // Logic: Outer radius varies by percentage + hover state to create the "pulsing" look
+        const radius = isHovered ? baseOuterRadius + 22 : baseOuterRadius + (percentage * 30);
         
         const angle = percentage * 360;
         const startAngle = cumulativeAngle;
@@ -99,12 +100,12 @@ const DynamicArcChart: React.FC<{
 
     return (
         <div className="flex flex-col items-center">
-            {/* Header info (Now on top) */}
-            <div className="h-16 flex flex-col items-center justify-center text-center px-4 mb-4">
+            {/* Legend / Info Header (Above Chart) */}
+            <div className="h-20 flex flex-col items-center justify-center text-center px-4 mb-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 truncate w-full">
-                    {hovered !== null ? data[hovered].label : 'Net Visible Flow'}
+                    {hovered !== null ? data[hovered].label : 'Net Volume'}
                 </p>
-                <p className="text-2xl font-black text-slate-800 leading-none">
+                <p className="text-3xl font-black text-slate-800 leading-none">
                     {formatCurrency(hovered !== null ? data[hovered].value : total)}
                 </p>
                 {hovered !== null && total > 0 && (
@@ -219,7 +220,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
     const [inspectingNode, setInspectingNode] = useState<BreakdownNode | null>(null);
 
-    // Date Logic with Period Cycling
+    // FIX: Date Logic properly isolated ranges
     const { start, end, displayLabel } = useMemo(() => {
         const s = new Date();
         s.setHours(0,0,0,0);
@@ -227,8 +228,11 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
         e.setHours(23,59,59,999);
 
         if (period === 'month') {
-            s.setMonth(s.getMonth() - lookbackUnits, 1);
-            e.setMonth(s.getMonth() + 1, 0);
+            s.setDate(1); // Set to 1st first to avoid overflow logic errors
+            s.setMonth(s.getMonth() - lookbackUnits);
+            
+            e.setTime(s.getTime());
+            e.setMonth(e.getMonth() + 1, 0); // Last day of that specific month
         } else if (period === 'year') {
             s.setFullYear(s.getFullYear() - lookbackUnits, 0, 1);
             e.setFullYear(s.getFullYear() - lookbackUnits, 11, 31);
@@ -252,15 +256,15 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
         onUpdateConfig({ ...config, lookback: nextLookback });
     };
 
-    // Tree Engine with Recursive Parent Injection
+    // Tree Engine with recursive parent recovery
     const tree = useMemo(() => {
         const nodeMap = new Map<string, BreakdownNode>();
         
         const getOrCreateNode = (id: string, label: string, parentId?: string): BreakdownNode => {
             if (!nodeMap.has(id)) {
-                nodeMap.set(id, { id, label, value: 0, color: '', transactions: [], children: [], parentId });
+                nodeMap.set(id, { id, label, value: 0, directValue: 0, color: '', transactions: [], children: [], parentId });
                 
-                // CRITICAL: Ensure full branch existence
+                // RECURSIVE: Ensure ancestors exist even without direct transactions
                 if (parentId) {
                     if (dataType === 'category') {
                         const p = categories.find(c => c.id === parentId);
@@ -313,7 +317,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                 }
 
                 const node = getOrCreateNode(key, label, parentId);
-                node.value += tx.amount;
+                node.directValue += tx.amount;
                 node.transactions.push(tx);
             }
         });
@@ -330,27 +334,25 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
         const roots = allNodes.filter(n => !n.parentId || !nodeMap.has(n.parentId));
 
         // Sorting & Aggregation pass
-        const getFinalValue = (n: BreakdownNode): number => {
-            return n.value + n.children.reduce((s, c) => s + getFinalValue(c), 0);
+        const calculateAggregate = (node: BreakdownNode): number => {
+            let sum = node.directValue;
+            node.children.forEach(c => { 
+                sum += calculateAggregate(c); 
+                node.transactions = [...node.transactions, ...c.transactions];
+            });
+            node.value = sum;
+            return sum;
         };
 
         const sortAndColorRecursive = (node: BreakdownNode, baseColor: string) => {
             node.color = baseColor;
-            node.children.sort((a, b) => getFinalValue(b) - getFinalValue(a));
+            node.children.sort((a, b) => b.value - a.value);
             node.children.forEach(c => sortAndColorRecursive(c, baseColor));
         };
 
-        roots.sort((a, b) => getFinalValue(b) - getFinalValue(a));
+        roots.forEach(calculateAggregate);
+        roots.sort((a, b) => b.value - a.value);
         roots.forEach((root, i) => sortAndColorRecursive(root, COLORS[i % COLORS.length]));
-
-        // Final recursive value sum (visible context)
-        const computeAggregate = (node: BreakdownNode): number => {
-            let sum = node.value;
-            node.children.forEach(c => { sum += computeAggregate(c); });
-            node.value = sum;
-            return sum;
-        };
-        roots.forEach(computeAggregate);
 
         return roots;
     }, [transactions, start, end, dataType, categories, counterparties, accounts, transactionTypes, config, excludeUnknown]);
@@ -368,12 +370,12 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
     return (
         <div className="flex flex-col h-full overflow-hidden">
             {/* Period Navigation Header */}
-            <div className="px-6 pt-4 flex items-center justify-between flex-shrink-0 bg-white z-10">
+            <div className="px-6 py-4 flex items-center justify-between flex-shrink-0 bg-white border-b border-slate-50">
                 <button onClick={() => handleShiftPeriod('prev')} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 transition-colors">
                     <ChevronLeftIcon className="w-5 h-5" />
                 </button>
-                <div className="px-5 py-2 bg-slate-50 border border-slate-200 rounded-full shadow-inner">
-                    <p className="text-[10px] font-black text-slate-700 uppercase tracking-tighter">{displayLabel}</p>
+                <div className="px-5 py-2 bg-slate-900 rounded-full shadow-lg">
+                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-tighter text-center">{displayLabel}</p>
                 </div>
                 <button 
                     onClick={() => handleShiftPeriod('next')} 
@@ -389,7 +391,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                     {vizType === 'cards' ? (
                         <div className="p-6 bg-slate-900 rounded-[2rem] text-white relative overflow-hidden shadow-xl">
                             <div className="relative z-10">
-                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">Dynamic Volume</p>
+                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1">In-Period Context</p>
                                 <p className="text-3xl font-black">{formatCurrency(totalVisible)}</p>
                             </div>
                             <TrendingUpIcon className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-5" />
@@ -404,9 +406,9 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                 </div>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Composition Registry</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Hierarchy Registry</p>
                     {tree.length === 0 ? (
-                        <div className="py-12 text-center text-slate-300 italic text-sm">No ledger entries for this epoch.</div>
+                        <div className="py-12 text-center text-slate-300 italic text-sm">No ledger data in this epoch.</div>
                     ) : (
                         tree.map(node => (
                             <BreakdownRow 
@@ -435,7 +437,7 @@ export const CashFlowDashboardModule: React.FC<CashFlowDashboardModuleProps> = (
                                 </div>
                                 <div>
                                     <h3 className="text-2xl font-black text-slate-800">{inspectingNode.label}</h3>
-                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">{inspectingNode.transactions.length} registry entries totaling {formatCurrency(inspectingNode.value)}</p>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">{inspectingNode.transactions.length} entries totaling {formatCurrency(inspectingNode.value)}</p>
                                 </div>
                             </div>
                             <button onClick={() => setInspectingNode(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
