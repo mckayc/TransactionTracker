@@ -457,6 +457,37 @@ export interface YouTubeMetric {
     duration?: string;
 }
 
+// VIDEO & PRODUCT JOINER TYPES
+export interface JoinedMetric {
+    id: string; // videoId or asin
+    videoId?: string;
+    asin: string;
+    mainTitle: string; // product name
+    subTitle: string; // video title
+    
+    // Aggregate Data
+    views: number;
+    watchTimeHours: number;
+    subsGained: number;
+    
+    // Revenue Data
+    videoEstimatedRevenue: number; // From YT report
+    amazonOnsiteRevenue: number;
+    amazonOffsiteRevenue: number;
+    creatorConnectionsRevenue: number;
+    totalRevenue: number;
+    
+    // Performance
+    clicks: number;
+    orderedItems: number;
+    shippedItems: number;
+    
+    // Metadata
+    publishDate?: string;
+    duration?: string;
+    asins?: string[];
+}
+
 export interface FinancialGoal {
     id: string;
     title: string;
@@ -489,4 +520,4 @@ export interface DuplicatePair {
     existingTx: Transaction;
 }
 
-export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube';
+export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-joiner';

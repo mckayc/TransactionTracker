@@ -1,4 +1,3 @@
-
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -62,7 +61,7 @@ const formatDate = (date: Date): string => {
 };
 
 /**
- * Step 1 Parser: YouTube Video Reports
+ * YouTube Detailed Video Report (Step 1 Joiner)
  * Content,Video title,Video publish time,Duration,Views,Watch time (hours),Subscribers,Estimated revenue (USD),Impressions,Impressions click-through rate (%)
  */
 export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: string) => void): Promise<YouTubeMetric[]> => {
@@ -117,11 +116,8 @@ export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: s
     return metrics;
 };
 
-// Alias for YouTube report parser to match component imports
-export const parseYouTubeReport = parseYouTubeDetailedReport;
-
 /**
- * Step 2 Parser: Amazon Storefront Videos
+ * Amazon Storefront Videos (Step 2 Joiner)
  * Title,Views,Hearts,Avg_Pct_Viewed,Duration,Upload_Date,Video_URL
  */
 export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: string) => void): Promise<AmazonVideo[]> => {
@@ -158,7 +154,7 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
 
         videos.push({
             id: generateUUID(),
-            videoId: '', // Will be matched to YT
+            videoId: '', 
             videoTitle: values[colMap.title],
             views: parseInt(values[colMap.views]) || 0,
             hearts: parseInt(values[colMap.hearts]) || 0,
@@ -171,12 +167,8 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
     return videos;
 };
 
-// Aliases for Amazon video parser to match component imports
-export const parseAmazonVideos = parseAmazonStorefrontVideos;
-export const parseAmazonVideoMetadata = parseAmazonStorefrontVideos;
-
 /**
- * Step 3 Parser: Amazon Product Mapping
+ * Video to ASIN Mapping (Step 3 Joiner)
  * Title,ASINs,Duration,Video URL
  */
 export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string) => void): Promise<Partial<AmazonVideo>[]> => {
@@ -216,11 +208,8 @@ export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string
     return mappings;
 };
 
-// Alias for Amazon product mapping parser to match component imports
-export const parseAmazonProductMapping = parseVideoAsinMapping;
-
 /**
- * Step 4 Parser: Amazon Earnings (Product Data)
+ * Amazon Earnings Report (Step 4 Joiner)
  * Category,Name,ASIN,Seller,Tracking ID,Date Shipped,Price($),Items Shipped,Returns,Revenue($),Ad Fees($),Device Type Group
  */
 export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
@@ -276,11 +265,8 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
     return metrics;
 };
 
-// Alias for Amazon earnings parser to match component imports
-export const parseAmazonReport = parseAmazonEarningsReport;
-
 /**
- * Step 5 Parser: Creator Connections
+ * Creator Connections Report (Step 5 Joiner)
  * Date,Campaign Title,ASIN,Clicks,Shipped Items,Revenue,Commission Rate,Commission Income
  */
 export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
@@ -332,7 +318,13 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
     return metrics;
 };
 
-// Helper for generic transaction parsing from text
+// Aliases for compatibility
+export const parseYouTubeReport = parseYouTubeDetailedReport;
+export const parseAmazonVideos = parseAmazonStorefrontVideos;
+export const parseAmazonVideoMetadata = parseAmazonStorefrontVideos;
+export const parseAmazonProductMapping = parseVideoAsinMapping;
+export const parseAmazonReport = parseAmazonEarningsReport;
+
 export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     onProgress("Parsing ledger data...");
     const lines = text.split('\n').filter(l => l.trim());
@@ -360,7 +352,6 @@ export const parseTransactionsFromText = async (text: string, accountId: string,
     return txs;
 };
 
-// Helper for generic transaction parsing from files
 export const parseTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     const allTxs: RawTransaction[] = [];
     for (const file of files) {
@@ -376,7 +367,6 @@ export const parseTransactionsFromFiles = async (files: File[], accountId: strin
     return allTxs;
 };
 
-// Logic for validating rule import format
 export const validateRuleFormat = (lines: string[]): { isValid: boolean; error?: string } => {
     if (lines.length === 0) return { isValid: false, error: "Empty file" };
     const header = lines[0].toLowerCase();
@@ -386,13 +376,11 @@ export const validateRuleFormat = (lines: string[]): { isValid: boolean; error?:
     return { isValid: true };
 };
 
-// Logic for generating CSV rule template
 export const generateRuleTemplate = (): string => {
     return "Rule Name,Match Field,Operator,Match Value,Target Category,Target Entity,Target Location,Target Type,Set Description,Skip Import\n" +
            "Starbucks Coffee,description,contains,STARBUCKS,Dining,Starbucks,,Purchase,Starbucks,false";
 };
 
-// Logic for parsing individual rule strings
 export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     const rules: ReconciliationRule[] = [];
     if (lines.length < 2) return [];
@@ -426,7 +414,6 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     return rules;
 };
 
-// Logic for reading rule file
 export const parseRulesFromFile = async (file: File): Promise<ReconciliationRule[]> => {
     const reader = new FileReader();
     const text = await new Promise<string>((res) => {

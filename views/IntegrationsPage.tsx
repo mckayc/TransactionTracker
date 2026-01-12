@@ -1,7 +1,6 @@
-
 import React from 'react';
 import type { View } from '../types';
-import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, ChartPieIcon } from '../components/Icons';
+import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, VideoIcon } from '../components/Icons';
 
 interface IntegrationsPageProps {
     onNavigate: (view: View) => void;
@@ -47,13 +46,20 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Fixed: Removed unimplemented "Cross-Platform Content Hub" card which caused TS error for missing View type */}
+                <IntegrationCard 
+                    title="Video & Product Joiner" 
+                    description="The ultimate Content ROI tool. Merge YouTube signals with Amazon Earnings and Creator Connections to see exactly which video drives your wealth."
+                    icon={<VideoIcon className="w-8 h-8" />}
+                    status="active"
+                    variant="primary"
+                    onClick={() => onNavigate('integration-joiner')}
+                />
+
                 <IntegrationCard 
                     title="Amazon Influencer" 
                     description="Import commission reports, track clicks, and analyze top-performing products from the Amazon Associates program."
                     icon={<BoxIcon className="w-8 h-8" />}
                     status="active"
-                    variant="primary"
                     onClick={() => onNavigate('integration-amazon')}
                 />
 

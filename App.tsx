@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, View, BusinessNote, Location, RuleCategory } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, View, BusinessNote, Location, RuleCategory, JoinedMetric } from './types';
 import Sidebar from './components/Sidebar';
 import Dashboard from './views/Dashboard';
 import ImportPage from './views/ImportPage';
@@ -18,6 +18,7 @@ import FinancialPlanPage from './views/FinancialPlanPage';
 import IntegrationsPage from './views/IntegrationsPage';
 import AmazonIntegration from './views/integrations/AmazonIntegration';
 import YouTubeIntegration from './views/integrations/YouTubeIntegration';
+import VideoProductJoiner from './views/integrations/VideoProductJoiner';
 import Chatbot from './components/Chatbot';
 import { MenuIcon, RepeatIcon, SparklesIcon, ExclamationTriangleIcon } from './components/Icons';
 import { api } from './services/apiService';
@@ -72,6 +73,9 @@ const App: React.FC = () => {
     const [financialGoals, setFinancialGoals] = useState<FinancialGoal[]>([]);
     const [financialPlan, setFinancialPlan] = useState<FinancialPlan | null>(null);
     const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
+    
+    // New Data State for Joiner
+    const [joinedMetrics, setJoinedMetrics] = useState<JoinedMetric[]>([]);
 
     const isDirty = useRef<boolean>(false);
     const updateQueues = useRef<Record<string, Promise<void>>>({});
@@ -113,6 +117,7 @@ const App: React.FC = () => {
             setFinancialGoals((data.financialGoals || []).filter(Boolean));
             setFinancialPlan(data.financialPlan || null);
             setSystemSettings(data.systemSettings || {});
+            setJoinedMetrics((data.joinedMetrics || []).filter(Boolean));
             
             if (data.systemSettings?.aiConfig) {
                 updateGeminiConfig(data.systemSettings.aiConfig);
@@ -311,7 +316,7 @@ const App: React.FC = () => {
         </div>
     );
 
-    const currentContext = { transactions, accounts, categories, tags, counterparties, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile };
+    const currentContext = { transactions, accounts, categories, tags, counterparties, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile, joinedMetrics };
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
@@ -346,6 +351,7 @@ const App: React.FC = () => {
                     {currentView === 'integrations' && <IntegrationsPage onNavigate={setCurrentView} />}
                     {currentView === 'integration-amazon' && <AmazonIntegration metrics={amazonMetrics} onAddMetrics={(m) => bulkUpdateData('amazonMetrics', m, setAmazonMetrics, amazonMetrics)} onDeleteMetrics={(ids) => { const next = amazonMetrics.filter(m => !ids.includes(m.id)); updateData('amazonMetrics', next, setAmazonMetrics); }} videos={amazonVideos} onAddVideos={(v) => bulkUpdateData('amazonVideos', v, setAmazonVideos, amazonVideos)} onDeleteVideos={(ids) => { const next = amazonVideos.filter(v => !ids.includes(v.id)); updateData('amazonVideos', next, setAmazonVideos); }} />}
                     {currentView === 'integration-youtube' && <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={(m) => bulkUpdateData('youtubeMetrics', m, setYouTubeMetric, youtubeMetrics)} onDeleteMetrics={(ids) => { const next = youtubeMetrics.filter(m => !ids.includes(m.id)); updateData('youtubeMetrics', next, setYouTubeMetric); }} channels={youtubeChannels} onSaveChannel={(c) => bulkUpdateData('youtubeChannels', [c], setYouTubeChannels, youtubeChannels)} onDeleteChannel={(id) => { const next = youtubeChannels.filter(c => c.id !== id); updateData('youtubeChannels', next, setYouTubeChannels); }} />}
+                    {currentView === 'integration-joiner' && <VideoProductJoiner metrics={joinedMetrics} onSaveMetrics={(m) => updateData('joinedMetrics', m, setJoinedMetrics)} />}
                 </div>
             </main>
             <Chatbot contextData={currentContext} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
