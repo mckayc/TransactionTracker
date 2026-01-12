@@ -1,11 +1,10 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User } from '../types';
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon } from '../components/Icons';
+import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User, JoinedMetric } from '../types';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { CashFlowDashboardModule } from '../components/CashFlowDashboardModule';
-import { GoalGaugeModule, TaxProjectionModule, AiInsightsModule, TopExpensesModule, AmazonSummaryModule, YouTubeSummaryModule } from '../components/DashboardWidgets';
+import { GoalGaugeModule, TaxProjectionModule, AiInsightsModule, TopExpensesModule, AmazonSummaryModule, YouTubeSummaryModule, VideoEarningsModule } from '../components/DashboardWidgets';
 import { ComparisonModule } from '../components/ComparisonModule';
 
 // Added missing formatCurrency helper function
@@ -31,6 +30,7 @@ interface WidgetSlotProps {
     tags: Tag[];
     transactionTypes: TransactionType[];
     users: User[];
+    joinedMetrics: JoinedMetric[];
 }
 
 // Added missing DashboardProps interface to fix line 115 error
@@ -50,9 +50,10 @@ interface DashboardProps {
     tags: Tag[];
     transactionTypes: TransactionType[];
     users: User[];
+    joinedMetrics: JoinedMetric[];
 }
 
-const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users }) => {
+const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users, joinedMetrics }) => {
     
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
@@ -64,7 +65,8 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
         'amazon_summary': { icon: <BoxIcon className="w-4 h-4" />, label: 'Amazon Yield' },
         'youtube_summary': { icon: <YoutubeIcon className="w-4 h-4" />, label: 'YouTube ROI' },
         'report': { icon: <BarChartIcon className="w-4 h-4" />, label: 'Report Pivot' },
-        'comparison': { icon: <RepeatIcon className="w-4 h-4" />, label: 'Variance Audit' }
+        'comparison': { icon: <RepeatIcon className="w-4 h-4" />, label: 'Variance Audit' },
+        'video_earnings': { icon: <VideoIcon className="w-4 h-4" />, label: 'Video Yield Matrix' }
     };
 
     const identity = COMPONENT_IDENTITY_MAP[widget.type] || { icon: <InfoIcon className="w-4 h-4" />, label: 'Module' };
@@ -122,6 +124,7 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
                 tags={tags}
             />
         );
+        if (widget.type === 'video_earnings') return <VideoEarningsModule metrics={joinedMetrics} config={widget.config} />;
         if (widget.type === 'top_expenses') return <TopExpensesModule transactions={transactions} categories={categories} />;
         if (widget.type === 'amazon_summary') return <AmazonSummaryModule metrics={amazonMetrics} />;
         if (widget.type === 'youtube_summary') return <YouTubeSummaryModule metrics={youtubeMetrics} />;
@@ -159,7 +162,7 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
     );
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users, joinedMetrics }) => {
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
     const [isCreatingDashboard, setIsCreatingDashboard] = useState(false);
     const [newDashboardName, setNewDashboardName] = useState('');
@@ -187,6 +190,24 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [configShowExpenses, setConfigShowExpenses] = useState(true);
     const [configShowInvestments, setConfigShowInvestments] = useState(true);
     const [configShowDonations, setConfigShowDonations] = useState(true);
+    
+    // Video Earnings Specific Config
+    const [configVideoCount, setConfigVideoCount] = useState(10);
+    const [configPublishYear, setConfigPublishYear] = useState('all');
+    const [configReportYear, setConfigReportYear] = useState('all');
+
+    const availableYears = useMemo(() => {
+        const publishYears = new Set<string>();
+        const reportYears = new Set<string>();
+        joinedMetrics.forEach(m => {
+            if (m.publishDate) publishYears.add(m.publishDate.substring(0, 4));
+            if (m.reportYear) reportYears.add(m.reportYear);
+        });
+        return {
+            publish: Array.from(publishYears).sort().reverse(),
+            report: Array.from(reportYears).sort().reverse()
+        };
+    }, [joinedMetrics]);
 
     const dashboards = useMemo(() => {
         if (!systemSettings.dashboards || systemSettings.dashboards.length === 0) {
@@ -234,6 +255,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             setConfigShowExpenses(activeWidget.config?.showExpenses !== false);
             setConfigShowInvestments(activeWidget.config?.showInvestments !== false);
             setConfigShowDonations(activeWidget.config?.showDonations !== false);
+            setConfigVideoCount(activeWidget.config?.videoCount || 10);
+            setConfigPublishYear(activeWidget.config?.publishYear || 'all');
+            setConfigReportYear(activeWidget.config?.reportYear || 'all');
         }
     }, [isConfiguring, activeWidget, goals, savedReports]);
 
@@ -301,6 +325,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 showExpenses: configBlueprint === 'cashflow' ? configShowExpenses : undefined,
                 showInvestments: configBlueprint === 'cashflow' ? configShowInvestments : undefined,
                 showDonations: configBlueprint === 'cashflow' ? configShowDonations : undefined,
+                videoCount: configBlueprint === 'video_earnings' ? configVideoCount : undefined,
+                publishYear: configBlueprint === 'video_earnings' ? configPublishYear : undefined,
+                reportYear: configBlueprint === 'video_earnings' ? configReportYear : undefined,
             }
         };
 
@@ -358,6 +385,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
 
     const BLUEPRINT_OPTIONS = [
         { id: 'cashflow', label: 'Cash Flow', icon: <DollarSign className="w-4 h-4" /> },
+        { id: 'video_earnings', label: 'Video Yield Matrix', icon: <VideoIcon className="w-4 h-4" /> },
         { id: 'comparison', label: 'Variance Audit', icon: <RepeatIcon className="w-4 h-4" /> },
         { id: 'goal_gauge', label: 'Goal Progress', icon: <ShieldCheckIcon className="w-4 h-4" /> },
         { id: 'tax_projection', label: 'Tax Estimator', icon: <CalendarIcon className="w-4 h-4" /> },
@@ -429,6 +457,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         tags={tags}
                         transactionTypes={transactionTypes}
                         users={users}
+                        joinedMetrics={joinedMetrics}
                     />
                 ))}
                 
@@ -444,7 +473,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             </div>
 
             {isCreatingDashboard && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[110] flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-8 animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-black text-slate-800">Construct View</h3>
@@ -604,6 +633,46 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                         <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 flex items-start gap-4">
                                             <RepeatIcon className="w-5 h-5 text-indigo-300 mt-0.5" />
                                             <p className="text-xs text-slate-400 leading-relaxed font-medium">The comparison engine automatically aligns categories and vendors across both modules. Ensure both base modules use the same "Display Dimension" for accurate results.</p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {configBlueprint === 'video_earnings' && (
+                                    <div className="space-y-10 animate-fade-in">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Display Quantity</label>
+                                                <input 
+                                                    type="number" 
+                                                    min="1" 
+                                                    max="50"
+                                                    value={configVideoCount} 
+                                                    onChange={e => setConfigVideoCount(parseInt(e.target.value) || 10)}
+                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none"
+                                                />
+                                            </div>
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Creation/Publish Year</label>
+                                                <select 
+                                                    value={configPublishYear} 
+                                                    onChange={e => setConfigPublishYear(e.target.value)}
+                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none bg-white"
+                                                >
+                                                    <option value="all">Show All Creation Years</option>
+                                                    {availableYears.publish.map(y => <option key={y} value={y}>Born in {y}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="space-y-3">
+                                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Performance Report Year</label>
+                                                <select 
+                                                    value={configReportYear} 
+                                                    onChange={e => setConfigReportYear(e.target.value)}
+                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none bg-white"
+                                                >
+                                                    <option value="all">Lifetime Performance</option>
+                                                    {availableYears.report.map(y => <option key={y} value={y}>Earning in {y}</option>)}
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
                                 )}

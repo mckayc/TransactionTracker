@@ -272,7 +272,7 @@ export interface BackupConfig {
 
 export interface DashboardWidget {
     id: string;
-    type: 'report' | 'tasks' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights' | 'comparison';
+    type: 'report' | 'tasks' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights' | 'comparison' | 'video_earnings';
     colSpan: 1 | 2 | 3;
     config?: {
         title?: string;
@@ -294,6 +294,9 @@ export interface DashboardWidget {
         comparisonBaseId?: string;
         comparisonTargetId?: string;
         isHidden?: boolean;
+        videoCount?: number;
+        publishYear?: string;
+        reportYear?: string;
     };
 }
 
@@ -485,6 +488,7 @@ export interface JoinedMetric {
     
     // Metadata
     publishDate?: string;
+    reportYear?: string;
     duration?: string;
     asins?: string[];
 }

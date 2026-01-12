@@ -74,7 +74,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
 
     // Filters
     const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set(['youtube', 'onsite', 'offsite', 'creator_onsite', 'creator_offsite']));
-    const [selectedYears, setSelectedYears] = useState<Set<string>>(new Set(['all']));
+    const [selectedYears, setSelectedYears] = useState<Set<string>>(new Set(['all'])); // Report Year
+    const [selectedCreationYears, setSelectedCreationYears] = useState<Set<string>>(new Set(['all'])); // Creation/Publish Year
 
     // Selection/Edit state
     const [selectedAsset, setSelectedAsset] = useState<JoinedMetric | null>(null);
@@ -97,15 +98,20 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         notify("Registry wiped successfully", "info");
     };
 
-    const availableYears = useMemo(() => {
-        const years = new Set<string>();
+    const { availableReportYears, availableCreationYears } = useMemo(() => {
+        const reportYears = new Set<string>();
+        const creationYears = new Set<string>();
         metrics.forEach(m => {
+            if (m.reportYear) reportYears.add(m.reportYear);
             if (m.publishDate) {
                 const year = m.publishDate.substring(0, 4);
-                if (year.length === 4) years.add(year);
+                if (year.length === 4) creationYears.add(year);
             }
         });
-        return Array.from(years).sort().reverse();
+        return {
+            availableReportYears: Array.from(reportYears).sort().reverse(),
+            availableCreationYears: Array.from(creationYears).sort().reverse()
+        };
     }, [metrics]);
 
     // Advanced Data Filtering Engine
@@ -134,17 +140,24 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         }
 
         if (!selectedYears.has('all')) {
-            base = base.filter(m => m.publishDate && selectedYears.has(m.publishDate.substring(0, 4)));
+            base = base.filter(m => m.reportYear && selectedYears.has(m.reportYear));
+        }
+
+        if (!selectedCreationYears.has('all')) {
+            base = base.filter(m => m.publishDate && selectedCreationYears.has(m.publishDate.substring(0, 4)));
         }
 
         if (mergeAsins) {
             const map = new Map<string, JoinedMetric>();
             base.forEach(m => {
-                if (!map.has(m.asin)) {
-                    map.set(m.asin, { ...m });
+                const key = m.asin || m.videoId || m.id;
+                if (!map.has(key)) {
+                    map.set(key, { ...m });
                 } else {
-                    const ex = map.get(m.asin)!;
+                    const ex = map.get(key)!;
                     ex.views += m.views;
+                    ex.watchTimeHours += m.watchTimeHours;
+                    ex.subsGained += m.subsGained;
                     ex.totalRevenue += m.totalRevenue;
                     ex.amazonOnsiteRevenue += m.amazonOnsiteRevenue;
                     ex.amazonOffsiteRevenue += m.amazonOffsiteRevenue;
@@ -171,7 +184,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         });
 
         return base;
-    }, [metrics, searchTerm, mergeAsins, sortKey, sortDir, selectedTypes, selectedYears]);
+    }, [metrics, searchTerm, mergeAsins, sortKey, sortDir, selectedTypes, selectedYears, selectedCreationYears]);
 
     const startIndex = (currentPage - 1) * rowsPerPage;
     const paginatedMetrics = useMemo(() => displayMetrics.slice(startIndex, startIndex + rowsPerPage), [displayMetrics, startIndex, rowsPerPage]);
@@ -201,9 +214,10 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         for (let i = 0; i < youtubeMetrics.length; i += BATCH_SIZE) {
             const batch = youtubeMetrics.slice(i, i + BATCH_SIZE);
             batch.forEach(m => {
-                if (!ytGroups.has(m.videoId)) ytGroups.set(m.videoId, { ...m });
+                const key = `${m.videoId}_${m.reportYear || 'all'}`;
+                if (!ytGroups.has(key)) ytGroups.set(key, { ...m });
                 else {
-                    const ex = ytGroups.get(m.videoId)!;
+                    const ex = ytGroups.get(key)!;
                     ex.views += m.views;
                     ex.watchTimeHours += m.watchTimeHours;
                     ex.subscribersGained += m.subscribersGained;
@@ -219,7 +233,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         for (let i = 0; i < amazonMetrics.length; i += BATCH_SIZE) {
             const batch = amazonMetrics.slice(i, i + BATCH_SIZE);
             batch.forEach(m => {
-                const key = `${m.asin}_${m.reportType}_${m.creatorConnectionsType || ''}`;
+                const key = `${m.asin}_${m.reportType}_${m.creatorConnectionsType || ''}_${m.reportYear || 'all'}`;
                 if (!amzGroups.has(key)) amzGroups.set(key, { ...m });
                 else {
                     const ex = amzGroups.get(key)!;
@@ -339,11 +353,11 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 const selectedMeta = proposedMatches.filter(p => p.selected);
                 const updatedMetrics = [...metrics];
                 selectedMeta.forEach(meta => {
-                    const target = updatedMetrics.find(m => m.videoId === meta.videoId);
-                    if (target) {
+                    const targets = updatedMetrics.filter(m => m.videoId === meta.videoId);
+                    targets.forEach(target => {
                         target.duration = meta.duration;
                         target.publishDate = meta.publishDate;
-                    }
+                    });
                 });
                 onSaveMetrics(updatedMetrics);
                 notify(`Enriched ${selectedMeta.length} YouTube records.`);
@@ -371,29 +385,30 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
             for (let i = 0; i < allSignals.length; i++) {
                 const s = allSignals[i];
                 if (s.sourceType === 'youtube') {
-                    if (existingMap.has(s.videoId)) {
-                        const ex = existingMap.get(s.videoId)!;
+                    const id = `${s.videoId}_${s.reportYear || 'all'}`;
+                    if (existingMap.has(id)) {
+                        const ex = existingMap.get(id)!;
                         ex.views = s.views;
                         const otherRev = ex.totalRevenue - ex.videoEstimatedRevenue;
                         ex.videoEstimatedRevenue = s.estimatedRevenue;
                         ex.totalRevenue = s.estimatedRevenue + otherRev;
                         ex.publishDate = s.publishDate;
                         ex.duration = s.duration;
+                        ex.reportYear = s.reportYear;
                     } else {
-                        existingMap.set(s.videoId, {
-                            id: s.videoId, videoId: s.videoId, asin: '', mainTitle: s.videoTitle, subTitle: s.videoTitle,
+                        existingMap.set(id, {
+                            id, videoId: s.videoId, asin: '', mainTitle: s.videoTitle, subTitle: s.videoTitle,
                             views: s.views, watchTimeHours: s.watchTimeHours, subsGained: s.subscribersGained,
                             videoEstimatedRevenue: s.estimatedRevenue, amazonOnsiteRevenue: 0, amazonOffsiteRevenue: 0,
                             creatorConnectionsOnsiteRevenue: 0, creatorConnectionsOffsiteRevenue: 0, totalRevenue: s.estimatedRevenue, clicks: s.impressions,
-                            orderedItems: 0, shippedItems: 0, publishDate: s.publishDate, duration: s.duration
+                            orderedItems: 0, shippedItems: 0, publishDate: s.publishDate, duration: s.duration, reportYear: s.reportYear
                         });
                     }
                 } else {
                     const amz = s;
-                    const existing = Array.from(existingMap.values()).find(m => m.asin === amz.asin);
+                    const id = `amz_${amz.asin}_${amz.reportType}_${amz.reportYear || 'all'}`;
                     
-                    if (!existing) {
-                        const id = `amz_${amz.asin}`;
+                    if (!existingMap.has(id)) {
                         const displayTitle = asinToTitle.get(amz.asin) || amz.productTitle;
                         existingMap.set(id, {
                             id, asin: amz.asin, mainTitle: displayTitle, subTitle: displayTitle,
@@ -404,21 +419,16 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                             creatorConnectionsOffsiteRevenue: (amz.reportType === 'creator_connections' && amz.creatorConnectionsType === 'offsite') ? amz.revenue : 0,
                             totalRevenue: amz.revenue, clicks: amz.clicks,
                             orderedItems: amz.orderedItems, shippedItems: amz.shippedItems,
-                            publishDate: amz.saleDate
+                            publishDate: amz.saleDate,
+                            reportYear: amz.reportYear
                         });
                     } else {
+                        const existing = existingMap.get(id)!;
                         if (amz.reportType === 'onsite') existing.amazonOnsiteRevenue = amz.revenue;
                         else if (amz.reportType === 'offsite') existing.amazonOffsiteRevenue = amz.revenue;
                         else if (amz.reportType === 'creator_connections') {
                             if (amz.creatorConnectionsType === 'onsite') existing.creatorConnectionsOnsiteRevenue = amz.revenue;
                             else existing.creatorConnectionsOffsiteRevenue = amz.revenue;
-                            
-                            if (asinToTitle.has(amz.asin)) {
-                                const newBest = asinToTitle.get(amz.asin)!;
-                                if (newBest.length < existing.mainTitle.length) {
-                                    existing.mainTitle = newBest;
-                                }
-                            }
                         }
                         existing.totalRevenue = existing.videoEstimatedRevenue + existing.amazonOnsiteRevenue + existing.amazonOffsiteRevenue + existing.creatorConnectionsOnsiteRevenue + existing.creatorConnectionsOffsiteRevenue;
                         existing.clicks += amz.clicks;
@@ -442,17 +452,16 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
             // Apply selected proposals
             const selectedLinks = proposedMatches.filter(p => p.selected);
             selectedLinks.forEach(link => {
-                const m = updatedMetrics.find(um => um.id === link.yt.id);
-                if (m) {
+                const targetRecords = updatedMetrics.filter(um => um.id === link.yt.id || (um.videoId === link.yt.videoId && um.reportYear === link.yt.reportYear));
+                targetRecords.forEach(m => {
                     m.duration = link.av.duration;
                     m.subTitle = link.av.videoTitle;
-                }
+                });
             });
 
             // Fallback: Automatic score matching for non-conflicted items
             for (let i = 0; i < amzVideos.length; i++) {
                 const av = amzVideos[i];
-                // Only if not already handled by a proposal
                 if (selectedLinks.some(l => l.av.videoTitle === av.videoTitle)) continue;
 
                 const match = updatedMetrics.find(m => {
@@ -464,8 +473,12 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 });
                 
                 if (match) {
-                    match.duration = av.duration;
-                    match.subTitle = match.subTitle || av.videoTitle; 
+                    // Update all records for this asset
+                    updatedMetrics.filter(um => um.videoId === match.videoId || (um.subTitle === match.subTitle && um.publishDate === match.publishDate))
+                        .forEach(m => {
+                            m.duration = av.duration;
+                            m.subTitle = m.subTitle || av.videoTitle; 
+                        });
                 }
                 if (i % 50 === 0) {
                     setProcessProgress(prev => ({ ...prev!, current: i }));
@@ -483,28 +496,41 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
             
             for (let i = 0; i < mappings.length; i++) {
                 const map = mappings[i];
-                const target = updatedMetrics.find(m => 
+                const targets = updatedMetrics.filter(m => 
                     normalizeStr(m.subTitle) === normalizeStr(map.videoTitle!) || 
                     normalizeStr(m.mainTitle) === normalizeStr(map.videoTitle!)
                 );
-                if (target && map.asins && map.asins.length > 0) {
-                    target.asin = map.asins[0];
-                    target.asins = map.asins;
-                    const orphans = updatedMetrics.filter(m => m.id !== target.id && !m.videoId && (m.asin === target.asin || target.asins?.includes(m.asin)));
-                    orphans.forEach(o => {
-                        target.amazonOnsiteRevenue += o.amazonOnsiteRevenue;
-                        target.amazonOffsiteRevenue += o.amazonOffsiteRevenue;
-                        target.creatorConnectionsOnsiteRevenue += o.creatorConnectionsOnsiteRevenue;
-                        target.creatorConnectionsOffsiteRevenue += o.creatorConnectionsOffsiteRevenue;
-                        target.totalRevenue = target.videoEstimatedRevenue + target.amazonOnsiteRevenue + target.amazonOffsiteRevenue + target.creatorConnectionsOnsiteRevenue + target.creatorConnectionsOffsiteRevenue;
-                        target.clicks += o.clicks;
-                        target.orderedItems += o.orderedItems;
-                    });
-                    orphans.forEach(o => {
-                        const idx = updatedMetrics.findIndex(m => m.id === o.id);
-                        if (idx > -1) updatedMetrics.splice(idx, 1);
-                    });
-                }
+                
+                targets.forEach(target => {
+                    if (map.asins && map.asins.length > 0) {
+                        target.asin = map.asins[0];
+                        target.asins = map.asins;
+                        
+                        // Merge orphaned Amazon records for THIS SPECIFIC REPORT YEAR
+                        const orphans = updatedMetrics.filter(m => 
+                            m.id !== target.id && 
+                            !m.videoId && 
+                            m.reportYear === target.reportYear &&
+                            (m.asin === target.asin || target.asins?.includes(m.asin))
+                        );
+
+                        orphans.forEach(o => {
+                            target.amazonOnsiteRevenue += o.amazonOnsiteRevenue;
+                            target.amazonOffsiteRevenue += o.amazonOffsiteRevenue;
+                            target.creatorConnectionsOnsiteRevenue += o.creatorConnectionsOnsiteRevenue;
+                            target.creatorConnectionsOffsiteRevenue += o.creatorConnectionsOffsiteRevenue;
+                            target.totalRevenue = target.videoEstimatedRevenue + target.amazonOnsiteRevenue + target.amazonOffsiteRevenue + target.creatorConnectionsOnsiteRevenue + target.creatorConnectionsOffsiteRevenue;
+                            target.clicks += o.clicks;
+                            target.orderedItems += o.orderedItems;
+                        });
+
+                        orphans.forEach(o => {
+                            const idx = updatedMetrics.findIndex(m => m.id === o.id);
+                            if (idx > -1) updatedMetrics.splice(idx, 1);
+                        });
+                    }
+                });
+
                 if (i % 20 === 0) {
                     setProcessProgress(prev => ({ ...prev!, current: i }));
                     await new Promise(r => setTimeout(r, 0));
@@ -536,6 +562,20 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 if (next.size === 0) next.add('all');
             } else next.add(year);
             setSelectedYears(next);
+        }
+        setCurrentPage(1);
+    };
+
+    const toggleCreationYearFilter = (year: string) => {
+        const next = new Set(selectedCreationYears);
+        if (year === 'all') setSelectedCreationYears(new Set(['all']));
+        else {
+            next.delete('all');
+            if (next.has(year)) {
+                next.delete(year);
+                if (next.size === 0) next.add('all');
+            } else next.add(year);
+            setSelectedCreationYears(next);
         }
         setCurrentPage(1);
     };
@@ -703,19 +743,29 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
 
                         <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 flex flex-wrap items-center justify-between gap-6">
                             <div className="flex flex-wrap items-center gap-4">
-                                <div className="flex items-center gap-2 pr-4 border-r border-slate-200">
-                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Year Filter</span>
-                                    <div className="flex gap-1">
+                                <div className="flex flex-wrap items-center gap-2 pr-4 border-r border-slate-200">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Report Year</span>
+                                    <div className="flex gap-1 flex-wrap">
                                         <button onClick={() => toggleYearFilter('all')} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${selectedYears.has('all') ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border text-slate-500 hover:bg-slate-100'}`}>ALL</button>
-                                        {availableYears.map(y => (
+                                        {availableReportYears.map(y => (
                                             <button key={y} onClick={() => toggleYearFilter(y)} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${selectedYears.has(y) ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border text-slate-500 hover:bg-slate-100'}`}>{y}</button>
                                         ))}
                                     </div>
                                 </div>
 
+                                <div className="flex flex-wrap items-center gap-2 pr-4 border-r border-slate-200">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Creation Year</span>
+                                    <div className="flex gap-1 flex-wrap">
+                                        <button onClick={() => toggleCreationYearFilter('all')} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${selectedCreationYears.has('all') ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border text-slate-500 hover:bg-slate-100'}`}>ALL</button>
+                                        {availableCreationYears.map(y => (
+                                            <button key={y} onClick={() => toggleCreationYearFilter(y)} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${selectedCreationYears.has(y) ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border text-slate-500 hover:bg-slate-100'}`}>{y}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
                                 <div className="flex items-center gap-2">
-                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Type Filter</span>
-                                    <div className="flex gap-1">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Type</span>
+                                    <div className="flex gap-1 flex-wrap">
                                         {[
                                             { id: 'youtube', label: 'YouTube' },
                                             { id: 'onsite', label: 'Onsite' },
@@ -745,7 +795,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                 <table className="min-w-full divide-y divide-slate-100 border-separate border-spacing-0">
                                     <thead className="bg-slate-50 sticky top-0 z-10">
                                         <tr>
-                                            <th className="px-8 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b">Asset Timeline</th>
+                                            <th className="px-8 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b">Creation / Report</th>
                                             <th className="px-8 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b">Video / Product Identity</th>
                                             <th className="px-8 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest border-b">ROI</th>
                                         </tr>
@@ -753,7 +803,12 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                     <tbody className="divide-y divide-slate-50 bg-white">
                                         {paginatedMetrics.map(m => (
                                             <tr key={m.id} className="hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => setSelectedAsset(m)}>
-                                                <td className="px-8 py-2"><span className="text-[8px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{m.publishDate || '---'}</span></td>
+                                                <td className="px-8 py-2">
+                                                    <div className="flex flex-col gap-1">
+                                                        <span className="text-[8px] font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">Created: {m.publishDate || '---'}</span>
+                                                        <span className="text-[8px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">Report: {m.reportYear || '---'}</span>
+                                                    </div>
+                                                </td>
                                                 <td className="px-8 py-2"><div className="flex flex-col"><span className="text-xs font-black text-slate-800">{m.mainTitle}</span><p className="text-[8px] text-slate-300 font-bold uppercase truncate mt-0.5">{m.subTitle}</p></div></td>
                                                 <td className="px-8 py-2 text-right"><span className="text-sm font-black text-emerald-600 font-mono">{formatCurrency(m.totalRevenue)}</span></td>
                                             </tr>
@@ -1104,6 +1159,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                         <p className="text-xs font-medium text-slate-600 truncate">Video ID: <span className="font-bold">{selectedAsset.videoId || 'N/A'}</span></p>
                                         <p className="text-xs font-medium text-slate-600">Product ASIN: <span className="font-bold">{selectedAsset.asin || 'N/A'}</span></p>
                                         <p className="text-xs font-medium text-slate-600">Creation Date: <span className="font-bold text-indigo-600">{selectedAsset.publishDate || '--'}</span></p>
+                                        <p className="text-xs font-medium text-slate-600">Report Year: <span className="font-bold text-indigo-600">{selectedAsset.reportYear || '---'}</span></p>
                                     </div>
                                 </div>
                             </div>
