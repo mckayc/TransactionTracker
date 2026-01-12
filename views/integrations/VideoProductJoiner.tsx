@@ -1,9 +1,11 @@
-import React, { useState, useMemo, useRef } from 'react';
-import type { JoinedMetric, YouTubeMetric, AmazonVideo, AmazonMetric } from '../../types';
-// Added missing imports for RepeatIcon and CloseIcon
-import { BoxIcon, YoutubeIcon, CloudArrowUpIcon, BarChartIcon, TableIcon, SparklesIcon, ChevronRightIcon, ChevronDownIcon, CheckCircleIcon, PlayIcon, InfoIcon, ShieldCheckIcon, AddIcon, DeleteIcon, TrashIcon, VideoIcon, SearchCircleIcon, RepeatIcon, CloseIcon } from '../../components/Icons';
+
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import type { JoinedMetric, YouTubeMetric, AmazonVideo, AmazonMetric, YouTubeChannel } from '../../types';
+import { BoxIcon, YoutubeIcon, CloudArrowUpIcon, BarChartIcon, TableIcon, SparklesIcon, ChevronRightIcon, ChevronDownIcon, CheckCircleIcon, PlayIcon, InfoIcon, ShieldCheckIcon, AddIcon, DeleteIcon, TrashIcon, VideoIcon, SearchCircleIcon, RepeatIcon, CloseIcon, ExclamationTriangleIcon } from '../../components/Icons';
 import { parseYouTubeDetailedReport, parseAmazonStorefrontVideos, parseVideoAsinMapping, parseAmazonEarningsReport, parseCreatorConnectionsReport } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
+import ConfirmationModal from '../../components/ConfirmationModal';
+import { api } from '../../services/apiService';
 
 interface Props {
     metrics: JoinedMetric[];
@@ -20,11 +22,28 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
     const [importStep, setImportStep] = useState<number>(1);
     const [isProcessing, setIsProcessing] = useState(false);
     const [verificationData, setVerificationData] = useState<any>(null);
+    const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Filter state
     const [searchTerm, setSearchTerm] = useState('');
     const [mergeAsins, setMergeAsins] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+    const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+    // Channels for recognition
+    const [channels, setChannels] = useState<YouTubeChannel[]>([]);
+    useEffect(() => {
+        api.loadAll().then(data => {
+            if (data.youtubeChannels) setChannels(data.youtubeChannels);
+        });
+    }, []);
+
+    // Notification helper
+    const notify = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 5000);
+    };
 
     // Joined Data Logic
     const displayMetrics = useMemo(() => {
@@ -71,9 +90,18 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
         }), { revenue: 0, views: 0, clicks: 0, items: 0 });
     }, [displayMetrics]);
 
+    // YouTube filename logic
+    const detectChannelFromFileName = (fileName: string): string => {
+        const lowerName = fileName.toLowerCase().replace(/\s+/g, '');
+        const matched = channels.find(c => {
+            const strippedChannel = c.name.toLowerCase().replace(/\s+/g, '');
+            return lowerName.includes(strippedChannel);
+        });
+        return matched ? matched.name : '';
+    };
+
     // Importer Logic
-    const handleStepUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const files = Array.from(e.target.files || []);
+    const handleStepUpload = async (files: File[]) => {
         if (files.length === 0) return;
 
         setIsProcessing(true);
@@ -83,7 +111,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                 const allYt: YouTubeMetric[] = [];
                 for (const f of files) {
                     const parsed = await parseYouTubeDetailedReport(f, (msg) => console.log(msg));
-                    allYt.push(...parsed);
+                    const channelName = detectChannelFromFileName(f.name);
+                    allYt.push(...parsed.map(p => ({ ...p, channelName })));
                 }
                 
                 const newMetrics: JoinedMetric[] = allYt.map(yt => ({
@@ -107,7 +136,6 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                     duration: yt.duration
                 }));
                 
-                // Merge with existing
                 const existingMap = new Map(metrics.map(m => [m.id, m]));
                 newMetrics.forEach(n => {
                     if (existingMap.has(n.id)) {
@@ -120,7 +148,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                     }
                 });
                 onSaveMetrics(Array.from(existingMap.values()));
-                alert(`Imported ${newMetrics.length} YouTube records.`);
+                notify(`Successfully imported ${newMetrics.length} YouTube records.`);
                 setImportStep(2);
             } 
             else if (importStep === 2) {
@@ -154,7 +182,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                 if (candidates.length > 0) {
                     setVerificationData({ candidates, matches });
                 } else {
-                    alert(`Matched ${matches.length} videos automatically.`);
+                    notify(`Matched ${matches.length} videos automatically.`);
                     setImportStep(3);
                 }
             }
@@ -177,7 +205,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                     }
                 });
                 onSaveMetrics(updatedMetrics);
-                alert(`Associated ${count} videos with ASINs.`);
+                notify(`Associated ${count} videos with ASINs.`);
                 setImportStep(4);
             }
             else if (importStep === 4) {
@@ -226,7 +254,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                     }
                 });
                 onSaveMetrics([...updatedMetrics, ...newOrphans]);
-                alert("Sales data merged successfully.");
+                notify("Sales data merged successfully.");
                 setImportStep(5);
             }
             else if (importStep === 5) {
@@ -246,16 +274,33 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                     }
                 });
                 onSaveMetrics(updatedMetrics);
-                alert("Creator Connections data integrated.");
+                notify("Creator Connections data integrated.");
                 setActiveTab('dashboard');
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            alert("Error processing batch. Check console for details.");
+            notify(err.message || "Error processing batch.", "error");
         } finally {
             setIsProcessing(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
         }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        setIsDragging(false);
+        const files = Array.from(e.dataTransfer.files);
+        handleStepUpload(files);
     };
 
     return (
@@ -379,7 +424,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                                 const isPassed = importStep > s.step;
                                 return (
                                     <div key={s.step} className={`p-6 rounded-[2rem] border-2 transition-all flex items-start gap-6 group ${isCurrent ? 'bg-white border-indigo-600 shadow-xl scale-[1.02]' : isPassed ? 'bg-indigo-50 border-indigo-100 opacity-60' : 'bg-slate-50 border-slate-100 opacity-40'}`}>
-                                        <div className={`w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center font-black text-lg transition-all ${isCurrent ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : isPassed ? 'bg-green-500 text-white shadow-green-100' : 'bg-white text-slate-300 shadow-inner'}`}>
+                                        <div className={`w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center font-black text-lg transition-all ${isCurrent ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : isPassed ? 'bg-green-50 text-white shadow-green-100' : 'bg-white text-slate-300 shadow-inner'}`}>
                                             {isPassed ? <CheckCircleIcon className="w-6 h-6" /> : s.step}
                                         </div>
                                         <div className="flex-1">
@@ -389,14 +434,17 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                                             {isCurrent && (
                                                 <div className="mt-8 space-y-4 animate-fade-in">
                                                     <div 
+                                                        onDragOver={handleDragOver}
+                                                        onDragLeave={handleDragLeave}
+                                                        onDrop={handleDrop}
                                                         onClick={() => fileInputRef.current?.click()}
-                                                        className="border-4 border-dashed border-slate-100 rounded-3xl p-10 flex flex-col items-center justify-center gap-4 cursor-pointer hover:bg-slate-50 hover:border-indigo-200 transition-all group/drop"
+                                                        className={`border-4 border-dashed rounded-3xl p-10 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all group/drop ${isDragging ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 bg-slate-50 hover:bg-slate-50 hover:border-indigo-200'}`}
                                                     >
-                                                        <div className="p-4 bg-white rounded-full shadow-sm group-hover/drop:scale-110 group-hover/drop:bg-indigo-600 group-hover/drop:text-white transition-all">
-                                                            <CloudArrowUpIcon className="w-8 h-8 text-slate-300 transition-colors" />
+                                                        <div className={`p-4 rounded-full shadow-sm transition-all ${isDragging ? 'bg-indigo-600 text-white scale-110' : 'bg-white text-slate-300 group-hover/drop:scale-110 group-hover/drop:bg-indigo-600 group-hover/drop:text-white'}`}>
+                                                            <CloudArrowUpIcon className="w-8 h-8 transition-colors" />
                                                         </div>
                                                         <div className="text-center">
-                                                            <p className="font-black text-slate-800">Identify Source Data</p>
+                                                            <p className={`font-black ${isDragging ? 'text-indigo-700' : 'text-slate-800'}`}>{isDragging ? 'Release to Start Logic Parse' : 'Identify Source Data'}</p>
                                                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Multi-file Batch Upload Supported</p>
                                                         </div>
                                                     </div>
@@ -405,7 +453,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                                                         ref={fileInputRef} 
                                                         multiple 
                                                         className="hidden" 
-                                                        onChange={handleStepUpload} 
+                                                        onChange={(e) => handleStepUpload(Array.from(e.target.files || []))} 
                                                     />
                                                     <div className="bg-slate-900 rounded-2xl p-4 flex items-center gap-3">
                                                         <InfoIcon className="w-5 h-5 text-indigo-400 flex-shrink-0" />
@@ -427,7 +475,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                         {importStep > 1 && (
                             <div className="pt-10 flex justify-center">
                                 <button 
-                                    onClick={() => setImportStep(1)}
+                                    onClick={() => setShowResetConfirm(true)}
                                     className="text-[10px] font-black text-slate-400 hover:text-indigo-600 uppercase tracking-widest transition-colors flex items-center gap-2"
                                 >
                                     <RepeatIcon className="w-4 h-4" /> Reset Logic Pipeline
@@ -519,6 +567,38 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Synthesizing Batch</h3>
                             <p className="text-sm text-slate-400 font-medium">Cross-referencing identifiers and normalizing signals...</p>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Custom UI Reset Confirm */}
+            <ConfirmationModal 
+                isOpen={showResetConfirm}
+                onClose={() => setShowResetConfirm(false)}
+                onConfirm={() => { setImportStep(1); setShowResetConfirm(false); notify("Logic pipeline reset to Step 1", "info"); }}
+                title="Reset Import Sequence?"
+                message="You will lose the current staging data for this specific import session. Existing metrics in your database will not be affected."
+                confirmLabel="Reset Pipeline"
+                variant="warning"
+            />
+
+            {/* Custom UI Toast */}
+            {toast && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[300] animate-slide-up">
+                    <div className={`px-6 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 ${
+                        toast.type === 'success' ? 'bg-slate-900 text-white border-white/10' :
+                        toast.type === 'error' ? 'bg-rose-600 text-white border-rose-500' :
+                        'bg-white text-slate-800 border-slate-200 shadow-lg'
+                    }`}>
+                        <div className={`${toast.type === 'success' ? 'bg-indigo-500' : toast.type === 'error' ? 'bg-white/20' : 'bg-indigo-50'} rounded-full p-1`}>
+                            {toast.type === 'success' ? <CheckCircleIcon className="w-4 h-4 text-white" /> : toast.type === 'error' ? <ExclamationTriangleIcon className="w-4 h-4" /> : <InfoIcon className="w-4 h-4 text-indigo-600" />}
+                        </div>
+                        <div>
+                            <p className="text-sm font-bold tracking-tight">{toast.message}</p>
+                        </div>
+                        <button onClick={() => setToast(null)} className="p-1 hover:bg-white/10 rounded-full ml-2">
+                            <CloseIcon className="w-4 h-4 opacity-50" />
+                        </button>
                     </div>
                 </div>
             )}

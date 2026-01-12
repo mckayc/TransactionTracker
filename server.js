@@ -502,7 +502,9 @@ app.post('/api/admin/reset', async (req, res) => {
             if (entities.includes('locations')) db.prepare("DELETE FROM locations").run();
             if (entities.includes('users')) db.prepare("DELETE FROM users WHERE is_default = 0").run();
             if (entities.includes('files_meta')) db.prepare("DELETE FROM files_meta").run();
-            const storageKeys = ['amazonMetrics', 'youtubeMetrics', 'amazonVideos', 'financialGoals', 'financialPlan', 'templates', 'tasks', 'taskCompletions', 'savedReports', 'contentLinks', 'businessNotes'];
+            
+            // Storage keys update to include joinedMetrics
+            const storageKeys = ['amazonMetrics', 'youtubeMetrics', 'amazonVideos', 'financialGoals', 'financialPlan', 'templates', 'tasks', 'taskCompletions', 'savedReports', 'contentLinks', 'businessNotes', 'joinedMetrics'];
             entities.forEach(entity => { if (storageKeys.includes(entity)) db.prepare("DELETE FROM app_storage WHERE key = ?").run(entity); });
         })();
         ensureSeedData();
