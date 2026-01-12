@@ -27,12 +27,14 @@ const parseDate = (dateStr: string): Date | null => {
   if (!dateStr || dateStr.length < 5) return null;
   const cleanedDateStr = dateStr.replace(/^"|"$/g, '').trim();
 
-  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(cleanedDateStr)) {
-    const date = new Date(cleanedDateStr + 'T00:00:00');
+  // Handle ISO 8601 or Amazon timestamp (2025-12-31 00:00:00)
+  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(cleanedDateStr)) {
+    const datePart = cleanedDateStr.split(' ')[0];
+    const date = new Date(datePart + 'T00:00:00');
     if (!isNaN(date.getTime())) return date;
   }
 
-  if (/^\d{1,2}-\d{1,2}-\d{2,4}$/.test(cleanedDateStr)) {
+  if (/^\d{1,2}-\d{1,2}-\d{2,4}/.test(cleanedDateStr)) {
     const parts = cleanedDateStr.split('-');
     let year = parseInt(parts[2], 10);
     if (year < 100) year += year < 70 ? 2000 : 1900;
@@ -40,7 +42,7 @@ const parseDate = (dateStr: string): Date | null => {
     if (!isNaN(date.getTime())) return date;
   }
 
-  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(cleanedDateStr)) {
+  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(cleanedDateStr)) {
     const parts = cleanedDateStr.split('/');
     let year = parseInt(parts[2], 10);
     if (year < 100) year += year < 70 ? 2000 : 1900;
@@ -62,7 +64,6 @@ const formatDate = (date: Date): string => {
 
 /**
  * YouTube Detailed Video Report (Step 1 Joiner)
- * Content,Video title,Video publish time,Duration,Views,Watch time (hours),Subscribers,Estimated revenue (USD),Impressions,Impressions click-through rate (%)
  */
 export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: string) => void): Promise<YouTubeMetric[]> => {
     onProgress(`Reading ${file.name}...`);
@@ -118,7 +119,6 @@ export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: s
 
 /**
  * Amazon Storefront Videos (Step 2 Joiner)
- * Title,Views,Hearts,Avg_Pct_Viewed,Duration,Upload_Date,Video_URL
  */
 export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: string) => void): Promise<AmazonVideo[]> => {
     onProgress(`Reading ${file.name}...`);
@@ -169,7 +169,6 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
 
 /**
  * Video to ASIN Mapping (Step 3 Joiner)
- * Title,ASINs,Duration,Video URL
  */
 export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string) => void): Promise<Partial<AmazonVideo>[]> => {
     onProgress(`Reading ${file.name}...`);
@@ -210,7 +209,6 @@ export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string
 
 /**
  * Amazon Earnings Report (Step 4 Joiner)
- * Category,Name,ASIN,Seller,Tracking ID,Date Shipped,Price($),Items Shipped,Returns,Revenue($),Ad Fees($),Device Type Group
  */
 export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
     onProgress(`Reading ${file.name}...`);
@@ -223,8 +221,20 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
     const metrics: AmazonMetric[] = [];
     if (lines.length < 2) return [];
 
-    const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    // Find actual header line by looking for Name and ASIN
+    let headerIdx = -1;
+    for (let i = 0; i < lines.length; i++) {
+        const lower = lines[i].toLowerCase();
+        if (lower.includes('name') && lower.includes('asin')) {
+            headerIdx = i;
+            break;
+        }
+    }
+
+    if (headerIdx === -1) throw new Error("Invalid Amazon report format. Headers 'Name' and 'ASIN' not found.");
+
+    const delimiter = lines[headerIdx].includes('\t') ? '\t' : ',';
+    const header = lines[headerIdx].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
     
     const colMap = {
         category: header.indexOf('category'),
@@ -233,31 +243,39 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
         tracking: header.indexOf('tracking id'),
         date: header.indexOf('date shipped'),
         items: header.indexOf('items shipped'),
+        returns: header.indexOf('returns'),
         revenue: header.indexOf('revenue($)'),
         fees: header.indexOf('ad fees($)')
     };
 
-    if (colMap.asin === -1 || colMap.revenue === -1) throw new Error("Invalid Amazon Earnings format.");
+    if (colMap.asin === -1 || colMap.revenue === -1) throw new Error("Required columns 'ASIN' or 'Revenue($)' not found in report.");
 
-    for (let i = 1; i < lines.length; i++) {
+    for (let i = headerIdx + 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line || line.toLowerCase().startsWith('total')) continue;
         const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
-        if (values.length < colMap.asin) continue;
+        if (values.length <= colMap.asin) continue;
 
         const trackingId = values[colMap.tracking] || '';
+        const rawRevenue = values[colMap.revenue]?.replace(/[$,]/g, '') || '0';
+        const revenue = parseFloat(rawRevenue);
+        
+        // Items Ordered/Shipped calculation from sample logic
+        const shipped = parseInt(values[colMap.items]) || 0;
+        const returns = parseInt(values[colMap.returns]) || 0;
 
         metrics.push({
             id: generateUUID(),
             saleDate: formatDate(parseDate(values[colMap.date]) || new Date()),
             asin: values[colMap.asin],
             productTitle: values[colMap.name] || 'Unknown',
-            category: values[colMap.category],
+            // Fix: Check colMap.category index directly instead of values array to avoid string-to-number comparison error
+            category: colMap.category !== -1 ? values[colMap.category] : undefined,
             trackingId,
             clicks: 0,
-            orderedItems: 0,
-            shippedItems: parseInt(values[colMap.items]) || 0,
-            revenue: parseFloat(values[colMap.revenue]?.replace(/[$,]/g, '')) || 0,
+            orderedItems: shipped,
+            shippedItems: shipped,
+            revenue: revenue,
             conversionRate: 0,
             reportType: trackingId.includes('onamz') ? 'onsite' : 'offsite'
         });
@@ -267,7 +285,6 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
 
 /**
  * Creator Connections Report (Step 5 Joiner)
- * Date,Campaign Title,ASIN,Clicks,Shipped Items,Revenue,Commission Rate,Commission Income
  */
 export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
     onProgress(`Reading ${file.name}...`);
@@ -318,13 +335,12 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
     return metrics;
 };
 
-// Aliases for compatibility
+// Fix: Export aliases for expected function names in specialized views
 export const parseYouTubeReport = parseYouTubeDetailedReport;
-export const parseAmazonVideos = parseAmazonStorefrontVideos;
-export const parseAmazonVideoMetadata = parseAmazonStorefrontVideos;
-export const parseAmazonProductMapping = parseVideoAsinMapping;
 export const parseAmazonReport = parseAmazonEarningsReport;
+export const parseAmazonVideos = parseAmazonStorefrontVideos;
 
+// Standard transaction parsers below...
 export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     onProgress("Parsing ledger data...");
     const lines = text.split('\n').filter(l => l.trim());
