@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { JoinedMetric, YouTubeMetric, AmazonVideo, AmazonMetric, YouTubeChannel } from '../../types';
-import { BoxIcon, YoutubeIcon, CloudArrowUpIcon, BarChartIcon, TableIcon, SparklesIcon, ChevronRightIcon, ChevronDownIcon, CheckCircleIcon, PlayIcon, InfoIcon, ShieldCheckIcon, AddIcon, DeleteIcon, TrashIcon, VideoIcon, SearchCircleIcon, RepeatIcon, CloseIcon, ExclamationTriangleIcon, ArrowRightIcon, TrendingUpIcon, DollarSign, CheckBadgeIcon } from '../../components/Icons';
-import { parseYouTubeDetailedReport, parseAmazonStorefrontVideos, parseVideoAsinMapping, parseAmazonEarningsReport, parseCreatorConnectionsReport } from '../../services/csvParserService';
+import { BoxIcon, YoutubeIcon, CloudArrowUpIcon, BarChartIcon, TableIcon, SparklesIcon, ChevronRightIcon, ChevronDownIcon, CheckCircleIcon, PlayIcon, InfoIcon, ShieldCheckIcon, AddIcon, DeleteIcon, TrashIcon, VideoIcon, SearchCircleIcon, RepeatIcon, CloseIcon, ExclamationTriangleIcon, ArrowRightIcon, TrendingUpIcon, DollarSign, CheckBadgeIcon, DatabaseIcon } from '../../components/Icons';
+import { parseAmazonStorefrontVideos, parseVideoAsinMapping, parseAmazonEarningsReport, parseCreatorConnectionsReport } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { api } from '../../services/apiService';
@@ -9,6 +9,9 @@ import { api } from '../../services/apiService';
 interface Props {
     metrics: JoinedMetric[];
     onSaveMetrics: (metrics: JoinedMetric[]) => void;
+    // We need the raw platform metrics to merge from Step 1
+    youtubeMetrics?: YouTubeMetric[];
+    amazonMetrics?: AmazonMetric[];
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
@@ -16,7 +19,7 @@ const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation:
 
 const normalizeStr = (str: string) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
 
-const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
+const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMetrics = [], amazonMetrics = [] }) => {
     const [activeTab, setActiveTab] = useState<'dashboard' | 'data' | 'insights' | 'importer'>('dashboard');
     const [importStep, setImportStep] = useState<number>(1);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -93,14 +96,28 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
         }), { revenue: 0, views: 0, clicks: 0, items: 0 });
     }, [displayMetrics]);
 
-    // YouTube filename logic
-    const detectChannelFromFileName = (fileName: string): string => {
-        const lowerName = fileName.toLowerCase().replace(/\s+/g, '');
-        const matched = channels.find(c => {
-            const strippedChannel = c.name.toLowerCase().replace(/\s+/g, '');
-            return lowerName.includes(strippedChannel);
+    // Step 1: Fetch Existing Signals
+    const handleFetchSignals = () => {
+        if (youtubeMetrics.length === 0) {
+            notify("No YouTube metrics found to fetch.", "error");
+            return;
+        }
+        setIsProcessing(true);
+        // Group youtube metrics by video ID to get totals
+        const ytGroups = new Map<string, YouTubeMetric>();
+        youtubeMetrics.forEach(m => {
+            if (!ytGroups.has(m.videoId)) {
+                ytGroups.set(m.videoId, { ...m });
+            } else {
+                const ex = ytGroups.get(m.videoId)!;
+                ex.views += m.views;
+                ex.watchTimeHours += m.watchTimeHours;
+                ex.subscribersGained += m.subscribersGained;
+                ex.estimatedRevenue += m.estimatedRevenue;
+            }
         });
-        return matched ? matched.name : '';
+        setStagedData(Array.from(ytGroups.values()));
+        setIsProcessing(false);
     };
 
     // Importer Logic
@@ -108,16 +125,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
         if (files.length === 0) return;
         setIsProcessing(true);
         try {
-            if (importStep === 1) {
-                const allYt: YouTubeMetric[] = [];
-                for (const f of files) {
-                    const parsed = await parseYouTubeDetailedReport(f, (msg) => console.log(msg));
-                    const channelName = detectChannelFromFileName(f.name);
-                    allYt.push(...parsed.map(p => ({ ...p, channelId: channelName })));
-                }
-                setStagedData(allYt);
-            } 
-            else if (importStep === 2) {
+            if (importStep === 2) {
                 const amzVideos: AmazonVideo[] = [];
                 for (const f of files) {
                     const parsed = await parseAmazonStorefrontVideos(f, (msg) => console.log(msg));
@@ -170,34 +178,51 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                 creatorConnectionsRevenue: 0, totalRevenue: yt.estimatedRevenue, clicks: yt.impressions,
                 orderedItems: 0, shippedItems: 0, publishDate: yt.publishDate, duration: yt.duration
             }));
+            
+            // Merge with existing but prioritize newly fetched signals for views/revenue
             const existingMap = new Map(metrics.map(m => [m.id, m]));
             newMetrics.forEach(n => {
                 if (existingMap.has(n.id)) {
                     const ex = existingMap.get(n.id)!;
                     ex.views = n.views;
-                    ex.totalRevenue = n.totalRevenue + (ex.totalRevenue - ex.videoEstimatedRevenue);
+                    // Keep the non-YouTube revenue portions
+                    const otherRev = ex.totalRevenue - ex.videoEstimatedRevenue;
                     ex.videoEstimatedRevenue = n.videoEstimatedRevenue;
-                } else existingMap.set(n.id, n);
+                    ex.totalRevenue = n.videoEstimatedRevenue + otherRev;
+                } else {
+                    existingMap.set(n.id, n);
+                }
             });
             onSaveMetrics(Array.from(existingMap.values()));
-            notify(`Committed ${newMetrics.length} YouTube records.`);
+            notify(`Synced signals for ${newMetrics.length} videos.`);
             setImportStep(2);
         } else if (importStep === 2) {
             const amzVideos = stagedData as AmazonVideo[];
             const matches: any[] = [];
             const candidates: any[] = [];
+            
+            // Match logic: Normalize titles or exact duration match
             amzVideos.forEach(av => {
                 const normAmz = normalizeStr(av.videoTitle);
-                const match = metrics.find(m => normalizeStr(m.mainTitle) === normAmz || (m.duration === av.duration && normalizeStr(m.mainTitle).includes(normAmz.substring(0, 10))));
-                if (match) matches.push({ videoId: match.videoId, amzTitle: av.videoTitle });
-                else {
-                    const durMatch = metrics.find(m => m.duration === av.duration);
+                const match = metrics.find(m => normalizeStr(m.mainTitle) === normAmz);
+                
+                if (match) {
+                    matches.push({ videoId: match.videoId, amzTitle: av.videoTitle });
+                    // Update metadata
+                    match.duration = av.duration;
+                    match.subTitle = av.videoTitle;
+                } else {
+                    // Look for potential duration match
+                    const durMatch = metrics.find(m => m.duration === av.duration && !m.asin);
                     if (durMatch) candidates.push({ yt: durMatch, amz: av });
                 }
             });
-            if (candidates.length > 0) setVerificationData({ candidates, matches });
-            else {
-                notify(`Matched ${matches.length} videos.`);
+
+            if (candidates.length > 0) {
+                setVerificationData({ candidates, matches });
+            } else {
+                onSaveMetrics([...metrics]); // Save the metadata updates
+                notify(`Matched ${matches.length} videos to Storefront metadata.`);
                 setImportStep(3);
             }
         } else if (importStep === 3) {
@@ -205,7 +230,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
             const updatedMetrics = [...metrics];
             let count = 0;
             mappings.forEach(map => {
-                const target = updatedMetrics.find(m => normalizeStr(m.mainTitle) === normalizeStr(map.videoTitle!));
+                const target = updatedMetrics.find(m => normalizeStr(m.subTitle) === normalizeStr(map.videoTitle!) || normalizeStr(m.mainTitle) === normalizeStr(map.videoTitle!));
                 if (target && map.asins && map.asins.length > 0) {
                     target.asin = map.asins[0];
                     target.asins = map.asins;
@@ -213,7 +238,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                 }
             });
             onSaveMetrics(updatedMetrics);
-            notify(`Linked ${count} ASINs.`);
+            notify(`Successfully associated ${count} ASINs with content.`);
             setImportStep(4);
         } else if (importStep === 4) {
             const sales = stagedData as AmazonMetric[];
@@ -226,22 +251,28 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                     else target.amazonOffsiteRevenue += s.revenue;
                     target.totalRevenue += s.revenue;
                     target.orderedItems += s.orderedItems;
+                    // Product title from earnings is often better than video title
                     target.mainTitle = s.productTitle || target.mainTitle;
                 } else {
                     const existingOrphan = newOrphans.find(o => o.asin === s.asin);
-                    if (existingOrphan) existingOrphan.totalRevenue += s.revenue;
-                    else newOrphans.push({
-                        id: s.asin, asin: s.asin, mainTitle: s.productTitle, subTitle: s.productTitle,
-                        views: 0, watchTimeHours: 0, subsGained: 0, videoEstimatedRevenue: 0,
-                        amazonOnsiteRevenue: s.reportType === 'onsite' ? s.revenue : 0,
-                        amazonOffsiteRevenue: s.reportType === 'offsite' ? s.revenue : 0,
-                        creatorConnectionsRevenue: 0, totalRevenue: s.revenue, clicks: s.clicks,
-                        orderedItems: s.orderedItems, shippedItems: s.shippedItems
-                    });
+                    if (existingOrphan) {
+                        existingOrphan.totalRevenue += s.revenue;
+                        if (s.reportType === 'onsite') existingOrphan.amazonOnsiteRevenue += s.revenue;
+                        else existingOrphan.amazonOffsiteRevenue += s.revenue;
+                    } else {
+                        newOrphans.push({
+                            id: s.asin, asin: s.asin, mainTitle: s.productTitle, subTitle: s.productTitle,
+                            views: 0, watchTimeHours: 0, subsGained: 0, videoEstimatedRevenue: 0,
+                            amazonOnsiteRevenue: s.reportType === 'onsite' ? s.revenue : 0,
+                            amazonOffsiteRevenue: s.reportType === 'offsite' ? s.revenue : 0,
+                            creatorConnectionsRevenue: 0, totalRevenue: s.revenue, clicks: s.clicks,
+                            orderedItems: s.orderedItems, shippedItems: s.shippedItems
+                        });
+                    }
                 }
             });
             onSaveMetrics([...updatedMetrics, ...newOrphans]);
-            notify("Sales data merged.");
+            notify("Earnings data integrated into model.");
             setImportStep(5);
         } else if (importStep === 5) {
             const ccData = stagedData as AmazonMetric[];
@@ -254,7 +285,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                 }
             });
             onSaveMetrics(updatedMetrics);
-            notify("Creator Connections integrated.");
+            notify("Campaign premium yields finalized.");
             setActiveTab('dashboard');
         }
         setStagedData(null);
@@ -264,9 +295,9 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
         try {
             await api.resetDatabase(['joinedMetrics']);
             onSaveMetrics([]);
-            notify("Data wiped successfully", "info");
+            notify("Database wiped successfully", "info");
         } catch (e) {
-            notify("Wipe failed", "error");
+            notify("Wipe operation failed", "error");
         }
     };
 
@@ -393,9 +424,9 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
 
                         <div className="space-y-4">
                             {[
-                                { step: 1, title: 'YouTube Catalyst', desc: 'Identify Video IDs and core AdSense earnings.' },
-                                { step: 2, title: 'Amazon Visual Reference', desc: 'Sync signals between YouTube and Amazon Storefront.' },
-                                { step: 3, title: 'Identity Registry', desc: 'Associate SKU (ASIN) identifiers with content.' },
+                                { step: 1, title: 'Platform Ingestion', desc: 'Fetch existing signals from YouTube and Amazon integrations.' },
+                                { step: 2, title: 'Storefront Synchronization', desc: 'Upload Amazon Video report to sync metadata and durations.' },
+                                { step: 3, title: 'Identity Mapping', desc: 'Upload ASIN Mapping to associate content with SKUs.' },
                                 { step: 4, title: 'Commission Audit', desc: 'Ingest Amazon Fee-Earnings (Onsite/Offsite).' },
                                 { step: 5, title: 'Creator Premium', desc: 'Finalize with Creator Connections yields.' }
                             ].map(s => {
@@ -420,21 +451,37 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                                         
                                         {isCurrent && !hasData && (
                                             <div className="animate-fade-in px-2 pb-2">
-                                                <div 
-                                                    onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
-                                                    onDragLeave={() => setIsDragging(false)}
-                                                    onDrop={e => { e.preventDefault(); setIsDragging(false); handleStepUpload(Array.from(e.dataTransfer.files)); }}
-                                                    onClick={() => fileInputRef.current?.click()}
-                                                    className={`border-4 border-dashed rounded-3xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all group/drop ${isDragging ? 'border-indigo-600 bg-indigo-50 scale-[1.01]' : 'border-slate-100 bg-slate-50 hover:border-indigo-200 hover:bg-white'}`}
-                                                >
-                                                    <div className={`p-4 bg-white rounded-full shadow-sm transition-all ${isDragging ? 'bg-indigo-600 text-white scale-110' : 'text-slate-300 group-hover/drop:bg-indigo-600 group-hover/drop:text-white'}`}>
-                                                        <CloudArrowUpIcon className="w-8 h-8 transition-colors" />
+                                                {s.step === 1 ? (
+                                                    <div className="flex flex-col items-center gap-4 p-8 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                                                        <div className="flex gap-4">
+                                                            <YoutubeIcon className="w-10 h-10 text-red-600 opacity-40" />
+                                                            <BoxIcon className="w-10 h-10 text-orange-500 opacity-40" />
+                                                        </div>
+                                                        <p className="text-sm text-slate-500 text-center max-w-sm">Synchronize the joiner with your existing platform metrics to create the logical base.</p>
+                                                        <button 
+                                                            onClick={handleFetchSignals}
+                                                            className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95"
+                                                        >
+                                                            <DatabaseIcon className="w-5 h-5" /> Fetch Platform Signals
+                                                        </button>
                                                     </div>
-                                                    <div className="text-center">
-                                                        <p className="font-black text-slate-800">Identify Statement(s)</p>
-                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Multi-file Batch Parsing Supported</p>
+                                                ) : (
+                                                    <div 
+                                                        onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
+                                                        onDragLeave={() => setIsDragging(false)}
+                                                        onDrop={e => { e.preventDefault(); setIsDragging(false); handleStepUpload(Array.from(e.dataTransfer.files)); }}
+                                                        onClick={() => fileInputRef.current?.click()}
+                                                        className={`border-4 border-dashed rounded-3xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all group/drop ${isDragging ? 'border-indigo-600 bg-indigo-50 scale-[1.01]' : 'border-slate-100 bg-slate-50 hover:border-indigo-200 hover:bg-white'}`}
+                                                    >
+                                                        <div className={`p-4 bg-white rounded-full shadow-sm transition-all ${isDragging ? 'bg-indigo-600 text-white scale-110' : 'text-slate-300 group-hover/drop:bg-indigo-600 group-hover/drop:text-white'}`}>
+                                                            <CloudArrowUpIcon className="w-8 h-8 transition-colors" />
+                                                        </div>
+                                                        <div className="text-center">
+                                                            <p className="font-black text-slate-800">Select File for Step {s.step}</p>
+                                                            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">XLSX or CSV Format Required</p>
+                                                        </div>
                                                     </div>
-                                                </div>
+                                                )}
                                                 <input type="file" ref={fileInputRef} multiple className="hidden" onChange={(e) => handleStepUpload(Array.from(e.target.files || []))} />
                                             </div>
                                         )}
@@ -462,8 +509,10 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                                                         <tbody className="divide-y divide-white/5 font-mono">
                                                             {stagedData!.slice(0, 100).map((row, i) => (
                                                                 <tr key={i} className="hover:bg-white/5 transition-colors">
-                                                                    <td className="px-3 py-1.5">{row.videoTitle || row.productTitle || row.ccTitle || 'Unknown'}</td>
-                                                                    <td className="px-3 py-1.5 text-right text-indigo-400 font-bold">{formatCurrency(row.revenue || row.estimatedRevenue || 0)}</td>
+                                                                    <td className="px-3 py-1.5">{row.videoTitle || row.productTitle || row.ccTitle || row.title || 'Unknown'}</td>
+                                                                    <td className="px-3 py-1.5 text-right text-indigo-400 font-bold">
+                                                                        {row.revenue || row.estimatedRevenue ? formatCurrency(row.revenue || row.estimatedRevenue) : (row.duration || row.asins?.join(', ') || '-')}
+                                                                    </td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>

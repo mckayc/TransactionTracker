@@ -6,7 +6,6 @@ declare const pdfjsLib: any;
 
 /**
  * Robustly splits a CSV line, respecting quoted fields and escaped quotes.
- * Vital for handling titles with commas like "What are Bone Conduction Headphones like? - VLOP..."
  */
 const splitCsvLine = (line: string, delimiter: string): string[] => {
     const result: string[] = [];
@@ -60,14 +59,13 @@ const parseDate = (dateStr: string): Date | null => {
   if (!dateStr || dateStr.length < 5) return null;
   const cleanedDateStr = dateStr.replace(/^"|"$/g, '').trim();
 
-  // Handle ISO 8601 or Amazon timestamp (2025-12-31 00:00:00)
   if (/^\d{4}-\d{1,2}-\d{1,2}/.test(cleanedDateStr)) {
     const datePart = cleanedDateStr.split(' ')[0];
     const date = new Date(datePart + 'T00:00:00');
     if (!isNaN(date.getTime())) return date;
   }
 
-  // Handle YouTube Date format like "Nov 11, 2014" or Amazon "Dec 31 2025 11:29 AM"
+  // Handle formats like "Dec 31 2025 11:29 AM"
   if (/[A-Za-z]{3}\s\d{1,2},?\s\d{4}/.test(cleanedDateStr)) {
       const date = new Date(cleanedDateStr);
       if (!isNaN(date.getTime())) return date;
@@ -102,7 +100,7 @@ const formatDate = (date: Date): string => {
 };
 
 /**
- * YouTube Detailed Video Report (Step 1 Joiner)
+ * YouTube Detailed Video Report (Legacy Support)
  */
 export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: string) => void): Promise<YouTubeMetric[]> => {
     onProgress(`Reading ${file.name}...`);
@@ -132,7 +130,7 @@ export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: s
         ctr: header.indexOf('impressions click-through rate (%)')
     };
 
-    if (colMap.id === -1 || colMap.title === -1) throw new Error("Invalid YouTube report format. Headers 'Content' and 'Video title' are mandatory.");
+    if (colMap.id === -1 || colMap.title === -1) throw new Error("Invalid YouTube report format.");
 
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -158,7 +156,7 @@ export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: s
 };
 
 /**
- * Amazon Storefront Videos (Step 2 Joiner)
+ * Amazon Storefront Videos (Step 2 Joiner - Title, Views, Hearts, Avg_Pct_Viewed, Duration, Upload_Date, Video_URL)
  */
 export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: string) => void): Promise<AmazonVideo[]> => {
     onProgress(`Reading ${file.name}...`);
@@ -185,7 +183,7 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
         url: header.indexOf('video_url')
     };
 
-    if (colMap.title === -1) throw new Error("Invalid Amazon Video format.");
+    if (colMap.title === -1) throw new Error("Invalid Amazon Storefront Video format. Header 'Title' is missing.");
 
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -199,7 +197,7 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
             videoTitle: values[colMap.title],
             views: parseInt(values[colMap.views]) || 0,
             hearts: parseInt(values[colMap.hearts]) || 0,
-            avgPctViewed: parseFloat(values[colMap.avgView]) || 0,
+            avgPctViewed: parseFloat(values[colMap.avgView]?.replace('%', '')) || 0,
             duration: values[colMap.duration],
             uploadDate: formatDate(parseDate(values[colMap.date]) || new Date()),
             videoUrl: values[colMap.url]
@@ -209,7 +207,7 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
 };
 
 /**
- * Video to ASIN Mapping (Step 3 Joiner)
+ * Video to ASIN Mapping (Step 3 Joiner - Title, ASINs, Duration, Video URL)
  */
 export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string) => void): Promise<Partial<AmazonVideo>[]> => {
     onProgress(`Reading ${file.name}...`);
@@ -241,7 +239,7 @@ export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string
 
         mappings.push({
             videoTitle: values[colMap.title],
-            asins: values[colMap.asins] ? values[colMap.asins].split(/[\s,;|]+/).map(a => a.trim()).filter(Boolean) : [],
+            asins: values[colMap.asins] ? values[colMap.asins].split(/[\|,\s]+/).map(a => a.trim()).filter(Boolean) : [],
             duration: values[colMap.duration],
             videoUrl: values[colMap.url]
         });
@@ -263,21 +261,19 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
     const metrics: AmazonMetric[] = [];
     if (lines.length < 2) return [];
 
-    // Find actual header line by looking for Name and ASIN
     let headerIdx = -1;
     for (let i = 0; i < lines.length; i++) {
         const lower = lines[i].toLowerCase();
-        if (lower.includes('name') && lower.includes('asin')) {
+        if (lower.includes('asin') && (lower.includes('revenue') || lower.includes('ordered'))) {
             headerIdx = i;
             break;
         }
     }
 
-    if (headerIdx === -1) throw new Error("Invalid Amazon report format. Headers 'Name' and 'ASIN' not found.");
+    if (headerIdx === -1) throw new Error("Could not find Amazon data headers.");
 
     const delimiter = lines[headerIdx].includes('\t') ? '\t' : ',';
-    const headerLine = lines[headerIdx].trim();
-    const header = splitCsvLine(headerLine, delimiter).map(h => h.toLowerCase());
+    const header = splitCsvLine(lines[headerIdx], delimiter).map(h => h.trim().toLowerCase());
     
     const colMap = {
         category: header.indexOf('category'),
@@ -286,12 +282,9 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
         tracking: header.indexOf('tracking id'),
         date: header.indexOf('date shipped'),
         items: header.indexOf('items shipped'),
-        returns: header.indexOf('returns'),
         revenue: header.indexOf('revenue($)'),
         fees: header.indexOf('ad fees($)')
     };
-
-    if (colMap.asin === -1 || colMap.revenue === -1) throw new Error("Required columns 'ASIN' or 'Revenue($)' not found in report.");
 
     for (let i = headerIdx + 1; i < lines.length; i++) {
         const line = lines[i].trim();
@@ -300,24 +293,17 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
         if (values.length <= colMap.asin) continue;
 
         const trackingId = values[colMap.tracking] || '';
-        const rawRevenue = values[colMap.revenue]?.replace(/[$,]/g, '') || '0';
-        const revenue = parseFloat(rawRevenue);
-        
-        // Items Ordered/Shipped calculation from sample logic
-        const shipped = parseInt(values[colMap.items]) || 0;
-        const returns = parseInt(values[colMap.returns]) || 0;
-
         metrics.push({
             id: generateUUID(),
             saleDate: formatDate(parseDate(values[colMap.date]) || new Date()),
             asin: values[colMap.asin],
             productTitle: values[colMap.name] || 'Unknown',
-            category: colMap.category !== -1 ? values[colMap.category] : undefined,
+            category: values[colMap.category],
             trackingId,
             clicks: 0,
-            orderedItems: shipped,
-            shippedItems: shipped,
-            revenue: revenue,
+            orderedItems: parseInt(values[colMap.items]) || 0,
+            shippedItems: parseInt(values[colMap.items]) || 0,
+            revenue: parseFloat(values[colMap.revenue]?.replace(/[$,]/g, '')) || 0,
             conversionRate: 0,
             reportType: trackingId.includes('onamz') ? 'onsite' : 'offsite'
         });
@@ -340,8 +326,7 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
     if (lines.length < 2) return [];
 
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const headerLine = lines[0].trim();
-    const header = splitCsvLine(headerLine, delimiter).map(h => h.toLowerCase());
+    const header = splitCsvLine(lines[0], delimiter).map(h => h.trim().toLowerCase());
     
     const colMap = {
         date: header.indexOf('date'),
@@ -378,28 +363,21 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
     return metrics;
 };
 
-// Fix: Export aliases for expected function names in specialized views
 export const parseYouTubeReport = parseYouTubeDetailedReport;
 export const parseAmazonReport = parseAmazonEarningsReport;
 export const parseAmazonVideos = parseAmazonStorefrontVideos;
 
-// Standard transaction parsers below...
+// Standard transaction parsers...
 export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     onProgress("Parsing ledger data...");
     const lines = text.split('\n').filter(l => l.trim());
     if (lines.length < 1) return [];
-    
-    let startIndex = 0;
-    if (lines[0].toLowerCase().includes('date') || lines[0].toLowerCase().includes('amount')) {
-        startIndex = 1;
-    }
-
-    const txs: RawTransaction[] = [];
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const startIndex = (lines[0].toLowerCase().includes('date') || lines[0].toLowerCase().includes('amount')) ? 1 : 0;
+    const txs: RawTransaction[] = [];
     for (let i = startIndex; i < lines.length; i++) {
         const parts = splitCsvLine(lines[i], delimiter);
         if (parts.length < 2) continue;
-        
         txs.push({
             date: formatDate(parseDate(parts[0]) || new Date()),
             description: parts[1],
@@ -430,9 +408,7 @@ export const parseTransactionsFromFiles = async (files: File[], accountId: strin
 export const validateRuleFormat = (lines: string[]): { isValid: boolean; error?: string } => {
     if (lines.length === 0) return { isValid: false, error: "Empty file" };
     const header = lines[0].toLowerCase();
-    if (!header.includes('rule name') || !header.includes('match field')) {
-        return { isValid: false, error: "Missing required headers (Rule Name, Match Field, etc)" };
-    }
+    if (!header.includes('rule name') || !header.includes('match field')) return { isValid: false, error: "Missing required headers" };
     return { isValid: true };
 };
 
@@ -444,27 +420,16 @@ export const generateRuleTemplate = (): string => {
 export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     const rules: ReconciliationRule[] = [];
     if (lines.length < 2) return [];
-    
-    const headerLine = lines[0].trim();
-    const delimiter = headerLine.includes('\t') ? '\t' : ',';
-    const header = splitCsvLine(headerLine, delimiter).map(h => h.toLowerCase());
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const header = splitCsvLine(lines[0], delimiter).map(h => h.trim().toLowerCase());
     const col = (name: string) => header.indexOf(name);
-    
     for (let i = 1; i < lines.length; i++) {
         const row = splitCsvLine(lines[i], delimiter);
         if (row.length < 4) continue;
-        
         rules.push({
             id: generateUUID(),
             name: row[col('rule name')] || 'Untitled Rule',
-            conditions: [{
-                id: generateUUID(),
-                type: 'basic',
-                field: row[col('match field')] as any || 'description',
-                operator: row[col('operator')] as any || 'contains',
-                value: row[col('match value')] || '',
-                nextLogic: 'AND'
-            }],
+            conditions: [{ id: generateUUID(), type: 'basic', field: row[col('match field')] as any || 'description', operator: row[col('operator')] as any || 'contains', value: row[col('match value')] || '', nextLogic: 'AND' }],
             suggestedCategoryName: row[col('target category')],
             suggestedCounterpartyName: row[col('target entity')],
             suggestedLocationName: row[col('target location')],
