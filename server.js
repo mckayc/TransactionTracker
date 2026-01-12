@@ -188,7 +188,6 @@ const runAutomatedBackup = async () => {
         };
 
         try {
-            // Full Export logic (reusing standard export keys)
             const data = { exportDate: new Date().toISOString(), version: '0.6.0', type: 'automated_snapshot' };
             const tables = ['transactions', 'accounts', 'categories', 'tags', 'counterparties', 'reconciliation_rules', 'rule_categories', 'users', 'locations', 'transaction_types'];
             tables.forEach(t => { try { data[t] = db.prepare(`SELECT * FROM ${t}`).all(); } catch(e) {} });
@@ -203,13 +202,11 @@ const runAutomatedBackup = async () => {
             
             fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), content);
 
-            // Register in files_meta so it shows in Documents view
             db.prepare('INSERT INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
               .run(backupId, originalName, diskFilename, 'application/json', content.length, new Date().toISOString(), 'folder_system_backups');
 
             addLog('Backup Created', `Institutional logic preserved in ${originalName}. Registered in Vault.`, 'success');
 
-            // Handle Retention
             const backups = db.prepare("SELECT * FROM files_meta WHERE parent_id = 'folder_system_backups' ORDER BY created_at DESC").all();
             if (backups.length > config.retentionCount) {
                 const toDelete = backups.slice(config.retentionCount);
@@ -223,7 +220,6 @@ const runAutomatedBackup = async () => {
 
             settings.backupConfig = { ...config, lastRun: now.toISOString(), lastBackupDate: now.toISOString(), logs };
             db.prepare('INSERT OR REPLACE INTO app_storage (key, value) VALUES (?, ?)').run('systemSettings', JSON.stringify(settings));
-            console.log(`[BACKUP] Scheduled preservation complete.`);
         } catch (err) {
             console.error("[BACKUP] Routine failed:", err.message);
             addLog('Failure', `Snapshot routine aborted: ${err.message}`, 'failure');
@@ -305,11 +301,77 @@ app.post('/api/transactions/batch', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/**
+ * ANALYTICS ENDPOINTS
+ */
+app.get('/api/analytics/summary', (req, res) => {
+    try {
+        const { startDate, endDate, search } = req.query;
+        let where = ` WHERE 1=1 AND t.is_parent = 0`;
+        const values = [];
+        if (startDate) { where += ` AND t.date >= ?`; values.push(startDate); }
+        if (endDate) { where += ` AND t.date <= ?`; values.push(endDate); }
+        if (search) { where += ` AND t.description LIKE ?`; values.push(`%${search}%`); }
+
+        const query = `
+            SELECT 
+                SUM(CASE WHEN tt.balance_effect = 'incoming' AND t.type_id != 'type_investment' THEN t.amount ELSE 0 END) as incoming,
+                SUM(CASE WHEN tt.balance_effect = 'outgoing' AND t.type_id != 'type_investment' THEN t.amount ELSE 0 END) as outgoing,
+                SUM(CASE WHEN tt.balance_effect = 'neutral' THEN t.amount ELSE 0 END) as neutral,
+                SUM(CASE WHEN t.type_id = 'type_investment' THEN t.amount ELSE 0 END) as investments,
+                SUM(CASE WHEN t.type_id = 'type_donation' THEN t.amount ELSE 0 END) as donations
+            FROM transactions t
+            JOIN transaction_types tt ON t.type_id = tt.id
+            ${where}
+        `;
+        const summary = db.prepare(query).get(...values);
+        res.json({
+            incoming: summary.incoming || 0,
+            outgoing: summary.outgoing || 0,
+            neutral: summary.neutral || 0,
+            investments: summary.investments || 0,
+            donations: summary.donations || 0
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/analytics/breakdown', (req, res) => {
+    try {
+        const { type, startDate, endDate, search } = req.query;
+        let where = ` WHERE 1=1 AND t.is_parent = 0`;
+        const values = [];
+        if (startDate) { where += ` AND t.date >= ?`; values.push(startDate); }
+        if (endDate) { where += ` AND t.date <= ?`; values.push(endDate); }
+        if (search) { where += ` AND t.description LIKE ?`; values.push(`%${search}%`); }
+        
+        if (type === 'inflow') where += ` AND tt.balance_effect = 'incoming' AND t.type_id != 'type_investment'`;
+        else if (type === 'outflow') where += ` AND tt.balance_effect = 'outgoing' AND t.type_id != 'type_investment'`;
+        else if (type === 'investments') where += ` AND t.type_id = 'type_investment'`;
+
+        const query = `
+            SELECT 
+                COALESCE(p.name, t.description) as label,
+                SUM(t.amount) as amount
+            FROM transactions t
+            JOIN transaction_types tt ON t.type_id = tt.id
+            LEFT JOIN counterparties p ON t.counterparty_id = p.id
+            ${where}
+            GROUP BY label
+            ORDER BY amount DESC
+            LIMIT 15
+        `;
+        const items = db.prepare(query).all(...values);
+        const total = items.reduce((s, i) => s + i.amount, 0);
+        res.json({ 
+            items: items.map(i => ({ ...i, percentage: total > 0 ? (i.amount / total) * 100 : 0 })),
+            total 
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/data', async (req, res) => {
   try {
-    // Run backup routine on every comprehensive data request to ensure schedule is met
     await runAutomatedBackup();
-    
     const rows = db.prepare('SELECT key, value FROM app_storage').all();
     const data = {};
     for (const row of rows) {

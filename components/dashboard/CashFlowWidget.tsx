@@ -214,11 +214,27 @@ export const CashFlowWidget: React.FC<Props> = ({
     const [inspectingNode, setInspectingNode] = useState<BreakdownNode | null>(null);
 
     const { start, end, displayLabel } = useMemo(() => {
-        const s = new Date(); s.setHours(0,0,0,0);
-        const e = new Date(); e.setHours(23,59,59,999);
-        if (period === 'month') { s.setDate(1); s.setMonth(s.getMonth() - lookbackUnits); e.setTime(s.getTime()); e.setMonth(e.getMonth() + 1, 0); }
-        else if (period === 'year') { s.setFullYear(s.getFullYear() - lookbackUnits, 0, 1); e.setFullYear(s.getFullYear() - lookbackUnits, 11, 31); }
-        else if (period === 'week') { const day = s.getDay(); s.setDate(s.getDate() - day - (lookbackUnits * 7)); e.setTime(s.getTime()); e.setDate(s.getDate() + 6); }
+        const now = new Date();
+        const s = new Date(now); s.setHours(0,0,0,0);
+        const e = new Date(now); e.setHours(23,59,59,999);
+
+        if (period === 'month') { 
+            s.setDate(1); 
+            s.setMonth(s.getMonth() - lookbackUnits); 
+            e.setTime(s.getTime()); 
+            e.setMonth(e.getMonth() + 1, 0); 
+            e.setHours(23,59,59,999);
+        } else if (period === 'year') { 
+            const targetYear = now.getFullYear() - lookbackUnits;
+            s.setFullYear(targetYear, 0, 1); 
+            e.setFullYear(targetYear, 11, 31); 
+        } else if (period === 'week') { 
+            const day = s.getDay(); 
+            s.setDate(s.getDate() - day - (lookbackUnits * 7)); 
+            e.setTime(s.getTime()); 
+            e.setDate(s.getDate() + 6); 
+        }
+        
         let label = period === 'month' ? s.toLocaleString('default', { month: 'long', year: 'numeric' }) : (period === 'year' ? `${s.getFullYear()}` : `${s.toLocaleDateString()} - ${e.toLocaleDateString()}`);
         return { start: s, end: e, displayLabel: label };
     }, [period, lookbackUnits]);
