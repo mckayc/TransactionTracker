@@ -1,6 +1,6 @@
 
 {
-  "name": "Transaction Tracker - Video and Product Joiner - v0.4.0",
-  "description": "Cross-platform revenue attribution for YouTube and Amazon influencers.",
+  "name": "Transaction Tracker - Video and Product Joiner - v0.5.0",
+  "description": "Neural revenue attribution engine for YouTube and Amazon creators.",
   "requestFramePermissions": []
 }

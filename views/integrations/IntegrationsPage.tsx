@@ -49,7 +49,7 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <IntegrationCard 
                     title="Video and Product Joiner" 
-                    description="The command center for video ROI. Multi-stage wizard to link YouTube and Amazon data to track which video drives your income."
+                    description="The command center for revenue attribution. A 5-step wizard to link YouTube metrics with Amazon SKU performance using neural matching."
                     icon={<WorkflowIcon className="w-8 h-8" />}
                     status="active"
                     variant="primary"
