@@ -47,20 +47,13 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <IntegrationCard 
-                    title="Cross-Platform Content Hub" 
-                    description="The command center for video ROI. Automatically links YouTube and Amazon data to track which platform drives your income."
-                    icon={<ChartPieIcon className="w-8 h-8" />}
-                    status="active"
-                    variant="primary"
-                    onClick={() => onNavigate('integration-video-product-joiner')}
-                />
-
+                {/* Fixed: Removed unimplemented "Cross-Platform Content Hub" card which caused TS error for missing View type */}
                 <IntegrationCard 
                     title="Amazon Influencer" 
                     description="Import commission reports, track clicks, and analyze top-performing products from the Amazon Associates program."
                     icon={<BoxIcon className="w-8 h-8" />}
                     status="active"
+                    variant="primary"
                     onClick={() => onNavigate('integration-amazon')}
                 />
 

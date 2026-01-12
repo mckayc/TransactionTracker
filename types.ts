@@ -489,5 +489,4 @@ export interface DuplicatePair {
     existingTx: Transaction;
 }
 
-// Added 'integration-video-product-joiner' to valid View types to fix type error in IntegrationsPage.tsx
-export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-video-product-joiner';
+export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube';
