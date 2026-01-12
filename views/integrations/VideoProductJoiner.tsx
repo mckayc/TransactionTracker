@@ -43,7 +43,6 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
     const [importStep, setImportStep] = useState<number>(1);
     const [isProcessing, setIsProcessing] = useState(false);
     const [processProgress, setProcessProgress] = useState<{ current: number; total: number; label: string } | null>(null);
-    const [verificationData, setVerificationData] = useState<any>(null);
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -63,10 +62,10 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
     const [rowsPerPage, setRowsPerPage] = useState(100);
 
     // Filters
-    const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set(['youtube', 'onsite', 'offsite', 'creator']));
+    const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set(['youtube', 'onsite', 'offsite', 'creator_onsite', 'creator_offsite']));
     const [selectedYears, setSelectedYears] = useState<Set<string>>(new Set(['all']));
 
-    // Added missing state variables for asset inspection and manual syncing
+    // Selection/Edit state
     const [selectedAsset, setSelectedAsset] = useState<JoinedMetric | null>(null);
     const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
     const [syncTargetAsset, setSyncTargetAsset] = useState<JoinedMetric | null>(null);
@@ -74,6 +73,17 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
     const notify = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 5000);
+    };
+
+    const handleSort = (key: keyof JoinedMetric) => {
+        if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+        else { setSortKey(key); setSortDir('desc'); }
+    };
+
+    const handleClearAll = () => {
+        onSaveMetrics([]);
+        setShowClearConfirm(false);
+        notify("Registry wiped successfully", "info");
     };
 
     const availableYears = useMemo(() => {
@@ -91,7 +101,6 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
     const displayMetrics = useMemo(() => {
         let base = [...metrics];
 
-        // 1. Search
         if (searchTerm) {
             const q = searchTerm.toLowerCase();
             base = base.filter(m => 
@@ -102,23 +111,21 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
             );
         }
 
-        // 2. Type Multi-Filter
-        if (selectedTypes.size < 4) {
+        if (selectedTypes.size < 5) {
             base = base.filter(m => {
                 if (selectedTypes.has('youtube') && m.videoEstimatedRevenue > 0) return true;
                 if (selectedTypes.has('onsite') && m.amazonOnsiteRevenue > 0) return true;
                 if (selectedTypes.has('offsite') && m.amazonOffsiteRevenue > 0) return true;
-                if (selectedTypes.has('creator') && m.creatorConnectionsRevenue > 0) return true;
+                if (selectedTypes.has('creator_onsite') && m.creatorConnectionsOnsiteRevenue > 0) return true;
+                if (selectedTypes.has('creator_offsite') && m.creatorConnectionsOffsiteRevenue > 0) return true;
                 return false;
             });
         }
 
-        // 3. Year Filter
         if (!selectedYears.has('all')) {
             base = base.filter(m => m.publishDate && selectedYears.has(m.publishDate.substring(0, 4)));
         }
 
-        // 4. Pivot by ASIN (Merge records)
         if (mergeAsins) {
             const map = new Map<string, JoinedMetric>();
             base.forEach(m => {
@@ -130,7 +137,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                     ex.totalRevenue += m.totalRevenue;
                     ex.amazonOnsiteRevenue += m.amazonOnsiteRevenue;
                     ex.amazonOffsiteRevenue += m.amazonOffsiteRevenue;
-                    ex.creatorConnectionsRevenue += m.creatorConnectionsRevenue;
+                    ex.creatorConnectionsOnsiteRevenue += m.creatorConnectionsOnsiteRevenue;
+                    ex.creatorConnectionsOffsiteRevenue += m.creatorConnectionsOffsiteRevenue;
                     ex.videoEstimatedRevenue += m.videoEstimatedRevenue;
                     ex.clicks += m.clicks;
                     ex.orderedItems += m.orderedItems;
@@ -139,7 +147,6 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
             base = Array.from(map.values());
         }
 
-        // 5. Sorting
         base.sort((a, b) => {
             const valA = a[sortKey];
             const valB = b[sortKey];
@@ -155,13 +162,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         return base;
     }, [metrics, searchTerm, mergeAsins, sortKey, sortDir, selectedTypes, selectedYears]);
 
-    // Fixed: Defined startIndex in component scope for use in pagination display
     const startIndex = (currentPage - 1) * rowsPerPage;
-
-    const paginatedMetrics = useMemo(() => {
-        return displayMetrics.slice(startIndex, startIndex + rowsPerPage);
-    }, [displayMetrics, startIndex, rowsPerPage]);
-
+    const paginatedMetrics = useMemo(() => displayMetrics.slice(startIndex, startIndex + rowsPerPage), [displayMetrics, startIndex, rowsPerPage]);
     const totalPages = Math.ceil(displayMetrics.length / rowsPerPage);
 
     const summary = useMemo(() => {
@@ -173,7 +175,6 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         }), { revenue: 0, views: 0, clicks: 0, items: 0 });
     }, [displayMetrics]);
 
-    // Handle Fetch Signals (Step 1)
     const handleFetchSignals = async () => {
         if (youtubeMetrics.length === 0 && amazonMetrics.length === 0) {
             notify("No integration metrics found to fetch.", "error");
@@ -185,7 +186,6 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         const signals: any[] = [];
         const ytGroups = new Map<string, YouTubeMetric>();
         
-        // Use chunks to avoid UI lock and show progress
         const BATCH_SIZE = 100;
         for (let i = 0; i < youtubeMetrics.length; i += BATCH_SIZE) {
             const batch = youtubeMetrics.slice(i, i + BATCH_SIZE);
@@ -262,7 +262,20 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         if (importStep === 1) {
             const allSignals = stagedData as any[];
             const existingMap = new Map(metrics.map(m => [m.id, m]));
-            setProcessProgress({ current: 0, total: allSignals.length, label: 'Mapping content signals...' });
+            
+            // Build a title lookup from non-creator reports to fix Campaign Name issues
+            const asinToTitle = new Map<string, string>();
+            allSignals.forEach(s => {
+                if (s.sourceType === 'amazon' && s.reportType !== 'creator_connections' && s.productTitle) {
+                    const currentBest = asinToTitle.get(s.asin);
+                    // HEURISTIC: Always prefer the shortest title as it's usually the cleanest branding
+                    if (!currentBest || s.productTitle.length < currentBest.length) {
+                        asinToTitle.set(s.asin, s.productTitle);
+                    }
+                }
+            });
+
+            setProcessProgress({ current: 0, total: allSignals.length, label: 'Consolidating logic...' });
 
             for (let i = 0; i < allSignals.length; i++) {
                 const s = allSignals[i];
@@ -280,21 +293,24 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                             id: s.videoId, videoId: s.videoId, asin: '', mainTitle: s.videoTitle, subTitle: s.videoTitle,
                             views: s.views, watchTimeHours: s.watchTimeHours, subsGained: s.subscribersGained,
                             videoEstimatedRevenue: s.estimatedRevenue, amazonOnsiteRevenue: 0, amazonOffsiteRevenue: 0,
-                            creatorConnectionsRevenue: 0, totalRevenue: s.estimatedRevenue, clicks: s.impressions,
+                            creatorConnectionsOnsiteRevenue: 0, creatorConnectionsOffsiteRevenue: 0, totalRevenue: s.estimatedRevenue, clicks: s.impressions,
                             orderedItems: 0, shippedItems: 0, publishDate: s.publishDate, duration: s.duration
                         });
                     }
                 } else {
                     const amz = s;
-                    const existing = metrics.find(m => m.asin === amz.asin);
+                    const existing = Array.from(existingMap.values()).find(m => m.asin === amz.asin);
+                    
                     if (!existing) {
-                        const id = `amz_${amz.asin}_${generateUUID().substring(0,4)}`;
+                        const id = `amz_${amz.asin}`;
+                        const displayTitle = asinToTitle.get(amz.asin) || amz.productTitle;
                         existingMap.set(id, {
-                            id, asin: amz.asin, mainTitle: amz.productTitle, subTitle: amz.productTitle,
+                            id, asin: amz.asin, mainTitle: displayTitle, subTitle: displayTitle,
                             views: 0, watchTimeHours: 0, subsGained: 0, videoEstimatedRevenue: 0,
                             amazonOnsiteRevenue: amz.reportType === 'onsite' ? amz.revenue : 0,
                             amazonOffsiteRevenue: amz.reportType === 'offsite' ? amz.revenue : 0,
-                            creatorConnectionsRevenue: amz.reportType === 'creator_connections' ? amz.revenue : 0,
+                            creatorConnectionsOnsiteRevenue: (amz.reportType === 'creator_connections' && amz.creatorConnectionsType === 'onsite') ? amz.revenue : 0,
+                            creatorConnectionsOffsiteRevenue: (amz.reportType === 'creator_connections' && amz.creatorConnectionsType === 'offsite') ? amz.revenue : 0,
                             totalRevenue: amz.revenue, clicks: amz.clicks,
                             orderedItems: amz.orderedItems, shippedItems: amz.shippedItems,
                             publishDate: amz.saleDate
@@ -302,8 +318,21 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                     } else {
                         if (amz.reportType === 'onsite') existing.amazonOnsiteRevenue = amz.revenue;
                         else if (amz.reportType === 'offsite') existing.amazonOffsiteRevenue = amz.revenue;
-                        else if (amz.reportType === 'creator_connections') existing.creatorConnectionsRevenue = amz.revenue;
-                        existing.totalRevenue = existing.videoEstimatedRevenue + existing.amazonOnsiteRevenue + existing.amazonOffsiteRevenue + existing.creatorConnectionsRevenue;
+                        else if (amz.reportType === 'creator_connections') {
+                            if (amz.creatorConnectionsType === 'onsite') existing.creatorConnectionsOnsiteRevenue = amz.revenue;
+                            else existing.creatorConnectionsOffsiteRevenue = amz.revenue;
+                            
+                            // SHORTEST TITLE HEURISTIC: Update existing if incoming title is shorter
+                            if (asinToTitle.has(amz.asin)) {
+                                const newBest = asinToTitle.get(amz.asin)!;
+                                if (newBest.length < existing.mainTitle.length) {
+                                    existing.mainTitle = newBest;
+                                }
+                            }
+                        }
+                        existing.totalRevenue = existing.videoEstimatedRevenue + existing.amazonOnsiteRevenue + existing.amazonOffsiteRevenue + existing.creatorConnectionsOnsiteRevenue + existing.creatorConnectionsOffsiteRevenue;
+                        existing.clicks += amz.clicks;
+                        existing.orderedItems += amz.orderedItems;
                     }
                 }
                 if (i % 50 === 0) {
@@ -313,19 +342,22 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
             }
 
             onSaveMetrics(Array.from(existingMap.values()));
-            notify(`Ingested ${allSignals.length} records.`);
+            notify(`Merged ${allSignals.length} platform signals.`);
             setImportStep(2);
         } else if (importStep === 2) {
             const amzVideos = stagedData as AmazonVideo[];
             const updatedMetrics = [...metrics];
-            setProcessProgress({ current: 0, total: amzVideos.length, label: 'Cross-referencing video metadata...' });
+            setProcessProgress({ current: 0, total: amzVideos.length, label: 'Cross-referencing video fingerprints...' });
             
             for (let i = 0; i < amzVideos.length; i++) {
                 const av = amzVideos[i];
-                const match = updatedMetrics.find(m => 
-                    (m.duration === av.duration && m.publishDate === av.uploadDate) ||
-                    (normalizeStr(m.subTitle) === normalizeStr(av.videoTitle))
-                );
+                const match = updatedMetrics.find(m => {
+                    let score = 0;
+                    if (normalizeStr(m.subTitle) === normalizeStr(av.videoTitle)) score += 50;
+                    if (m.duration === av.duration) score += 30;
+                    if (m.publishDate === av.uploadDate) score += 20;
+                    return score >= 50;
+                });
                 
                 if (match) {
                     match.duration = av.duration;
@@ -337,7 +369,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 }
             }
             onSaveMetrics(updatedMetrics);
-            notify(`Synchronized video metadata.`);
+            notify(`Synced video metadata.`);
             setImportStep(3);
         } else if (importStep === 3) {
             const mappings = stagedData as Partial<AmazonVideo>[];
@@ -353,12 +385,13 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 if (target && map.asins && map.asins.length > 0) {
                     target.asin = map.asins[0];
                     target.asins = map.asins;
-                    const orphans = updatedMetrics.filter(m => !m.videoId && (m.asin === target.asin || target.asins?.includes(m.asin)));
+                    const orphans = updatedMetrics.filter(m => m.id !== target.id && !m.videoId && (m.asin === target.asin || target.asins?.includes(m.asin)));
                     orphans.forEach(o => {
                         target.amazonOnsiteRevenue += o.amazonOnsiteRevenue;
                         target.amazonOffsiteRevenue += o.amazonOffsiteRevenue;
-                        target.creatorConnectionsRevenue += o.creatorConnectionsRevenue;
-                        target.totalRevenue = target.videoEstimatedRevenue + target.amazonOnsiteRevenue + target.amazonOffsiteRevenue + target.creatorConnectionsRevenue;
+                        target.creatorConnectionsOnsiteRevenue += o.creatorConnectionsOnsiteRevenue;
+                        target.creatorConnectionsOffsiteRevenue += o.creatorConnectionsOffsiteRevenue;
+                        target.totalRevenue = target.videoEstimatedRevenue + target.amazonOnsiteRevenue + target.amazonOffsiteRevenue + target.creatorConnectionsOnsiteRevenue + target.creatorConnectionsOffsiteRevenue;
                         target.clicks += o.clicks;
                         target.orderedItems += o.orderedItems;
                     });
@@ -373,27 +406,12 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 }
             }
             onSaveMetrics(updatedMetrics);
-            notify(`Finalized content-to-product links.`);
+            notify(`Unified Content Registry.`);
             setActiveTab('dashboard');
         }
         setStagedData(null);
         setIsProcessing(false);
         setProcessProgress(null);
-    };
-
-    const handleClearAll = async () => {
-        try {
-            await api.resetDatabase(['joinedMetrics']);
-            onSaveMetrics([]);
-            notify("Database wiped successfully", "info");
-        } catch (e) {
-            notify("Wipe operation failed", "error");
-        }
-    };
-
-    const handleSort = (key: keyof JoinedMetric) => {
-        if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-        else { setSortKey(key); setSortDir('desc'); }
     };
 
     const toggleTypeFilter = (type: string) => {
@@ -405,9 +423,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
 
     const toggleYearFilter = (year: string) => {
         const next = new Set(selectedYears);
-        if (year === 'all') {
-            setSelectedYears(new Set(['all']));
-        } else {
+        if (year === 'all') setSelectedYears(new Set(['all']));
+        else {
             next.delete('all');
             if (next.has(year)) {
                 next.delete(year);
@@ -500,39 +517,50 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                 <table className="min-w-full divide-y divide-slate-100 border-separate border-spacing-0">
                                     <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
                                         <tr>
-                                            <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 transition-all" onClick={() => handleSort('subTitle')}>
-                                                <div className="flex items-center gap-2">Content Asset <SortIcon className="w-3 h-3"/></div>
+                                            <th className="px-6 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 transition-all" onClick={() => handleSort('mainTitle')}>
+                                                <div className="flex items-center gap-2">Asset Performance Identifier <SortIcon className="w-3 h-3"/></div>
                                             </th>
                                             <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 transition-all" onClick={() => handleSort('views')}>
                                                 <div className="flex items-center justify-end gap-2">Reach <SortIcon className="w-3 h-3"/></div>
                                             </th>
                                             <th className="px-6 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 transition-all" onClick={() => handleSort('totalRevenue')}>
-                                                <div className="flex items-center justify-end gap-2">Portfolio Yield <SortIcon className="w-3 h-3"/></div>
+                                                <div className="flex items-center justify-end gap-2">Combined Yield <SortIcon className="w-3 h-3"/></div>
                                             </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-50 bg-white">
-                                        {paginatedMetrics.map(m => (
-                                            <tr key={m.id} className="hover:bg-indigo-50/30 transition-colors group cursor-pointer" onClick={() => setSelectedAsset(m)}>
-                                                <td className="px-6 py-3 max-w-[400px]">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-xs font-black text-slate-800 truncate">{m.subTitle || m.mainTitle}</span>
-                                                        <div className="flex items-center gap-2 mt-1 overflow-hidden">
-                                                            <span className="text-[7px] font-black text-indigo-500 uppercase bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 whitespace-nowrap">{m.videoId || 'NOT_SYNCED'}</span>
-                                                            {m.asin && <span className="text-[7px] font-black text-orange-500 uppercase bg-orange-50 px-1.5 py-0.5 rounded border border-orange-100 whitespace-nowrap">{m.asin}</span>}
-                                                            <span className="text-[9px] text-slate-300 font-medium italic truncate">{m.mainTitle}</span>
+                                        {paginatedMetrics.map(m => {
+                                            const isSynced = m.videoId && m.asin;
+                                            return (
+                                                <tr key={m.id} className="hover:bg-indigo-50/30 transition-colors group cursor-pointer" onClick={() => setSelectedAsset(m)}>
+                                                    <td className="px-6 py-3 max-w-[400px]">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs font-black text-slate-800 truncate">{m.mainTitle}</span>
+                                                            <div className="flex items-center gap-2 mt-1 overflow-hidden">
+                                                                <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded border whitespace-nowrap transition-colors ${m.videoId ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>{m.videoId || 'NO_VID'}</span>
+                                                                <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded border whitespace-nowrap transition-colors ${m.asin ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-slate-50 text-slate-400 border-slate-100'}`}>{m.asin || 'NO_ASIN'}</span>
+                                                                <span className="text-[9px] text-slate-300 font-medium italic truncate">{m.subTitle !== m.mainTitle ? m.subTitle : ''}</span>
+                                                                {isSynced && <div className="text-indigo-400" title="Source Synced"><CheckCircleIcon className="w-3 h-3" /></div>}
+                                                            </div>
+                                                            <div className="flex gap-1.5 mt-2">
+                                                                {m.videoEstimatedRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-red-500" title="YouTube Income" />}
+                                                                {m.amazonOnsiteRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" title="Amazon Onsite Income" />}
+                                                                {(m.creatorConnectionsOnsiteRevenue > 0 || m.creatorConnectionsOffsiteRevenue > 0) && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" title="Creator Connections" />}
+                                                                {m.amazonOffsiteRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-green-500" title="Amazon Offsite" />}
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-3 text-right">
-                                                    <p className="text-xs font-bold text-slate-600 font-mono">{formatNumber(m.views)}</p>
-                                                    <p className="text-[8px] text-slate-400 font-black uppercase">{formatNumber(m.clicks)} CLICKS</p>
-                                                </td>
-                                                <td className="px-6 py-3 text-right">
-                                                    <p className="text-sm font-black text-indigo-600 font-mono">{formatCurrency(m.totalRevenue)}</p>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                    <td className="px-6 py-3 text-right">
+                                                        <p className="text-xs font-bold text-slate-600 font-mono">{formatNumber(m.views)}</p>
+                                                        <p className="text-[8px] text-slate-400 font-black uppercase">{formatNumber(m.clicks)} CLICKS</p>
+                                                    </td>
+                                                    <td className="px-6 py-3 text-right">
+                                                        <p className="text-sm font-black text-indigo-600 font-mono">{formatCurrency(m.totalRevenue)}</p>
+                                                        {m.totalRevenue > 0 && <p className="text-[7px] font-black text-slate-300 uppercase">ROI ACTIVE</p>}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -552,7 +580,23 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 )}
 
                 {activeTab === 'data' && (
-                    <div className="space-y-6 flex flex-col h-full animate-fade-in">
+                    <div className="space-y-4 h-full flex flex-col h-full animate-fade-in">
+                        {/* ROBUST SUMMARY HEADER FOR DATA TAB */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-shrink-0">
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Aggregate ROI</p>
+                                <p className="text-2xl font-black text-emerald-600">{formatCurrency(summary.revenue)}</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Aggregate Reach</p>
+                                <p className="text-2xl font-black text-slate-800">{formatNumber(summary.views)}</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filtered Records</p>
+                                <p className="text-2xl font-black text-indigo-600">{displayMetrics.length}</p>
+                            </div>
+                        </div>
+
                         <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 flex flex-wrap items-center justify-between gap-6">
                             <div className="flex flex-wrap items-center gap-4">
                                 <div className="flex items-center gap-2 pr-4 border-r border-slate-200">
@@ -583,7 +627,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                             { id: 'youtube', label: 'YouTube' },
                                             { id: 'onsite', label: 'Onsite' },
                                             { id: 'offsite', label: 'Offsite' },
-                                            { id: 'creator', label: 'Creator' }
+                                            { id: 'creator_onsite', label: 'CC On' },
+                                            { id: 'creator_offsite', label: 'CC Off' }
                                         ].map(t => (
                                             <label key={t.id} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase cursor-pointer transition-all border-2 flex items-center gap-2 ${selectedTypes.has(t.id) ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-transparent text-slate-400 hover:bg-slate-100'}`}>
                                                 <input type="checkbox" className="hidden" checked={selectedTypes.has(t.id)} onChange={() => toggleTypeFilter(t.id)} />
@@ -621,8 +666,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                                 </td>
                                                 <td className="px-8 py-2">
                                                     <div className="flex flex-col">
-                                                        <span className="text-xs font-black text-slate-800">{m.subTitle || m.mainTitle}</span>
-                                                        <p className="text-[8px] text-slate-300 font-bold uppercase truncate mt-0.5">{m.mainTitle}</p>
+                                                        <span className="text-xs font-black text-slate-800">{m.mainTitle}</span>
+                                                        <p className="text-[8px] text-slate-300 font-bold uppercase truncate mt-0.5">{m.subTitle}</p>
                                                     </div>
                                                 </td>
                                                 <td className="px-8 py-2 text-right">
@@ -659,7 +704,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                     {displayMetrics.filter(m => m.publishDate && new Date(m.publishDate) < new Date(new Date().setFullYear(new Date().getFullYear() - 1))).slice(0, 5).map(m => (
                                         <div key={m.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group hover:border-indigo-300 transition-all" onClick={() => setSelectedAsset(m)}>
                                             <div className="min-w-0 flex-1 pr-4">
-                                                <p className="text-[11px] font-black text-slate-800 truncate">{m.subTitle || m.mainTitle}</p>
+                                                <p className="text-[11px] font-black text-slate-800 truncate">{m.mainTitle}</p>
                                                 <p className="text-[9px] text-slate-400 font-black uppercase mt-1">LIFETIME ROI: {formatCurrency(m.totalRevenue)}</p>
                                             </div>
                                             <div className="text-right">
@@ -718,9 +763,9 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
 
                         <div className="space-y-4">
                             {[
-                                { step: 1, title: 'Platform Ingestion', desc: 'Fetch existing signals from YouTube and Amazon integrations.' },
-                                { step: 2, title: 'Storefront Synchronization', desc: 'Match video records using Duration and Upload Date.' },
-                                { step: 3, title: 'Identity Mapping', desc: 'Upload ASIN Mapping to associate content with SKUs.' }
+                                { step: 1, title: 'Multi-Stream Ingestion', desc: 'Fetch signals from YouTube and Amazon. Creator data is auto-linked by ASIN.' },
+                                { step: 2, title: 'Video Storefront Sync', desc: 'Match Amazon videos using Duration and Upload Date fingerprints.' },
+                                { step: 3, title: 'Identity Consolidation', desc: 'Apply ASIN mappings to associate content IDs with product SKUs.' }
                             ].map(s => {
                                 const isCurrent = importStep === s.step;
                                 const isPassed = importStep > s.step;
@@ -749,12 +794,12 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                                             <YoutubeIcon className="w-10 h-10 text-red-600 opacity-40" />
                                                             <BoxIcon className="w-10 h-10 text-orange-500 opacity-40" />
                                                         </div>
-                                                        <p className="text-sm text-slate-500 text-center max-w-sm">Synchronize the joiner with your existing platform metrics to create the logical base.</p>
+                                                        <p className="text-sm text-slate-500 text-center max-w-sm">Bring in your integration metrics to build the initial relational database.</p>
                                                         <button 
                                                             onClick={handleFetchSignals}
                                                             className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95"
                                                         >
-                                                            <DatabaseIcon className="w-5 h-5" /> Fetch Platform Signals
+                                                            <DatabaseIcon className="w-5 h-5" /> Fetch System Signals
                                                         </button>
                                                     </div>
                                                 ) : (
@@ -782,11 +827,11 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                             <div className="bg-slate-900 rounded-[1.5rem] p-6 text-white space-y-4 animate-slide-up relative overflow-hidden shadow-2xl">
                                                 <div className="flex justify-between items-center relative z-10">
                                                     <div>
-                                                        <h4 className="text-sm font-black tracking-tight text-indigo-400">Logic Verification Staging</h4>
-                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{stagedData!.length} Logical Records Extracted</p>
+                                                        <h4 className="text-sm font-black tracking-tight text-indigo-400">Fingerprint Staging</h4>
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{stagedData!.length} Extracted Records</p>
                                                     </div>
                                                     <button onClick={handleCommitStaged} className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg flex items-center gap-2 transition-all active:scale-95 text-[10px] uppercase tracking-widest">
-                                                        Commit & Advance <ArrowRightIcon className="w-4 h-4"/>
+                                                        Synthesize & Advance <ArrowRightIcon className="w-4 h-4"/>
                                                     </button>
                                                 </div>
                                                 
@@ -794,16 +839,16 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                                     <table className="min-w-full text-[9px] border-separate border-spacing-0">
                                                         <thead className="sticky top-0 bg-slate-800 text-slate-400 font-black uppercase tracking-widest">
                                                             <tr>
-                                                                <th className="px-3 py-2 text-left">Descriptor</th>
-                                                                <th className="px-3 py-2 text-right">Value</th>
+                                                                <th className="px-3 py-2 text-left">Identity</th>
+                                                                <th className="px-3 py-2 text-right">Value/ID</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-white/5 font-mono">
                                                             {stagedData!.slice(0, 100).map((row, i) => (
                                                                 <tr key={i} className="hover:bg-white/5 transition-colors">
-                                                                    <td className="px-3 py-1.5">{row.videoTitle || row.productTitle || row.ccTitle || row.title || 'Unknown'}</td>
+                                                                    <td className="px-3 py-1.5 truncate max-w-[200px]">{row.videoTitle || row.productTitle || row.ccTitle || row.title || 'Unknown'}</td>
                                                                     <td className="px-3 py-1.5 text-right text-indigo-400 font-bold">
-                                                                        {row.revenue || row.estimatedRevenue ? formatCurrency(row.revenue || row.estimatedRevenue) : (row.duration || row.asins?.join(', ') || '-')}
+                                                                        {row.revenue || row.estimatedRevenue ? formatCurrency(row.revenue || row.estimatedRevenue) : (row.duration || row.asin || row.videoId || '-')}
                                                                     </td>
                                                                 </tr>
                                                             ))}
@@ -828,8 +873,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                             <div className="flex items-center gap-4">
                                 <div className="p-4 bg-white rounded-3xl shadow-sm text-indigo-600"><BarChartIcon className="w-8 h-8" /></div>
                                 <div>
-                                    <h3 className="text-2xl font-black text-slate-800">{selectedAsset.subTitle || selectedAsset.mainTitle}</h3>
-                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Asset performance audit</p>
+                                    <h3 className="text-2xl font-black text-slate-800">{selectedAsset.mainTitle}</h3>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Institutional Yield Audit</p>
                                 </div>
                             </div>
                             <button onClick={() => setSelectedAsset(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
@@ -837,24 +882,25 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                         <div className="p-8 space-y-8 flex-1 overflow-y-auto custom-scrollbar">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="p-6 bg-slate-900 text-white rounded-3xl relative overflow-hidden">
-                                    <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 relative z-10">Lifetime Revenue</p>
+                                    <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 relative z-10">Lifetime Value</p>
                                     <p className="text-3xl font-black relative z-10">{formatCurrency(selectedAsset.totalRevenue)}</p>
                                     <DollarSign className="absolute -right-4 -bottom-4 w-20 h-20 text-white opacity-5" />
                                 </div>
                                 <div className="p-6 bg-slate-50 border-2 border-slate-100 rounded-3xl">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Reach Index</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Portfolio Reach</p>
                                     <p className="text-3xl font-black text-slate-800">{formatNumber(selectedAsset.views)} <span className="text-[10px] text-slate-400">VIEWS</span></p>
                                 </div>
                             </div>
                             
                             <div className="space-y-4">
-                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Revenue Stream Analysis</h4>
+                                <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Channel Yield Analysis</h4>
                                 <div className="space-y-2">
                                     {[
                                         { label: 'YouTube AdSense', val: selectedAsset.videoEstimatedRevenue, icon: <YoutubeIcon className="w-3.5 h-3.5 text-red-600"/> },
                                         { label: 'Amazon Onsite', val: selectedAsset.amazonOnsiteRevenue, icon: <BoxIcon className="w-3.5 h-3.5 text-blue-600"/> },
                                         { label: 'Amazon Offsite', val: selectedAsset.amazonOffsiteRevenue, icon: <BoxIcon className="w-3.5 h-3.5 text-green-600"/> },
-                                        { label: 'Creator Connections', val: selectedAsset.creatorConnectionsRevenue, icon: <SparklesIcon className="w-3.5 h-3.5 text-indigo-600"/> }
+                                        { label: 'Creator Connections (Onsite)', val: selectedAsset.creatorConnectionsOnsiteRevenue, icon: <SparklesIcon className="w-3.5 h-3.5 text-indigo-600"/> },
+                                        { label: 'Creator Connections (Offsite)', val: selectedAsset.creatorConnectionsOffsiteRevenue, icon: <SparklesIcon className="w-3.5 h-3.5 text-violet-600"/> }
                                     ].map(item => (
                                         <div key={item.label} className="p-4 bg-white border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm">
                                             <div className="flex items-center gap-3">
@@ -869,7 +915,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
 
                             <div className="grid grid-cols-2 gap-8 pt-4 border-t border-slate-100">
                                 <div>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Conversion Metrics</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Performance Logic</p>
                                     <div className="space-y-1">
                                         <p className="text-sm font-bold text-slate-700">{formatNumber(selectedAsset.clicks)} Clicks</p>
                                         <p className="text-sm font-bold text-slate-700">{formatNumber(selectedAsset.orderedItems)} Sales</p>
@@ -877,11 +923,11 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                     </div>
                                 </div>
                                 <div>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Asset Metadata</p>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Institutional Links</p>
                                     <div className="space-y-1">
-                                        <p className="text-xs font-medium text-slate-600">ID: <span className="font-bold">{selectedAsset.videoId || 'N/A'}</span></p>
-                                        <p className="text-xs font-medium text-slate-600">SKU: <span className="font-bold">{selectedAsset.asin || 'N/A'}</span></p>
-                                        <p className="text-xs font-medium text-slate-600">Sync Date: <span className="font-bold">{selectedAsset.publishDate || '--'}</span></p>
+                                        <p className="text-xs font-medium text-slate-600">Video: <span className="font-bold">{selectedAsset.videoId || 'N/A'}</span></p>
+                                        <p className="text-xs font-medium text-slate-600">Product: <span className="font-bold">{selectedAsset.asin || 'N/A'}</span></p>
+                                        <p className="text-xs font-medium text-slate-600">Sync: <span className="font-bold">{selectedAsset.publishDate || '--'}</span></p>
                                     </div>
                                 </div>
                             </div>

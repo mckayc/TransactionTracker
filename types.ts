@@ -474,7 +474,8 @@ export interface JoinedMetric {
     videoEstimatedRevenue: number; // From YT report
     amazonOnsiteRevenue: number;
     amazonOffsiteRevenue: number;
-    creatorConnectionsRevenue: number;
+    creatorConnectionsOnsiteRevenue: number;
+    creatorConnectionsOffsiteRevenue: number;
     totalRevenue: number;
     
     // Performance
