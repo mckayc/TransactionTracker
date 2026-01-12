@@ -18,7 +18,7 @@ import FinancialPlanPage from './views/FinancialPlanPage';
 import IntegrationsPage from './views/IntegrationsPage';
 import AmazonIntegration from './views/integrations/AmazonIntegration';
 import YouTubeIntegration from './views/integrations/YouTubeIntegration';
-import ContentHub from './views/integrations/ContentHub';
+import VideoProductJoiner from './views/integrations/VideoProductJoiner';
 import Chatbot from './components/Chatbot';
 import { MenuIcon, RepeatIcon, SparklesIcon, ExclamationTriangleIcon } from './components/Icons';
 import { api } from './services/apiService';
@@ -349,7 +349,7 @@ const App: React.FC = () => {
                     {currentView === 'integrations' && <IntegrationsPage onNavigate={setCurrentView} />}
                     {currentView === 'integration-amazon' && <AmazonIntegration metrics={amazonMetrics} onAddMetrics={(m) => bulkUpdateData('amazonMetrics', m, setAmazonMetrics, amazonMetrics)} onDeleteMetrics={(ids) => { const next = amazonMetrics.filter(m => !ids.includes(m.id)); updateData('amazonMetrics', next, setAmazonMetrics); }} videos={amazonVideos} onAddVideos={(v) => bulkUpdateData('amazonVideos', v, setAmazonVideos, amazonVideos)} onDeleteVideos={(ids) => { const next = amazonVideos.filter(v => !ids.includes(v.id)); updateData('amazonVideos', next, setAmazonVideos); }} />}
                     {currentView === 'integration-youtube' && <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={(m) => bulkUpdateData('youtubeMetrics', m, setYouTubeMetric, youtubeMetrics)} onDeleteMetrics={(ids) => { const next = youtubeMetrics.filter(m => !ids.includes(m.id)); updateData('youtubeMetrics', next, setYouTubeMetric); }} channels={youtubeChannels} onSaveChannel={(c) => bulkUpdateData('youtubeChannels', [c], setYouTubeChannels, youtubeChannels)} onDeleteChannel={(id) => { const next = youtubeChannels.filter(c => c.id !== id); updateData('youtubeChannels', next, setYouTubeChannels); }} />}
-                    {currentView === 'integration-content-hub' && <ContentHub amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} contentLinks={contentLinks} onUpdateLinks={(l) => updateData('contentLinks', l, setContentLinks)} />}
+                    {currentView === 'integration-video-product-joiner' && <VideoProductJoiner amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} contentLinks={contentLinks} onUpdateLinks={(l) => updateData('contentLinks', l, setContentLinks)} onUpdateAmazonMetrics={(m) => bulkUpdateData('amazonMetrics', m, setAmazonMetrics, amazonMetrics)} onUpdateYoutubeMetrics={(m) => bulkUpdateData('youtubeMetrics', m, setYouTubeMetric, youtubeMetrics)} />}
                 </div>
             </main>
             <Chatbot contextData={currentContext} isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />

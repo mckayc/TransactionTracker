@@ -1,161 +1,9 @@
+
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
 
 declare const pdfjsLib: any;
-
-/**
- * Returns a CSV template string for rule imports with rich examples for AI/Users.
- */
-export const generateRuleTemplate = (): string => {
-    const headers = [
-        'Rule Name',
-        'Rule Category',
-        'Match Field',
-        'Operator',
-        'Match Value',
-        'Set Description',
-        'Set Category',
-        'Set Counterparty',
-        'Set Location',
-        'Set Type',
-        'Set User',
-        'Tags',
-        'Skip Import'
-    ];
-
-    const examples = [
-        ['Example1 - Category Descriptions', 'Description', 'description', 'contains', 'STARBUCKS || PEETS', 'Starbucks Coffee', 'Dining', 'Starbucks', '', 'Purchase', '', 'coffee;morning', 'false'],
-        ['Example2 - Category Users', 'User', 'description', 'contains', 'VERIZON', 'Verizon Wireless Bill', 'Utilities', 'Verizon Wireless', '', 'Purchase', 'Primary User', 'personal;monthly', 'false'],
-        ['Example3 - Category Location', 'Location', 'description', 'contains', 'SAFEWAY', 'Safeway Grocery', 'Groceries', 'Safeway', 'Seattle, WA', 'Purchase', '', 'food;local', 'false'],
-        ['Example4 - Category Location', 'Location', 'description', 'contains', 'WHOLEFOODS', 'Whole Foods Market', 'Groceries', 'Whole Foods', 'New York, NY', 'Purchase', '', 'organic', 'false'],
-        ['Example5 - Category Location', 'Location', 'description', 'contains', 'KROGER', 'Kroger', 'Groceries', 'Kroger', 'Austin, TX', 'Purchase', '', 'supplies', 'false'],
-        ['Example6 - Global High Value', 'All', 'amount', 'greater_than', '5000', '', 'Capital Expenditure', '', '', 'Investment', '', 'high-value;audit', 'false'],
-        ['Example7 - Ignore Spam Fees', 'Other', 'amount', 'less_than', '0.50', '', '', '', '', '', '', '', 'true'],
-        ['Example8 - Description Match', 'Description', 'description', 'starts_with', 'AMZN MKTP', 'Amazon Web Services', 'Software Subscription', 'Amazon Web Services', '', 'Purchase', '', 'saas;aws', 'false']
-    ];
-
-    const rows = [headers, ...examples];
-    return rows.map(r => r.map(cell => `"${cell}"`).join(',')).join('\n');
-};
-
-/**
- * Validates if the provided lines look like a valid Rule Manifest.
- */
-export const validateRuleFormat = (lines: string[]): { isValid: boolean; error?: string } => {
-    if (lines.length < 2) return { isValid: false, error: "File is empty or contains no data rows." };
-    const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(',') ? ',' : ';');
-    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
-    
-    const required = ['rule name', 'match field', 'operator', 'match value'];
-    const missing = required.filter(r => !header.includes(r));
-    
-    if (missing.length > 0) {
-        return { isValid: false, error: `Missing required columns: ${missing.join(', ')}` };
-    }
-    
-    return { isValid: true };
-};
-
-/**
- * Parses Rule Manifests for bulk ingestion
- * Updated to handle multiple OR conditions via pipe symbols and improved header detection.
- */
-export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
-    const rules: ReconciliationRule[] = [];
-    if (lines.length < 2) return rules;
-
-    const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(',') ? ',' : ';');
-    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
-    
-    const colMap = {
-        name: header.findIndex(h => h === 'rule name' || h === 'name'),
-        category: header.findIndex(h => h === 'rule category' || h === 'category'),
-        field: header.findIndex(h => h === 'match field' || h === 'field'),
-        operator: header.findIndex(h => h === 'operator'),
-        value: header.findIndex(h => h === 'match value' || h === 'value'),
-        setDesc: header.findIndex(h => h === 'set description' || h === 'display description' || h === 'clean description'),
-        setCategory: header.findIndex(h => h === 'set category' || h === 'category match'),
-        setPayee: header.findIndex(h => h === 'set payee' || h === 'payee' || h === 'merchant' || h === 'counterparty'),
-        setCounterparty: header.findIndex(h => h === 'set counterparty' || h === 'counterparty'),
-        setLocation: header.findIndex(h => h === 'set location' || h === 'location' || h === 'place' || h === 'city' || h === 'address'),
-        setType: header.findIndex(h => h === 'set type' || h === 'type'),
-        setUser: header.findIndex(h => h === 'set user' || h === 'user'),
-        setTags: header.findIndex(h => h === 'tags' || h === 'labels'),
-        skip: header.findIndex(h => h === 'skip import' || h === 'skip')
-    };
-
-    for (let i = 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        
-        const parts = delimiter === '\t' 
-            ? line.split('\t').map(p => p.trim().replace(/^"|"$/g, ''))
-            : line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(p => p.trim().replace(/^"|"$/g, ''));
-
-        if (parts.length < 4) continue;
-
-        const rawMatchValue = parts[colMap.value] || '';
-        const matchValues = rawMatchValue.split(/\s*\|\|\s*|\s*\|\s*/).filter(Boolean);
-        
-        const conditions: RuleCondition[] = matchValues.length > 0 
-            ? matchValues.map((val, idx) => ({
-                id: generateUUID(),
-                type: 'basic',
-                field: (parts[colMap.field] || 'description') as any,
-                operator: (parts[colMap.operator] || 'contains') as any,
-                value: val.trim(),
-                nextLogic: idx === matchValues.length - 1 ? 'AND' : 'OR'
-            }))
-            : [{
-                id: generateUUID(),
-                type: 'basic',
-                field: (parts[colMap.field] || 'description') as any,
-                operator: (parts[colMap.operator] || 'contains') as any,
-                value: '',
-                nextLogic: 'AND'
-            }];
-
-        const rule: ReconciliationRule = {
-            id: generateUUID(),
-            name: parts[colMap.name] || `Imported Rule ${i}`,
-            ruleCategory: parts[colMap.category] || 'Other',
-            conditions: conditions,
-            setDescription: colMap.setDesc > -1 ? parts[colMap.setDesc] : undefined,
-            suggestedCategoryName: parts[colMap.setCategory],
-            suggestedCounterpartyName: parts[colMap.setCounterparty] || parts[colMap.setPayee],
-            suggestedLocationName: parts[colMap.setLocation],
-            suggestedTypeName: parts[colMap.setType],
-            suggestedUserName: parts[colMap.setUser],
-            suggestedTags: parts[colMap.setTags] ? parts[colMap.setTags].split(';').map(t => t.trim()) : undefined,
-            skipImport: parts[colMap.skip]?.toLowerCase() === 'true'
-        };
-        rules.push(rule);
-    }
-    return rules;
-};
-
-export const parseRulesFromFile = async (file: File): Promise<ReconciliationRule[]> => {
-    const reader = new FileReader();
-    
-    if (file.name.endsWith('.csv')) {
-        const text = await new Promise<string>((res) => {
-            reader.onload = () => res(reader.result as string);
-            reader.readAsText(file);
-        });
-        return parseRulesFromLines(text.split('\n'));
-    } else {
-        const data = await new Promise<ArrayBuffer>((res) => {
-            reader.onload = () => res(reader.result as ArrayBuffer);
-            reader.readAsArrayBuffer(file);
-        });
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheetName = workbook.SheetNames[0];
-        const firstSheet = workbook.Sheets[firstSheetName];
-        const csv = XLSX.utils.sheet_to_csv(firstSheet);
-        return parseRulesFromLines(csv.split('\n'));
-    }
-};
 
 const cleanDescription = (string: string): string => {
   let cleaned = string.trim();
@@ -213,278 +61,70 @@ const formatDate = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-const parseCSV_Tx = (lines: string[], accountId: string, transactionTypes: TransactionType[], sourceName: string): RawTransaction[] => {
-  const transactions: RawTransaction[] = [];
-  if (lines.length === 0) return transactions;
-
-  if (!transactionTypes || transactionTypes.length === 0) {
-      throw new Error("System Error: No transaction types loaded. Please verify database connectivity.");
-  }
-
-  let headerIndex = -1;
-  let rawHeaders: string[] = [];
-  const delimiter = lines[0].includes('\t') ? '\t' : ',';
-
-  // 1. Identify Headers
-  for (let i = 0; i < Math.min(lines.length, 20); i++) {
-    const lineLower = lines[i].toLowerCase();
-    const parts = lineLower.split(delimiter).map(p => p.trim().replace(/"/g, ''));
-    const dateIdx = parts.findIndex(p => p.includes('date') || p === 'dt');
-    if (dateIdx > -1) {
-      headerIndex = i;
-      rawHeaders = lines[i].split(delimiter).map(h => h.trim().replace(/"/g, ''));
-      break;
-    }
-  }
-
-  let colMap = {
-    date: -1,
-    name: -1,
-    description: -1,
-    memo: -1,
-    amount: -1,
-    credit: -1,
-    debit: -1,
-    category: -1,
-    location: -1,
-    type: -1
-  };
-
-  // 2. Map Columns (Heuristic fallback if no header found)
-  if (headerIndex !== -1) {
-    const lowerHeaders = rawHeaders.map(h => h.toLowerCase());
-    colMap.date = lowerHeaders.findIndex(p => p.includes('date') || p === 'dt');
-    colMap.name = lowerHeaders.findIndex(p => p === 'name' || p.includes('merchant') || p.includes('payee'));
-    colMap.description = lowerHeaders.findIndex(p => p.includes('description') || p === 'transaction');
-    colMap.memo = lowerHeaders.findIndex(p => p.includes('memo') || p.includes('reference') || p.includes('note'));
-    colMap.amount = lowerHeaders.findIndex(p => p === 'amount' || p.includes('amount'));
-    colMap.credit = lowerHeaders.findIndex(p => p.includes('credit') || p.includes('deposit'));
-    colMap.debit = lowerHeaders.findIndex(p => p.includes('debit') || p.includes('payment') || p.includes('withdrawal'));
-    colMap.category = lowerHeaders.findIndex(p => p.includes('category'));
-    colMap.location = lowerHeaders.findIndex(p => p.includes('location') || p.includes('city') || p.includes('place') || p.includes('address'));
-    colMap.type = lowerHeaders.findIndex(p => p.includes('type'));
-  } else {
-    // HEURISTIC: No explicit headers found (common in manual paste). Try to guess based on first data row.
-    const firstRow = lines[0].split(delimiter).map(p => p.trim().replace(/"/g, ''));
-    if (firstRow.length >= 2) {
-        firstRow.forEach((val, idx) => {
-            if (colMap.date === -1 && parseDate(val)) colMap.date = idx;
-            else if (colMap.amount === -1 && !isNaN(parseFloat(val.replace(/[$,\s]/g, '')))) colMap.amount = idx;
-            else if (colMap.description === -1 && val.length > 5) colMap.description = idx;
-        });
-        // Start from row 0 since no header was identified
-        headerIndex = -1; 
-    }
-  }
-
-  const expenseType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
-  const incomeType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
-
-  for (let i = headerIndex + 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    let parts = delimiter === '\t' ? line.split('\t') : line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-    parts = parts.map(p => p.trim().replace(/^"|"$/g, ''));
-    if (parts.length < 2) continue;
-
-    const dateStr = colMap.date > -1 ? parts[colMap.date] : '';
-    const parsedDate = parseDate(dateStr);
-    if (!parsedDate) continue;
-
-    let rawDesc = '';
-    const nameVal = colMap.name > -1 ? parts[colMap.name] : '';
-    const descVal = colMap.description > -1 ? parts[colMap.description] : '';
-    const memoVal = colMap.memo > -1 ? parts[colMap.memo] : '';
-    rawDesc = nameVal || descVal || memoVal || 'Unspecified';
-
-    const cleanedDesc = cleanDescription(rawDesc);
-    
-    const metadata: Record<string, string> = { 
-      _raw: line
-    };
-    if (rawHeaders.length > 0) {
-        rawHeaders.forEach((h, idx) => { if (parts[idx] !== undefined) metadata[h] = parts[idx]; });
-    }
-
-    let amount = 0;
-    let isIncome = false;
-
-    const typeIndicator = colMap.type > -1 ? parts[colMap.type].toLowerCase() : '';
-
-    if (colMap.credit > -1 && colMap.debit > -1) {
-      const cr = parseFloat(parts[colMap.credit].replace(/[$,\s]/g, '') || '0');
-      const db = parseFloat(parts[colMap.debit].replace(/[$,\s]/g, '') || '0');
-      if (Math.abs(cr) > 0) { amount = Math.abs(cr); isIncome = true; }
-      else { amount = Math.abs(db); isIncome = false; }
-    } else if (colMap.amount > -1) {
-      const valText = parts[colMap.amount]?.replace(/[$,\s]/g, '') || '0';
-      const val = parseFloat(valText);
-      if (isNaN(val)) continue;
-      
-      amount = Math.abs(val);
-      if (typeIndicator.includes('credit')) {
-          isIncome = true;
-      } else if (typeIndicator.includes('debit')) {
-          isIncome = false;
-      } else {
-          isIncome = val > 0;
-      }
-    } else {
-        // Final fallback: look for any number that might be an amount if colMap.amount missed it
-        const possibleAmount = parts.find(p => !isNaN(parseFloat(p.replace(/[$,\s]/g, ''))));
-        if (possibleAmount) {
-            amount = Math.abs(parseFloat(possibleAmount.replace(/[$,\s]/g, '')));
-        }
-    }
-
-    transactions.push({
-      date: formatDate(parsedDate),
-      description: toTitleCase(cleanedDesc),
-      originalDescription: rawDesc,
-      amount: amount,
-      category: colMap.category > -1 ? parts[colMap.category] : 'Uncategorized',
-      accountId: accountId,
-      typeId: isIncome ? incomeType.id : expenseType.id,
-      location: colMap.location > -1 ? parts[colMap.location] : undefined,
-      sourceFilename: sourceName,
-      metadata
-    });
-  }
-  return transactions;
-};
-
-export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
+/**
+ * Step 1 Parser: YouTube Video Reports
+ * Content,Video title,Video publish time,Duration,Views,Watch time (hours),Subscribers,Estimated revenue (USD),Impressions,Impressions click-through rate (%)
+ */
+export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: string) => void): Promise<YouTubeMetric[]> => {
     onProgress(`Reading ${file.name}...`);
-    let text = '';
     const reader = new FileReader();
-    const result = await new Promise<string>((resolve) => {
-      reader.onload = () => resolve(reader.result as string);
-      reader.readAsText(file);
+    const text = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsText(file);
     });
-    text = result;
-
     const lines = text.split('\n');
-    const metrics: AmazonMetric[] = [];
+    const metrics: YouTubeMetric[] = [];
     if (lines.length < 2) return [];
-    let headerIndex = -1;
-    for (let i = 0; i < Math.min(lines.length, 10); i++) {
-        const lower = lines[i].toLowerCase();
-        if (lower.includes('tracking id') && lower.includes('asin')) { headerIndex = i; break; }
-    }
-    if (headerIndex === -1) return [];
-    const header = lines[headerIndex].split(',').map(h => h.trim().replace(/"/g, '').toLowerCase());
+
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    
     const colMap = {
-        date: header.findIndex(h => h === 'date' || h === 'date shipped'),
-        asin: header.findIndex(h => h === 'asin'),
-        title: header.findIndex(h => h.includes('title')),
-        clicks: header.findIndex(h => h === 'clicks'),
-        ordered: header.findIndex(h => h.includes('ordered')),
-        income: header.findIndex(h => h.includes('earnings') || h.includes('commission')),
-        tracking: header.findIndex(h => h.includes('tracking id')),
+        id: header.indexOf('content'),
+        title: header.indexOf('video title'),
+        date: header.indexOf('video publish time'),
+        duration: header.indexOf('duration'),
+        views: header.indexOf('views'),
+        hours: header.indexOf('watch time (hours)'),
+        subs: header.indexOf('subscribers'),
+        revenue: header.indexOf('estimated revenue (usd)'),
+        impressions: header.indexOf('impressions'),
+        ctr: header.indexOf('impressions click-through rate (%)')
     };
-    for (let i = headerIndex + 1; i < lines.length; i++) {
+
+    if (colMap.id === -1 || colMap.title === -1) throw new Error("Invalid YouTube report format.");
+
+    for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
-        if (!line) continue;
-        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
-        if (!values[colMap.asin]) continue;
+        if (!line || line.toLowerCase().startsWith('total')) continue;
+        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        if (values.length < 3) continue;
+
         metrics.push({
             id: generateUUID(),
-            saleDate: formatDate(parseDate(values[colMap.date]) || new Date()),
-            asin: values[colMap.asin],
-            productTitle: values[colMap.title] || 'Unknown',
-            clicks: parseFloat(values[colMap.clicks]) || 0,
-            orderedItems: parseFloat(values[colMap.ordered]) || 0,
-            shippedItems: 0,
-            revenue: parseFloat(values[colMap.income]?.replace(/[$,]/g, '')) || 0,
-            conversionRate: 0,
-            trackingId: values[colMap.tracking] || 'default',
-            reportType: values[colMap.tracking]?.includes('onamz') ? 'onsite' : 'offsite'
+            videoId: values[colMap.id],
+            videoTitle: values[colMap.title],
+            publishDate: formatDate(parseDate(values[colMap.date]) || new Date()),
+            duration: values[colMap.duration],
+            views: parseInt(values[colMap.views]) || 0,
+            watchTimeHours: parseFloat(values[colMap.hours]) || 0,
+            subscribersGained: parseInt(values[colMap.subs]) || 0,
+            estimatedRevenue: parseFloat(values[colMap.revenue]?.replace(/[$,]/g, '')) || 0,
+            impressions: parseInt(values[colMap.impressions]) || 0,
+            ctr: parseFloat(values[colMap.ctr]) || 0
         });
     }
     return metrics;
 };
 
-/**
- * Specialized parser for Amazon Video Metadata reports (Title, Date, Duration).
- */
-export const parseAmazonVideoMetadata = async (file: File, onProgress: (msg: string) => void): Promise<Partial<AmazonVideo>[]> => {
-    onProgress(`Reading metadata from ${file.name}...`);
-    const reader = new FileReader();
-    const text = await new Promise<string>((resolve) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.readAsText(file);
-    });
-    const lines = text.split('\n');
-    const videos: Partial<AmazonVideo>[] = [];
-    if (lines.length < 2) return [];
-
-    let headerIndex = -1;
-    for (let i = 0; i < Math.min(lines.length, 10); i++) {
-        const l = lines[i].toLowerCase();
-        if (l.includes('title') && (l.includes('date') || l.includes('duration'))) { headerIndex = i; break; }
-    }
-    if (headerIndex === -1) throw new Error("Invalid metadata format. Ensure headers contain 'Title' and 'Creation Date' or 'Duration'.");
-
-    const header = lines[headerIndex].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-    const colMap = {
-        title: header.findIndex(h => h === 'title' || h.includes('video title')),
-        date: header.findIndex(h => h.includes('date') || h.includes('created')),
-        duration: header.findIndex(h => h === 'duration' || h.includes('length'))
-    };
-
-    for (let i = headerIndex + 1; i < lines.length; i++) {
-        const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
-        if (values.length <= colMap.title || !values[colMap.title]) continue;
-        
-        videos.push({
-            videoTitle: values[colMap.title],
-            uploadDate: values[colMap.date] ? formatDate(parseDate(values[colMap.date]) || new Date()) : undefined,
-            duration: values[colMap.duration] || undefined
-        });
-    }
-    return videos;
-};
+// Alias for YouTube report parser to match component imports
+export const parseYouTubeReport = parseYouTubeDetailedReport;
 
 /**
- * Specialized parser for Amazon Product Mapping reports (Title, ASIN).
+ * Step 2 Parser: Amazon Storefront Videos
+ * Title,Views,Hearts,Avg_Pct_Viewed,Duration,Upload_Date,Video_URL
  */
-export const parseAmazonProductMapping = async (file: File, onProgress: (msg: string) => void): Promise<Partial<AmazonVideo>[]> => {
-    onProgress(`Reading product maps from ${file.name}...`);
-    const reader = new FileReader();
-    const text = await new Promise<string>((resolve) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.readAsText(file);
-    });
-    const lines = text.split('\n');
-    const mappings: Partial<AmazonVideo>[] = [];
-    if (lines.length < 2) return [];
-
-    let headerIndex = -1;
-    for (let i = 0; i < Math.min(lines.length, 10); i++) {
-        const l = lines[i].toLowerCase();
-        if (l.includes('title') && l.includes('asin')) { headerIndex = i; break; }
-    }
-    if (headerIndex === -1) throw new Error("Invalid mapping format. Ensure headers contain 'Title' and 'ASIN'.");
-
-    const header = lines[headerIndex].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
-    const colMap = {
-        title: header.findIndex(h => h === 'title' || h.includes('video title')),
-        asin: header.findIndex(h => h === 'asin' || h.includes('product id'))
-    };
-
-    for (let i = headerIndex + 1; i < lines.length; i++) {
-        const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
-        if (values.length <= colMap.title || !values[colMap.title]) continue;
-        
-        mappings.push({
-            videoTitle: values[colMap.title],
-            asins: values[colMap.asin] ? [values[colMap.asin]] : undefined
-        });
-    }
-    return mappings;
-};
-
-export const parseAmazonVideos = async (file: File, onProgress: (msg: string) => void): Promise<AmazonVideo[]> => {
+export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: string) => void): Promise<AmazonVideo[]> => {
     onProgress(`Reading ${file.name}...`);
     const reader = new FileReader();
     const text = await new Promise<string>((resolve) => {
@@ -494,24 +134,52 @@ export const parseAmazonVideos = async (file: File, onProgress: (msg: string) =>
     const lines = text.split('\n');
     const videos: AmazonVideo[] = [];
     if (lines.length < 2) return [];
-    let headerIndex = lines.findIndex(l => l.toLowerCase().includes('title'));
-    if (headerIndex === -1) throw new Error("Invalid format.");
-    const header = lines[headerIndex].split(',').map(h => h.trim().toLowerCase());
-    const colMap = { title: header.indexOf('title'), asin: header.indexOf('asin') };
-    for (let i = headerIndex + 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        if (values.length <= colMap.title) continue;
+
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    
+    const colMap = {
+        title: header.indexOf('title'),
+        views: header.indexOf('views'),
+        hearts: header.indexOf('hearts'),
+        avgView: header.indexOf('avg_pct_viewed'),
+        duration: header.indexOf('duration'),
+        date: header.indexOf('upload_date'),
+        url: header.indexOf('video_url')
+    };
+
+    if (colMap.title === -1) throw new Error("Invalid Amazon Video format.");
+
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        if (values.length < 1) continue;
+
         videos.push({
             id: generateUUID(),
-            videoId: generateUUID().slice(0, 8),
+            videoId: '', // Will be matched to YT
             videoTitle: values[colMap.title],
-            asins: values[colMap.asin] ? [values[colMap.asin]] : undefined
+            views: parseInt(values[colMap.views]) || 0,
+            hearts: parseInt(values[colMap.hearts]) || 0,
+            avgPctViewed: parseFloat(values[colMap.avgView]) || 0,
+            duration: values[colMap.duration],
+            uploadDate: formatDate(parseDate(values[colMap.date]) || new Date()),
+            videoUrl: values[colMap.url]
         });
     }
     return videos;
 };
 
-export const parseYouTubeReport = async (file: File, onProgress: (msg: string) => void): Promise<YouTubeMetric[]> => {
+// Aliases for Amazon video parser to match component imports
+export const parseAmazonVideos = parseAmazonStorefrontVideos;
+export const parseAmazonVideoMetadata = parseAmazonStorefrontVideos;
+
+/**
+ * Step 3 Parser: Amazon Product Mapping
+ * Title,ASINs,Duration,Video URL
+ */
+export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string) => void): Promise<Partial<AmazonVideo>[]> => {
     onProgress(`Reading ${file.name}...`);
     const reader = new FileReader();
     const text = await new Promise<string>((resolve) => {
@@ -519,58 +187,251 @@ export const parseYouTubeReport = async (file: File, onProgress: (msg: string) =
         reader.readAsText(file);
     });
     const lines = text.split('\n');
-    const metrics: YouTubeMetric[] = [];
-    let headerIndex = lines.findIndex(l => l.toLowerCase().includes('video title') || l.toLowerCase().includes('content'));
-    if (headerIndex === -1) throw new Error("Invalid YouTube format.");
-    const header = lines[headerIndex].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(h => h.trim().toLowerCase());
-    const colMap = { 
-        title: header.findIndex(h => h.includes('title')), 
-        views: header.indexOf('views'), 
-        rev: header.findIndex(h => h.includes('revenue')), 
-        date: header.findIndex(h => h.includes('date') || h.includes('time')),
-        duration: header.findIndex(h => h.includes('duration') || h.includes('length'))
+    const mappings: Partial<AmazonVideo>[] = [];
+    if (lines.length < 2) return [];
+
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    
+    const colMap = {
+        title: header.indexOf('title'),
+        asins: header.indexOf('asins'),
+        duration: header.indexOf('duration'),
+        url: header.indexOf('video url')
     };
-    for (let i = headerIndex + 1; i < lines.length; i++) {
+
+    for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        const values = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(v => v.trim().replace(/"/g, ''));
-        if (values.length <= colMap.title || values[0].toLowerCase() === 'total') continue;
+        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        if (values.length < 1) continue;
+
+        mappings.push({
+            videoTitle: values[colMap.title],
+            asins: values[colMap.asins] ? values[colMap.asins].split(/[\s,;|]+/).map(a => a.trim()).filter(Boolean) : [],
+            duration: values[colMap.duration],
+            videoUrl: values[colMap.url]
+        });
+    }
+    return mappings;
+};
+
+// Alias for Amazon product mapping parser to match component imports
+export const parseAmazonProductMapping = parseVideoAsinMapping;
+
+/**
+ * Step 4 Parser: Amazon Earnings (Product Data)
+ * Category,Name,ASIN,Seller,Tracking ID,Date Shipped,Price($),Items Shipped,Returns,Revenue($),Ad Fees($),Device Type Group
+ */
+export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
+    onProgress(`Reading ${file.name}...`);
+    const reader = new FileReader();
+    const text = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsText(file);
+    });
+    const lines = text.split('\n');
+    const metrics: AmazonMetric[] = [];
+    if (lines.length < 2) return [];
+
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    
+    const colMap = {
+        category: header.indexOf('category'),
+        name: header.indexOf('name'),
+        asin: header.indexOf('asin'),
+        tracking: header.indexOf('tracking id'),
+        date: header.indexOf('date shipped'),
+        items: header.indexOf('items shipped'),
+        revenue: header.indexOf('revenue($)'),
+        fees: header.indexOf('ad fees($)')
+    };
+
+    if (colMap.asin === -1 || colMap.revenue === -1) throw new Error("Invalid Amazon Earnings format.");
+
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || line.toLowerCase().startsWith('total')) continue;
+        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        if (values.length < colMap.asin) continue;
+
+        const trackingId = values[colMap.tracking] || '';
+
         metrics.push({
             id: generateUUID(),
-            videoId: generateUUID().slice(0, 8),
-            videoTitle: values[colMap.title],
-            publishDate: formatDate(parseDate(values[colMap.date]) || new Date()),
-            views: parseFloat(values[colMap.views]) || 0,
-            watchTimeHours: 0,
-            subscribersGained: 0,
-            estimatedRevenue: parseFloat(values[colMap.rev]?.replace(/[$,]/g, '')) || 0,
-            impressions: 0,
-            ctr: 0,
-            duration: colMap.duration > -1 ? values[colMap.duration] : undefined
+            saleDate: formatDate(parseDate(values[colMap.date]) || new Date()),
+            asin: values[colMap.asin],
+            productTitle: values[colMap.name] || 'Unknown',
+            category: values[colMap.category],
+            trackingId,
+            clicks: 0,
+            orderedItems: 0,
+            shippedItems: parseInt(values[colMap.items]) || 0,
+            revenue: parseFloat(values[colMap.revenue]?.replace(/[$,]/g, '')) || 0,
+            conversionRate: 0,
+            reportType: trackingId.includes('onamz') ? 'onsite' : 'offsite'
         });
     }
     return metrics;
 };
 
-export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-  if (!text || !text.trim()) return [];
-  onProgress('Scanning line items...');
-  // Automatically detect tab-separated data vs comma
-  return parseCSV_Tx(text.split('\n'), accountId, transactionTypes, 'Pasted Text');
-};
+// Alias for Amazon earnings parser to match component imports
+export const parseAmazonReport = parseAmazonEarningsReport;
 
-export const parseTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-  const all: RawTransaction[] = [];
-  for (const f of files) {
-    onProgress(`Reading ${f.name}...`);
-    if (f.type === 'application/pdf') continue;
-    
+/**
+ * Step 5 Parser: Creator Connections
+ * Date,Campaign Title,ASIN,Clicks,Shipped Items,Revenue,Commission Rate,Commission Income
+ */
+export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
+    onProgress(`Reading ${file.name}...`);
     const reader = new FileReader();
     const text = await new Promise<string>((resolve) => {
         reader.onload = () => resolve(reader.result as string);
-        reader.readAsText(f);
+        reader.readAsText(file);
     });
-    all.push(...parseCSV_Tx(text.split('\n'), accountId, transactionTypes, f.name));
-  }
-  return all;
+    const lines = text.split('\n');
+    const metrics: AmazonMetric[] = [];
+    if (lines.length < 2) return [];
+
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    
+    const colMap = {
+        date: header.indexOf('date'),
+        campaign: header.indexOf('campaign title'),
+        asin: header.indexOf('asin'),
+        clicks: header.indexOf('clicks'),
+        items: header.indexOf('shipped items'),
+        revenue: header.indexOf('revenue'),
+        commission: header.indexOf('commission income')
+    };
+
+    for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || line.toLowerCase().startsWith('total')) continue;
+        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        if (values.length < colMap.asin) continue;
+
+        metrics.push({
+            id: generateUUID(),
+            saleDate: formatDate(parseDate(values[colMap.date]) || new Date()),
+            asin: values[colMap.asin],
+            productTitle: values[colMap.campaign] || 'CC Campaign',
+            ccTitle: values[colMap.campaign],
+            clicks: parseInt(values[colMap.clicks]) || 0,
+            orderedItems: parseInt(values[colMap.items]) || 0,
+            shippedItems: parseInt(values[colMap.items]) || 0,
+            revenue: parseFloat(values[colMap.revenue]?.replace(/[$,]/g, '')) || 0,
+            commissionIncome: parseFloat(values[colMap.commission]?.replace(/[$,]/g, '')) || 0,
+            conversionRate: 0,
+            trackingId: 'creator_connections',
+            reportType: 'creator_connections'
+        });
+    }
+    return metrics;
+};
+
+// Helper for generic transaction parsing from text
+export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+    onProgress("Parsing ledger data...");
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 1) return [];
+    
+    let startIndex = 0;
+    if (lines[0].toLowerCase().includes('date') || lines[0].toLowerCase().includes('amount')) {
+        startIndex = 1;
+    }
+
+    const txs: RawTransaction[] = [];
+    for (let i = startIndex; i < lines.length; i++) {
+        const parts = lines[i].split(/[,\t]/).map(p => p.trim());
+        if (parts.length < 2) continue;
+        
+        txs.push({
+            date: formatDate(parseDate(parts[0]) || new Date()),
+            description: parts[1],
+            amount: parseFloat(parts[2]?.replace(/[$,]/g, '')) || 0,
+            accountId,
+            category: 'Other',
+            typeId: transactionTypes[0]?.id || ''
+        });
+    }
+    return txs;
+};
+
+// Helper for generic transaction parsing from files
+export const parseTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+    const allTxs: RawTransaction[] = [];
+    for (const file of files) {
+        onProgress(`Reading ${file.name}...`);
+        const reader = new FileReader();
+        const text = await new Promise<string>((res) => {
+            reader.onload = () => res(reader.result as string);
+            reader.readAsText(file);
+        });
+        const txs = await parseTransactionsFromText(text, accountId, transactionTypes, onProgress);
+        allTxs.push(...txs);
+    }
+    return allTxs;
+};
+
+// Logic for validating rule import format
+export const validateRuleFormat = (lines: string[]): { isValid: boolean; error?: string } => {
+    if (lines.length === 0) return { isValid: false, error: "Empty file" };
+    const header = lines[0].toLowerCase();
+    if (!header.includes('rule name') || !header.includes('match field')) {
+        return { isValid: false, error: "Missing required headers (Rule Name, Match Field, etc)" };
+    }
+    return { isValid: true };
+};
+
+// Logic for generating CSV rule template
+export const generateRuleTemplate = (): string => {
+    return "Rule Name,Match Field,Operator,Match Value,Target Category,Target Entity,Target Location,Target Type,Set Description,Skip Import\n" +
+           "Starbucks Coffee,description,contains,STARBUCKS,Dining,Starbucks,,Purchase,Starbucks,false";
+};
+
+// Logic for parsing individual rule strings
+export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
+    const rules: ReconciliationRule[] = [];
+    if (lines.length < 2) return [];
+    
+    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const col = (name: string) => header.indexOf(name);
+    
+    for (let i = 1; i < lines.length; i++) {
+        const row = lines[i].split(',').map(v => v.trim());
+        if (row.length < 4) continue;
+        
+        rules.push({
+            id: generateUUID(),
+            name: row[col('rule name')] || 'Untitled Rule',
+            conditions: [{
+                id: generateUUID(),
+                type: 'basic',
+                field: row[col('match field')] as any || 'description',
+                operator: row[col('operator')] as any || 'contains',
+                value: row[col('match value')] || '',
+                nextLogic: 'AND'
+            }],
+            suggestedCategoryName: row[col('target category')],
+            suggestedCounterpartyName: row[col('target entity')],
+            suggestedLocationName: row[col('target location')],
+            suggestedTypeName: row[col('target type')],
+            setDescription: row[col('set description')],
+            skipImport: row[col('skip import')] === 'true'
+        });
+    }
+    return rules;
+};
+
+// Logic for reading rule file
+export const parseRulesFromFile = async (file: File): Promise<ReconciliationRule[]> => {
+    const reader = new FileReader();
+    const text = await new Promise<string>((res) => {
+        reader.onload = () => res(reader.result as string);
+        reader.readAsText(file);
+    });
+    return parseRulesFromLines(text.split('\n'));
 };

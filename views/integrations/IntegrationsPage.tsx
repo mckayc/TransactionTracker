@@ -1,7 +1,7 @@
 
 import React from 'react';
-import type { View } from '../types';
-import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, ChartPieIcon } from '../components/Icons';
+import type { View } from '../../types';
+import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, WorkflowIcon } from '../../components/Icons';
 
 interface IntegrationsPageProps {
     onNavigate: (view: View) => void;
@@ -48,9 +48,9 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <IntegrationCard 
-                    title="Cross-Platform Content Hub" 
-                    description="The command center for video ROI. Automatically links YouTube and Amazon data to track which platform drives your income."
-                    icon={<ChartPieIcon className="w-8 h-8" />}
+                    title="Video and Product Joiner" 
+                    description="The command center for video ROI. Multi-stage wizard to link YouTube and Amazon data to track which video drives your income."
+                    icon={<WorkflowIcon className="w-8 h-8" />}
                     status="active"
                     variant="primary"
                     onClick={() => onNavigate('integration-video-product-joiner')}

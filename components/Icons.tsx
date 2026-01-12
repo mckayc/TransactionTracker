@@ -32,6 +32,8 @@ export const EditIcon = Pencil;
 export const NotesIcon = StickyNote;
 export const DeleteIcon = Trash2;
 export const AddIcon = Plus;
+// Added PlusIcon alias to fix missing export error
+export const PlusIcon = Plus;
 export const ChartPieIcon = PieChart;
 export const ChatBubbleIcon = MessageSquare;
 export const SendIcon = Send;

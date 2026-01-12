@@ -1,3 +1,4 @@
+
 export type BalanceEffect = 'incoming' | 'outgoing' | 'neutral';
 
 export interface TransactionType {
@@ -409,6 +410,7 @@ export interface AmazonMetric {
     orderedItems: number;
     shippedItems: number;
     revenue: number;
+    commissionIncome?: number; // New field for Creator Connections
     conversionRate: number;
     trackingId: string;
     reportType: AmazonReportType;
@@ -430,6 +432,9 @@ export interface AmazonVideo {
     duration?: string;
     videoUrl?: string;
     uploadDate?: string;
+    hearts?: number;
+    avgPctViewed?: number;
+    views?: number;
 }
 
 export interface YouTubeChannel {
@@ -497,4 +502,4 @@ export interface DuplicatePair {
     existingTx: Transaction;
 }
 
-export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-content-hub';
+export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-video-product-joiner';
