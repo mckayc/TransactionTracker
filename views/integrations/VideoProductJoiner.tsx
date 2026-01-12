@@ -249,17 +249,35 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                     const parsed = await parseYouTubeDetailedReport(f, (msg) => console.log(msg));
                     extraYt.push(...parsed);
                 }
+                
                 if (extraYt.length > 0) {
-                    const proposals = extraYt.map(m => ({
-                        videoId: m.videoId,
-                        title: m.videoTitle,
-                        duration: m.duration,
-                        publishDate: m.publishDate,
-                        selected: true
-                    }));
-                    setProposedMatches(proposals);
-                    setStagedData(extraYt);
-                    notify(`Loaded ${extraYt.length} YouTube metadata records for verification.`);
+                    // Check if we are currently staging signals. If so, merge metadata into them.
+                    const isStagingSignals = Array.isArray(stagedData) && stagedData.length > 0 && stagedData[0].sourceType;
+                    
+                    if (isStagingSignals) {
+                        const ytLookup = new Map(extraYt.map(m => [m.videoId, m]));
+                        const enrichedSignals = stagedData!.map(s => {
+                            if (s.sourceType === 'youtube' && ytLookup.has(s.videoId)) {
+                                const meta = ytLookup.get(s.videoId)!;
+                                return { ...s, duration: meta.duration, publishDate: meta.publishDate };
+                            }
+                            return s;
+                        });
+                        setStagedData(enrichedSignals);
+                        notify(`Enriched ${extraYt.length} staged YouTube signals with metadata.`);
+                    } else {
+                        // Standard workflow: verify metadata and update existing registry
+                        const proposals = extraYt.map(m => ({
+                            videoId: m.videoId,
+                            title: m.videoTitle,
+                            duration: m.duration,
+                            publishDate: m.publishDate,
+                            selected: true
+                        }));
+                        setProposedMatches(proposals);
+                        setStagedData(extraYt);
+                        notify(`Loaded ${extraYt.length} YouTube metadata records for verification.`);
+                    }
                 }
             } else if (importStep === 2) {
                 const amzVideos: AmazonVideo[] = [];
@@ -314,8 +332,10 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         setIsProcessing(true);
         
         if (importStep === 1) {
-            // Check if we are committing supplemental metadata or signals
-            if (proposedMatches.length > 0 && Array.isArray(stagedData) && stagedData[0]?.sourceType !== 'amazon' && stagedData[0]?.sourceType !== 'youtube') {
+            // Check if we are committing supplemental metadata to existing registry
+            const isSupplementalMeta = proposedMatches.length > 0 && Array.isArray(stagedData) && stagedData[0]?.sourceType === undefined;
+            
+            if (isSupplementalMeta) {
                 const selectedMeta = proposedMatches.filter(p => p.selected);
                 const updatedMetrics = [...metrics];
                 selectedMeta.forEach(meta => {
@@ -875,7 +895,6 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                                         </div>
                                                     </div>
                                                 )}
-                                                <input type="file" ref={fileInputRef} multiple className="hidden" onChange={(e) => handleStepUpload(Array.from(e.target.files || []))} />
                                             </div>
                                         )}
 
@@ -923,7 +942,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                                                 <div key={idx} className={`p-3 rounded-xl border-2 transition-all flex items-center gap-4 ${p.selected ? 'bg-indigo-600/20 border-indigo-500' : 'bg-white/5 border-white/5 opacity-60 hover:opacity-100'}`}>
                                                                     <button 
                                                                         onClick={() => setProposedMatches(prev => prev.map((item, i) => i === idx ? { ...item, selected: !item.selected } : item))}
-                                                                        className={`w-5 h-5 rounded flex items-center justify-center transition-all ${p.selected ? 'bg-indigo-500 text-white' : 'bg-white/10 text-transparent border border-white/20'}`}
+                                                                        className={`w-5 h-5 rounded flex items-center justify-center transition-all ${p.selected ? 'bg-indigo-50 text-white' : 'bg-white/10 text-transparent border border-white/20'}`}
                                                                     >
                                                                         <CheckCircleIcon className="w-3 h-3" />
                                                                     </button>
@@ -962,7 +981,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                                                 <div key={idx} className={`p-3 rounded-xl border-2 transition-all flex items-center gap-4 ${p.selected ? 'bg-indigo-600/20 border-indigo-500' : 'bg-white/5 border-white/5 opacity-60 hover:opacity-100'}`}>
                                                                     <button 
                                                                         onClick={() => setProposedMatches(prev => prev.map((item, i) => i === idx ? { ...item, selected: !item.selected } : item))}
-                                                                        className={`w-5 h-5 rounded flex items-center justify-center transition-all ${p.selected ? 'bg-indigo-500 text-white' : 'bg-white/10 text-transparent border border-white/20'}`}
+                                                                        className={`w-5 h-5 rounded flex items-center justify-center transition-all ${p.selected ? 'bg-indigo-50 text-white' : 'bg-white/10 text-transparent border border-white/20'}`}
                                                                     >
                                                                         <CheckCircleIcon className="w-3 h-3" />
                                                                     </button>
@@ -1014,6 +1033,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                 );
                             })}
                         </div>
+                        <input type="file" ref={fileInputRef} multiple className="hidden" onChange={(e) => handleStepUpload(Array.from(e.target.files || []))} />
                     </div>
                 )}
             </div>
