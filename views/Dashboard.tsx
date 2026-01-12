@@ -40,25 +40,6 @@ interface WidgetSlotProps {
     joinedMetrics: JoinedMetric[];
 }
 
-interface DashboardProps {
-    transactions: Transaction[];
-    savedReports: SavedReport[];
-    tasks: TaskItem[];
-    goals: FinancialGoal[];
-    systemSettings: SystemSettings;
-    onUpdateSystemSettings: (settings: SystemSettings) => void;
-    categories: Category[];
-    counterparties: Counterparty[];
-    amazonMetrics: AmazonMetric[];
-    youtubeMetrics: YouTubeMetric[];
-    financialPlan: FinancialPlan | null;
-    accounts: Account[];
-    tags: Tag[];
-    transactionTypes: TransactionType[];
-    users: User[];
-    joinedMetrics: JoinedMetric[];
-}
-
 const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users, joinedMetrics }) => {
     
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
@@ -78,9 +59,10 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
     const identity = COMPONENT_IDENTITY_MAP[widget.type] || { icon: <InfoIcon className="w-4 h-4" />, label: 'Module' };
     const isHidden = widget.config?.isHidden;
 
-    const handleToggleVisibility = () => {
+    const handleToggleVisibility = (e: React.MouseEvent) => {
+        e.stopPropagation();
         onUpdateConfig({
-            ...widget.config,
+            ...(widget.config || {}),
             isHidden: !isHidden
         });
     };
@@ -140,30 +122,51 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
     const spanClass = widget.colSpan === 3 ? 'md:col-span-3' : widget.colSpan === 2 ? 'md:col-span-2' : 'md:col-span-1';
 
     return (
-        <div className={`bg-white rounded-[1.5rem] border border-slate-200 shadow-sm overflow-hidden group flex flex-col h-full transition-all hover:shadow-md ${spanClass} ${isHidden ? 'min-h-0' : 'min-h-[300px]'}`}>
-            <header className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center flex-shrink-0">
+        <div className={`bg-white rounded-[1.5rem] border border-slate-200 shadow-sm overflow-hidden group flex flex-col h-full transition-all hover:shadow-md ${spanClass} ${isHidden ? 'min-h-[72px] h-auto' : 'min-h-[300px]'}`}>
+            <header className={`p-4 flex justify-between items-center flex-shrink-0 transition-colors ${isHidden ? 'bg-slate-100' : 'bg-slate-50/50 border-b border-slate-100'}`}>
                 <div className="flex items-center gap-2 min-w-0">
                     <div className="text-indigo-600 flex-shrink-0">{identity.icon}</div>
-                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-tight truncate">
+                    <h4 className={`text-xs font-black uppercase tracking-tight truncate ${isHidden ? 'text-slate-400' : 'text-slate-800'}`}>
                         {widget.config?.title || identity.label}
                     </h4>
-                    {isHidden && <span className="text-[10px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-bold uppercase ml-2">Hidden</span>}
                 </div>
-                <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={handleToggleVisibility} title={isHidden ? "Show Module" : "Hide Module"} className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors">
-                        {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
+                <div className={`flex items-center gap-1.5 transition-opacity ${isHidden ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                    <button onClick={handleToggleVisibility} title={isHidden ? "Unhide Module" : "Hide Module"} className={`p-1.5 transition-colors ${isHidden ? 'text-indigo-600 hover:text-indigo-800' : 'text-slate-400 hover:text-indigo-600'}`}>
+                        {isHidden ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
                     </button>
                     <button onClick={onConfigure} title="Instance Settings" className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors"><SettingsIcon className="w-3.5 h-3.5" /></button>
                     <button onClick={onRemove} title="Remove from Dashboard" className="p-1.5 text-slate-400 hover:text-orange-600 transition-colors"><CloseIcon className="w-3.5 h-3.5" /></button>
                     <button onClick={onDelete} title="Purge Logical Config" className="p-1.5 text-slate-400 hover:text-rose-600 transition-colors"><TrashIcon className="w-3.5 h-3.5" /></button>
                 </div>
             </header>
-            <div className="flex-1 min-h-0">
-                {!isHidden && renderContent()}
-            </div>
+            {!isHidden && (
+                <div className="flex-1 min-h-0">
+                    {renderContent()}
+                </div>
+            )}
         </div>
     );
 };
+
+// Added missing DashboardProps interface
+interface DashboardProps {
+    transactions: Transaction[];
+    savedReports: SavedReport[];
+    tasks: TaskItem[];
+    goals: FinancialGoal[];
+    systemSettings: SystemSettings;
+    onUpdateSystemSettings: (settings: SystemSettings) => void;
+    categories: Category[];
+    counterparties: Counterparty[];
+    amazonMetrics: AmazonMetric[];
+    youtubeMetrics: YouTubeMetric[];
+    financialPlan: FinancialPlan | null;
+    accounts: Account[];
+    tags: Tag[];
+    transactionTypes: TransactionType[];
+    users: User[];
+    joinedMetrics: JoinedMetric[];
+}
 
 const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users, joinedMetrics }) => {
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
@@ -650,7 +653,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                     max="50"
                                                     value={configVideoCount} 
                                                     onChange={e => setConfigVideoCount(parseInt(e.target.value) || 10)}
-                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none"
+                                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-black focus:border-indigo-500 outline-none"
                                                 />
                                             </div>
                                             <div className="space-y-3">
