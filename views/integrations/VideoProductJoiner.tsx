@@ -58,7 +58,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
 
     // Staging state
     const [stagedData, setStagedData] = useState<any[] | null>(null);
-    const [proposedMatches, setProposedMatches] = useState<any[]>([]); // For Step 2 verification
+    const [proposedMatches, setProposedMatches] = useState<any[]>([]); // For verification steps
 
     // Global Search & Pivot
     const [searchTerm, setSearchTerm] = useState('');
@@ -243,23 +243,23 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         setIsProcessing(true);
         try {
             if (importStep === 1) {
-                // Allow supplemental YouTube data upload to enrich durations
+                // Enriching YouTube Metadata with a separate report upload
                 const extraYt: YouTubeMetric[] = [];
                 for (const f of files) {
                     const parsed = await parseYouTubeDetailedReport(f, (msg) => console.log(msg));
                     extraYt.push(...parsed);
                 }
-                // Enrich existing youtubeMetrics with this data
                 if (extraYt.length > 0) {
-                   const map = new Map(extraYt.map(m => [m.videoId, m]));
-                   setStagedData(prev => (prev || []).map(s => {
-                       if (s.sourceType === 'youtube' && map.has(s.videoId)) {
-                           const extra = map.get(s.videoId)!;
-                           return { ...s, duration: extra.duration || s.duration, publishDate: extra.publishDate || s.publishDate };
-                       }
-                       return s;
-                   }));
-                   notify(`Enriched YouTube metadata with ${extraYt.length} records.`);
+                    const proposals = extraYt.map(m => ({
+                        videoId: m.videoId,
+                        title: m.videoTitle,
+                        duration: m.duration,
+                        publishDate: m.publishDate,
+                        selected: true
+                    }));
+                    setProposedMatches(proposals);
+                    setStagedData(extraYt);
+                    notify(`Loaded ${extraYt.length} YouTube metadata records for verification.`);
                 }
             } else if (importStep === 2) {
                 const amzVideos: AmazonVideo[] = [];
@@ -314,6 +314,25 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         setIsProcessing(true);
         
         if (importStep === 1) {
+            // Check if we are committing supplemental metadata or signals
+            if (proposedMatches.length > 0 && Array.isArray(stagedData) && stagedData[0]?.sourceType !== 'amazon' && stagedData[0]?.sourceType !== 'youtube') {
+                const selectedMeta = proposedMatches.filter(p => p.selected);
+                const updatedMetrics = [...metrics];
+                selectedMeta.forEach(meta => {
+                    const target = updatedMetrics.find(m => m.videoId === meta.videoId);
+                    if (target) {
+                        target.duration = meta.duration;
+                        target.publishDate = meta.publishDate;
+                    }
+                });
+                onSaveMetrics(updatedMetrics);
+                notify(`Enriched ${selectedMeta.length} YouTube records.`);
+                setProposedMatches([]);
+                setStagedData(null);
+                setIsProcessing(false);
+                return;
+            }
+
             const allSignals = stagedData as any[];
             const existingMap = new Map(metrics.map(m => [m.id, m]));
             
@@ -645,6 +664,150 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                     </div>
                 )}
 
+                {activeTab === 'data' && (
+                    <div className="space-y-4 h-full flex flex-col animate-fade-in">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-shrink-0">
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Aggregate ROI</p>
+                                <p className="text-2xl font-black text-emerald-600">{formatCurrency(summary.revenue)}</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Aggregate Reach</p>
+                                <p className="text-2xl font-black text-slate-800">{formatNumber(summary.views)}</p>
+                            </div>
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filtered Records</p>
+                                <p className="text-2xl font-black text-indigo-600">{displayMetrics.length}</p>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 p-4 rounded-3xl border border-slate-200 flex flex-wrap items-center justify-between gap-6">
+                            <div className="flex flex-wrap items-center gap-4">
+                                <div className="flex items-center gap-2 pr-4 border-r border-slate-200">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Year Filter</span>
+                                    <div className="flex gap-1">
+                                        <button onClick={() => toggleYearFilter('all')} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${selectedYears.has('all') ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border text-slate-500 hover:bg-slate-100'}`}>ALL</button>
+                                        {availableYears.map(y => (
+                                            <button key={y} onClick={() => toggleYearFilter(y)} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${selectedYears.has(y) ? 'bg-indigo-600 text-white shadow-md' : 'bg-white border text-slate-500 hover:bg-slate-100'}`}>{y}</button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Type Filter</span>
+                                    <div className="flex gap-1">
+                                        {[
+                                            { id: 'youtube', label: 'YouTube' },
+                                            { id: 'onsite', label: 'Onsite' },
+                                            { id: 'offsite', label: 'Offsite' },
+                                            { id: 'creator_onsite', label: 'CC On' },
+                                            { id: 'creator_offsite', label: 'CC Off' }
+                                        ].map(t => (
+                                            <label key={t.id} className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase cursor-pointer transition-all border-2 flex items-center gap-2 ${selectedTypes.has(t.id) ? 'bg-indigo-50 border-indigo-400 text-indigo-700' : 'bg-white border-transparent text-slate-400 hover:bg-slate-100'}`}>
+                                                <input type="checkbox" className="hidden" checked={selectedTypes.has(t.id)} onChange={() => toggleTypeFilter(t.id)} />
+                                                {selectedTypes.has(t.id) && <CheckCircleIcon className="w-2.5 h-2.5" />}
+                                                {t.label}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <span className="text-[10px] font-black text-slate-400 uppercase">Limit</span>
+                                <select value={rowsPerPage} onChange={e => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="bg-white border-2 border-slate-100 rounded-xl text-xs px-2 py-1 font-bold outline-none">
+                                    {[100, 500, 1000].map(v => <option key={v} value={v}>{v} records</option>)}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-3xl border-2 border-slate-100 shadow-sm flex-1 overflow-hidden flex flex-col">
+                            <div className="overflow-auto flex-1 custom-scrollbar">
+                                <table className="min-w-full divide-y divide-slate-100 border-separate border-spacing-0">
+                                    <thead className="bg-slate-50 sticky top-0 z-10">
+                                        <tr>
+                                            <th className="px-8 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b">Asset Timeline</th>
+                                            <th className="px-8 py-4 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b">Video / Product Identity</th>
+                                            <th className="px-8 py-4 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest border-b">ROI</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50 bg-white">
+                                        {paginatedMetrics.map(m => (
+                                            <tr key={m.id} className="hover:bg-slate-50 transition-colors group cursor-pointer" onClick={() => setSelectedAsset(m)}>
+                                                <td className="px-8 py-2"><span className="text-[8px] font-mono text-slate-400 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">{m.publishDate || '---'}</span></td>
+                                                <td className="px-8 py-2"><div className="flex flex-col"><span className="text-xs font-black text-slate-800">{m.mainTitle}</span><p className="text-[8px] text-slate-300 font-bold uppercase truncate mt-0.5">{m.subTitle}</p></div></td>
+                                                <td className="px-8 py-2 text-right"><span className="text-sm font-black text-emerald-600 font-mono">{formatCurrency(m.totalRevenue)}</span></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="p-3 bg-slate-50 border-t flex justify-between items-center px-8">
+                                <p className="text-[10px] font-black text-slate-400 uppercase">Records {startIndex + 1}-{Math.min(startIndex + rowsPerPage, displayMetrics.length)} of {displayMetrics.length}</p>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 bg-white border rounded-lg disabled:opacity-30"><ChevronLeftIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 bg-white border rounded-lg disabled:opacity-30"><ChevronRightIcon className="w-4 h-4"/></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'insights' && (
+                    <div className="space-y-8 flex flex-col h-full animate-fade-in pb-20 overflow-y-auto custom-scrollbar pr-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm space-y-6">
+                                <div className="flex justify-between items-start">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600"><TrendingUpIcon className="w-6 h-6" /></div>
+                                        <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Durability Index</h3>
+                                    </div>
+                                    <InfoBubble title="Evergreen Performance" content="Ranking assets older than 1 year to determine long-term ROI consistency." />
+                                </div>
+                                <div className="grid grid-cols-1 gap-3">
+                                    {displayMetrics.filter(m => m.publishDate && new Date(m.publishDate) < new Date(new Date().setFullYear(new Date().getFullYear() - 1))).slice(0, 5).map(m => (
+                                        <div key={m.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between group hover:border-indigo-300 transition-all" onClick={() => setSelectedAsset(m)}>
+                                            <div className="min-w-0 flex-1 pr-4">
+                                                <p className="text-[11px] font-black text-slate-800 truncate">{m.mainTitle}</p>
+                                                <p className="text-[9px] text-slate-400 font-black uppercase mt-1">LIFETIME ROI: {formatCurrency(m.totalRevenue)}</p>
+                                            </div>
+                                            <div className="text-right"><span className="text-[10px] font-black text-indigo-600 bg-white px-3 py-1 rounded-full shadow-sm border border-indigo-50">STABLE</span></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="bg-slate-900 p-8 rounded-[2.5rem] shadow-xl text-white space-y-6 relative overflow-hidden">
+                                <div className="relative z-10 flex justify-between items-start">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-3 bg-white/10 rounded-2xl text-white"><ShieldCheckIcon className="w-6 h-6" /></div>
+                                        <h3 className="text-xl font-black uppercase tracking-tighter">Yield Concentration</h3>
+                                    </div>
+                                    <InfoBubble title="Pareto Audit" content="Measuring how concentrated your revenue is among your top performing content assets." />
+                                </div>
+                                <div className="relative z-10 space-y-6">
+                                    {(() => {
+                                        const sorted = [...metrics].sort((a,b) => b.totalRevenue - a.totalRevenue);
+                                        const top10Total = sorted.slice(0, 10).reduce((s, m) => s + m.totalRevenue, 0);
+                                        const allTotal = sorted.reduce((s, m) => s + m.totalRevenue, 0) || 1;
+                                        const pct = (top10Total / allTotal) * 100;
+                                        return (
+                                            <div className="text-center py-6">
+                                                <p className="text-6xl font-black text-indigo-400">{pct.toFixed(0)}%</p>
+                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Yield driven by top 10 assets</p>
+                                                <div className="mt-8 grid grid-cols-2 gap-4">
+                                                    <div className="bg-white/5 p-3 rounded-2xl border border-white/5"><p className="text-[9px] font-black text-slate-500 uppercase mb-1">Avg Asset Yield</p><p className="text-lg font-bold">{formatCurrency(allTotal / metrics.length)}</p></div>
+                                                    <div className="bg-white/5 p-3 rounded-2xl border border-white/5"><p className="text-[9px] font-black text-slate-500 uppercase mb-1">Portfolio Size</p><p className="text-lg font-bold">{metrics.length} Assets</p></div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                                <SparklesIcon className="absolute -right-12 -top-12 w-64 h-64 opacity-[0.03] text-white" />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {activeTab === 'importer' && (
                     <div className="max-w-6xl mx-auto w-full space-y-6 py-6 overflow-y-auto custom-scrollbar h-full animate-fade-in pr-2">
                         <div className="text-center space-y-2 mb-8">
@@ -738,11 +901,61 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                                     </div>
                                                 )}
 
+                                                {s.step === 1 && proposedMatches.length > 0 && (
+                                                    <div className="space-y-3">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <SparklesIcon className="w-4 h-4 text-indigo-400" />
+                                                                <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Verification Engine</h5>
+                                                            </div>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const allSelected = proposedMatches.every(p => p.selected);
+                                                                    setProposedMatches(prev => prev.map(p => ({ ...p, selected: !allSelected })));
+                                                                }}
+                                                                className="text-[9px] font-black text-indigo-400 uppercase tracking-widest hover:underline"
+                                                            >
+                                                                {proposedMatches.every(p => p.selected) ? 'Deselect All' : 'Select All'}
+                                                            </button>
+                                                        </div>
+                                                        <div className="space-y-1 max-h-64 overflow-y-auto custom-scrollbar pr-2">
+                                                            {proposedMatches.map((p, idx) => (
+                                                                <div key={idx} className={`p-3 rounded-xl border-2 transition-all flex items-center gap-4 ${p.selected ? 'bg-indigo-600/20 border-indigo-500' : 'bg-white/5 border-white/5 opacity-60 hover:opacity-100'}`}>
+                                                                    <button 
+                                                                        onClick={() => setProposedMatches(prev => prev.map((item, i) => i === idx ? { ...item, selected: !item.selected } : item))}
+                                                                        className={`w-5 h-5 rounded flex items-center justify-center transition-all ${p.selected ? 'bg-indigo-500 text-white' : 'bg-white/10 text-transparent border border-white/20'}`}
+                                                                    >
+                                                                        <CheckCircleIcon className="w-3 h-3" />
+                                                                    </button>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="text-[10px] font-bold truncate">{p.title}</p>
+                                                                        <div className="flex gap-3 mt-1">
+                                                                            <span className="text-[8px] font-black text-indigo-400 uppercase bg-indigo-500/10 px-1 rounded">{p.duration || '00:00'}</span>
+                                                                            <span className="text-[8px] font-black text-slate-500 uppercase">{p.publishDate}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {s.step === 2 && proposedMatches.length > 0 && (
                                                     <div className="space-y-3">
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <SparklesIcon className="w-4 h-4 text-amber-400" />
-                                                            <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Confidence Match Engine</h5>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <div className="flex items-center gap-2">
+                                                                <SparklesIcon className="w-4 h-4 text-amber-400" />
+                                                                <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Confidence Match Engine</h5>
+                                                            </div>
+                                                            <button 
+                                                                onClick={() => {
+                                                                    const allSelected = proposedMatches.every(p => p.selected);
+                                                                    setProposedMatches(prev => prev.map(p => ({ ...p, selected: !allSelected })));
+                                                                }}
+                                                                className="text-[9px] font-black text-indigo-400 uppercase tracking-widest hover:underline"
+                                                            >
+                                                                {proposedMatches.every(p => p.selected) ? 'Deselect All' : 'Select All'}
+                                                            </button>
                                                         </div>
                                                         <div className="space-y-1 max-h-64 overflow-y-auto custom-scrollbar pr-2">
                                                             {proposedMatches.map((p, idx) => (
