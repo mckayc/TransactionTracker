@@ -1,4 +1,3 @@
-
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -20,7 +19,6 @@ const PUBLIC_DIR = fs.existsSync(path.join(__dirname, 'dist'))
     ? path.join(__dirname, 'dist') 
     : path.join(__dirname, 'public');
 
-// Request Logging Middleware
 app.use((req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
@@ -56,106 +54,21 @@ if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true
 
 let db;
 
-/**
- * MIGRATION ENGINE - DEEP SCAVENGE
- */
-const runMigrations = () => {
-    console.log("[MIGRATE] Running Deep Scavenge and Integrity Check...");
-    
-    const tableExists = (name) => db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name);
-    const getColumns = (name) => db.prepare(`PRAGMA table_info(${name})`).all();
-
-    db.transaction(() => {
-        // 1. Core Table: counterparties
-        if (!tableExists('counterparties')) {
-             db.exec("CREATE TABLE counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT)");
-        }
-
-        // 2. SCAVENGE: Table Data (Payees/Merchants)
-        if (tableExists('payees')) {
-            console.log("[MIGRATE] Recovering records from legacy 'payees' table...");
-            db.exec("INSERT OR IGNORE INTO counterparties (id, name, parent_id, notes, user_id) SELECT id, name, parentId, notes, userId FROM payees");
-            db.exec("DROP TABLE payees");
-        }
-        if (tableExists('merchants')) {
-            console.log("[MIGRATE] Recovering records from legacy 'merchants' table...");
-            db.exec("INSERT OR IGNORE INTO counterparties (id, name, notes) SELECT id, name, notes FROM merchants");
-            db.exec("DROP TABLE merchants");
-        }
-
-        // 3. SCAVENGE: Blob Data (app_storage)
-        const scavengeKeys = ['payees', 'merchants', 'counterparties'];
-        scavengeKeys.forEach(key => {
-            const row = db.prepare("SELECT value FROM app_storage WHERE key = ?").get(key);
-            if (row && row.value) {
-                try {
-                    const items = JSON.parse(row.value);
-                    if (Array.isArray(items)) {
-                        console.log(`[MIGRATE] Draining ${items.length} records from app_storage blob: ${key}`);
-                        const insert = db.prepare("INSERT OR IGNORE INTO counterparties (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
-                        items.forEach(p => {
-                            if (p && p.id && p.name) {
-                                insert.run(p.id, p.name, p.parentId || p.parent_id || null, p.notes || null, p.userId || p.user_id || null);
-                            }
-                        });
-                        // Clear the blob once successfully ingested
-                        db.prepare("DELETE FROM app_storage WHERE key = ?").run(key);
-                    }
-                } catch (e) {
-                    console.error(`[MIGRATE] Failed to scavenge blob ${key}:`, e.message);
-                }
-            }
-        });
-
-        // 4. Rule Normalization (Logic JSON)
-        if (tableExists('reconciliation_rules')) {
-            try {
-                const rows = db.prepare("SELECT id, logic_json FROM reconciliation_rules").all();
-                const update = db.prepare("UPDATE reconciliation_rules SET logic_json = ? WHERE id = ?");
-                rows.forEach(row => {
-                    if (row.logic_json && (row.logic_json.includes('setPayeeId') || row.logic_json.includes('suggestedPayeeName'))) {
-                        const r = JSON.parse(row.logic_json);
-                        let changed = false;
-                        if (r.setPayeeId) { r.setCounterpartyId = r.setPayeeId; delete r.setPayeeId; changed = true; }
-                        if (r.suggestedPayeeName) { r.suggestedCounterpartyName = r.suggestedPayeeName; delete r.suggestedPayeeName; changed = true; }
-                        if (changed) update.run(JSON.stringify(r), row.id);
-                    }
-                });
-            } catch (e) { console.error("[MIGRATE] Rule deep-scan failed:", e); }
-        }
-
-        // 5. Column Standardization (Snake Case)
-        const fixCasing = (table, oldCol, newCol) => {
-            if (!tableExists(table)) return;
-            const cols = getColumns(table);
-            if (cols.some(c => c.name === oldCol) && !cols.some(c => c.name === newCol)) {
-                db.exec(`ALTER TABLE ${table} RENAME COLUMN ${oldCol} TO ${newCol}`);
-                console.log(`[MIGRATE] Fixed column casing: ${table}.${oldCol} -> ${newCol}`);
-            }
-        };
-        fixCasing('accounts', 'accountTypeId', 'account_type_id');
-        fixCasing('categories', 'parentId', 'parent_id');
-        fixCasing('users', 'isDefault', 'is_default');
-        fixCasing('transaction_types', 'balanceEffect', 'balance_effect');
-
-        // 6. Transaction Identity Recovery
-        if (tableExists('transactions')) {
-            const cols = getColumns('transactions');
-            if (!cols.some(c => c.name === 'applied_rule_ids')) db.exec("ALTER TABLE transactions ADD COLUMN applied_rule_ids TEXT");
-            
-            // Sync counterparty_id from legacy columns if data is missing
-            if (cols.some(c => c.name === 'payee_id') && cols.some(c => c.name === 'counterparty_id')) {
-                db.exec("UPDATE transactions SET counterparty_id = payee_id WHERE counterparty_id IS NULL AND payee_id IS NOT NULL");
-            }
-        }
-    })();
-    console.log("[MIGRATE] Scavenge complete.");
+const initDb = () => {
+    try {
+        db = new Database(DB_PATH);
+        db.pragma('journal_mode = WAL');
+        db.pragma('busy_timeout = 5000');
+        createTables();
+        runMigrations();
+        ensureSeedData();
+    } catch (dbErr) { console.error("[DB] ENGINE STARTUP FAILURE:", dbErr.message); }
 };
 
 const createTables = () => {
     db.exec(`
         CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
-        CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT);
+        CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT, parent_id TEXT);
         CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT);
         CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT);
         CREATE TABLE IF NOT EXISTS account_types (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
@@ -197,7 +110,18 @@ const createTables = () => {
             is_ai_draft INTEGER DEFAULT 0,
             logic_json TEXT
         );
-      `);
+    `);
+};
+
+const runMigrations = () => {
+    const tableExists = (name) => db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name);
+    const getColumns = (name) => db.prepare(`PRAGMA table_info(${name})`).all();
+
+    db.transaction(() => {
+        if (!tableExists('counterparties')) db.exec("CREATE TABLE counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT)");
+        const fileCols = getColumns('files_meta');
+        if (!fileCols.some(c => c.name === 'parent_id')) db.exec("ALTER TABLE files_meta ADD COLUMN parent_id TEXT");
+    })();
 };
 
 const ensureSeedData = () => {
@@ -228,70 +152,101 @@ const ensureSeedData = () => {
     } catch (err) { console.error("[DB] Seeder Error:", err.message); }
 };
 
-const initDb = () => {
-    try {
-        db = new Database(DB_PATH);
-        db.pragma('journal_mode = WAL');
-        db.pragma('busy_timeout = 5000');
-        createTables();
-        runMigrations();
-        ensureSeedData();
-    } catch (dbErr) { console.error("[DB] ENGINE STARTUP FAILURE:", dbErr.message); }
-};
-
 initDb();
 
-// Granular Rule Endpoints
-app.post('/api/reconciliation-rules', (req, res) => {
-    try {
-        const r = req.body;
-        if (!r.id) return res.status(400).json({ error: "Missing ID" });
-        const insert = db.prepare(`
-            INSERT OR REPLACE INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json)
-            VALUES (?, ?, ?, ?, ?, ?)
-        `);
-        insert.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r));
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+/**
+ * AUTOMATED BACKUP ENGINE
+ */
+const runAutomatedBackup = async () => {
+    const row = db.prepare("SELECT value FROM app_storage WHERE key = ?").get('systemSettings');
+    if (!row || !row.value) return;
 
-app.delete('/api/reconciliation-rules/:id', (req, res) => {
-    try {
-        db.prepare("DELETE FROM reconciliation_rules WHERE id = ?").run(req.params.id);
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
+    let settings;
+    try { settings = JSON.parse(row.value); } catch(e) { return; }
+    
+    const config = settings.backupConfig;
+    if (!config || !config.enabled || config.frequency === 'never') return;
 
-// Transactions Filter Helper
-const buildTxFilters = (params) => {
-    const { search, startDate, endDate, accountIds, categoryIds, userId } = params;
-    let filterQuery = ` WHERE 1=1 AND t.is_parent = 0`;
-    const values = [];
-    if (search) {
-        filterQuery += ` AND (t.description LIKE ? OR t.notes LIKE ? OR t.original_description LIKE ?)`;
-        const s = `%${search}%`;
-        values.push(s, s, s);
+    const lastRun = config.lastRun ? new Date(config.lastRun) : new Date(0);
+    const now = new Date();
+    let shouldRun = false;
+
+    if (config.frequency === 'daily') {
+        shouldRun = (now - lastRun) > 24 * 60 * 60 * 1000;
+    } else if (config.frequency === 'weekly') {
+        shouldRun = (now - lastRun) > 7 * 24 * 60 * 60 * 1000;
+    } else if (config.frequency === 'monthly') {
+        shouldRun = (now - lastRun) > 30 * 24 * 60 * 60 * 1000;
     }
-    if (startDate) { filterQuery += ` AND t.date >= ?`; values.push(startDate); }
-    if (endDate) { filterQuery += ` AND t.date <= ?`; values.push(endDate); }
-    if (userId) { filterQuery += ` AND t.user_id = ?`; values.push(userId); }
-    if (accountIds) {
-        const ids = accountIds.split(',');
-        filterQuery += ` AND t.account_id IN (${ids.map(() => '?').join(',')})`;
-        values.push(...ids);
+
+    if (shouldRun) {
+        console.log(`[BACKUP] Initializing scheduled ${config.frequency} preservation...`);
+        const logs = config.logs || [];
+        const addLog = (action, details, status = 'success') => {
+            logs.unshift({ id: Math.random().toString(36).substring(7), timestamp: new Date().toISOString(), action, details, status });
+            if (logs.length > 10) logs.pop();
+        };
+
+        try {
+            // Full Export logic (reusing standard export keys)
+            const data = { exportDate: new Date().toISOString(), version: '0.6.0', type: 'automated_snapshot' };
+            const tables = ['transactions', 'accounts', 'categories', 'tags', 'counterparties', 'reconciliation_rules', 'rule_categories', 'users', 'locations', 'transaction_types'];
+            tables.forEach(t => { try { data[t] = db.prepare(`SELECT * FROM ${t}`).all(); } catch(e) {} });
+            
+            const storageRows = db.prepare("SELECT key, value FROM app_storage").all();
+            storageRows.forEach(r => { try { data[r.key] = JSON.parse(r.value); } catch(e) {} });
+
+            const backupId = `bkp_${Date.now()}`;
+            const originalName = `autobackup_${now.toISOString().split('T')[0]}.json`;
+            const diskFilename = `${Date.now()}_${originalName}`;
+            const content = JSON.stringify(data, null, 2);
+            
+            fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), content);
+
+            // Register in files_meta so it shows in Documents view
+            db.prepare('INSERT INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+              .run(backupId, originalName, diskFilename, 'application/json', content.length, new Date().toISOString(), 'folder_system_backups');
+
+            addLog('Backup Created', `Institutional logic preserved in ${originalName}. Registered in Vault.`, 'success');
+
+            // Handle Retention
+            const backups = db.prepare("SELECT * FROM files_meta WHERE parent_id = 'folder_system_backups' ORDER BY created_at DESC").all();
+            if (backups.length > config.retentionCount) {
+                const toDelete = backups.slice(config.retentionCount);
+                toDelete.forEach(b => {
+                    const fullPath = path.join(DOCUMENTS_DIR, b.disk_filename);
+                    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+                    db.prepare('DELETE FROM files_meta WHERE id = ?').run(b.id);
+                    addLog('Policy Cleanup', `Removed expired snapshot: ${b.original_name}`, 'success');
+                });
+            }
+
+            settings.backupConfig = { ...config, lastRun: now.toISOString(), lastBackupDate: now.toISOString(), logs };
+            db.prepare('INSERT OR REPLACE INTO app_storage (key, value) VALUES (?, ?)').run('systemSettings', JSON.stringify(settings));
+            console.log(`[BACKUP] Scheduled preservation complete.`);
+        } catch (err) {
+            console.error("[BACKUP] Routine failed:", err.message);
+            addLog('Failure', `Snapshot routine aborted: ${err.message}`, 'failure');
+            settings.backupConfig = { ...config, lastRun: now.toISOString(), logs };
+            db.prepare('INSERT OR REPLACE INTO app_storage (key, value) VALUES (?, ?)').run('systemSettings', JSON.stringify(settings));
+        }
     }
-    if (categoryIds) {
-        const ids = categoryIds.split(',');
-        filterQuery += ` AND t.category_id IN (${ids.map(() => '?').join(',')})`;
-        values.push(...ids);
-    }
-    return { filterQuery, values };
 };
 
 app.get('/api/transactions', (req, res) => {
     try {
-        const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC' } = req.query;
-        const { filterQuery, values } = buildTxFilters(req.query);
+        const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC', search, startDate, endDate, accountIds, categoryIds, userId } = req.query;
+        let filterQuery = ` WHERE 1=1 AND t.is_parent = 0`;
+        const values = [];
+        if (search) {
+            filterQuery += ` AND (t.description LIKE ? OR t.notes LIKE ? OR t.original_description LIKE ?)`;
+            const s = `%${search}%`;
+            values.push(s, s, s);
+        }
+        if (startDate) { filterQuery += ` AND t.date >= ?`; values.push(startDate); }
+        if (endDate) { filterQuery += ` AND t.date <= ?`; values.push(endDate); }
+        if (userId) { filterQuery += ` AND t.user_id = ?`; values.push(userId); }
+        
         const dataQuery = `
             SELECT t.*, GROUP_CONCAT(tg.tag_id) as tagIds 
             FROM transactions t
@@ -301,9 +256,9 @@ app.get('/api/transactions', (req, res) => {
             ORDER BY t.${sortKey} ${sortDir}
             LIMIT ? OFFSET ?
         `;
-        const countQuery = `SELECT COUNT(*) as count FROM transactions t ${filterQuery}`;
         const rows = db.prepare(dataQuery).all(...values, parseInt(limit), parseInt(offset));
-        const totalCount = db.prepare(countQuery).get(...values).count;
+        const totalCount = db.prepare(`SELECT COUNT(*) as count FROM transactions t ${filterQuery}`).get(...values).count;
+        
         const results = rows.map(r => ({
             ...r,
             tagIds: r.tagIds ? r.tagIds.split(',') : [],
@@ -323,65 +278,6 @@ app.get('/api/transactions', (req, res) => {
             appliedRuleIds: r.applied_rule_ids ? JSON.parse(r.applied_rule_ids) : []
         }));
         res.json({ data: results, total: totalCount });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/analytics/summary', (req, res) => {
-    try {
-        const { filterQuery, values } = buildTxFilters(req.query);
-        const query = `
-            SELECT 
-                SUM(CASE WHEN tt.balance_effect = 'incoming' THEN t.amount ELSE 0 END) as incoming,
-                SUM(CASE WHEN tt.balance_effect = 'outgoing' THEN t.amount ELSE 0 END) as outgoing,
-                SUM(CASE WHEN tt.balance_effect = 'neutral' THEN t.amount ELSE 0 END) as neutral,
-                SUM(CASE WHEN t.type_id = 'type_investment' THEN t.amount ELSE 0 END) as investments
-            FROM transactions t
-            JOIN transaction_types tt ON t.type_id = tt.id
-            ${filterQuery}
-        `;
-        const result = db.prepare(query).get(...values);
-        res.json({ incoming: result.incoming || 0, outgoing: result.outgoing || 0, neutral: result.neutral || 0, investments: result.investments || 0 });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.get('/api/analytics/breakdown', (req, res) => {
-    try {
-        const { type } = req.query;
-        const { filterQuery, values } = buildTxFilters(req.query);
-        let typeFilter = "";
-        if (type === 'inflow') typeFilter = " AND tt.balance_effect = 'incoming'";
-        else if (type === 'outflow') typeFilter = " AND tt.balance_effect = 'outgoing'";
-        else if (type === 'investments') typeFilter = " AND t.type_id = 'type_investment'";
-
-        const breakdownQuery = `
-            SELECT 
-                COALESCE(cp.name, t.description) as label,
-                SUM(ABS(t.amount)) as amount
-            FROM transactions t
-            JOIN transaction_types tt ON t.type_id = tt.id
-            LEFT JOIN counterparties cp ON t.counterparty_id = cp.id
-            ${filterQuery} ${typeFilter}
-            GROUP BY label
-            ORDER BY amount DESC
-            LIMIT 15
-        `;
-        const results = db.prepare(breakdownQuery).all(...values);
-        const totalQuery = `
-            SELECT SUM(ABS(t.amount)) as total
-            FROM transactions t
-            JOIN transaction_types tt ON t.type_id = tt.id
-            ${filterQuery} ${typeFilter}
-        `;
-        const totalResult = db.prepare(totalQuery).get(...values);
-        const actualTotal = totalResult.total || 0;
-        res.json({
-            items: results.map(r => ({
-                label: r.label,
-                amount: r.amount,
-                percentage: actualTotal > 0 ? (r.amount / actualTotal) * 100 : 0
-            })),
-            total: actualTotal
-        });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -409,8 +305,11 @@ app.post('/api/transactions/batch', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/data', (req, res) => {
+app.get('/api/data', async (req, res) => {
   try {
+    // Run backup routine on every comprehensive data request to ensure schedule is met
+    await runAutomatedBackup();
+    
     const rows = db.prepare('SELECT key, value FROM app_storage').all();
     const data = {};
     for (const row of rows) {
@@ -426,6 +325,7 @@ app.get('/api/data', (req, res) => {
     data.locations = db.prepare("SELECT id, name, city, state, country FROM locations").all();
     data.tags = db.prepare("SELECT * FROM tags").all();
     data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect, color FROM transaction_types").all();
+    data.businessDocuments = db.prepare("SELECT * FROM files_meta").all().map(f => ({ ...f, uploadDate: f.created_at, parentId: f.parent_id }));
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -434,92 +334,9 @@ app.post('/api/data/:key', (req, res) => {
   try {
     const key = req.params.key;
     const value = req.body;
-    if (key === 'reconciliationRules' && Array.isArray(value)) {
-        db.prepare("DELETE FROM reconciliation_rules").run();
-        const stmt = db.prepare("INSERT INTO reconciliation_rules (id, name, rule_category_id, skip_import, is_ai_draft, logic_json) VALUES (?, ?, ?, ?, ?, ?)");
-        db.transaction(() => { value.forEach(r => stmt.run(r.id, r.name, r.ruleCategoryId || 'rcat_manual', r.skipImport ? 1 : 0, r.isAiDraft ? 1 : 0, JSON.stringify(r))); })();
-    } else if (key === 'categories' && Array.isArray(value)) {
-        db.prepare("DELETE FROM categories").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO categories (id, name, parent_id) VALUES (?, ?, ?)");
-        db.transaction(() => { value.forEach(c => stmt.run(c.id, c.name, c.parentId || null)); })();
-    } else if (key === 'ruleCategories' && Array.isArray(value)) {
-        db.prepare("DELETE FROM rule_categories").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)");
-        db.transaction(() => { value.forEach(rc => stmt.run(rc.id, rc.name, rc.isDefault ? 1 : 0)); })();
-    } else if (key === 'accounts' && Array.isArray(value)) {
-        db.prepare("DELETE FROM accounts").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO accounts (id, name, identifier, account_type_id) VALUES (?, ?, ?, ?)");
-        db.transaction(() => { value.forEach(a => stmt.run(a.id, a.name, a.identifier, a.accountTypeId || null)); })();
-    } else if (key === 'accountTypes' && Array.isArray(value)) {
-        db.prepare("DELETE FROM account_types").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO account_types (id, name, is_default) VALUES (?, ?, ?)");
-        db.transaction(() => { value.forEach(at => stmt.run(at.id, at.name, at.isDefault ? 1 : 0)); })();
-    } else if (key === 'users' && Array.isArray(value)) {
-        db.prepare("DELETE FROM users").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO users (id, name, is_default) VALUES (?, ?, ?)");
-        db.transaction(() => { value.forEach(u => stmt.run(u.id, u.name, u.isDefault ? 1 : 0)); })();
-    } else if (key === 'transactionTypes' && Array.isArray(value)) {
-        db.prepare("DELETE FROM transaction_types").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)");
-        db.transaction(() => { value.forEach(t => stmt.run(t.id, t.name, t.balanceEffect, t.color || null)); })();
-    } else if (key === 'counterparties' && Array.isArray(value)) {
-        db.prepare("DELETE FROM counterparties").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO counterparties (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)");
-        db.transaction(() => { value.forEach(p => stmt.run(p.id, p.name, p.parentId || null, p.notes || null, p.userId || null)); })();
-    } else if (key === 'locations' && Array.isArray(value)) {
-        db.prepare("DELETE FROM locations").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO locations (id, name, city, state, country) VALUES (?, ?, ?, ?, ?)");
-        db.transaction(() => { value.forEach(l => stmt.run(l.id, l.name, l.city || null, l.state || null, l.country || null)); })();
-    } else if (key === 'tags' && Array.isArray(value)) {
-        db.prepare("DELETE FROM tags").run();
-        const stmt = db.prepare("INSERT OR REPLACE INTO tags (id, name, color) VALUES (?, ?, ?)");
-        db.transaction(() => { value.forEach(t => stmt.run(t.id, t.name, t.color)); })();
-    } else {
-        db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
-    }
+    db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/admin/reset', async (req, res) => {
-    const { entities } = req.body || {};
-    try {
-        if (!entities || entities.includes('all')) {
-            if (db) db.close();
-            if (fs.existsSync(DB_PATH)) fs.unlinkSync(DB_PATH);
-            initDb();
-            return res.json({ success: true });
-        }
-        db.transaction(() => {
-            if (entities.includes('reconciliationRules')) db.prepare("DELETE FROM reconciliation_rules").run();
-            if (entities.includes('transactions')) { db.prepare("DELETE FROM transactions").run(); db.prepare("DELETE FROM transaction_tags").run(); }
-            if (entities.includes('accounts')) db.prepare("DELETE FROM accounts").run();
-            if (entities.includes('accountTypes')) db.prepare("DELETE FROM account_types").run();
-            if (entities.includes('categories')) db.prepare("DELETE FROM categories").run();
-            if (entities.includes('ruleCategories')) db.prepare("DELETE FROM rule_categories").run();
-            if (entities.includes('tags')) { db.prepare("DELETE FROM tags").run(); db.prepare("DELETE FROM transaction_tags").run(); }
-            if (entities.includes('counterparties')) db.prepare("DELETE FROM counterparties").run();
-            if (entities.includes('locations')) db.prepare("DELETE FROM locations").run();
-            if (entities.includes('users')) db.prepare("DELETE FROM users WHERE is_default = 0").run();
-            if (entities.includes('files_meta')) db.prepare("DELETE FROM files_meta").run();
-            
-            // Storage keys update to include joinedMetrics
-            const storageKeys = ['amazonMetrics', 'youtubeMetrics', 'amazonVideos', 'financialGoals', 'financialPlan', 'templates', 'tasks', 'taskCompletions', 'savedReports', 'contentLinks', 'businessNotes', 'joinedMetrics'];
-            entities.forEach(entity => { if (storageKeys.includes(entity)) db.prepare("DELETE FROM app_storage WHERE key = ?").run(entity); });
-        })();
-        ensureSeedData();
-        db.pragma('vacuum');
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/api/admin/repair', (req, res) => {
-    try {
-        runMigrations();
-        createTables();
-        ensureSeedData();
-        res.json({ success: true });
-    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/files/:id', (req, res) => {
@@ -529,7 +346,8 @@ app.post('/api/files/:id', (req, res) => {
   try {
     const diskFilename = `${Date.now()}_${rawFilename.replace(/[^a-zA-Z0-9.]/g, '_')}`;
     fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), req.body);
-    db.prepare('INSERT OR REPLACE INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(id, rawFilename, diskFilename, mimeType, req.body.length, new Date().toISOString());
+    db.prepare('INSERT OR REPLACE INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, rawFilename, diskFilename, mimeType, req.body.length, new Date().toISOString());
     res.json({ success: true });
   } catch (e) { res.status(500).send(e.message); }
 });

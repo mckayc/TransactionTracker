@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, Location, AccountType, AiConfig, BackupConfig } from '../types';
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, TableIcon, CreditCardIcon, TasksIcon, BarChartIcon, DownloadIcon, BoxIcon, YoutubeIcon, InfoIcon, TrashIcon, DatabaseIcon, RobotIcon, VideoIcon } from '../components/Icons';
@@ -74,8 +73,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [diagnostics, setDiagnostics] = useState<any>(null);
     const [copyState, setCopyState] = useState<'idle' | 'success' | 'error'>('idle');
     const [aiConfig, setAiConfig] = useState<AiConfig>(systemSettings.aiConfig || getActiveModels());
+    
+    // Continuity state
+    const [backupEnabled, setBackupEnabled] = useState(systemSettings.backupConfig?.enabled || false);
     const [backupFreq, setBackupFreq] = useState<BackupConfig['frequency']>(systemSettings.backupConfig?.frequency || 'never');
     const [retentionCount, setRetentionCount] = useState(systemSettings.backupConfig?.retentionCount || 5);
+    const backupLogs = systemSettings.backupConfig?.logs || [];
+
     const [exportSelection, setExportSelection] = useState<Set<string>>(new Set(Object.keys(ENTITY_LABELS)));
     const [purgeSelection, setPurgeSelection] = useState<Set<string>>(new Set());
     const [isPurging, setIsPurging] = useState(false);
@@ -106,9 +110,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         onUpdateSystemSettings({ ...systemSettings, aiConfig: next });
     };
 
-    const handleUpdateBackupSettings = (freq: BackupConfig['frequency'], count: number) => {
-        setBackupFreq(freq); setRetentionCount(count);
-        onUpdateSystemSettings({ ...systemSettings, backupConfig: { frequency: freq, retentionCount: count, lastBackupDate: systemSettings.backupConfig?.lastBackupDate } });
+    const handleUpdateBackupSettings = (enabled: boolean, freq: BackupConfig['frequency'], count: number) => {
+        setBackupEnabled(enabled);
+        setBackupFreq(freq); 
+        setRetentionCount(count);
+        onUpdateSystemSettings({ 
+            ...systemSettings, 
+            backupConfig: { 
+                ...systemSettings.backupConfig,
+                enabled,
+                frequency: freq, 
+                retentionCount: count
+            } 
+        });
     };
 
     const handleExportData = () => {
@@ -148,7 +162,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
             />
 
             <ContinuityPanel 
-                backupFreq={backupFreq} retentionCount={retentionCount} 
+                backupEnabled={backupEnabled}
+                backupFreq={backupFreq} 
+                retentionCount={retentionCount} 
+                logs={backupLogs}
                 onUpdate={handleUpdateBackupSettings} 
             />
 

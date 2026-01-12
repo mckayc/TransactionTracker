@@ -3,11 +3,18 @@ import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings,
 import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
-import { CashFlowDashboardModule } from '../components/CashFlowDashboardModule';
-import { GoalGaugeModule, TaxProjectionModule, AiInsightsModule, TopExpensesModule, AmazonSummaryModule, YouTubeSummaryModule, VideoEarningsModule } from '../components/DashboardWidgets';
-import { ComparisonModule } from '../components/ComparisonModule';
 
-// Added missing formatCurrency helper function
+// New Modular Widget Imports
+import { CashFlowWidget } from '../components/dashboard/CashFlowWidget';
+import { ComparisonWidget } from '../components/dashboard/ComparisonWidget';
+import { GoalGaugeWidget } from '../components/dashboard/GoalGaugeWidget';
+import { TaxProjectionWidget } from '../components/dashboard/TaxProjectionWidget';
+import { AiInsightsWidget } from '../components/dashboard/AiInsightsWidget';
+import { TopExpensesWidget } from '../components/dashboard/TopExpensesWidget';
+import { AmazonSummaryWidget } from '../components/dashboard/AmazonSummaryWidget';
+import { YouTubeSummaryWidget } from '../components/dashboard/YouTubeSummaryWidget';
+import { VideoEarningsWidget } from '../components/dashboard/VideoEarningsWidget';
+
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
 interface WidgetSlotProps {
@@ -33,7 +40,6 @@ interface WidgetSlotProps {
     joinedMetrics: JoinedMetric[];
 }
 
-// Added missing DashboardProps interface to fix line 115 error
 interface DashboardProps {
     transactions: Transaction[];
     savedReports: SavedReport[];
@@ -99,20 +105,19 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
             );
         }
         if (widget.type === 'cashflow') return (
-            <CashFlowDashboardModule 
+            <CashFlowWidget 
                 widget={widget} 
                 transactions={transactions} 
                 categories={categories} 
                 counterparties={counterparties} 
                 accounts={accounts} 
-                tags={tags} 
                 transactionTypes={transactionTypes} 
                 users={users} 
                 onUpdateConfig={onUpdateConfig} 
             />
         );
         if (widget.type === 'comparison') return (
-            <ComparisonModule 
+            <ComparisonWidget 
                 widget={widget} 
                 allWidgets={allWidgets} 
                 transactions={transactions} 
@@ -120,17 +125,15 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
                 counterparties={counterparties} 
                 accounts={accounts} 
                 transactionTypes={transactionTypes} 
-                users={users} 
-                tags={tags}
             />
         );
-        if (widget.type === 'video_earnings') return <VideoEarningsModule metrics={joinedMetrics} config={widget.config} />;
-        if (widget.type === 'top_expenses') return <TopExpensesModule transactions={transactions} categories={categories} />;
-        if (widget.type === 'amazon_summary') return <AmazonSummaryModule metrics={amazonMetrics} />;
-        if (widget.type === 'youtube_summary') return <YouTubeSummaryModule metrics={youtubeMetrics} />;
-        if (widget.type === 'goal_gauge') return <GoalGaugeModule goals={goals} config={widget.config} />;
-        if (widget.type === 'tax_projection') return <TaxProjectionModule transactions={transactions} />;
-        if (widget.type === 'ai_insights') return <AiInsightsModule plan={financialPlan} />;
+        if (widget.type === 'video_earnings') return <VideoEarningsWidget metrics={joinedMetrics} config={widget.config} />;
+        if (widget.type === 'top_expenses') return <TopExpensesWidget transactions={transactions} categories={categories} />;
+        if (widget.type === 'amazon_summary') return <AmazonSummaryWidget metrics={amazonMetrics} />;
+        if (widget.type === 'youtube_summary') return <YouTubeSummaryWidget metrics={youtubeMetrics} />;
+        if (widget.type === 'goal_gauge') return <GoalGaugeWidget goals={goals} config={widget.config} />;
+        if (widget.type === 'tax_projection') return <TaxProjectionWidget transactions={transactions} />;
+        if (widget.type === 'ai_insights') return <AiInsightsWidget plan={financialPlan} />;
         return null;
     };
 
@@ -191,7 +194,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [configShowInvestments, setConfigShowInvestments] = useState(true);
     const [configShowDonations, setConfigShowDonations] = useState(true);
     
-    // Video Earnings Specific Config
     const [configVideoCount, setConfigVideoCount] = useState(10);
     const [configPublishYear, setConfigPublishYear] = useState('all');
     const [configReportYear, setConfigReportYear] = useState('all');

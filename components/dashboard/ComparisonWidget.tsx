@@ -1,0 +1,110 @@
+import React, { useMemo } from 'react';
+import type { Transaction, DashboardWidget, Category, Counterparty, Account, TransactionType } from '../../types';
+import { parseISOLocal } from '../../dateUtils';
+import { ArrowUpIcon, ArrowDownIcon, ExclamationTriangleIcon, RepeatIcon } from '../Icons';
+
+interface Props {
+    widget: DashboardWidget;
+    allWidgets: DashboardWidget[];
+    transactions: Transaction[];
+    categories: Category[];
+    counterparties: Counterparty[];
+    accounts: Account[];
+    transactionTypes: TransactionType[];
+}
+
+const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
+
+export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transactions, categories, counterparties, accounts, transactionTypes }) => {
+    const config = widget.config;
+    const baseId = config?.comparisonBaseId;
+    const targetId = config?.comparisonTargetId;
+
+    const baseWidget = useMemo(() => allWidgets.find(w => w.id === baseId), [allWidgets, baseId]);
+    const targetWidget = useMemo(() => allWidgets.find(w => w.id === targetId), [allWidgets, targetId]);
+
+    const getFilteredTransactions = (w: DashboardWidget) => {
+        if (w.type !== 'cashflow' || !w.config) return [];
+        const { period = 'month', lookback = 0, displayDataType = 'type', excludeUnknown = true, excludeKeywords = '' } = w.config;
+        const typeRegistry = new Map(transactionTypes.map(t => [t.id, t]));
+
+        const s = new Date(); s.setHours(0,0,0,0);
+        const e = new Date(); e.setHours(23,59,59,999);
+        if (period === 'month') { s.setDate(1); s.setMonth(s.getMonth() - lookback); e.setTime(s.getTime()); e.setMonth(e.getMonth() + 1, 0); }
+        else if (period === 'year') { s.setFullYear(s.getFullYear() - lookback, 0, 1); e.setFullYear(s.getFullYear() - lookback, 11, 31); }
+        else if (period === 'week') { const day = s.getDay(); s.setDate(s.getDate() - day - (lookback * 7)); e.setTime(s.getTime()); e.setDate(s.getDate() + 6); }
+
+        const keywords = excludeKeywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+        return transactions.filter(tx => {
+            const txDate = parseISOLocal(tx.date);
+            if (txDate < s || txDate > e || tx.isParent) return false;
+            const txType = typeRegistry.get(tx.typeId);
+            const effect = txType?.balanceEffect || 'outgoing';
+            if (effect === 'neutral') return false;
+            if (effect === 'incoming' && w.config?.showIncome === false) return false;
+            if (effect === 'outgoing' && w.config?.showExpenses === false) return false;
+            let label = displayDataType === 'category' ? categories.find(c => c.id === tx.categoryId)?.name : (displayDataType === 'counterparty' ? counterparties.find(cp => cp.id === tx.counterpartyId)?.name : (displayDataType === 'account' ? accounts.find(a => a.id === tx.accountId)?.name : txType?.name));
+            label = label || tx.description || 'Other';
+            if (keywords.length > 0 && keywords.some(kw => `${tx.description} ${tx.originalDescription || ''} ${label}`.toLowerCase().includes(kw))) return false;
+            if (excludeUnknown && (label === 'Unallocated' || label === 'Unknown Entity' || tx.categoryId === 'cat_other')) return false;
+            return true;
+        });
+    };
+
+    const comparisonData = useMemo(() => {
+        if (!baseWidget || !targetWidget) return null;
+        const baseTxs = getFilteredTransactions(baseWidget);
+        const targetTxs = getFilteredTransactions(targetWidget);
+        const dimension = baseWidget.config?.displayDataType || 'type';
+        const aggregate = (txs: Transaction[]) => {
+            const map = new Map<string, { label: string, total: number }>();
+            txs.forEach(tx => {
+                let key = '', label = '';
+                if (dimension === 'category') { key = tx.categoryId; label = categories.find(c => c.id === key)?.name || 'Other'; }
+                else if (dimension === 'counterparty') { key = tx.counterpartyId || `desc_${tx.description}`; label = counterparties.find(cp => cp.id === tx.counterpartyId)?.name || tx.description || 'Other'; }
+                else if (dimension === 'account') { key = tx.accountId; label = accounts.find(a => a.id === key)?.name || 'Other'; }
+                else { key = tx.typeId; label = transactionTypes.find(t => t.id === key)?.name || 'Other'; }
+                if (!map.has(key)) map.set(key, { label, total: 0 });
+                map.get(key)!.total += tx.amount;
+            });
+            return map;
+        };
+        const baseMap = aggregate(baseTxs);
+        const targetMap = aggregate(targetTxs);
+        const allKeys = new Set([...baseMap.keys(), ...targetMap.keys()]);
+        return Array.from(allKeys).map(key => {
+            const bVal = baseMap.get(key)?.total || 0;
+            const tVal = targetMap.get(key)?.total || 0;
+            const diff = tVal - bVal;
+            return { id: key, label: targetMap.get(key)?.label || baseMap.get(key)?.label || 'Unknown', baseVal: bVal, targetVal: tVal, diff, pct: bVal !== 0 ? (diff / Math.abs(bVal)) * 100 : (tVal !== 0 ? 100 : 0) };
+        }).filter(d => Math.abs(d.diff) > 0.01).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+    }, [baseWidget, targetWidget, transactions, categories, counterparties, accounts, transactionTypes]);
+
+    if (!baseId || !targetId) return <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50/50"><RepeatIcon className="w-12 h-12 text-slate-200 mb-3" /><p className="text-xs font-black text-slate-400 uppercase tracking-widest">Configuration Required</p></div>;
+    if (!baseWidget || !targetWidget) return <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-red-50/30"><ExclamationTriangleIcon className="w-10 h-10 text-red-200 mb-3" /><p className="text-xs font-black text-red-400 uppercase tracking-widest">Logic Severed</p></div>;
+
+    const totalBase = comparisonData?.reduce((s, d) => s + d.baseVal, 0) || 0;
+    const totalTarget = comparisonData?.reduce((s, d) => s + d.targetVal, 0) || 0;
+    const totalDiff = totalTarget - totalBase;
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden p-6 space-y-6">
+            <header className="grid grid-cols-2 gap-4">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100"><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Base Period</p><p className="text-lg font-black text-slate-700">{formatCurrency(totalBase)}</p></div>
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100"><p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Compare Period</p><div className="flex items-center gap-2"><p className="text-lg font-black text-slate-700">{formatCurrency(totalTarget)}</p><span className={`text-[10px] font-black px-1.5 rounded ${totalDiff > 0 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>{totalDiff > 0 ? '+' : ''}{((totalDiff / (Math.abs(totalBase) || 1)) * 100).toFixed(0)}%</span></div></div>
+            </header>
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
+                {comparisonData?.map(item => {
+                    const isIncrease = item.diff > 0;
+                    const barWidth = (Math.abs(item.diff) / Math.max(...comparisonData.map(d => Math.abs(d.diff)))) * 100;
+                    return (
+                        <div key={item.id} className="space-y-1.5 p-2 hover:bg-slate-50 rounded-xl transition-all group">
+                            <div className="flex justify-between items-start"><div className="min-w-0 flex-1"><p className="text-xs font-bold text-slate-700 truncate">{item.label}</p><p className="text-[9px] text-slate-400 font-medium">{formatCurrency(item.baseVal)} &rarr; {formatCurrency(item.targetVal)}</p></div><div className="text-right"><div className={`flex items-center justify-end gap-1 text-xs font-black ${isIncrease ? 'text-rose-600' : 'text-emerald-600'}`}>{isIncrease ? <ArrowUpIcon className="w-3 h-3" /> : <ArrowDownIcon className="w-3 h-3" />}{formatCurrency(Math.abs(item.diff))}</div><p className="text-[9px] font-black text-slate-300 uppercase">{item.pct.toFixed(0)}% Var</p></div></div>
+                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden flex">{isIncrease ? <div className="flex-1 flex justify-end"><div className="h-full bg-rose-500 rounded-full" style={{ width: `${barWidth}%` }} /></div> : <div className="flex-1 flex justify-start"><div className="h-full bg-emerald-500 rounded-full" style={{ width: `${barWidth}%` }} /></div>}</div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};

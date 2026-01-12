@@ -4,7 +4,7 @@ export interface TransactionType {
     id: string;
     name: string;
     balanceEffect: BalanceEffect;
-    color?: string; // Tailwind class like 'text-emerald-600'
+    color?: string;
     isDefault?: boolean;
 }
 
@@ -37,10 +37,9 @@ export interface Counterparty {
     name: string;
     parentId?: string;
     notes?: string;
-    userId?: string; // Optional default user for this entity
+    userId?: string;
 }
 
-// Aliases for backward compatibility in components
 export type Payee = Counterparty;
 export type Merchant = Counterparty;
 
@@ -80,7 +79,7 @@ export interface RawTransaction {
     userId?: string;
     tagIds?: string[];
     notes?: string;
-    appliedRuleId?: string; // Legacy support
+    appliedRuleId?: string;
     appliedRuleIds?: string[];
     metadata?: Record<string, any>;
 }
@@ -94,6 +93,9 @@ export interface Transaction extends RawTransaction {
     parentTransactionId?: string;
     isCompleted?: boolean;
 }
+
+// Added Task alias to satisfy imports expecting 'Task'
+export type Task = TaskItem;
 
 export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'exists' | 'regex_match';
 export type RuleField = 'description' | 'amount' | 'accountId' | 'metadata' | 'counterpartyId' | 'locationId';
@@ -114,11 +116,11 @@ export interface ReconciliationRule {
     id: string;
     name: string;
     ruleCategoryId?: string;
-    ruleCategory?: string; // Legacy support
+    ruleCategory?: string;
     conditions: RuleCondition[];
     setCategoryId?: string;
     setCounterpartyId?: string;
-    setPayeeId?: string; // Legacy support
+    setPayeeId?: string;
     setLocationId?: string;
     setUserId?: string;
     setTransactionTypeId?: string;
@@ -130,7 +132,7 @@ export interface ReconciliationRule {
     scope?: string;
     suggestedCategoryName?: string;
     suggestedCounterpartyName?: string;
-    suggestedPayeeName?: string; // Legacy support
+    suggestedPayeeName?: string;
     suggestedLocationName?: string;
     suggestedUserName?: string;
     suggestedTypeName?: string;
@@ -181,6 +183,26 @@ export interface SubTask {
     linkText?: string;
 }
 
+// Added missing Template interface
+export interface Template {
+    id: string;
+    name: string;
+    description?: string;
+    categoryId?: string;
+    subtasks?: SubTask[];
+}
+
+// Added missing ScheduledEvent interface
+export interface ScheduledEvent {
+    id: string;
+    templateId: string;
+    startDate: string;
+    recurrence: 'none' | 'monthly';
+}
+
+// Added missing TaskCompletions type
+export type TaskCompletions = Record<string, boolean>;
+
 export interface RecurrenceRule {
     frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
     interval: number;
@@ -189,85 +211,21 @@ export interface RecurrenceRule {
     endDate?: string;
 }
 
-export interface Task {
+export interface BackupLogEntry {
     id: string;
-    text: string;
-}
-
-export interface Template {
-    id: string;
-    name: string;
-    instructions?: string;
-    tasks: Task[];
-}
-
-export interface ScheduledEvent {
-    id: string;
-    templateId: string;
-    startDate: string;
-    recurrence: 'none' | 'monthly';
-}
-
-export type TaskCompletions = Record<string, boolean>;
-
-export interface BusinessInfo {
-    llcName?: string;
-    businessType?: string;
-    industry?: string;
-    stateOfFormation?: string;
-    formationDate?: string;
-    ein?: string;
-}
-
-export interface TaxInfo {
-    filingStatus?: string;
-    taxYearEnd?: string;
-    accountantName?: string;
-}
-
-export interface BusinessProfile {
-    info: BusinessInfo;
-    tax: TaxInfo;
-    completedSteps: [] | string[];
-}
-
-export interface BusinessNote {
-    id: string;
-    title: string;
-    content: string;
-    type: 'bug' | 'note' | 'idea' | 'task';
-    priority: 'low' | 'medium' | 'high';
-    isCompleted: boolean;
-    createdAt: string;
-    updatedAt: string;
-    resolvedAt?: string;
-}
-
-export interface BusinessDocument {
-    id: string;
-    name: string;
-    uploadDate: string;
-    size: number;
-    mimeType: string;
-    parentId?: string;
-    aiAnalysis?: {
-        documentType: string;
-        summary: string;
-        keyDates?: string[];
-    };
-}
-
-export interface DocumentFolder {
-    id: string;
-    name: string;
-    parentId?: string;
-    createdAt: string;
+    timestamp: string;
+    action: string;
+    details: string;
+    status: 'success' | 'failure';
 }
 
 export interface BackupConfig {
+    enabled: boolean;
     frequency: 'daily' | 'weekly' | 'monthly' | 'never';
     retentionCount: number;
     lastBackupDate?: string;
+    lastRun?: string;
+    logs?: BackupLogEntry[];
 }
 
 export interface DashboardWidget {
@@ -333,18 +291,21 @@ export interface RuleForgePrompt {
 
 export interface SystemSettings {
     backupConfig?: BackupConfig;
-    dashboardWidgets?: DashboardWidget[]; // Legacy
     dashboards?: DashboardLayout[];
     activeDashboardId?: string;
     aiConfig?: AiConfig;
     ruleForgePrompts?: RuleForgePrompt[];
     widgetLibrary?: DashboardWidget[];
+    // Added missing dashboardWidgets property to fix Dashboard.tsx error
+    dashboardWidgets?: DashboardWidget[];
 }
 
 export type ReportGroupBy = 'category' | 'counterparty' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';
-export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime' | 'custom' | 'specificMonth' | 'relativeMonth' | 'last3Months' | 'last6Months' | 'last12Months';
-export type DateRangeType = 'rolling_window' | 'fixed_period';
+export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime' | 'custom' | 'specificMonth' | 'relativeMonth' | 'last30Days' | 'last3Months' | 'last6Months' | 'last12Months';
+
+// Added missing DateRangeUnit and DateRangeType exports
 export type DateRangeUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
+export type DateRangeType = 'rolling_window' | 'fixed_period';
 
 export interface CustomDateRange {
     id: string;
@@ -412,7 +373,7 @@ export interface AmazonMetric {
     orderedItems: number;
     shippedItems: number;
     revenue: number;
-    commissionIncome?: number; // New field for Creator Connections
+    commissionIncome?: number;
     conversionRate: number;
     trackingId: string;
     reportType: AmazonReportType;
@@ -460,33 +421,24 @@ export interface YouTubeMetric {
     duration?: string;
 }
 
-// VIDEO & PRODUCT JOINER TYPES
 export interface JoinedMetric {
-    id: string; // videoId or asin
+    id: string;
     videoId?: string;
     asin: string;
-    mainTitle: string; // product name
-    subTitle: string; // video title
-    
-    // Aggregate Data
+    mainTitle: string;
+    subTitle: string;
     views: number;
     watchTimeHours: number;
     subsGained: number;
-    
-    // Revenue Data
-    videoEstimatedRevenue: number; // From YT report
+    videoEstimatedRevenue: number;
     amazonOnsiteRevenue: number;
     amazonOffsiteRevenue: number;
     creatorConnectionsOnsiteRevenue: number;
     creatorConnectionsOffsiteRevenue: number;
     totalRevenue: number;
-    
-    // Performance
     clicks: number;
     orderedItems: number;
     shippedItems: number;
-    
-    // Metadata
     publishDate?: string;
     reportYear?: string;
     duration?: string;
@@ -523,6 +475,57 @@ export interface AuditFinding {
 export interface DuplicatePair {
     newTx: Transaction;
     existingTx: Transaction;
+}
+
+// Added missing BusinessInfo and TaxInfo interfaces
+export interface BusinessInfo {
+    llcName?: string;
+    businessType?: string;
+}
+
+export interface TaxInfo {
+    filingStatus?: string;
+    accountantName?: string;
+}
+
+// Added missing BusinessProfile interface
+export interface BusinessProfile {
+    info: BusinessInfo;
+    tax: TaxInfo;
+    completedSteps: string[];
+}
+
+export interface BusinessNote {
+    id: string;
+    title: string;
+    content: string;
+    type: 'bug' | 'note' | 'idea' | 'task';
+    priority: 'low' | 'medium' | 'high';
+    isCompleted: boolean;
+    createdAt: string;
+    updatedAt: string;
+    resolvedAt?: string;
+}
+
+export interface BusinessDocument {
+    id: string;
+    name: string;
+    uploadDate: string;
+    size: number;
+    mimeType: string;
+    parentId?: string;
+    aiAnalysis?: {
+        documentType: string;
+        summary: string;
+        keyDates?: string[];
+    };
+}
+
+export interface DocumentFolder {
+    id: string;
+    name: string;
+    parentId?: string;
+    createdAt: string;
 }
 
 export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-joiner';

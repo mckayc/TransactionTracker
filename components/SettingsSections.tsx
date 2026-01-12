@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { RobotIcon, SparklesIcon, InfoIcon, CheckCircleIcon, ExclamationTriangleIcon, TableIcon, ShieldCheckIcon, StethoscopeIcon, RepeatIcon, PlayIcon, CopyIcon } from './Icons';
+import { RobotIcon, SparklesIcon, InfoIcon, CheckCircleIcon, ExclamationTriangleIcon, TableIcon, ShieldCheckIcon, StethoscopeIcon, RepeatIcon, PlayIcon, CopyIcon, ChevronRightIcon, ListIcon } from './Icons';
 import type { AiConfig, BackupConfig } from '../types';
 
 const MODEL_OPTIONS = [
@@ -83,44 +82,99 @@ export const AiCorePanel: React.FC<{
 );
 
 export const ContinuityPanel: React.FC<{
+    backupEnabled: boolean;
     backupFreq: BackupConfig['frequency'];
     retentionCount: number;
-    onUpdate: (freq: BackupConfig['frequency'], count: number) => void;
-}> = ({ backupFreq, retentionCount, onUpdate }) => (
-    <div className="bg-indigo-50 p-8 rounded-[2.5rem] border-2 border-indigo-100 flex flex-col md:flex-row items-center gap-8 shadow-inner">
-        <div className="p-5 bg-indigo-600 rounded-[1.5rem] text-white shadow-xl shadow-indigo-200"><ShieldCheckIcon className="w-10 h-10" /></div>
-        <div className="flex-1">
-            <h3 className="text-2xl font-black text-indigo-900">Automated Preservation</h3>
-            <p className="text-sm text-indigo-700 mt-1 max-w-lg leading-relaxed">Ensure system durability by enabling scheduled snapshots. Backups are stored locally in your <code>/app/data/config</code> directory.</p>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
-                <div className="space-y-1">
-                    <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Schedule Frequency</label>
-                    <select 
-                        value={backupFreq} 
-                        onChange={e => onUpdate(e.target.value as any, retentionCount)}
-                        className="w-full font-bold text-sm bg-white border-indigo-200 text-indigo-900"
-                    >
-                        <option value="daily">Daily Snapshot</option>
-                        <option value="weekly">Weekly Preservation</option>
-                        <option value="monthly">Monthly Archive</option>
-                        <option value="never">Manual Preservation Only</option>
-                    </select>
+    logs?: BackupConfig['logs'];
+    onUpdate: (enabled: boolean, freq: BackupConfig['frequency'], count: number) => void;
+}> = ({ backupEnabled, backupFreq, retentionCount, logs = [], onUpdate }) => (
+    <div className="space-y-6">
+        <div className="bg-indigo-50 p-8 rounded-[2.5rem] border-2 border-indigo-100 flex flex-col md:flex-row items-center gap-8 shadow-inner">
+            <div className={`p-5 rounded-[1.5rem] text-white shadow-xl transition-all ${backupEnabled ? 'bg-indigo-600 shadow-indigo-200 scale-105' : 'bg-slate-400 opacity-50 grayscale'}`}>
+                <ShieldCheckIcon className="w-10 h-10" />
+            </div>
+            <div className="flex-1">
+                <div className="flex justify-between items-start mb-2">
+                    <div>
+                        <h3 className="text-2xl font-black text-indigo-900">Automated Preservation</h3>
+                        <p className="text-sm text-indigo-700 mt-1 max-w-lg leading-relaxed">Ensure system durability by enabling scheduled snapshots. Backups are stored locally and appear in your <strong>Documents</strong> view under "System Backups".</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer scale-125 mr-4">
+                        <input type="checkbox" checked={backupEnabled} onChange={e => onUpdate(e.target.checked, backupFreq, retentionCount)} className="sr-only peer" />
+                        <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                    </label>
                 </div>
-                <div className="space-y-1">
-                    <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Retention Threshold</label>
-                    <div className="flex items-center gap-3">
-                        <input 
-                            type="number" 
-                            min="1" 
-                            max="50" 
-                            value={retentionCount} 
-                            onChange={e => onUpdate(backupFreq, parseInt(e.target.value) || 1)}
-                            className="w-24 font-bold text-sm bg-white border-indigo-200 text-indigo-900" 
-                        />
-                        <span className="text-xs text-indigo-600 font-medium">Versions</span>
+                
+                <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 transition-opacity ${backupEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Schedule Frequency</label>
+                        <select 
+                            value={backupFreq} 
+                            onChange={e => onUpdate(backupEnabled, e.target.value as any, retentionCount)}
+                            className="w-full font-bold text-sm bg-white border-indigo-200 text-indigo-900"
+                        >
+                            <option value="daily">Daily Snapshot</option>
+                            <option value="weekly">Weekly Preservation</option>
+                            <option value="monthly">Monthly Archive</option>
+                            <option value="never">Manual Preservation Only</option>
+                        </select>
+                    </div>
+                    <div className="space-y-1">
+                        <label className="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Retention Threshold</label>
+                        <div className="flex items-center gap-3">
+                            <input 
+                                type="number" 
+                                min="1" 
+                                max="50" 
+                                value={retentionCount} 
+                                onChange={e => onUpdate(backupEnabled, backupFreq, parseInt(e.target.value) || 1)}
+                                className="w-24 font-bold text-sm bg-white border-indigo-200 text-indigo-900" 
+                            />
+                            <span className="text-xs text-indigo-600 font-medium">Versions</span>
+                        </div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        {/* BACKUP LOG CONSOLE */}
+        <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                    <ListIcon className="w-4 h-4 text-indigo-500" />
+                    System Continuity Log
+                </h4>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing last 10 actions</p>
+            </div>
+            <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                {logs.length === 0 ? (
+                    <div className="py-12 text-center text-slate-300 italic text-sm">No recorded continuity events.</div>
+                ) : (
+                    <table className="min-w-full divide-y divide-slate-100">
+                        <thead className="bg-slate-50 font-black text-slate-400 text-[9px] uppercase tracking-widest">
+                            <tr>
+                                <th className="px-6 py-3 text-left">Timestamp</th>
+                                <th className="px-6 py-3 text-left">Action</th>
+                                <th className="px-6 py-3 text-left">Audit Details</th>
+                                <th className="px-6 py-3 text-center">Result</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {logs.map((log) => (
+                                <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="px-6 py-3 text-[10px] font-mono text-slate-500 whitespace-nowrap">{new Date(log.timestamp).toLocaleString()}</td>
+                                    <td className="px-6 py-3 text-xs font-bold text-slate-700 whitespace-nowrap">{log.action}</td>
+                                    <td className="px-6 py-3 text-xs text-slate-500 font-medium">{log.details}</td>
+                                    <td className="px-6 py-3 text-center">
+                                        <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase ${log.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                            {log.status}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                )}
             </div>
         </div>
     </div>
