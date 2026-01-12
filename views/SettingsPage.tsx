@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, ContentLink, Location, AccountType, AiConfig, BackupConfig } from '../types';
+import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, Location, AccountType, AiConfig, BackupConfig } from '../types';
 // Added missing RobotIcon import
 import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, TableIcon, CreditCardIcon, TasksIcon, BarChartIcon, DownloadIcon, BoxIcon, YoutubeIcon, InfoIcon, TrashIcon, DatabaseIcon, RobotIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
@@ -39,7 +39,6 @@ interface SettingsPageProps {
     youtubeChannels: YouTubeChannel[];
     financialGoals: FinancialGoal[];
     financialPlan: FinancialPlan | null;
-    contentLinks: ContentLink[];
     locations: Location[];
     accountTypes: AccountType[];
 }

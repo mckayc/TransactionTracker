@@ -473,18 +473,6 @@ export interface FinancialPlan {
     suggestedBudgets: { categoryId: string; limit: number }[];
 }
 
-export interface ContentLink {
-    id: string;
-    youtubeVideoId: string;
-    amazonAsins: string[];
-    title: string;
-    manuallyLinked: boolean;
-    videoCreationDate?: string;
-    videoDuration?: string;
-    simplifiedName?: string;
-    notes?: string;
-}
-
 export interface AuditFinding {
     id: string;
     title: string;
@@ -501,4 +489,5 @@ export interface DuplicatePair {
     existingTx: Transaction;
 }
 
+// Added 'integration-video-product-joiner' to valid View types to fix type error in IntegrationsPage.tsx
 export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-video-product-joiner';

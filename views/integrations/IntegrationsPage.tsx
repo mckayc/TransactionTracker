@@ -1,6 +1,6 @@
 import React from 'react';
 import type { View } from '../../types';
-import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, WorkflowIcon } from '../../components/Icons';
+import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon } from '../../components/Icons';
 
 interface IntegrationsPageProps {
     onNavigate: (view: View) => void;
@@ -47,19 +47,11 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <IntegrationCard 
-                    title="Video and Product Joiner" 
-                    description="The command center for revenue attribution. A 5-step neural wizard to link YouTube metrics with Amazon SKU-level performance."
-                    icon={<WorkflowIcon className="w-8 h-8" />}
-                    status="active"
-                    variant="primary"
-                    onClick={() => onNavigate('integration-video-product-joiner')}
-                />
-
-                <IntegrationCard 
                     title="Amazon Influencer" 
                     description="Import commission reports, track clicks, and analyze top-performing products from the Amazon Associates program."
                     icon={<BoxIcon className="w-8 h-8" />}
                     status="active"
+                    variant="primary"
                     onClick={() => onNavigate('integration-amazon')}
                 />
 
