@@ -6,6 +6,7 @@ declare const pdfjsLib: any;
 
 /**
  * Robustly splits a CSV line, respecting quoted fields and escaped quotes.
+ * Vital for handling titles with commas like "What are Bone Conduction Headphones like? - VLOP..."
  */
 const splitCsvLine = (line: string, delimiter: string): string[] => {
     const result: string[] = [];
@@ -66,8 +67,8 @@ const parseDate = (dateStr: string): Date | null => {
     if (!isNaN(date.getTime())) return date;
   }
 
-  // Handle YouTube Date format like "Nov 11, 2014"
-  if (/^[A-Za-z]{3}\s\d{1,2},\s\d{4}$/.test(cleanedDateStr)) {
+  // Handle YouTube Date format like "Nov 11, 2014" or Amazon "Dec 31 2025 11:29 AM"
+  if (/[A-Za-z]{3}\s\d{1,2},?\s\d{4}/.test(cleanedDateStr)) {
       const date = new Date(cleanedDateStr);
       if (!isNaN(date.getTime())) return date;
   }

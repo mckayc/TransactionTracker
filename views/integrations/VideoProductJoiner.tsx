@@ -512,7 +512,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
             {/* DURATION COLLISION MODAL */}
             {verificationData && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-slide-up">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-indigo-100 text-indigo-600 rounded-2xl"><SparklesIcon className="w-6 h-6" /></div>
