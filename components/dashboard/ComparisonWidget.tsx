@@ -152,7 +152,7 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Compare Period</p>
                     <div className="flex items-center gap-2">
                         <p className="text-lg font-black text-slate-700">{formatCurrency(totalTarget)}</p>
-                        <span className={`text-[10px] font-black px-1.5 rounded ${totalDiff > 0 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+                        <span className={`text-[10px] font-black px-1.5 rounded ${totalDiff > 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}>
                             {totalDiff > 0 ? '+' : ''}{((totalDiff / (Math.abs(totalBase) || 1)) * 100).toFixed(0)}%
                         </span>
                     </div>
@@ -170,7 +170,7 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
                                     <p className="text-[9px] text-slate-400 font-medium">{formatCurrency(item.baseVal)} &rarr; {formatCurrency(item.targetVal)}</p>
                                 </div>
                                 <div className="text-right">
-                                    <div className={`flex items-center justify-end gap-1 text-xs font-black ${isIncrease ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                    <div className={`flex items-center justify-end gap-1 text-xs font-black ${isIncrease ? 'text-emerald-600' : 'text-rose-600'}`}>
                                         {isIncrease ? <ArrowUpIcon className="w-3 h-3" /> : <ArrowDownIcon className="w-3 h-3" />}
                                         {formatCurrency(Math.abs(item.diff))}
                                     </div>
@@ -179,9 +179,9 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
                             </div>
                             <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden flex">
                                 {isIncrease ? (
-                                    <div className="flex-1 flex justify-end"><div className="h-full bg-rose-500 rounded-full" style={{ width: `${barWidth}%` }} /></div>
+                                    <div className="flex-1 flex justify-end"><div className="h-full bg-emerald-500 rounded-full" style={{ width: `${barWidth}%` }} /></div>
                                 ) : (
-                                    <div className="flex-1 flex justify-start"><div className="h-full bg-emerald-500 rounded-full" style={{ width: `${barWidth}%` }} /></div>
+                                    <div className="flex-1 flex justify-start"><div className="h-full bg-rose-500 rounded-full" style={{ width: `${barWidth}%` }} /></div>
                                 )}
                             </div>
                         </div>
