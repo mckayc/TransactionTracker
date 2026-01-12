@@ -334,7 +334,7 @@ export const CashFlowWidget: React.FC<Props> = ({
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Hierarchy Registry</p>
                     {tree.length === 0 ? <div className="py-12 text-center text-slate-300 italic text-sm">No ledger data in this epoch.</div> : tree.map(node => <BreakdownRow key={node.id} node={node} total={totalVisible} maxVal={maxVal} hiddenIds={hiddenIds} expandedIds={expandedIds} onToggleVisibility={(id) => {
-                        const next = new Set(config.hiddenDataIds || []);
+                        const next = new Set(config?.hiddenDataIds || []);
                         if (next.has(id)) next.delete(id);
                         else next.add(id);
                         onUpdateConfig({ ...config, hiddenDataIds: Array.from(next) });
