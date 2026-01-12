@@ -444,7 +444,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                     <WidgetSlot 
                         key={w.id} 
                         widget={w} 
-                        allWidgets={widgetLibrary}
+                        allWidgets={widgets}
                         onRemove={() => removeWidgetFromDashboard(w.id)} 
                         onConfigure={() => setIsConfiguring(w.id)}
                         onDelete={() => deleteWidgetPermanently(w.id)}

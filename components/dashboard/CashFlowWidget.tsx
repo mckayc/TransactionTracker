@@ -184,7 +184,7 @@ const BreakdownRow: React.FC<{
                     )}
                 </div>
                 <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(node.id); }} className={`p-1 rounded-md transition-all ${isHidden ? 'text-indigo-600 bg-indigo-50' : 'text-slate-300 opacity-0 group-hover:opacity-100 hover:text-indigo-600 hover:bg-white shadow-sm'}`}>
-                    {isHidden ? <EyeSlashIcon className="w-3.5 h-3.5" /> : <EyeIcon className="w-3.5 h-3.5" />}
+                    {isHidden ? <EyeIcon className="w-3.5 h-3.5" /> : <EyeSlashIcon className="w-3.5 h-3.5" />}
                 </button>
             </div>
             {isExpanded && hasChildren && (
@@ -333,7 +333,12 @@ export const CashFlowWidget: React.FC<Props> = ({
                 </div>
                 <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Hierarchy Registry</p>
-                    {tree.length === 0 ? <div className="py-12 text-center text-slate-300 italic text-sm">No ledger data in this epoch.</div> : tree.map(node => <BreakdownRow key={node.id} node={node} total={totalVisible} maxVal={maxVal} hiddenIds={hiddenIds} expandedIds={expandedIds} onToggleVisibility={(id) => onUpdateConfig({ ...config, hiddenDataIds: Array.from(hiddenIds.has(id) ? (new Set(hiddenIds).delete(id), hiddenIds) : new Set(hiddenIds).add(id)) })} onToggleExpand={(id) => setExpandedIds(prev => { const n = new Set(prev); if(n.has(id)) n.delete(id); else n.add(id); return n; })} onInspect={setInspectingNode} />)}
+                    {tree.length === 0 ? <div className="py-12 text-center text-slate-300 italic text-sm">No ledger data in this epoch.</div> : tree.map(node => <BreakdownRow key={node.id} node={node} total={totalVisible} maxVal={maxVal} hiddenIds={hiddenIds} expandedIds={expandedIds} onToggleVisibility={(id) => {
+                        const next = new Set(config.hiddenDataIds || []);
+                        if (next.has(id)) next.delete(id);
+                        else next.add(id);
+                        onUpdateConfig({ ...config, hiddenDataIds: Array.from(next) });
+                    }} onToggleExpand={(id) => setExpandedIds(prev => { const n = new Set(prev); if(n.has(id)) n.delete(id); else n.add(id); return n; })} onInspect={setInspectingNode} />)}
                 </div>
             </div>
             {inspectingNode && (
