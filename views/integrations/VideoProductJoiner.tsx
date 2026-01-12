@@ -300,31 +300,31 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                 </div>
             </header>
 
-            <div className="flex-1 min-h-0 bg-white rounded-[2.5rem] p-6 border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+            <div className="flex-1 min-h-0 bg-white rounded-3xl p-6 border border-slate-200 shadow-sm overflow-hidden flex flex-col">
                 
                 {activeTab === 'dashboard' && (
                     <div className="space-y-6 flex flex-col h-full animate-fade-in">
                         <div className="grid grid-cols-4 gap-6">
-                            <div className="bg-slate-900 p-8 rounded-[2rem] shadow-xl text-white relative overflow-hidden group">
+                            <div className="bg-slate-900 p-8 rounded-3xl shadow-xl text-white relative overflow-hidden group">
                                 <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 relative z-10">Total Aggregate Yield</p>
                                 <p className="text-4xl font-black relative z-10">{formatCurrency(summary.revenue)}</p>
                                 <TrendingUpIcon className="absolute -right-6 -bottom-6 w-32 h-32 opacity-10 text-white group-hover:scale-110 transition-transform" />
                             </div>
-                            <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-200 shadow-inner">
+                            <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 shadow-inner">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Lifetime Views</p>
                                 <p className="text-3xl font-black text-slate-800">{formatNumber(summary.views)}</p>
                             </div>
-                            <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-200 shadow-inner">
+                            <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 shadow-inner">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Click Reach</p>
                                 <p className="text-3xl font-black text-slate-800">{formatNumber(summary.clicks)}</p>
                             </div>
-                            <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-200 shadow-inner">
+                            <div className="bg-slate-50 p-8 rounded-3xl border border-slate-200 shadow-inner">
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Conversion Efficiency</p>
                                 <p className="text-3xl font-black text-emerald-600">{summary.clicks > 0 ? ((summary.items / summary.clicks) * 100).toFixed(1) : 0}%</p>
                             </div>
                         </div>
 
-                        <div className="bg-white rounded-[2rem] border-2 border-slate-100 shadow-sm flex-1 flex flex-col overflow-hidden">
+                        <div className="bg-white rounded-3xl border-2 border-slate-100 shadow-sm flex-1 flex flex-col overflow-hidden">
                             <div className="p-4 border-b bg-slate-50/50 flex justify-between items-center px-6">
                                 <div className="relative w-96 group">
                                     <input 
@@ -385,58 +385,54 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                 )}
 
                 {activeTab === 'importer' && (
-                    <div className="max-w-5xl mx-auto w-full space-y-10 py-10 overflow-y-auto custom-scrollbar h-full animate-fade-in">
-                        <div className="text-center space-y-4 max-w-2xl mx-auto">
-                            <h2 className="text-3xl font-black text-slate-800 uppercase tracking-tighter">Performance Pipeline</h2>
-                            <p className="text-sm text-slate-400 leading-relaxed font-bold">Construct a high-fidelity earnings model by layering multi-platform reports.</p>
+                    <div className="max-w-4xl mx-auto w-full space-y-6 py-6 overflow-y-auto custom-scrollbar h-full animate-fade-in">
+                        <div className="text-center space-y-2 mb-8">
+                            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter">Performance Pipeline</h2>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Construct a high-fidelity model from multi-platform reports.</p>
                         </div>
 
-                        <div className="space-y-6 relative">
+                        <div className="space-y-4">
                             {[
-                                { step: 1, title: 'YouTube Catalyst', desc: 'Identify Video IDs and core AdSense earnings.', icon: <YoutubeIcon className="w-5 h-5"/>, color: 'red' },
-                                { step: 2, title: 'Amazon Visual Verification', desc: 'Match video signals between YouTube and Amazon Storefront.', icon: <VideoIcon className="w-5 h-5"/>, color: 'indigo' },
-                                { step: 3, title: 'Identity Registry', desc: 'Associate SKU (ASIN) identifiers with performance content.', icon: <BoxIcon className="w-5 h-5"/>, color: 'amber' },
-                                { step: 4, title: 'Commission Audit', desc: 'Ingest Amazon Fee-Earnings reports (Onsite/Offsite).', icon: <DollarSign className="w-5 h-5"/>, color: 'emerald' },
-                                { step: 5, title: 'Creator Premium', desc: 'Finalize model with Creator Connections campaign yields.', icon: <CheckBadgeIcon className="w-5 h-5"/>, color: 'violet' }
+                                { step: 1, title: 'YouTube Catalyst', desc: 'Identify Video IDs and core AdSense earnings.' },
+                                { step: 2, title: 'Amazon Visual Reference', desc: 'Sync signals between YouTube and Amazon Storefront.' },
+                                { step: 3, title: 'Identity Registry', desc: 'Associate SKU (ASIN) identifiers with content.' },
+                                { step: 4, title: 'Commission Audit', desc: 'Ingest Amazon Fee-Earnings (Onsite/Offsite).' },
+                                { step: 5, title: 'Creator Premium', desc: 'Finalize with Creator Connections yields.' }
                             ].map(s => {
                                 const isCurrent = importStep === s.step;
                                 const isPassed = importStep > s.step;
                                 const hasData = isCurrent && stagedData !== null;
                                 
                                 return (
-                                    <div key={s.step} className={`p-8 rounded-[3rem] border-2 transition-all flex flex-col gap-6 group ${isCurrent ? 'bg-white border-indigo-600 shadow-2xl scale-[1.01]' : isPassed ? 'bg-indigo-50 border-indigo-100 opacity-60' : 'bg-slate-50 border-slate-100 opacity-40 grayscale'}`}>
-                                        <div className="flex items-center gap-6">
-                                            <div className={`w-14 h-14 rounded-[1.5rem] flex-shrink-0 flex items-center justify-center font-black text-xl transition-all ${isCurrent ? 'bg-indigo-600 text-white shadow-xl shadow-indigo-200' : isPassed ? 'bg-green-500 text-white shadow-green-100' : 'bg-white text-slate-300 border-2 border-slate-100 shadow-inner'}`}>
-                                                {isPassed ? <CheckCircleIcon className="w-8 h-8" /> : s.step}
+                                    <div key={s.step} className={`p-6 rounded-3xl border-2 transition-all flex flex-col gap-4 group ${isCurrent ? 'bg-white border-indigo-600 shadow-xl' : isPassed ? 'bg-indigo-50 border-indigo-100 opacity-60' : 'bg-slate-50 border-slate-100 opacity-40 grayscale'}`}>
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-12 h-12 rounded-2xl flex-shrink-0 flex items-center justify-center font-black text-lg transition-all ${isCurrent ? 'bg-indigo-600 text-white shadow-lg' : isPassed ? 'bg-green-500 text-white shadow-sm' : 'bg-white text-slate-300 border border-slate-100 shadow-inner'}`}>
+                                                {isPassed ? <CheckCircleIcon className="w-6 h-6" /> : s.step}
                                             </div>
                                             <div className="flex-1">
-                                                <h3 className={`text-xl font-black uppercase tracking-tight ${isCurrent ? 'text-indigo-900' : 'text-slate-700'}`}>{s.title}</h3>
-                                                <p className="text-xs text-slate-400 mt-1 font-bold uppercase tracking-widest">{s.desc}</p>
+                                                <h3 className={`text-lg font-black uppercase tracking-tight ${isCurrent ? 'text-indigo-900' : 'text-slate-700'}`}>{s.title}</h3>
+                                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{s.desc}</p>
                                             </div>
-                                            {isCurrent && (
-                                                <div className="flex gap-3">
-                                                    {hasData && (
-                                                        <button onClick={() => setStagedData(null)} className="px-5 py-2 bg-slate-100 text-slate-500 rounded-xl font-black text-[10px] uppercase hover:bg-rose-50 hover:text-rose-600 transition-all">Clear Staging</button>
-                                                    )}
-                                                </div>
+                                            {isCurrent && hasData && (
+                                                <button onClick={() => setStagedData(null)} className="px-4 py-1.5 bg-slate-100 text-slate-500 rounded-xl font-black text-[9px] uppercase hover:bg-rose-50 hover:text-rose-600 transition-all">Clear Staging</button>
                                             )}
                                         </div>
                                         
                                         {isCurrent && !hasData && (
-                                            <div className="mt-2 animate-fade-in">
+                                            <div className="animate-fade-in px-2 pb-2">
                                                 <div 
                                                     onDragOver={e => { e.preventDefault(); setIsDragging(true); }}
                                                     onDragLeave={() => setIsDragging(false)}
                                                     onDrop={e => { e.preventDefault(); setIsDragging(false); handleStepUpload(Array.from(e.dataTransfer.files)); }}
                                                     onClick={() => fileInputRef.current?.click()}
-                                                    className={`border-4 border-dashed rounded-[2rem] p-12 flex flex-col items-center justify-center gap-4 cursor-pointer transition-all group/drop ${isDragging ? 'border-indigo-600 bg-indigo-50 scale-[1.02]' : 'border-slate-100 bg-slate-50 hover:border-indigo-200 hover:bg-white'}`}
+                                                    className={`border-4 border-dashed rounded-3xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer transition-all group/drop ${isDragging ? 'border-indigo-600 bg-indigo-50 scale-[1.01]' : 'border-slate-100 bg-slate-50 hover:border-indigo-200 hover:bg-white'}`}
                                                 >
-                                                    <div className={`p-5 bg-white rounded-full shadow-lg transition-all ${isDragging ? 'bg-indigo-600 text-white scale-125' : 'text-slate-300 group-hover/drop:bg-indigo-600 group-hover/drop:text-white'}`}>
-                                                        <CloudArrowUpIcon className="w-10 h-10 transition-colors" />
+                                                    <div className={`p-4 bg-white rounded-full shadow-sm transition-all ${isDragging ? 'bg-indigo-600 text-white scale-110' : 'text-slate-300 group-hover/drop:bg-indigo-600 group-hover/drop:text-white'}`}>
+                                                        <CloudArrowUpIcon className="w-8 h-8 transition-colors" />
                                                     </div>
                                                     <div className="text-center">
-                                                        <p className="font-black text-lg text-slate-800">Identify Statement(s)</p>
-                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Multi-file Batch Parsing Supported</p>
+                                                        <p className="font-black text-slate-800">Identify Statement(s)</p>
+                                                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Multi-file Batch Parsing Supported</p>
                                                     </div>
                                                 </div>
                                                 <input type="file" ref={fileInputRef} multiple className="hidden" onChange={(e) => handleStepUpload(Array.from(e.target.files || []))} />
@@ -444,36 +440,35 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                                         )}
 
                                         {isCurrent && hasData && (
-                                            <div className="bg-slate-900 rounded-[2rem] p-8 text-white space-y-6 animate-slide-up relative overflow-hidden shadow-2xl">
+                                            <div className="bg-slate-900 rounded-[1.5rem] p-6 text-white space-y-4 animate-slide-up relative overflow-hidden shadow-2xl">
                                                 <div className="flex justify-between items-center relative z-10">
                                                     <div>
-                                                        <h4 className="text-lg font-black tracking-tight text-indigo-400">Logic Verification Staging</h4>
-                                                        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">{stagedData!.length} Logical Records Extracted</p>
+                                                        <h4 className="text-sm font-black tracking-tight text-indigo-400">Logic Verification Staging</h4>
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{stagedData!.length} Logical Records Extracted</p>
                                                     </div>
-                                                    <button onClick={handleCommitStaged} className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl flex items-center gap-3 transition-all active:scale-95 text-xs uppercase tracking-widest">
-                                                        Commit & Advance <ArrowRightIcon className="w-5 h-5"/>
+                                                    <button onClick={handleCommitStaged} className="px-6 py-2.5 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 shadow-lg flex items-center gap-2 transition-all active:scale-95 text-[10px] uppercase tracking-widest">
+                                                        Commit & Advance <ArrowRightIcon className="w-4 h-4"/>
                                                     </button>
                                                 </div>
                                                 
-                                                <div className="max-h-60 overflow-y-auto border border-white/5 rounded-2xl bg-black/20 custom-scrollbar relative z-10">
-                                                    <table className="min-w-full text-[10px] border-separate border-spacing-0">
+                                                <div className="max-h-52 overflow-y-auto border border-white/5 rounded-xl bg-black/20 custom-scrollbar relative z-10">
+                                                    <table className="min-w-full text-[9px] border-separate border-spacing-0">
                                                         <thead className="sticky top-0 bg-slate-800 text-slate-400 font-black uppercase tracking-widest">
                                                             <tr>
-                                                                <th className="px-4 py-3 text-left">Descriptor</th>
-                                                                <th className="px-4 py-3 text-right">Value/Identifier</th>
+                                                                <th className="px-3 py-2 text-left">Descriptor</th>
+                                                                <th className="px-3 py-2 text-right">Value</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-white/5 font-mono">
-                                                            {stagedData!.slice(0, 50).map((row, i) => (
+                                                            {stagedData!.slice(0, 100).map((row, i) => (
                                                                 <tr key={i} className="hover:bg-white/5 transition-colors">
-                                                                    <td className="px-4 py-2">{row.videoTitle || row.productTitle || row.ccTitle || 'Unknown'}</td>
-                                                                    <td className="px-4 py-2 text-right text-indigo-400 font-bold">{formatCurrency(row.revenue || row.estimatedRevenue || 0)}</td>
+                                                                    <td className="px-3 py-1.5">{row.videoTitle || row.productTitle || row.ccTitle || 'Unknown'}</td>
+                                                                    <td className="px-3 py-1.5 text-right text-indigo-400 font-bold">{formatCurrency(row.revenue || row.estimatedRevenue || 0)}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
                                                     </table>
                                                 </div>
-                                                <SparklesIcon className="absolute -right-12 -top-12 w-48 h-48 opacity-[0.03] text-indigo-500" />
                                             </div>
                                         )}
                                     </div>
@@ -481,13 +476,12 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                             })}
                         </div>
 
-                        <div className="pt-10 flex flex-col items-center gap-4">
-                            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Administrative Actions</p>
+                        <div className="pt-6 flex flex-col items-center gap-3">
                             <button 
                                 onClick={() => setShowResetConfirm(true)}
-                                className="px-8 py-3 bg-white border-2 border-slate-100 text-slate-500 hover:text-indigo-600 hover:border-indigo-100 font-black rounded-2xl text-[10px] uppercase tracking-widest transition-all shadow-sm flex items-center gap-3 group"
+                                className="px-6 py-2.5 bg-white border-2 border-slate-100 text-slate-500 hover:text-indigo-600 hover:border-indigo-100 font-black rounded-xl text-[9px] uppercase tracking-widest transition-all shadow-sm flex items-center gap-2 group"
                             >
-                                <RepeatIcon className="w-4 h-4 group-hover:rotate-180 transition-transform duration-500" /> Reset Importer State
+                                <RepeatIcon className="w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-500" /> Reset Importer
                             </button>
                         </div>
                     </div>
@@ -498,7 +492,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
             <ConfirmationModal 
                 isOpen={showResetConfirm}
                 onClose={() => setShowResetConfirm(false)}
-                onConfirm={() => { setImportStep(1); setStagedData(null); setShowResetConfirm(false); notify("logic pipeline reset", "info"); }}
+                onConfirm={() => { setImportStep(1); setStagedData(null); setShowResetConfirm(false); notify("Logic pipeline reset", "info"); }}
                 title="Reset logic pipeline?"
                 message="Your current staging progress for this batch will be lost. Existing metrics in your database remain untouched."
                 confirmLabel="Reset Sequence"
@@ -518,39 +512,39 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
             {/* DURATION COLLISION MODAL */}
             {verificationData && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden animate-slide-up">
-                        <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-slide-up">
+                        <div className="p-6 border-b bg-slate-50 flex justify-between items-center">
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-indigo-100 text-indigo-600 rounded-2xl"><SparklesIcon className="w-6 h-6" /></div>
                                 <div>
-                                    <h3 className="text-2xl font-black text-slate-800">Ambiguous Duration Match</h3>
-                                    <p className="text-sm text-slate-500 font-bold uppercase tracking-widest">{verificationData.candidates.length} Collisions Detected</p>
+                                    <h3 className="text-xl font-black text-slate-800">Ambiguous Duration Match</h3>
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{verificationData.candidates.length} Collisions Detected</p>
                                 </div>
                             </div>
                             <button onClick={() => setVerificationData(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar bg-slate-50/20">
+                        <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar bg-slate-50/20">
                             {verificationData.candidates.map((c: any, idx: number) => (
-                                <div key={idx} className="bg-white p-6 rounded-[2rem] border-2 border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-10 items-center relative overflow-hidden">
+                                <div key={idx} className="bg-white p-4 rounded-3xl border-2 border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6 items-center relative overflow-hidden">
                                     <div className="space-y-1">
-                                        <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">YouTube Source</p>
-                                        <p className="text-sm font-black text-slate-800">{c.yt.mainTitle}</p>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Duration: {c.yt.duration}</p>
+                                        <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">YouTube Source</p>
+                                        <p className="text-xs font-black text-slate-800">{c.yt.mainTitle}</p>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Duration: {c.yt.duration}</p>
                                     </div>
                                     <div className="space-y-1">
-                                        <p className="text-[9px] font-black text-orange-400 uppercase tracking-widest">Amazon Candidate</p>
-                                        <p className="text-sm font-black text-slate-800">{c.amz.videoTitle}</p>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Duration: {c.amz.duration}</p>
+                                        <p className="text-[8px] font-black text-orange-400 uppercase tracking-widest">Amazon Candidate</p>
+                                        <p className="text-xs font-black text-slate-800">{c.amz.videoTitle}</p>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Duration: {c.amz.duration}</p>
                                     </div>
-                                    <div className="col-span-2 flex justify-center gap-4 pt-4 border-t border-slate-50">
-                                        <button onClick={() => { const next = [...verificationData.candidates]; next.splice(idx, 1); setVerificationData({ ...verificationData, candidates: next }); if (next.length === 0) { setVerificationData(null); setImportStep(3); } }} className="px-6 py-2 bg-slate-100 text-slate-500 font-black rounded-xl text-[10px] uppercase hover:bg-slate-200 transition-all">Deny Match</button>
-                                        <button onClick={() => { const target = metrics.find(m => m.videoId === c.yt.videoId); if (target) target.subTitle = c.amz.videoTitle; const next = [...verificationData.candidates]; next.splice(idx, 1); setVerificationData({ ...verificationData, candidates: next }); if (next.length === 0) { setVerificationData(null); setImportStep(3); } }} className="px-10 py-2 bg-indigo-600 text-white font-black rounded-xl text-[10px] uppercase shadow-lg shadow-indigo-100 transition-all">Confirm Match</button>
+                                    <div className="col-span-2 flex justify-center gap-3 pt-3 border-t border-slate-50">
+                                        <button onClick={() => { const next = [...verificationData.candidates]; next.splice(idx, 1); setVerificationData({ ...verificationData, candidates: next }); if (next.length === 0) { setVerificationData(null); setImportStep(3); } }} className="px-5 py-1.5 bg-slate-100 text-slate-500 font-black rounded-lg text-[9px] uppercase hover:bg-slate-200 transition-all">Deny Match</button>
+                                        <button onClick={() => { const target = metrics.find(m => m.videoId === c.yt.videoId); if (target) target.subTitle = c.amz.videoTitle; const next = [...verificationData.candidates]; next.splice(idx, 1); setVerificationData({ ...verificationData, candidates: next }); if (next.length === 0) { setVerificationData(null); setImportStep(3); } }} className="px-8 py-1.5 bg-indigo-600 text-white font-black rounded-lg text-[9px] uppercase shadow-md transition-all">Confirm Match</button>
                                     </div>
                                 </div>
                             ))}
                         </div>
-                        <div className="p-6 border-t bg-white flex justify-end">
-                            <button onClick={() => { setVerificationData(null); setImportStep(3); }} className="px-10 py-4 bg-slate-900 text-white font-black rounded-2xl text-xs uppercase shadow-xl transition-all active:scale-95">Skip Remaining</button>
+                        <div className="p-4 bg-white border-t flex justify-end">
+                            <button onClick={() => { setVerificationData(null); setImportStep(3); }} className="px-8 py-2.5 bg-slate-900 text-white font-black rounded-xl text-xs uppercase shadow-lg transition-all active:scale-95">Skip All</button>
                         </div>
                     </div>
                 </div>
@@ -559,11 +553,11 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
             {/* PROCESSING OVERLAY */}
             {isProcessing && (
                 <div className="fixed inset-0 bg-indigo-900/40 backdrop-blur-sm z-[250] flex items-center justify-center">
-                    <div className="bg-white p-12 rounded-[3rem] shadow-2xl flex flex-col items-center gap-6 animate-slide-up text-center">
-                        <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+                    <div className="bg-white p-8 rounded-[2rem] shadow-2xl flex flex-col items-center gap-4 animate-slide-up text-center">
+                        <div className="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
                         <div>
-                            <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Synthesizing Batch</h3>
-                            <p className="text-sm text-slate-400 font-bold uppercase tracking-widest mt-1">Parsing Signal Hierarchy...</p>
+                            <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">Synthesizing Batch</h3>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Parsing Signal Hierarchy...</p>
                         </div>
                     </div>
                 </div>
@@ -572,12 +566,12 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
             {/* TOAST SYSTEM */}
             {toast && (
                 <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[300] animate-slide-up">
-                    <div className={`px-6 py-3 rounded-2xl shadow-2xl border flex items-center gap-3 ${toast.type === 'success' ? 'bg-slate-900 text-white border-white/10' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-500' : 'bg-white text-slate-800 border-slate-200 shadow-lg'}`}>
+                    <div className={`px-5 py-2.5 rounded-2xl shadow-2xl border flex items-center gap-3 ${toast.type === 'success' ? 'bg-slate-900 text-white border-white/10' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-500' : 'bg-white text-slate-800 border-slate-200 shadow-lg'}`}>
                         <div className={`${toast.type === 'success' ? 'bg-indigo-500' : toast.type === 'error' ? 'bg-white/20' : 'bg-indigo-50'} rounded-full p-1`}>
-                            {toast.type === 'success' ? <CheckCircleIcon className="w-4 h-4 text-white" /> : toast.type === 'error' ? <ExclamationTriangleIcon className="w-4 h-4" /> : <InfoIcon className="w-4 h-4 text-indigo-600" />}
+                            {toast.type === 'success' ? <CheckCircleIcon className="w-3.5 h-3.5 text-white" /> : toast.type === 'error' ? <ExclamationTriangleIcon className="w-3.5 h-3.5" /> : <InfoIcon className="w-3.5 h-3.5 text-indigo-600" />}
                         </div>
-                        <p className="text-xs font-black uppercase tracking-widest">{toast.message}</p>
-                        <button onClick={() => setToast(null)} className="p-1 hover:bg-white/10 rounded-full ml-2"><CloseIcon className="w-4 h-4 opacity-50" /></button>
+                        <p className="text-[10px] font-black uppercase tracking-widest">{toast.message}</p>
+                        <button onClick={() => setToast(null)} className="p-1 hover:bg-white/10 rounded-full ml-1"><CloseIcon className="w-3.5 h-3.5 opacity-50" /></button>
                     </div>
                 </div>
             )}

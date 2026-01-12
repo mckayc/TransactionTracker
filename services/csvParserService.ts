@@ -4,6 +4,38 @@ import * as XLSX from 'xlsx';
 
 declare const pdfjsLib: any;
 
+/**
+ * Robustly splits a CSV line, respecting quoted fields and escaped quotes.
+ */
+const splitCsvLine = (line: string, delimiter: string): string[] => {
+    const result: string[] = [];
+    let curVal = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+
+        if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+                // Escaped quote
+                curVal += '"';
+                i++; // Skip next quote
+            } else {
+                // Toggle quote state
+                inQuotes = !inQuotes;
+            }
+        } else if (char === delimiter && !inQuotes) {
+            result.push(curVal.trim());
+            curVal = '';
+        } else {
+            curVal += char;
+        }
+    }
+    result.push(curVal.trim());
+    return result;
+};
+
 const cleanDescription = (string: string): string => {
   let cleaned = string.trim();
   cleaned = cleaned.replace(/\s+/g, ' ');
@@ -32,6 +64,12 @@ const parseDate = (dateStr: string): Date | null => {
     const datePart = cleanedDateStr.split(' ')[0];
     const date = new Date(datePart + 'T00:00:00');
     if (!isNaN(date.getTime())) return date;
+  }
+
+  // Handle YouTube Date format like "Nov 11, 2014"
+  if (/^[A-Za-z]{3}\s\d{1,2},\s\d{4}$/.test(cleanedDateStr)) {
+      const date = new Date(cleanedDateStr);
+      if (!isNaN(date.getTime())) return date;
   }
 
   if (/^\d{1,2}-\d{1,2}-\d{2,4}/.test(cleanedDateStr)) {
@@ -77,7 +115,8 @@ export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: s
     if (lines.length < 2) return [];
 
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const headerLine = lines[0].trim();
+    const header = splitCsvLine(headerLine, delimiter).map(h => h.toLowerCase());
     
     const colMap = {
         id: header.indexOf('content'),
@@ -92,12 +131,12 @@ export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: s
         ctr: header.indexOf('impressions click-through rate (%)')
     };
 
-    if (colMap.id === -1 || colMap.title === -1) throw new Error("Invalid YouTube report format.");
+    if (colMap.id === -1 || colMap.title === -1) throw new Error("Invalid YouTube report format. Headers 'Content' and 'Video title' are mandatory.");
 
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line || line.toLowerCase().startsWith('total')) continue;
-        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        const values = splitCsvLine(line, delimiter);
         if (values.length < 3) continue;
 
         metrics.push({
@@ -132,7 +171,8 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
     if (lines.length < 2) return [];
 
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const headerLine = lines[0].trim();
+    const header = splitCsvLine(headerLine, delimiter).map(h => h.toLowerCase());
     
     const colMap = {
         title: header.indexOf('title'),
@@ -149,7 +189,7 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        const values = splitCsvLine(line, delimiter);
         if (values.length < 1) continue;
 
         videos.push({
@@ -182,7 +222,8 @@ export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string
     if (lines.length < 2) return [];
 
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const headerLine = lines[0].trim();
+    const header = splitCsvLine(headerLine, delimiter).map(h => h.toLowerCase());
     
     const colMap = {
         title: header.indexOf('title'),
@@ -194,7 +235,7 @@ export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        const values = splitCsvLine(line, delimiter);
         if (values.length < 1) continue;
 
         mappings.push({
@@ -234,7 +275,8 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
     if (headerIdx === -1) throw new Error("Invalid Amazon report format. Headers 'Name' and 'ASIN' not found.");
 
     const delimiter = lines[headerIdx].includes('\t') ? '\t' : ',';
-    const header = lines[headerIdx].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const headerLine = lines[headerIdx].trim();
+    const header = splitCsvLine(headerLine, delimiter).map(h => h.toLowerCase());
     
     const colMap = {
         category: header.indexOf('category'),
@@ -253,7 +295,7 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
     for (let i = headerIdx + 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line || line.toLowerCase().startsWith('total')) continue;
-        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        const values = splitCsvLine(line, delimiter);
         if (values.length <= colMap.asin) continue;
 
         const trackingId = values[colMap.tracking] || '';
@@ -269,7 +311,6 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
             saleDate: formatDate(parseDate(values[colMap.date]) || new Date()),
             asin: values[colMap.asin],
             productTitle: values[colMap.name] || 'Unknown',
-            // Fix: Check colMap.category index directly instead of values array to avoid string-to-number comparison error
             category: colMap.category !== -1 ? values[colMap.category] : undefined,
             trackingId,
             clicks: 0,
@@ -298,7 +339,8 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
     if (lines.length < 2) return [];
 
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const header = lines[0].split(delimiter).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const headerLine = lines[0].trim();
+    const header = splitCsvLine(headerLine, delimiter).map(h => h.toLowerCase());
     
     const colMap = {
         date: header.indexOf('date'),
@@ -313,7 +355,7 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
     for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line || line.toLowerCase().startsWith('total')) continue;
-        const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
+        const values = splitCsvLine(line, delimiter);
         if (values.length < colMap.asin) continue;
 
         metrics.push({
@@ -352,8 +394,9 @@ export const parseTransactionsFromText = async (text: string, accountId: string,
     }
 
     const txs: RawTransaction[] = [];
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
     for (let i = startIndex; i < lines.length; i++) {
-        const parts = lines[i].split(/[,\t]/).map(p => p.trim());
+        const parts = splitCsvLine(lines[i], delimiter);
         if (parts.length < 2) continue;
         
         txs.push({
@@ -401,11 +444,13 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
     const rules: ReconciliationRule[] = [];
     if (lines.length < 2) return [];
     
-    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+    const headerLine = lines[0].trim();
+    const delimiter = headerLine.includes('\t') ? '\t' : ',';
+    const header = splitCsvLine(headerLine, delimiter).map(h => h.toLowerCase());
     const col = (name: string) => header.indexOf(name);
     
     for (let i = 1; i < lines.length; i++) {
-        const row = lines[i].split(',').map(v => v.trim());
+        const row = splitCsvLine(lines[i], delimiter);
         if (row.length < 4) continue;
         
         rules.push({
