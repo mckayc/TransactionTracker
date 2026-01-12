@@ -1,9 +1,7 @@
-
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { AmazonMetric, YouTubeMetric, ContentLink, AmazonVideo, AmazonReportType, AmazonCCType } from '../../types';
-import { ChartPieIcon, YoutubeIcon, BoxIcon, TrendingUpIcon, LightBulbIcon, SearchCircleIcon, SparklesIcon, CheckCircleIcon, ExternalLinkIcon, SortIcon, InfoIcon, ShieldCheckIcon, CloudArrowUpIcon, CloseIcon, TableIcon, PlayIcon, LinkIcon, WorkflowIcon, VideoIcon, ChevronRightIcon, CalendarIcon, DatabaseIcon, PlusIcon, RepeatIcon, TrashIcon, ChevronDownIcon, CurrencyDollarIcon } from '../../components/Icons';
+import { ChartPieIcon, YoutubeIcon, BoxIcon, TrendingUpIcon, LightBulbIcon, SearchCircleIcon, SparklesIcon, CheckCircleIcon, CloudArrowUpIcon, InfoIcon, WorkflowIcon, VideoIcon, LinkIcon, DatabaseIcon, PlusIcon, RepeatIcon, TrashIcon, ChevronDownIcon, CurrencyDollarIcon, CloseIcon } from '../../components/Icons';
 import { generateUUID } from '../../utils';
-import { simplifyProductNames } from '../../services/geminiService';
 import { 
     parseYouTubeDetailedReport, 
     parseAmazonStorefrontVideos, 
@@ -33,7 +31,6 @@ const normalizeTitle = (title: string) =>
 const normalizeDuration = (dur: string) => 
     (dur || '').replace(/^00:/, '').trim();
 
-// UI Step Indicator
 const StepIndicator: React.FC<{ step: number; active: number; label: string }> = ({ step, active, label }) => (
     <div className={`flex flex-col items-center gap-2 transition-all ${active >= step ? 'opacity-100' : 'opacity-30'}`}>
         <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-xs border-2 ${active === step ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100 scale-110' : active > step ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>
@@ -56,15 +53,10 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
     const [stagedSales, setStagedSales] = useState<AmazonMetric[]>([]);
     const [stagedCC, setStagedCC] = useState<AmazonMetric[]>([]);
 
-    // Verification Logic for Step 2 & 3
-    const [manualVerificationList, setManualVerificationList] = useState<any[]>([]);
-
-    // Unified Registry View Logic
     const registryData = useMemo(() => {
         const entities: any[] = [];
-        
-        // 1. Group YT Metrics by ID
         const ytAggregate = new Map<string, any>();
+        
         youtubeMetrics.forEach(m => {
             if (!ytAggregate.has(m.videoId)) {
                 ytAggregate.set(m.videoId, {
@@ -73,17 +65,14 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
                     publishDate: m.publishDate,
                     views: 0,
                     revenue: 0,
-                    subs: 0,
                     type: 'video'
                 });
             }
             const agg = ytAggregate.get(m.videoId);
             agg.views += m.views;
             agg.revenue += m.estimatedRevenue;
-            agg.subs += m.subscribersGained;
         });
 
-        // 2. Build Join Logic
         const consumedAmazonAsins = new Set<string>();
         
         ytAggregate.forEach((yt) => {
@@ -112,7 +101,6 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
             });
         });
 
-        // 3. Orpaned Amazon Products (Backup Identity: ASIN)
         const orphanedAsins = new Map<string, any>();
         amazonMetrics.forEach(m => {
             if (consumedAmazonAsins.has(m.asin)) return;
@@ -121,9 +109,7 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
                     id: m.asin,
                     videoTitle: m.productTitle,
                     publishDate: m.saleDate,
-                    views: m.clicks || 0,
                     revenue: 0,
-                    subs: 0,
                     amazonRev: 0,
                     type: 'product',
                     mainTitle: m.productTitle,
@@ -137,7 +123,6 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
         });
 
         entities.push(...Array.from(orphanedAsins.values()));
-
         return entities.sort((a, b) => b.totalRev - a.totalRev);
     }, [youtubeMetrics, amazonMetrics, contentLinks]);
 
@@ -150,7 +135,6 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
         );
     }, [registryData, searchTerm]);
 
-    // HANDLERS
     const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>, step: number) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -163,19 +147,7 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
                     break;
                 case 2:
                     const amzV = await parseAmazonStorefrontVideos(file, () => {});
-                    // Matching logic
-                    const conflicts: any[] = [];
-                    amzV.forEach(av => {
-                        const ytMatch = youtubeMetrics.find(y => 
-                            normalizeTitle(y.videoTitle) === normalizeTitle(av.videoTitle) ||
-                            normalizeDuration(y.duration || '') === normalizeDuration(av.duration || '')
-                        );
-                        if (ytMatch && normalizeTitle(ytMatch.videoTitle) !== normalizeTitle(av.videoTitle)) {
-                            conflicts.push({ type: 'video', amz: av, yt: ytMatch, isMatch: false });
-                        }
-                    });
                     setStagedAmzVideos(amzV);
-                    setManualVerificationList(conflicts);
                     break;
                 case 3:
                     const maps = await parseVideoAsinMapping(file, () => {});
@@ -199,10 +171,9 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
 
     const finalizeStep = (step: number) => {
         switch(step) {
-            case 1: onUpdateYoutubeMetrics(stagedYt); break;
-            case 4: onUpdateAmazonMetrics(stagedSales); break;
-            case 5: onUpdateAmazonMetrics(stagedCC); break;
-            // Case 2 & 3 update ContentLinks based on matching
+            case 1: onUpdateYoutubeMetrics(stagedYt); setStagedYt([]); break;
+            case 4: onUpdateAmazonMetrics(stagedSales); setStagedSales([]); break;
+            case 5: onUpdateAmazonMetrics(stagedCC); setStagedCC([]); break;
         }
         setImportStep(step + 1);
     };
@@ -291,10 +262,10 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
                                 
                                 <div className="flex justify-center gap-8 pt-6">
                                     <StepIndicator step={1} active={importStep} label="Video Data" />
-                                    <StepIndicator step={2} active={importStep} label="YT-AMZ Video" />
+                                    <StepIndicator step={2} active={importStep} label="YT-AMZ Match" />
                                     <StepIndicator step={3} active={importStep} label="Video-ASIN" />
                                     <StepIndicator step={4} active={importStep} label="Commerce" />
-                                    <StepIndicator step={5} active={importStep} label="Attribution" />
+                                    <StepIndicator step={5} active={importStep} label="Campaigns" />
                                 </div>
                             </div>
 
@@ -309,22 +280,17 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
                                             </div>
                                         </div>
                                         <div 
-                                            onDragOver={e => e.preventDefault()}
-                                            onDrop={e => { e.preventDefault(); handleImportFile({ target: { files: e.dataTransfer.files } } as any, 1); }}
                                             onClick={() => document.getElementById('upload-1')?.click()}
                                             className="border-4 border-dashed border-slate-100 rounded-[2rem] p-16 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group"
                                         >
                                             <CloudArrowUpIcon className="w-12 h-12 text-slate-200 mx-auto mb-4 group-hover:text-indigo-400 group-hover:scale-110 transition-all" />
-                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Identify detailed YouTube report</p>
+                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Select Detailed YouTube report</p>
                                             <input id="upload-1" type="file" className="hidden" accept=".csv" onChange={e => handleImportFile(e, 1)} />
                                         </div>
                                         {stagedYt.length > 0 && (
-                                            <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100 flex justify-between items-center animate-slide-up">
-                                                <div>
-                                                    <p className="text-emerald-800 font-black uppercase text-xs">Staged: {stagedYt.length} Videos</p>
-                                                    <p className="text-emerald-600 text-xs mt-0.5">Total Revenue Identified: {formatCurrency(stagedYt.reduce((s, m) => s + m.estimatedRevenue, 0))}</p>
-                                                </div>
-                                                <button onClick={() => finalizeStep(1)} className="px-8 py-3 bg-emerald-600 text-white font-black rounded-xl hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 uppercase text-[10px] tracking-widest">Verify and Sync</button>
+                                            <div className="p-6 bg-emerald-50 rounded-2xl border border-emerald-100 flex justify-between items-center">
+                                                <p className="text-emerald-800 font-black uppercase text-xs">Staged: {stagedYt.length} Videos</p>
+                                                <button onClick={() => finalizeStep(1)} className="px-8 py-3 bg-emerald-600 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Verify and Sync</button>
                                             </div>
                                         )}
                                     </div>
@@ -339,20 +305,15 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
                                                 <p className="text-sm text-slate-500">Match YouTube IDs to Amazon Storefront Videos.</p>
                                             </div>
                                         </div>
-                                        <div 
-                                            onClick={() => document.getElementById('upload-2')?.click()}
-                                            className="border-4 border-dashed border-slate-100 rounded-[2rem] p-16 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group"
-                                        >
+                                        <div onClick={() => document.getElementById('upload-2')?.click()} className="border-4 border-dashed border-slate-100 rounded-[2rem] p-16 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-all group">
                                             <CloudArrowUpIcon className="w-12 h-12 text-slate-200 mx-auto mb-4 group-hover:text-indigo-400" />
-                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Identify Storefront Video Report</p>
+                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Select Storefront Video Report</p>
                                             <input id="upload-2" type="file" className="hidden" accept=".csv" onChange={e => handleImportFile(e, 2)} />
                                         </div>
                                         {stagedAmzVideos.length > 0 && (
-                                            <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100 space-y-4">
-                                                <div className="flex justify-between items-center">
-                                                    <p className="text-indigo-800 font-black uppercase text-xs">Staged: {stagedAmzVideos.length} Amazon Videos</p>
-                                                    <button onClick={() => finalizeStep(2)} className="px-8 py-3 bg-indigo-600 text-white font-black rounded-xl uppercase text-[10px]">Continue</button>
-                                                </div>
+                                            <div className="p-6 bg-indigo-50 rounded-2xl border border-indigo-100 flex justify-between items-center">
+                                                <p className="text-indigo-800 font-black uppercase text-xs">Staged: {stagedAmzVideos.length} Amazon Videos</p>
+                                                <button onClick={() => finalizeStep(2)} className="px-8 py-3 bg-indigo-600 text-white font-black rounded-xl uppercase text-[10px]">Continue</button>
                                             </div>
                                         )}
                                     </div>
@@ -367,12 +328,9 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
                                                 <p className="text-sm text-slate-500">Associate ASINs with linked Videos.</p>
                                             </div>
                                         </div>
-                                        <div 
-                                            onClick={() => document.getElementById('upload-3')?.click()}
-                                            className="border-4 border-dashed border-slate-100 rounded-[2rem] p-16 text-center cursor-pointer hover:border-indigo-400"
-                                        >
+                                        <div onClick={() => document.getElementById('upload-3')?.click()} className="border-4 border-dashed border-slate-100 rounded-[2rem] p-16 text-center cursor-pointer hover:border-indigo-400">
                                             <CloudArrowUpIcon className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Identify Product Mapping CSV</p>
+                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Select Product Mapping CSV</p>
                                             <input id="upload-3" type="file" className="hidden" accept=".csv" onChange={e => handleImportFile(e, 3)} />
                                         </div>
                                         {stagedMappings.length > 0 && (
@@ -393,12 +351,9 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
                                                 <p className="text-sm text-slate-500">Import Amazon Associate Earnings Reports.</p>
                                             </div>
                                         </div>
-                                        <div 
-                                            onClick={() => document.getElementById('upload-4')?.click()}
-                                            className="border-4 border-dashed border-slate-100 rounded-[2rem] p-16 text-center cursor-pointer hover:border-indigo-400"
-                                        >
+                                        <div onClick={() => document.getElementById('upload-4')?.click()} className="border-4 border-dashed border-slate-100 rounded-[2rem] p-16 text-center cursor-pointer hover:border-indigo-400">
                                             <CloudArrowUpIcon className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Identify Earnings Report</p>
+                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Select Earnings Report</p>
                                             <input id="upload-4" type="file" className="hidden" accept=".csv" onChange={e => handleImportFile(e, 4)} />
                                         </div>
                                         {stagedSales.length > 0 && (
@@ -419,12 +374,9 @@ const VideoProductJoiner: React.FC<VideoProductJoinerProps> = ({ amazonMetrics, 
                                                 <p className="text-sm text-slate-500">Import Creator Connections data for final attribution.</p>
                                             </div>
                                         </div>
-                                        <div 
-                                            onClick={() => document.getElementById('upload-5')?.click()}
-                                            className="border-4 border-dashed border-slate-100 rounded-[2rem] p-16 text-center cursor-pointer hover:border-indigo-400"
-                                        >
+                                        <div onClick={() => document.getElementById('upload-5')?.click()} className="border-4 border-dashed border-slate-100 rounded-[2rem] p-16 text-center cursor-pointer hover:border-indigo-400">
                                             <CloudArrowUpIcon className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Identify CC Report</p>
+                                            <p className="text-sm font-black text-slate-600 uppercase tracking-widest">Select CC Report</p>
                                             <input id="upload-5" type="file" className="hidden" accept=".csv" onChange={e => handleImportFile(e, 5)} />
                                         </div>
                                         {stagedCC.length > 0 && (

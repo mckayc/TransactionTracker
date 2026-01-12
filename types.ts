@@ -1,4 +1,3 @@
-
 export type BalanceEffect = 'incoming' | 'outgoing' | 'neutral';
 
 export interface TransactionType {
