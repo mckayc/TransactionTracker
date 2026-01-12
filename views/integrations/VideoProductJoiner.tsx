@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { JoinedMetric, YouTubeMetric, AmazonVideo, AmazonMetric, YouTubeChannel } from '../../types';
 import { BoxIcon, YoutubeIcon, CloudArrowUpIcon, BarChartIcon, TableIcon, SparklesIcon, ChevronRightIcon, ChevronDownIcon, CheckCircleIcon, PlayIcon, InfoIcon, ShieldCheckIcon, AddIcon, DeleteIcon, TrashIcon, VideoIcon, SearchCircleIcon, RepeatIcon, CloseIcon, ExclamationTriangleIcon, ArrowRightIcon, TrendingUpIcon, DollarSign, CheckBadgeIcon, DatabaseIcon } from '../../components/Icons';
-import { parseAmazonStorefrontVideos, parseVideoAsinMapping, parseAmazonEarningsReport, parseCreatorConnectionsReport } from '../../services/csvParserService';
+import { parseAmazonStorefrontVideos, parseVideoAsinMapping } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { api } from '../../services/apiService';
@@ -9,7 +9,6 @@ import { api } from '../../services/apiService';
 interface Props {
     metrics: JoinedMetric[];
     onSaveMetrics: (metrics: JoinedMetric[]) => void;
-    // We need the raw platform metrics to merge from Step 1
     youtubeMetrics?: YouTubeMetric[];
     amazonMetrics?: AmazonMetric[];
 }
@@ -96,14 +95,17 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         }), { revenue: 0, views: 0, clicks: 0, items: 0 });
     }, [displayMetrics]);
 
-    // Step 1: Fetch Existing Signals
+    // Step 1: Fetch Existing Signals (YT + Amazon)
     const handleFetchSignals = () => {
-        if (youtubeMetrics.length === 0) {
-            notify("No YouTube metrics found to fetch.", "error");
+        if (youtubeMetrics.length === 0 && amazonMetrics.length === 0) {
+            notify("No integration metrics found to fetch.", "error");
             return;
         }
         setIsProcessing(true);
-        // Group youtube metrics by video ID to get totals
+
+        const signals: any[] = [];
+
+        // 1. Process YouTube AdSense Signals
         const ytGroups = new Map<string, YouTubeMetric>();
         youtubeMetrics.forEach(m => {
             if (!ytGroups.has(m.videoId)) {
@@ -116,7 +118,30 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 ex.estimatedRevenue += m.estimatedRevenue;
             }
         });
-        setStagedData(Array.from(ytGroups.values()));
+        
+        Array.from(ytGroups.values()).forEach(yt => {
+            signals.push({ ...yt, sourceType: 'youtube' });
+        });
+
+        // 2. Process Amazon Earnings Signals
+        const amzGroups = new Map<string, AmazonMetric>();
+        amazonMetrics.forEach(m => {
+            const key = `${m.asin}_${m.reportType}_${m.creatorConnectionsType || ''}`;
+            if (!amzGroups.has(key)) {
+                amzGroups.set(key, { ...m });
+            } else {
+                const ex = amzGroups.get(key)!;
+                ex.revenue += m.revenue;
+                ex.clicks += m.clicks;
+                ex.orderedItems += m.orderedItems;
+            }
+        });
+
+        Array.from(amzGroups.values()).forEach(amz => {
+            signals.push({ ...amz, sourceType: 'amazon' });
+        });
+
+        setStagedData(signals);
         setIsProcessing(false);
     };
 
@@ -141,22 +166,6 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 }
                 setStagedData(mappings);
             }
-            else if (importStep === 4) {
-                const sales: AmazonMetric[] = [];
-                for (const f of files) {
-                    const parsed = await parseAmazonEarningsReport(f, (msg) => console.log(msg));
-                    sales.push(...parsed);
-                }
-                setStagedData(sales);
-            }
-            else if (importStep === 5) {
-                const ccData: AmazonMetric[] = [];
-                for (const f of files) {
-                    const parsed = await parseCreatorConnectionsReport(f, (msg) => console.log(msg));
-                    ccData.push(...parsed);
-                }
-                setStagedData(ccData);
-            }
         } catch (err: any) {
             console.error(err);
             notify(err.message || "Error processing file.", "error");
@@ -170,59 +179,89 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
         if (!stagedData) return;
         
         if (importStep === 1) {
-            const ytData = stagedData as YouTubeMetric[];
-            const newMetrics: JoinedMetric[] = ytData.map(yt => ({
-                id: yt.videoId, videoId: yt.videoId, asin: '', mainTitle: yt.videoTitle, subTitle: yt.videoTitle,
-                views: yt.views, watchTimeHours: yt.watchTimeHours, subsGained: yt.subscribersGained,
-                videoEstimatedRevenue: yt.estimatedRevenue, amazonOnsiteRevenue: 0, amazonOffsiteRevenue: 0,
-                creatorConnectionsRevenue: 0, totalRevenue: yt.estimatedRevenue, clicks: yt.impressions,
-                orderedItems: 0, shippedItems: 0, publishDate: yt.publishDate, duration: yt.duration
-            }));
-            
-            // Merge with existing but prioritize newly fetched signals for views/revenue
+            const allSignals = stagedData as any[];
             const existingMap = new Map(metrics.map(m => [m.id, m]));
-            newMetrics.forEach(n => {
-                if (existingMap.has(n.id)) {
-                    const ex = existingMap.get(n.id)!;
-                    ex.views = n.views;
-                    // Keep the non-YouTube revenue portions
+            
+            // 1. Process YouTube
+            allSignals.filter(s => s.sourceType === 'youtube').forEach(yt => {
+                if (existingMap.has(yt.videoId)) {
+                    const ex = existingMap.get(yt.videoId)!;
+                    ex.views = yt.views;
                     const otherRev = ex.totalRevenue - ex.videoEstimatedRevenue;
-                    ex.videoEstimatedRevenue = n.videoEstimatedRevenue;
-                    ex.totalRevenue = n.videoEstimatedRevenue + otherRev;
+                    ex.videoEstimatedRevenue = yt.estimatedRevenue;
+                    ex.totalRevenue = yt.estimatedRevenue + otherRev;
+                    ex.publishDate = yt.publishDate;
+                    ex.duration = yt.duration;
                 } else {
-                    existingMap.set(n.id, n);
+                    existingMap.set(yt.videoId, {
+                        id: yt.videoId, videoId: yt.videoId, asin: '', mainTitle: yt.videoTitle, subTitle: yt.videoTitle,
+                        views: yt.views, watchTimeHours: yt.watchTimeHours, subsGained: yt.subscribersGained,
+                        videoEstimatedRevenue: yt.estimatedRevenue, amazonOnsiteRevenue: 0, amazonOffsiteRevenue: 0,
+                        creatorConnectionsRevenue: 0, totalRevenue: yt.estimatedRevenue, clicks: yt.impressions,
+                        orderedItems: 0, shippedItems: 0, publishDate: yt.publishDate, duration: yt.duration
+                    });
                 }
             });
+
+            // 2. Process Amazon (Seed Orphans)
+            allSignals.filter(s => s.sourceType === 'amazon').forEach(amz => {
+                const existing = metrics.find(m => m.asin === amz.asin);
+                if (!existing) {
+                    // Create unlinked product record
+                    const id = `amz_${amz.asin}_${generateUUID().substring(0,4)}`;
+                    existingMap.set(id, {
+                        id, asin: amz.asin, mainTitle: amz.productTitle, subTitle: amz.productTitle,
+                        views: 0, watchTimeHours: 0, subsGained: 0, videoEstimatedRevenue: 0,
+                        amazonOnsiteRevenue: amz.reportType === 'onsite' ? amz.revenue : 0,
+                        amazonOffsiteRevenue: amz.reportType === 'offsite' ? amz.revenue : 0,
+                        creatorConnectionsRevenue: amz.reportType === 'creator_connections' ? amz.revenue : 0,
+                        totalRevenue: amz.revenue, clicks: amz.clicks,
+                        orderedItems: amz.orderedItems, shippedItems: amz.shippedItems
+                    });
+                } else {
+                    // Update existing unlinked revenue
+                    const ex = existing;
+                    if (amz.reportType === 'onsite') ex.amazonOnsiteRevenue = amz.revenue;
+                    else if (amz.reportType === 'offsite') ex.amazonOffsiteRevenue = amz.revenue;
+                    else if (amz.reportType === 'creator_connections') ex.creatorConnectionsRevenue = amz.revenue;
+                    ex.totalRevenue = ex.videoEstimatedRevenue + ex.amazonOnsiteRevenue + ex.amazonOffsiteRevenue + ex.creatorConnectionsRevenue;
+                }
+            });
+
             onSaveMetrics(Array.from(existingMap.values()));
-            notify(`Synced signals for ${newMetrics.length} videos.`);
+            notify(`Ingested ${allSignals.length} signal records.`);
             setImportStep(2);
         } else if (importStep === 2) {
             const amzVideos = stagedData as AmazonVideo[];
             const matches: any[] = [];
             const candidates: any[] = [];
             
-            // Match logic: Normalize titles or exact duration match
             amzVideos.forEach(av => {
                 const normAmz = normalizeStr(av.videoTitle);
-                const match = metrics.find(m => normalizeStr(m.mainTitle) === normAmz);
+                // REQUIREMENT: Must match Duration AND Date
+                const match = metrics.find(m => 
+                    (m.duration === av.duration && m.publishDate === av.uploadDate) ||
+                    (normalizeStr(m.subTitle) === normAmz)
+                );
                 
                 if (match) {
                     matches.push({ videoId: match.videoId, amzTitle: av.videoTitle });
-                    // Update metadata
+                    // Store Amazon metadata on the record but keep YouTube title if it already exists
                     match.duration = av.duration;
-                    match.subTitle = av.videoTitle;
+                    // If subTitle is currently just product title or placeholder, use Amazon title, but prefer YouTube title
+                    // For now we assume if it has a videoId, the current subTitle IS the YouTube title
                 } else {
-                    // Look for potential duration match
-                    const durMatch = metrics.find(m => m.duration === av.duration && !m.asin);
-                    if (durMatch) candidates.push({ yt: durMatch, amz: av });
+                    // Potential candidates for user review: Duration + Date match is very strong, so highlight it
+                    const durDateMatch = metrics.find(m => m.duration === av.duration && m.publishDate === av.uploadDate && !m.asin);
+                    if (durDateMatch) candidates.push({ yt: durDateMatch, amz: av });
                 }
             });
 
             if (candidates.length > 0) {
                 setVerificationData({ candidates, matches });
             } else {
-                onSaveMetrics([...metrics]); // Save the metadata updates
-                notify(`Matched ${matches.length} videos to Storefront metadata.`);
+                onSaveMetrics([...metrics]);
+                notify(`Synchronized ${matches.length} video metadata records.`);
                 setImportStep(3);
             }
         } else if (importStep === 3) {
@@ -230,62 +269,37 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
             const updatedMetrics = [...metrics];
             let count = 0;
             mappings.forEach(map => {
-                const target = updatedMetrics.find(m => normalizeStr(m.subTitle) === normalizeStr(map.videoTitle!) || normalizeStr(m.mainTitle) === normalizeStr(map.videoTitle!));
+                // Find either by YouTube Title (main) or Amazon Title (sub)
+                const target = updatedMetrics.find(m => 
+                    normalizeStr(m.subTitle) === normalizeStr(map.videoTitle!) || 
+                    normalizeStr(m.mainTitle) === normalizeStr(map.videoTitle!)
+                );
                 if (target && map.asins && map.asins.length > 0) {
                     target.asin = map.asins[0];
                     target.asins = map.asins;
+                    
+                    // Final aggregation: Link the orphan Amazon revenue from Step 1 to this Video
+                    const orphans = updatedMetrics.filter(m => !m.videoId && (m.asin === target.asin || target.asins?.includes(m.asin)));
+                    orphans.forEach(o => {
+                        target.amazonOnsiteRevenue += o.amazonOnsiteRevenue;
+                        target.amazonOffsiteRevenue += o.amazonOffsiteRevenue;
+                        target.creatorConnectionsRevenue += o.creatorConnectionsRevenue;
+                        target.totalRevenue = target.videoEstimatedRevenue + target.amazonOnsiteRevenue + target.amazonOffsiteRevenue + target.creatorConnectionsRevenue;
+                        target.clicks += o.clicks;
+                        target.orderedItems += o.orderedItems;
+                    });
+                    
+                    // Remove orphans since they are now aggregated
+                    orphans.forEach(o => {
+                        const idx = updatedMetrics.findIndex(m => m.id === o.id);
+                        if (idx > -1) updatedMetrics.splice(idx, 1);
+                    });
+
                     count++;
                 }
             });
             onSaveMetrics(updatedMetrics);
-            notify(`Successfully associated ${count} ASINs with content.`);
-            setImportStep(4);
-        } else if (importStep === 4) {
-            const sales = stagedData as AmazonMetric[];
-            const updatedMetrics = [...metrics];
-            const newOrphans: JoinedMetric[] = [];
-            sales.forEach(s => {
-                const target = updatedMetrics.find(m => m.asin === s.asin || m.asins?.includes(s.asin));
-                if (target) {
-                    if (s.reportType === 'onsite') target.amazonOnsiteRevenue += s.revenue;
-                    else target.amazonOffsiteRevenue += s.revenue;
-                    target.totalRevenue += s.revenue;
-                    target.orderedItems += s.orderedItems;
-                    // Product title from earnings is often better than video title
-                    target.mainTitle = s.productTitle || target.mainTitle;
-                } else {
-                    const existingOrphan = newOrphans.find(o => o.asin === s.asin);
-                    if (existingOrphan) {
-                        existingOrphan.totalRevenue += s.revenue;
-                        if (s.reportType === 'onsite') existingOrphan.amazonOnsiteRevenue += s.revenue;
-                        else existingOrphan.amazonOffsiteRevenue += s.revenue;
-                    } else {
-                        newOrphans.push({
-                            id: s.asin, asin: s.asin, mainTitle: s.productTitle, subTitle: s.productTitle,
-                            views: 0, watchTimeHours: 0, subsGained: 0, videoEstimatedRevenue: 0,
-                            amazonOnsiteRevenue: s.reportType === 'onsite' ? s.revenue : 0,
-                            amazonOffsiteRevenue: s.reportType === 'offsite' ? s.revenue : 0,
-                            creatorConnectionsRevenue: 0, totalRevenue: s.revenue, clicks: s.clicks,
-                            orderedItems: s.orderedItems, shippedItems: s.shippedItems
-                        });
-                    }
-                }
-            });
-            onSaveMetrics([...updatedMetrics, ...newOrphans]);
-            notify("Earnings data integrated into model.");
-            setImportStep(5);
-        } else if (importStep === 5) {
-            const ccData = stagedData as AmazonMetric[];
-            const updatedMetrics = [...metrics];
-            ccData.forEach(cc => {
-                const target = updatedMetrics.find(m => m.asin === cc.asin || m.asins?.includes(cc.asin));
-                if (target) {
-                    target.creatorConnectionsRevenue += cc.revenue;
-                    target.totalRevenue += cc.revenue;
-                }
-            });
-            onSaveMetrics(updatedMetrics);
-            notify("Campaign premium yields finalized.");
+            notify(`Finalized ${count} content-to-product links.`);
             setActiveTab('dashboard');
         }
         setStagedData(null);
@@ -388,11 +402,11 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                                             <tr key={m.id} className="hover:bg-indigo-50/30 transition-colors group">
                                                 <td className="px-8 py-4">
                                                     <div className="flex flex-col">
-                                                        <span className="text-sm font-black text-slate-800">{m.mainTitle}</span>
+                                                        <span className="text-sm font-black text-slate-800">{m.subTitle || m.mainTitle}</span>
                                                         <div className="flex items-center gap-3 mt-1.5">
                                                             <span className="text-[8px] font-black text-indigo-600 uppercase bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 shadow-sm">{m.videoId || 'ORPHAN'}</span>
-                                                            {m.subTitle !== m.mainTitle && (
-                                                                <span className="text-[10px] text-slate-400 font-medium italic">{m.subTitle}</span>
+                                                            {m.mainTitle !== m.subTitle && m.mainTitle && (
+                                                                <span className="text-[10px] text-slate-400 font-medium italic">{m.mainTitle}</span>
                                                             )}
                                                         </div>
                                                     </div>
@@ -425,10 +439,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                         <div className="space-y-4">
                             {[
                                 { step: 1, title: 'Platform Ingestion', desc: 'Fetch existing signals from YouTube and Amazon integrations.' },
-                                { step: 2, title: 'Storefront Synchronization', desc: 'Upload Amazon Video report to sync metadata and durations.' },
-                                { step: 3, title: 'Identity Mapping', desc: 'Upload ASIN Mapping to associate content with SKUs.' },
-                                { step: 4, title: 'Commission Audit', desc: 'Ingest Amazon Fee-Earnings (Onsite/Offsite).' },
-                                { step: 5, title: 'Creator Premium', desc: 'Finalize with Creator Connections yields.' }
+                                { step: 2, title: 'Storefront Synchronization', desc: 'Match video records using Duration and Upload Date.' },
+                                { step: 3, title: 'Identity Mapping', desc: 'Upload ASIN Mapping to associate content with SKUs.' }
                             ].map(s => {
                                 const isCurrent = importStep === s.step;
                                 const isPassed = importStep > s.step;
@@ -558,7 +570,7 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                 variant="danger"
             />
 
-            {/* DURATION COLLISION MODAL */}
+            {/* DURATION & DATE COLLISION MODAL */}
             {verificationData && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -566,8 +578,8 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                             <div className="flex items-center gap-4">
                                 <div className="p-3 bg-indigo-100 text-indigo-600 rounded-2xl"><SparklesIcon className="w-6 h-6" /></div>
                                 <div>
-                                    <h3 className="text-xl font-black text-slate-800">Ambiguous Duration Match</h3>
-                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{verificationData.candidates.length} Collisions Detected</p>
+                                    <h3 className="text-xl font-black text-slate-800">Ambiguous Metadata Match</h3>
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{verificationData.candidates.length} Duration & Date Collisions Detected</p>
                                 </div>
                             </div>
                             <button onClick={() => setVerificationData(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
@@ -576,18 +588,44 @@ const VideoProductJoiner: React.FC<Props> = ({ metrics, onSaveMetrics, youtubeMe
                             {verificationData.candidates.map((c: any, idx: number) => (
                                 <div key={idx} className="bg-white p-4 rounded-3xl border-2 border-slate-100 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6 items-center relative overflow-hidden">
                                     <div className="space-y-1">
-                                        <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">YouTube Source</p>
-                                        <p className="text-xs font-black text-slate-800">{c.yt.mainTitle}</p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Duration: {c.yt.duration}</p>
+                                        <p className="text-[8px] font-black text-indigo-400 uppercase tracking-widest">YouTube Metadata (Source of Truth)</p>
+                                        <p className="text-xs font-black text-slate-800">{c.yt.subTitle || c.yt.mainTitle}</p>
+                                        <div className="flex gap-3 text-[9px] font-bold text-slate-400 uppercase">
+                                            <span>Dur: {c.yt.duration}</span>
+                                            <span>Published: {c.yt.publishDate}</span>
+                                        </div>
                                     </div>
                                     <div className="space-y-1">
-                                        <p className="text-[8px] font-black text-orange-400 uppercase tracking-widest">Amazon Candidate</p>
+                                        <p className="text-[8px] font-black text-orange-400 uppercase tracking-widest">Amazon Candidate Information</p>
                                         <p className="text-xs font-black text-slate-800">{c.amz.videoTitle}</p>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase">Duration: {c.amz.duration}</p>
+                                        <div className="flex gap-3 text-[9px] font-bold text-slate-400 uppercase">
+                                            <span>Dur: {c.amz.duration}</span>
+                                            <span>Uploaded: {c.amz.uploadDate}</span>
+                                        </div>
                                     </div>
                                     <div className="col-span-2 flex justify-center gap-3 pt-3 border-t border-slate-50">
-                                        <button onClick={() => { const next = [...verificationData.candidates]; next.splice(idx, 1); setVerificationData({ ...verificationData, candidates: next }); if (next.length === 0) { setVerificationData(null); setImportStep(3); } }} className="px-5 py-1.5 bg-slate-100 text-slate-500 font-black rounded-lg text-[9px] uppercase hover:bg-slate-200 transition-all">Deny Match</button>
-                                        <button onClick={() => { const target = metrics.find(m => m.videoId === c.yt.videoId); if (target) target.subTitle = c.amz.videoTitle; const next = [...verificationData.candidates]; next.splice(idx, 1); setVerificationData({ ...verificationData, candidates: next }); if (next.length === 0) { setVerificationData(null); setImportStep(3); } }} className="px-8 py-1.5 bg-indigo-600 text-white font-black rounded-lg text-[9px] uppercase shadow-md transition-all">Confirm Match</button>
+                                        <button onClick={() => { 
+                                            const next = [...verificationData.candidates]; 
+                                            next.splice(idx, 1); 
+                                            setVerificationData({ ...verificationData, candidates: next }); 
+                                            if (next.length === 0) { setVerificationData(null); setImportStep(3); } 
+                                        }} className="px-5 py-1.5 bg-slate-100 text-slate-500 font-black rounded-lg text-[9px] uppercase hover:bg-slate-200 transition-all">Deny Match</button>
+                                        <button onClick={() => { 
+                                            const target = metrics.find(m => m.videoId === c.yt.videoId); 
+                                            if (target) {
+                                                // Keep the YouTube title as subTitle, use Amazon's as reference for mapping
+                                                target.id = c.yt.videoId; 
+                                                // Use YouTube's metadata as anchor
+                                            }
+                                            const next = [...verificationData.candidates]; 
+                                            next.splice(idx, 1); 
+                                            setVerificationData({ ...verificationData, candidates: next }); 
+                                            if (next.length === 0) { 
+                                                onSaveMetrics([...metrics]);
+                                                setVerificationData(null); 
+                                                setImportStep(3); 
+                                            } 
+                                        }} className="px-8 py-1.5 bg-indigo-600 text-white font-black rounded-lg text-[9px] uppercase shadow-md transition-all">Confirm Match</button>
                                     </div>
                                 </div>
                             ))}
