@@ -52,10 +52,6 @@ const cleanDescription = (string: string): string => {
   return cleaned.trim();
 };
 
-const toTitleCase = (str: string): string => {
-  return str.replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.slice(1).toLowerCase());
-};
-
 const parseDate = (dateStr: string): Date | null => {
   if (!dateStr || dateStr.length < 5) return null;
   const cleanedDateStr = dateStr.replace(/^"|"$/g, '').trim();
@@ -66,7 +62,6 @@ const parseDate = (dateStr: string): Date | null => {
     if (!isNaN(date.getTime())) return date;
   }
 
-  // Handle formats like "Dec 31 2025 11:29 AM"
   if (/[A-Za-z]{3}\s\d{1,2},?\s\d{4}/.test(cleanedDateStr)) {
       const date = new Date(cleanedDateStr);
       if (!isNaN(date.getTime())) return date;
@@ -101,8 +96,119 @@ const formatDate = (date: Date): string => {
 };
 
 /**
- * YouTube Detailed Video Report (Legacy Support)
+ * Standard transaction parsers with intelligent header detection.
  */
+export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+    onProgress("Parsing ledger data...");
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 1) return [];
+    
+    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const firstLineParts = splitCsvLine(lines[0], delimiter).map(p => p.trim().toLowerCase());
+    
+    // Identify column indices based on common headers
+    const findIndex = (labels: string[]) => firstLineParts.findIndex(p => labels.some(l => p.includes(l.toLowerCase())));
+    
+    const dateIdx = findIndex(['date']);
+    const amountIdx = findIndex(['amount', 'value', 'total', 'price']);
+    const debitIdx = findIndex(['debit', 'withdraw']);
+    const creditIdx = findIndex(['credit', 'deposit']);
+    const descIdx = findIndex(['description', 'memo', 'transaction', 'details']);
+    const payeeIdx = findIndex(['payee', 'merchant', 'entity', 'name']);
+    const typeIdx = findIndex(['type', 'category']);
+
+    const hasHeader = dateIdx !== -1 || amountIdx !== -1 || descIdx !== -1 || debitIdx !== -1;
+    const startIndex = hasHeader ? 1 : 0;
+    
+    const txs: RawTransaction[] = [];
+    const incomingType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
+    const outgoingType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
+
+    for (let i = startIndex; i < lines.length; i++) {
+        const parts = splitCsvLine(lines[i], delimiter);
+        if (parts.length < 2) continue;
+
+        const dateStr = parts[dateIdx !== -1 ? dateIdx : 0];
+        const rawDesc = parts[descIdx !== -1 ? descIdx : (payeeIdx !== -1 ? payeeIdx : 1)];
+        
+        let amount = 0;
+        let forceType: string | null = null;
+
+        // Support for separate Debit/Credit columns
+        if (debitIdx !== -1 || creditIdx !== -1) {
+            const debitVal = debitIdx !== -1 ? parts[debitIdx]?.replace(/[^-0.9.]/g, '') : '';
+            const creditVal = creditIdx !== -1 ? parts[creditIdx]?.replace(/[^-0.9.]/g, '') : '';
+            
+            const debitNum = parseFloat(debitVal) || 0;
+            const creditNum = parseFloat(creditVal) || 0;
+
+            if (Math.abs(debitNum) > 0) {
+                amount = Math.abs(debitNum);
+                forceType = outgoingType.id;
+            } else if (Math.abs(creditNum) > 0) {
+                amount = Math.abs(creditNum);
+                forceType = incomingType.id;
+            }
+        } else {
+            // Single amount column support
+            const rawAmount = parts[amountIdx !== -1 ? amountIdx : 2]?.replace(/[^-0.9.]/g, '') || '0';
+            amount = parseFloat(rawAmount) || 0;
+        }
+        
+        if (!dateStr || amount === 0) continue;
+
+        let finalDesc = rawDesc;
+        if (payeeIdx !== -1 && payeeIdx !== (descIdx !== -1 ? descIdx : -1) && parts[payeeIdx]) {
+            finalDesc = `${parts[payeeIdx]} - ${rawDesc}`.trim();
+            if (finalDesc.endsWith(' -')) finalDesc = parts[payeeIdx];
+            if (finalDesc.startsWith('- ')) finalDesc = rawDesc;
+        }
+
+        const date = parseDate(dateStr);
+        if (!date) continue;
+
+        // Auto-detect type based on headers or amount sign
+        let selectedTypeId = forceType || (amount >= 0 ? incomingType.id : outgoingType.id);
+        if (!forceType && typeIdx !== -1 && parts[typeIdx]) {
+            const rowType = parts[typeIdx].toLowerCase();
+            if (rowType.includes('receive') || rowType.includes('credit') || rowType.includes('deposit')) {
+                selectedTypeId = incomingType.id;
+            } else if (rowType.includes('spend') || rowType.includes('debit') || rowType.includes('purchase')) {
+                selectedTypeId = outgoingType.id;
+            }
+        }
+
+        txs.push({
+            date: formatDate(date),
+            description: cleanDescription(finalDesc || 'Untitled Transaction'),
+            originalDescription: finalDesc,
+            amount: Math.abs(amount),
+            accountId,
+            category: 'Other',
+            typeId: selectedTypeId,
+            metadata: {
+                raw_row: lines[i]
+            }
+        });
+    }
+    return txs;
+};
+
+export const parseTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+    const allTxs: RawTransaction[] = [];
+    for (const file of files) {
+        onProgress(`Reading ${file.name}...`);
+        const reader = new FileReader();
+        const text = await new Promise<string>((res) => {
+            reader.onload = () => res(reader.result as string);
+            reader.readAsText(file);
+        });
+        const txs = await parseTransactionsFromText(text, accountId, transactionTypes, onProgress);
+        allTxs.push(...txs);
+    }
+    return allTxs;
+};
+
 export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: string) => void): Promise<YouTubeMetric[]> => {
     onProgress(`Reading ${file.name}...`);
     const reader = new FileReader();
@@ -156,9 +262,6 @@ export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: s
     return metrics;
 };
 
-/**
- * Amazon Storefront Videos (Step 2 Joiner - Title, Views, Hearts, Avg_Pct_Viewed, Duration, Upload_Date, Video_URL)
- */
 export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: string) => void): Promise<AmazonVideo[]> => {
     onProgress(`Reading ${file.name}...`);
     const reader = new FileReader();
@@ -207,9 +310,6 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
     return videos;
 };
 
-/**
- * Video to ASIN Mapping (Step 3 Joiner - Title, ASINs, Duration, Video URL)
- */
 export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string) => void): Promise<Partial<AmazonVideo>[]> => {
     onProgress(`Reading ${file.name}...`);
     const reader = new FileReader();
@@ -248,9 +348,6 @@ export const parseVideoAsinMapping = async (file: File, onProgress: (msg: string
     return mappings;
 };
 
-/**
- * Amazon Earnings Report (Step 4 Joiner)
- */
 export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
     onProgress(`Reading ${file.name}...`);
     const reader = new FileReader();
@@ -312,9 +409,6 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
     return metrics;
 };
 
-/**
- * Creator Connections Report (Step 5 Joiner)
- */
 export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
     onProgress(`Reading ${file.name}...`);
     const reader = new FileReader();
@@ -367,104 +461,6 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
 export const parseYouTubeReport = parseYouTubeDetailedReport;
 export const parseAmazonReport = parseAmazonEarningsReport;
 export const parseAmazonVideos = parseAmazonStorefrontVideos;
-
-/**
- * Standard transaction parsers with intelligent header detection.
- */
-export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-    onProgress("Parsing ledger data...");
-    const lines = text.split('\n').filter(l => l.trim());
-    if (lines.length < 1) return [];
-    
-    const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const firstLineParts = splitCsvLine(lines[0], delimiter).map(p => p.trim().toLowerCase());
-    
-    // Identify column indices based on common headers
-    const findIndex = (labels: string[]) => firstLineParts.findIndex(p => labels.some(l => p.includes(l.toLowerCase())));
-    
-    const dateIdx = findIndex(['date']);
-    const amountIdx = findIndex(['amount', 'value', 'total', 'price']);
-    const descIdx = findIndex(['description', 'memo', 'transaction', 'details']);
-    const payeeIdx = findIndex(['payee', 'merchant', 'entity', 'name']);
-    const typeIdx = findIndex(['type', 'category']);
-
-    // Default mappings if headers aren't found or standard CSV structure
-    const effectiveDateIdx = dateIdx !== -1 ? dateIdx : 0;
-    const effectiveAmountIdx = amountIdx !== -1 ? amountIdx : 2;
-    const effectiveDescIdx = descIdx !== -1 ? descIdx : (payeeIdx !== -1 ? payeeIdx : 1);
-    
-    // If we have a header row, start from index 1, otherwise 0
-    const hasHeader = dateIdx !== -1 || amountIdx !== -1 || descIdx !== -1;
-    const startIndex = hasHeader ? 1 : 0;
-    
-    const txs: RawTransaction[] = [];
-    const incomingType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
-    const outgoingType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
-
-    for (let i = startIndex; i < lines.length; i++) {
-        const parts = splitCsvLine(lines[i], delimiter);
-        if (parts.length < 2) continue;
-
-        const dateStr = parts[effectiveDateIdx];
-        const rawDesc = parts[effectiveDescIdx];
-        const rawAmount = parts[effectiveAmountIdx]?.replace(/[$,]/g, '').trim();
-        
-        if (!dateStr || !rawAmount) continue;
-
-        const amount = parseFloat(rawAmount) || 0;
-        
-        // Use Payee as secondary description if both exist
-        let finalDesc = rawDesc;
-        if (payeeIdx !== -1 && payeeIdx !== effectiveDescIdx && parts[payeeIdx]) {
-            finalDesc = `${parts[payeeIdx]} - ${rawDesc}`.trim();
-            if (finalDesc.endsWith(' -')) finalDesc = parts[payeeIdx];
-            if (finalDesc.startsWith('- ')) finalDesc = rawDesc;
-        }
-
-        const date = parseDate(dateStr);
-        if (!date) continue;
-
-        // Auto-detect type based on amount sign or "Transaction Type" column
-        let selectedTypeId = amount >= 0 ? incomingType.id : outgoingType.id;
-        if (typeIdx !== -1 && parts[typeIdx]) {
-            const rowType = parts[typeIdx].toLowerCase();
-            if (rowType.includes('receive') || rowType.includes('credit') || rowType.includes('deposit')) {
-                selectedTypeId = incomingType.id;
-            } else if (rowType.includes('spend') || rowType.includes('debit') || rowType.includes('purchase')) {
-                selectedTypeId = outgoingType.id;
-            }
-        }
-
-        txs.push({
-            date: formatDate(date),
-            description: cleanDescription(finalDesc || 'Untitled Transaction'),
-            originalDescription: finalDesc,
-            amount: Math.abs(amount),
-            accountId,
-            category: 'Other',
-            typeId: selectedTypeId,
-            metadata: {
-                raw_row: lines[i]
-            }
-        });
-    }
-    return txs;
-};
-
-export const parseTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
-    const allTxs: RawTransaction[] = [];
-    for (const file of files) {
-        onProgress(`Reading ${file.name}...`);
-        const reader = new FileReader();
-        const text = await new Promise<string>((res) => {
-            reader.onload = () => res(reader.result as string);
-            reader.readAsText(file);
-        });
-        const txs = await parseTransactionsFromText(text, accountId, transactionTypes, onProgress);
-        allTxs.push(...txs);
-    }
-    return allTxs;
-};
 
 export const validateRuleFormat = (lines: string[]): { isValid: boolean; error?: string } => {
     if (lines.length === 0) return { isValid: false, error: "Empty file" };

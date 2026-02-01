@@ -1,3 +1,4 @@
+
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -229,9 +230,55 @@ const runAutomatedBackup = async () => {
     }
 };
 
+/**
+ * RECONCILIATION RULES ENDPOINTS
+ */
+app.post('/api/reconciliation-rules', (req, res) => {
+    try {
+        const rule = req.body;
+        if (!rule || !rule.id) return res.status(400).json({ error: "Missing rule identity" });
+        
+        db.prepare(`
+            INSERT INTO reconciliation_rules (id, name, rule_category_id, priority, skip_import, is_ai_draft, logic_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                rule_category_id = excluded.rule_category_id,
+                priority = excluded.priority,
+                skip_import = excluded.skip_import,
+                is_ai_draft = excluded.is_ai_draft,
+                logic_json = excluded.logic_json
+        `).run(
+            rule.id, 
+            rule.name, 
+            rule.ruleCategoryId || null, 
+            rule.priority || 0, 
+            rule.skipImport ? 1 : 0, 
+            rule.isAiDraft ? 1 : 0, 
+            JSON.stringify(rule)
+        );
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/reconciliation-rules/:id', (req, res) => {
+    try {
+        db.prepare('DELETE FROM reconciliation_rules WHERE id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/transactions/:id', (req, res) => {
+    try {
+        db.prepare('DELETE FROM transactions WHERE id = ?').run(req.params.id);
+        db.prepare('DELETE FROM transaction_tags WHERE transaction_id = ?').run(req.params.id);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/transactions', (req, res) => {
     try {
-        const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC', search, startDate, endDate, accountIds, categoryIds, userId } = req.query;
+        const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC', search, startDate, endDate, userId } = req.query;
         let filterQuery = ` WHERE 1=1 AND t.is_parent = 0`;
         const values = [];
         if (search) {
@@ -301,9 +348,6 @@ app.post('/api/transactions/batch', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/**
- * ANALYTICS ENDPOINTS
- */
 app.get('/api/analytics/summary', (req, res) => {
     try {
         const { startDate, endDate, search } = req.query;
@@ -392,13 +436,101 @@ app.get('/api/data', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+/**
+ * SMART SYNC STORAGE
+ */
 app.post('/api/data/:key', (req, res) => {
   try {
     const key = req.params.key;
     const value = req.body;
+    
     db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
+    
+    // Sync specific relational tables if the key matches a registry array
+    if (key === 'categories') {
+        db.prepare('DELETE FROM categories').run();
+        const insert = db.prepare('INSERT INTO categories (id, name, parent_id) VALUES (?, ?, ?)');
+        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.parentId || null)))(value);
+    } else if (key === 'accounts') {
+        db.prepare('DELETE FROM accounts').run();
+        const insert = db.prepare('INSERT INTO accounts (id, name, identifier, account_type_id) VALUES (?, ?, ?, ?)');
+        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.identifier, i.accountTypeId)))(value);
+    } else if (key === 'users') {
+        db.prepare('DELETE FROM users').run();
+        const insert = db.prepare('INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)');
+        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.isDefault ? 1 : 0)))(value);
+    } else if (key === 'counterparties') {
+        db.prepare('DELETE FROM counterparties').run();
+        const insert = db.prepare('INSERT INTO counterparties (id, name, parent_id, notes, user_id) VALUES (?, ?, ?, ?, ?)');
+        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.parentId || null, i.notes || null, i.userId || null)))(value);
+    } else if (key === 'locations') {
+        db.prepare('DELETE FROM locations').run();
+        const insert = db.prepare('INSERT INTO locations (id, name, city, state, country) VALUES (?, ?, ?, ?, ?)');
+        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.city || null, i.state || null, i.country || null)))(value);
+    } else if (key === 'tags') {
+        db.prepare('DELETE FROM tags').run();
+        const insert = db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)');
+        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.color)))(value);
+    } else if (key === 'transactionTypes') {
+        db.prepare('DELETE FROM transaction_types').run();
+        const insert = db.prepare('INSERT INTO transaction_types (id, name, balance_effect, color) VALUES (?, ?, ?, ?)');
+        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.balanceEffect, i.color)))(value);
+    } else if (key === 'ruleCategories') {
+        db.prepare('DELETE FROM rule_categories').run();
+        const insert = db.prepare('INSERT INTO rule_categories (id, name, is_default) VALUES (?, ?, ?)');
+        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.isDefault ? 1 : 0)))(value);
+    }
+
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+/**
+ * ADMIN DIAGNOSTICS & REPAIR
+ */
+app.get('/api/admin/diagnose', (req, res) => {
+    try {
+        const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+        const stats = tables.map(t => ({
+            table: t.name,
+            rowCount: db.prepare(`SELECT COUNT(*) as count FROM ${t.name}`).get().count
+        }));
+        res.json({ tables: stats, timestamp: new Date().toISOString() });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/repair', (req, res) => {
+    try {
+        createTables();
+        runMigrations();
+        ensureSeedData();
+        res.json({ success: true, message: "System core normalized" });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/reset', (req, res) => {
+    try {
+        const { entities } = req.body;
+        const targetAll = entities.includes('all');
+        
+        db.transaction(() => {
+            if (targetAll || entities.includes('transactions')) {
+                db.exec('DELETE FROM transactions');
+                db.exec('DELETE FROM transaction_tags');
+            }
+            if (targetAll || entities.includes('reconciliationRules')) db.exec('DELETE FROM reconciliation_rules');
+            if (targetAll || entities.includes('categories')) db.exec('DELETE FROM categories');
+            if (targetAll || entities.includes('accounts')) db.exec('DELETE FROM accounts');
+            if (targetAll || entities.includes('counterparties')) db.exec('DELETE FROM counterparties');
+            if (targetAll || entities.includes('tags')) db.exec('DELETE FROM tags');
+            if (targetAll || entities.includes('financialGoals')) db.prepare('DELETE FROM app_storage WHERE key = ?').run('financialGoals');
+            if (targetAll || entities.includes('businessProfile')) db.prepare('DELETE FROM app_storage WHERE key = ?').run('businessProfile');
+            
+            if (targetAll) db.exec('DELETE FROM app_storage');
+        })();
+        ensureSeedData();
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/files/:id', (req, res) => {
