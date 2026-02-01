@@ -249,6 +249,7 @@ export interface DashboardWidget {
     config?: {
         title?: string;
         goalId?: string;
+        // Fix: Use 'day' instead of 'group' to match implementation
         period?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
         limit?: number;
         reportId?: string;

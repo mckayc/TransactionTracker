@@ -728,7 +728,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                                     onClick={() => setConfigPeriod(p)}
                                                                     className={`py-3 rounded-xl border-2 font-bold text-xs transition-all ${configPeriod === p ? 'bg-white border-indigo-50 text-indigo-700 shadow-sm' : 'bg-transparent border-slate-200 text-slate-400'}`}
                                                                 >
-                                                                    {p}ly
+                                                                    {/* Fix: Display correct label for day and custom periods */}
+                                                                    {p === 'day' ? 'daily' : (p === 'custom' ? 'custom' : p + 'ly')}
                                                                 </button>
                                                             ))}
                                                         </div>
@@ -859,7 +860,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                             <button onClick={() => setIsConfiguring(null)} className="px-6 py-3 text-sm font-black uppercase text-slate-400 hover:bg-slate-100 rounded-2xl transition-all">Discard</button>
                             <button 
                                 onClick={handleApplyConfig} 
-                                className="px-10 py-4 bg-indigo-600 text-white font-black uppercase text-xs rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center gap-2"
+                                className="px-10 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 flex items-center gap-2"
                             >
                                 <CheckCircleIcon className="w-4 h-4" /> Commit to Deck
                             </button>
