@@ -1,7 +1,5 @@
-
 import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig, RuleForgePrompt, Account, ParsingProfile } from '../types';
-// Added missing import for generateUUID
 import { generateUUID } from '../utils';
 
 // Default to Gemini 3 series as per instructions for standard text-based tasks

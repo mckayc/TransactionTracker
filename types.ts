@@ -1,4 +1,3 @@
-
 export type BalanceEffect = 'incoming' | 'outgoing' | 'neutral';
 
 export interface TransactionType {
@@ -64,7 +63,6 @@ export interface ParsingProfile {
     amountColumn: string | number;
     debitColumn?: string | number;
     creditColumn?: string | number;
-    // New mapping fields
     payeeColumn?: string | number;
     typeColumn?: string | number;
     categoryColumn?: string | number;
@@ -114,7 +112,6 @@ export interface Transaction extends RawTransaction {
     isCompleted?: boolean;
 }
 
-// Added Task alias to satisfy imports expecting 'Task'
 export type Task = TaskItem;
 
 export type RuleOperator = 'contains' | 'does_not_contain' | 'equals' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'exists' | 'regex_match';
@@ -203,7 +200,6 @@ export interface SubTask {
     linkText?: string;
 }
 
-// Added missing Template interface
 export interface Template {
     id: string;
     name: string;
@@ -212,7 +208,6 @@ export interface Template {
     subtasks?: SubTask[];
 }
 
-// Added missing ScheduledEvent interface
 export interface ScheduledEvent {
     id: string;
     templateId: string;
@@ -220,7 +215,6 @@ export interface ScheduledEvent {
     recurrence: 'none' | 'monthly';
 }
 
-// Added missing TaskCompletions type
 export type TaskCompletions = Record<string, boolean>;
 
 export interface RecurrenceRule {
@@ -316,14 +310,12 @@ export interface SystemSettings {
     aiConfig?: AiConfig;
     ruleForgePrompts?: RuleForgePrompt[];
     widgetLibrary?: DashboardWidget[];
-    // Added missing dashboardWidgets property to fix Dashboard.tsx error
     dashboardWidgets?: DashboardWidget[];
 }
 
 export type ReportGroupBy = 'category' | 'counterparty' | 'account' | 'type' | 'tag' | 'source' | 'product' | 'trackingId' | 'video';
 export type DateRangePreset = 'thisMonth' | 'lastMonth' | 'thisYear' | 'lastYear' | 'allTime' | 'custom' | 'specificMonth' | 'relativeMonth' | 'last30Days' | 'last3Months' | 'last6Months' | 'last12Months';
 
-// Added missing DateRangeUnit and DateRangeType exports
 export type DateRangeUnit = 'day' | 'week' | 'month' | 'quarter' | 'year';
 export type DateRangeType = 'rolling_window' | 'fixed_period';
 
@@ -497,7 +489,6 @@ export interface DuplicatePair {
     existingTx: Transaction;
 }
 
-// Added missing BusinessInfo and TaxInfo interfaces
 export interface BusinessInfo {
     llcName?: string;
     businessType?: string;
@@ -508,7 +499,6 @@ export interface TaxInfo {
     accountantName?: string;
 }
 
-// Added missing BusinessProfile interface
 export interface BusinessProfile {
     info: BusinessInfo;
     tax: TaxInfo;

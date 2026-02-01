@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, BalanceEffect, Location, ReconciliationRule, ParsingProfile } from '../types';
 import { generateUUID } from '../utils';
-/* Added missing icon imports: InfoIcon, CalendarIcon, DollarSign, ArrowUpIcon, ArrowDownIcon */
 import { SaveIcon, CloseIcon, RobotIcon, SparklesIcon, CheckCircleIcon, WorkflowIcon, DatabaseIcon, TrashIcon, TableIcon, ShieldCheckIcon, EditIcon, ArrowRightIcon, ListIcon, TagIcon, MapPinIcon, TypeIcon, UsersIcon, InfoIcon, CalendarIcon, DollarSign, ArrowUpIcon, ArrowDownIcon } from './Icons';
 import SearchableSelect from './SearchableSelect';
 import { analyzeCsvLayout } from '../services/geminiService';
@@ -264,7 +263,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                                     <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white space-y-8 shadow-2xl relative overflow-hidden">
                                         <div className="relative z-10 flex justify-between items-center">
                                             <div className="flex items-center gap-3">
-                                                <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400 border border-indigo-500/20 shadow-lg"><TableIcon className="w-6 h-6" /></div>
+                                                <div className="p-3 bg-indigo-50/20 rounded-2xl text-indigo-400 border border-indigo-500/20 shadow-lg"><TableIcon className="w-6 h-6" /></div>
                                                 <div>
                                                     <h4 className="text-xl font-black tracking-tight">Header Mapping</h4>
                                                     <p className="text-[10px] text-indigo-400 font-black uppercase tracking-widest mt-0.5">Physical to Logical Translation</p>
@@ -384,7 +383,6 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                                                 <TableIcon className="absolute -bottom-6 -right-6 w-32 h-32 opacity-[0.03] text-indigo-600 group-hover:scale-110 transition-transform pointer-events-none" />
                                             </div>
                                         ) : !proposedProfile && (
-                                            /* Removed invalid onClick handler referring to non-existent setActiveTab state */
                                             <div className="p-16 text-center bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200 group hover:border-indigo-300 transition-all cursor-pointer">
                                                 <TableIcon className="w-16 h-16 text-slate-200 mx-auto mb-4 group-hover:text-indigo-200 transition-colors" />
                                                 <p className="text-sm text-slate-400 font-bold max-w-xs mx-auto uppercase tracking-wide">Teach the system your bank's structure above.</p>
