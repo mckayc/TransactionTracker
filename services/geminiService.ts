@@ -358,7 +358,7 @@ export const extractTransactionsFromFiles = async (
     };
     const response = await ai.models.generateContent({
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
-        contents: { parts: [...fileParts, { text: "Extract transaction rows including date, description, amount, and type (income/purchase)." }] },
+        contents: { parts: [...fileParts, { text: "Extract all transaction rows. Correct identify columns regardless of their order. Map headers for Date, Description (or Payee), and Amount. Extract the exact numeric amount, preserving negative/positive indicators if present." }] },
         config: {
             responseMimeType: "application/json",
             responseSchema: schema,
@@ -374,7 +374,8 @@ export const extractTransactionsFromFiles = async (
     return txs.map((tx: any) => ({
         ...tx,
         accountId,
-        typeId: tx.type?.toLowerCase().includes('income') ? incomingType.id : outgoingType.id
+        typeId: (tx.type?.toLowerCase().includes('income') || tx.amount > 0) ? incomingType.id : outgoingType.id,
+        amount: Math.abs(tx.amount)
     }));
 };
 
@@ -399,9 +400,9 @@ export const extractTransactionsFromText = async (
                     type: Type.OBJECT,
                     properties: {
                         date: { type: Type.STRING, description: "The date of the transaction (YYYY-MM-DD)" },
-                        description: { type: Type.STRING, description: "The merchant or description text" },
-                        amount: { type: Type.NUMBER, description: "The numeric value of the transaction" },
-                        isIncome: { type: Type.BOOLEAN, description: "True if this is a deposit or income" }
+                        description: { type: Type.STRING, description: "The merchant, payee, or description text" },
+                        amount: { type: Type.NUMBER, description: "The numeric value of the transaction. If it has a '+' sign, it's positive. If '-' or 'Spend', it's negative." },
+                        isIncome: { type: Type.BOOLEAN, description: "True if this is a deposit, receive, or positive income transaction." }
                     },
                     required: ["date", "description", "amount", "isIncome"]
                 }
@@ -411,14 +412,15 @@ export const extractTransactionsFromText = async (
     };
 
     const prompt = `Identify every transaction in the provided text.
-    Convert to standard JSON.
+    Carefully map columns by identifying common financial headers. 
+    Note that Payee/Description might be separate columns; consolidate them if necessary.
     Text: ${text}`;
 
     const response = await ai.models.generateContent({
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
         contents: prompt,
         config: {
-            systemInstruction: "You are a specialized financial parser. Return ONLY JSON matching the schema. Handle OCR noise or partial table data gracefully.",
+            systemInstruction: "You are a specialized financial parser. Return ONLY JSON matching the schema. Handle OCR noise or partial table data gracefully. Correct for misaligned columns by looking at data types (dates in date col, numbers in amount col).",
             responseMimeType: "application/json",
             responseSchema: schema,
             thinkingConfig: { thinkingBudget: 0 }
@@ -434,7 +436,8 @@ export const extractTransactionsFromText = async (
     return txs.map((tx: any) => ({
         ...tx,
         accountId,
-        typeId: tx.isIncome ? incomingType.id : outgoingType.id
+        typeId: tx.isIncome ? incomingType.id : outgoingType.id,
+        amount: Math.abs(tx.amount)
     }));
 };
 

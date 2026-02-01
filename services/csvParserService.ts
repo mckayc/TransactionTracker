@@ -1,3 +1,4 @@
+
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -367,24 +368,84 @@ export const parseYouTubeReport = parseYouTubeDetailedReport;
 export const parseAmazonReport = parseAmazonEarningsReport;
 export const parseAmazonVideos = parseAmazonStorefrontVideos;
 
-// Standard transaction parsers...
+/**
+ * Standard transaction parsers with intelligent header detection.
+ */
 export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
     onProgress("Parsing ledger data...");
     const lines = text.split('\n').filter(l => l.trim());
     if (lines.length < 1) return [];
+    
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const startIndex = (lines[0].toLowerCase().includes('date') || lines[0].toLowerCase().includes('amount')) ? 1 : 0;
+    const firstLineParts = splitCsvLine(lines[0], delimiter).map(p => p.trim().toLowerCase());
+    
+    // Identify column indices based on common headers
+    const findIndex = (labels: string[]) => firstLineParts.findIndex(p => labels.some(l => p.includes(l.toLowerCase())));
+    
+    const dateIdx = findIndex(['date']);
+    const amountIdx = findIndex(['amount', 'value', 'total', 'price']);
+    const descIdx = findIndex(['description', 'memo', 'transaction', 'details']);
+    const payeeIdx = findIndex(['payee', 'merchant', 'entity', 'name']);
+    const typeIdx = findIndex(['type', 'category']);
+
+    // Default mappings if headers aren't found or standard CSV structure
+    const effectiveDateIdx = dateIdx !== -1 ? dateIdx : 0;
+    const effectiveAmountIdx = amountIdx !== -1 ? amountIdx : 2;
+    const effectiveDescIdx = descIdx !== -1 ? descIdx : (payeeIdx !== -1 ? payeeIdx : 1);
+    
+    // If we have a header row, start from index 1, otherwise 0
+    const hasHeader = dateIdx !== -1 || amountIdx !== -1 || descIdx !== -1;
+    const startIndex = hasHeader ? 1 : 0;
+    
     const txs: RawTransaction[] = [];
+    const incomingType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
+    const outgoingType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
+
     for (let i = startIndex; i < lines.length; i++) {
         const parts = splitCsvLine(lines[i], delimiter);
         if (parts.length < 2) continue;
+
+        const dateStr = parts[effectiveDateIdx];
+        const rawDesc = parts[effectiveDescIdx];
+        const rawAmount = parts[effectiveAmountIdx]?.replace(/[$,]/g, '').trim();
+        
+        if (!dateStr || !rawAmount) continue;
+
+        const amount = parseFloat(rawAmount) || 0;
+        
+        // Use Payee as secondary description if both exist
+        let finalDesc = rawDesc;
+        if (payeeIdx !== -1 && payeeIdx !== effectiveDescIdx && parts[payeeIdx]) {
+            finalDesc = `${parts[payeeIdx]} - ${rawDesc}`.trim();
+            if (finalDesc.endsWith(' -')) finalDesc = parts[payeeIdx];
+            if (finalDesc.startsWith('- ')) finalDesc = rawDesc;
+        }
+
+        const date = parseDate(dateStr);
+        if (!date) continue;
+
+        // Auto-detect type based on amount sign or "Transaction Type" column
+        let selectedTypeId = amount >= 0 ? incomingType.id : outgoingType.id;
+        if (typeIdx !== -1 && parts[typeIdx]) {
+            const rowType = parts[typeIdx].toLowerCase();
+            if (rowType.includes('receive') || rowType.includes('credit') || rowType.includes('deposit')) {
+                selectedTypeId = incomingType.id;
+            } else if (rowType.includes('spend') || rowType.includes('debit') || rowType.includes('purchase')) {
+                selectedTypeId = outgoingType.id;
+            }
+        }
+
         txs.push({
-            date: formatDate(parseDate(parts[0]) || new Date()),
-            description: parts[1],
-            amount: parseFloat(parts[2]?.replace(/[$,]/g, '')) || 0,
+            date: formatDate(date),
+            description: cleanDescription(finalDesc || 'Untitled Transaction'),
+            originalDescription: finalDesc,
+            amount: Math.abs(amount),
             accountId,
             category: 'Other',
-            typeId: transactionTypes[0]?.id || ''
+            typeId: selectedTypeId,
+            metadata: {
+                raw_row: lines[i]
+            }
         });
     }
     return txs;
