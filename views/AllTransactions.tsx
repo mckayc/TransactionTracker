@@ -5,7 +5,8 @@ import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import BulkEditModal from '../components/BulkEditModal';
 import RuleModal from '../components/RuleModal';
-import { AddIcon, DeleteIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, SparklesIcon, CalendarIcon, TrendingUpIcon, TagIcon, TrashIcon, InfoIcon } from '../components/Icons';
+import CopyTransactionsModal from '../components/CopyTransactionsModal'; // Import new modal
+import { AddIcon, DeleteIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, SparklesIcon, CalendarIcon, TrendingUpIcon, TagIcon, TrashIcon, InfoIcon, CopyIcon, CheckCircleIcon } from '../components/Icons';
 import { api } from '../services/apiService';
 import { generateUUID } from '../utils';
 import { calculateDateRange, formatDate, shiftDateRange } from '../dateUtils';
@@ -125,6 +126,8 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [ruleContextTx, setRuleContextTx] = useState<Transaction | null>(null);
+  const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const { start, end, label } = useMemo(() => calculateDateRange(datePreset, customStart, customEnd, []), [datePreset, customStart, customEnd]);
 
@@ -183,6 +186,10 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
       setIsModalOpen(true);
   };
 
+  const selectedTransactions = useMemo(() => 
+    transactions.filter(tx => selectedIds.has(tx.id)), 
+  [transactions, selectedIds]);
+
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="flex flex-wrap gap-3 flex-shrink-0 animate-fade-in">
@@ -220,9 +227,10 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
             {selectedIds.size > 0 && (
                 <div className="flex items-center gap-1.5 bg-slate-900 text-white p-1 rounded-2xl shadow-xl animate-slide-up">
                     <span className="px-3 text-[10px] font-black uppercase">{selectedIds.size} Selected</span>
-                    <button onClick={() => setBulkEditType('categoryId')} className="p-2 hover:bg-white/10 rounded-xl text-indigo-400"><TagIcon className="w-4 h-4"/></button>
-                    <button onClick={() => setBulkEditType('date')} className="p-2 hover:bg-white/10 rounded-xl text-amber-400"><CalendarIcon className="w-4 h-4"/></button>
-                    <button onClick={handleBulkDelete} className="p-2 hover:bg-white/10 rounded-xl text-rose-400"><TrashIcon className="w-4 h-4"/></button>
+                    <button onClick={() => setIsCopyModalOpen(true)} className="p-2 hover:bg-white/10 rounded-xl text-indigo-400" title="Smart Copy"><CopyIcon className="w-4 h-4"/></button>
+                    <button onClick={() => setBulkEditType('categoryId')} className="p-2 hover:bg-white/10 rounded-xl text-indigo-400" title="Bulk Category"><TagIcon className="w-4 h-4"/></button>
+                    <button onClick={() => setBulkEditType('date')} className="p-2 hover:bg-white/10 rounded-xl text-amber-400" title="Bulk Date"><CalendarIcon className="w-4 h-4"/></button>
+                    <button onClick={handleBulkDelete} className="p-2 hover:bg-white/10 rounded-xl text-rose-400" title="Delete Selected"><TrashIcon className="w-4 h-4"/></button>
                     <button onClick={() => setSelectedIds(new Set())} className="p-2 text-slate-500 hover:text-white"><CloseIcon className="w-4 h-4"/></button>
                 </div>
             )}
@@ -290,6 +298,35 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
             onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveTag={onSaveTag} 
             existingRules={rules}
           />
+      )}
+
+      <CopyTransactionsModal 
+        isOpen={isCopyModalOpen}
+        onClose={() => setIsCopyModalOpen(false)}
+        selectedTransactions={selectedTransactions}
+        categories={categories}
+        counterparties={counterparties}
+        accounts={accounts}
+        transactionTypes={transactionTypes}
+        tags={tags}
+        onSuccess={(count) => {
+            setToastMessage(`${count} records copied in spreadsheet format.`);
+            setSelectedIds(new Set());
+        }}
+      />
+
+      {toastMessage && (
+        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[300] animate-slide-up">
+            <div className="bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3">
+                <div className="bg-indigo-500 rounded-full p-1">
+                    <CheckCircleIcon className="w-4 h-4 text-white" />
+                </div>
+                <span className="text-sm font-bold tracking-tight">{toastMessage}</span>
+                <button onClick={() => setToastMessage(null)} className="ml-2 hover:text-indigo-400 transition-colors">
+                    <CloseIcon className="w-4 h-4" />
+                </button>
+            </div>
+        </div>
       )}
     </div>
   );
