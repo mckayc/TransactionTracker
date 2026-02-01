@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
-import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig, RuleForgePrompt, Account } from '../types';
+import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig, RuleForgePrompt, Account, ParsingProfile } from '../types';
 // Added missing import for generateUUID
 import { generateUUID } from '../utils';
 
@@ -190,23 +190,37 @@ export const generateRulesFromData = async (
 };
 
 /**
- * Analyzes a CSV sample specifically for an Account to generate highly targeted rules.
+ * Analyzes a CSV sample specifically for an Account to generate highly targeted rules 
+ * AND identify the physical column layout of the CSV.
  */
 export const generateAccountRulesFromSample = async (
     csvSample: string,
     account: Account,
     categories: Category[],
     onProgress: (msg: string) => void
-): Promise<ReconciliationRule[]> => {
+): Promise<{ rules: ReconciliationRule[], profile: ParsingProfile }> => {
     const key = getApiKey();
     if (!key) throw new Error("Missing API Key.");
     const ai = new GoogleGenAI({ apiKey: key });
 
-    onProgress("Deconstructing bank CSV signature...");
+    onProgress("Deconstructing bank CSV layout & logic...");
 
     const schema = {
         type: Type.OBJECT,
         properties: {
+            profile: {
+                type: Type.OBJECT,
+                properties: {
+                    dateColumn: { type: Type.STRING, description: "Header name or index (0-based) for transaction date" },
+                    descriptionColumn: { type: Type.STRING, description: "Header name or index for description/payee" },
+                    amountColumn: { type: Type.STRING, description: "Header name or index for single amount column" },
+                    debitColumn: { type: Type.STRING },
+                    creditColumn: { type: Type.STRING },
+                    hasHeader: { type: Type.BOOLEAN },
+                    delimiter: { type: Type.STRING }
+                },
+                required: ["dateColumn", "descriptionColumn", "hasHeader", "delimiter"]
+            },
             rules: {
                 type: Type.ARRAY,
                 items: {
@@ -234,17 +248,18 @@ export const generateAccountRulesFromSample = async (
                 }
             }
         },
-        required: ["rules"]
+        required: ["profile", "rules"]
     };
 
     const systemInstruction = `You are a Senior Data Engineer specializing in Financial Ingestion.
     TASK: Analyze the provided CSV SAMPLE for account "${account.name}".
     
-    1. Identify recurring merchants and patterns.
-    2. Generate Reconciliation Rules to automatically categorize these transactions.
-    3. EVERY RULE must have a condition checking accountId equals "${account.id}".
-    4. Propose 'setDescription' values to clean up messy bank strings (e.g. "POS DEBIT STARBUCKS #123" -> "Starbucks").
-    5. Suggest categories from common sense if they aren't in the provided list: [${categories.map(c => c.name).join(', ')}].`;
+    1. Identify the PHYSICAL LAYOUT: which column is date, description, and amount?
+    2. Identify recurring merchants and patterns.
+    3. Generate Reconciliation Rules to automatically categorize these transactions.
+    4. EVERY RULE must have a condition checking accountId equals "${account.id}".
+    5. Propose 'setDescription' values to clean up messy bank strings.
+    6. Suggest categories from this list if possible: [${categories.map(c => c.name).join(', ')}].`;
 
     try {
         const response = await ai.models.generateContent({
@@ -258,8 +273,8 @@ export const generateAccountRulesFromSample = async (
             }
         });
 
-        const result = JSON.parse(response.text || '{"rules": []}');
-        return (result.rules || []).map((r: any) => ({
+        const result = JSON.parse(response.text || '{"rules": [], "profile": {}}');
+        const forgedRules = (result.rules || []).map((r: any) => ({
             ...r,
             id: generateUUID(),
             isAiDraft: true,
@@ -269,6 +284,8 @@ export const generateAccountRulesFromSample = async (
                 { id: generateUUID(), type: 'basic', field: 'accountId', operator: 'equals', value: account.id, nextLogic: 'AND' }
             ]
         }));
+
+        return { rules: forgedRules, profile: result.profile };
     } catch (e: any) {
         console.error("Account Forge Error:", e);
         throw new Error(e.message || "Logic synthesis failed.");

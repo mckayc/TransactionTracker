@@ -1,5 +1,5 @@
 
-import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition } from '../types';
+import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition, Account } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
 
@@ -97,27 +97,42 @@ const formatDate = (date: Date): string => {
 
 /**
  * Standard transaction parsers with intelligent header detection.
+ * Updated to check if a specific account profile already defines the layout.
  */
-export const parseTransactionsFromText = async (text: string, accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+export const parseTransactionsFromText = async (
+    text: string, 
+    accountId: string, 
+    transactionTypes: TransactionType[], 
+    onProgress: (msg: string) => void,
+    accountContext?: Account
+): Promise<RawTransaction[]> => {
     onProgress("Parsing ledger data...");
     const lines = text.split('\n').filter(l => l.trim());
     if (lines.length < 1) return [];
     
-    const delimiter = lines[0].includes('\t') ? '\t' : ',';
+    const profile = accountContext?.parsingProfile;
+    const delimiter = profile?.delimiter || (lines[0].includes('\t') ? '\t' : ',');
     const firstLineParts = splitCsvLine(lines[0], delimiter).map(p => p.trim().toLowerCase());
     
-    // Identify column indices based on common headers
-    const findIndex = (labels: string[]) => firstLineParts.findIndex(p => labels.some(l => p.includes(l.toLowerCase())));
+    // Identify column indices based on common headers or Profile
+    const findIndex = (labels: string[], profileField?: string | number) => {
+        if (profileField !== undefined) {
+            if (typeof profileField === 'number') return profileField;
+            const idx = firstLineParts.findIndex(p => p === profileField.toLowerCase());
+            if (idx !== -1) return idx;
+        }
+        return firstLineParts.findIndex(p => labels.some(l => p.includes(l.toLowerCase())));
+    };
     
-    const dateIdx = findIndex(['date']);
-    const amountIdx = findIndex(['amount', 'value', 'total', 'price']);
-    const debitIdx = findIndex(['debit', 'withdraw']);
-    const creditIdx = findIndex(['credit', 'deposit']);
-    const descIdx = findIndex(['description', 'memo', 'transaction', 'details']);
+    const dateIdx = findIndex(['date'], profile?.dateColumn);
+    const amountIdx = findIndex(['amount', 'value', 'total', 'price'], profile?.amountColumn);
+    const debitIdx = findIndex(['debit', 'withdraw'], profile?.debitColumn);
+    const creditIdx = findIndex(['credit', 'deposit'], profile?.creditColumn);
+    const descIdx = findIndex(['description', 'memo', 'transaction', 'details'], profile?.descriptionColumn);
     const payeeIdx = findIndex(['payee', 'merchant', 'entity', 'name']);
     const typeIdx = findIndex(['type', 'category']);
 
-    const hasHeader = dateIdx !== -1 || amountIdx !== -1 || descIdx !== -1 || debitIdx !== -1;
+    const hasHeader = profile?.hasHeader ?? (dateIdx !== -1 || amountIdx !== -1 || descIdx !== -1 || debitIdx !== -1);
     const startIndex = hasHeader ? 1 : 0;
     
     const txs: RawTransaction[] = [];
@@ -194,7 +209,13 @@ export const parseTransactionsFromText = async (text: string, accountId: string,
     return txs;
 };
 
-export const parseTransactionsFromFiles = async (files: File[], accountId: string, transactionTypes: TransactionType[], onProgress: (msg: string) => void): Promise<RawTransaction[]> => {
+export const parseTransactionsFromFiles = async (
+    files: File[], 
+    accountId: string, 
+    transactionTypes: TransactionType[], 
+    onProgress: (msg: string) => void,
+    accountContext?: Account
+): Promise<RawTransaction[]> => {
     const allTxs: RawTransaction[] = [];
     for (const file of files) {
         onProgress(`Reading ${file.name}...`);
@@ -203,7 +224,7 @@ export const parseTransactionsFromFiles = async (files: File[], accountId: strin
             reader.onload = () => res(reader.result as string);
             reader.readAsText(file);
         });
-        const txs = await parseTransactionsFromText(text, accountId, transactionTypes, onProgress);
+        const txs = await parseTransactionsFromText(text, accountId, transactionTypes, onProgress, accountContext);
         allTxs.push(...txs);
     }
     return allTxs;
@@ -421,7 +442,9 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
     if (lines.length < 2) return [];
 
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const header = splitCsvLine(lines[0], delimiter).map(h => h.trim().toLowerCase());
+    // Fixed: Defined headerLine before use on line 445
+    const headerLine = lines[0].trim();
+    const header = splitCsvLine(headerLine, delimiter).map(h => h.trim().toLowerCase());
     
     const colMap = {
         date: header.indexOf('date'),

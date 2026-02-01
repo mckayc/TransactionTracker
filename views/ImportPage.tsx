@@ -69,8 +69,6 @@ const ImportPage: React.FC<ImportPageProps> = ({
   const [isInitializing, setIsInitializing] = useState(false);
 
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
-  // Use a local staged array of full Transaction objects for the "Final Polish" phase
-  // to avoid waiting for the asynchronous global state refresh from the parent.
   const [stagedImportedTxs, setStagedImportedTxs] = useState<Transaction[]>([]);
 
   const hasCoreConfiguration = transactionTypes.length >= 6 && categories.length > 0;
@@ -151,13 +149,14 @@ const ImportPage: React.FC<ImportPageProps> = ({
     setAppState('processing');
     setProgressMessage(aiMode ? 'AI Thinking (Analyzing Statements)...' : 'Parsing local files...');
     try {
+      const targetAccount = accounts.find(a => a.id === accountId);
       const raw = aiMode 
         ? await extractTransactionsFromFiles(files, accountId, transactionTypes, categories, setProgressMessage) 
-        : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage);
+        : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage, targetAccount);
       
       const safeRaw = (raw || []).filter(tx => tx && typeof tx === 'object');
       if (safeRaw.length === 0) {
-          throw new Error("The parser returned 0 results. If using local parsing, check if headers match. If using AI, ensure the file content is legible.");
+          throw new Error("The parser returned 0 results. If using local parsing, check if headers match your Account's Neural Forge profile.");
       }
 
       const validUsers = Array.isArray(users) ? users.filter(Boolean) : [];
@@ -168,18 +167,12 @@ const ImportPage: React.FC<ImportPageProps> = ({
       setError(err instanceof Error ? err.message : 'Unknown error occurred during extraction.');
       setAppState('error');
     }
-  }, [transactionTypes, categories, users, rules, applyRulesAndSetStaging]);
+  }, [transactionTypes, categories, users, rules, accounts, applyRulesAndSetStaging]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
-      // Use the service to generate IDs and detect duplicates against CURRENT state
       const { added } = mergeTransactions(recentGlobalTransactions.filter(Boolean), verified.filter(Boolean));
-      
-      // Store locally so the next screen doesn't wait for parent prop sync
       setStagedImportedTxs(added);
-      
-      // Notify parent to update DB
       onTransactionsAdded(added, []);
-      
       setAppState('post_import_edit');
   };
 
@@ -244,7 +237,6 @@ const ImportPage: React.FC<ImportPageProps> = ({
                         <h3 className="text-3xl font-black text-red-800">Engine Logic Failure</h3>
                         <p className="text-lg text-red-700 mt-4 leading-relaxed">
                             The internal transaction types or categories are missing from the database. 
-                            This happens if the initial seeding was interrupted.
                         </p>
                     </div>
                     <div className="flex flex-col gap-3">
@@ -254,7 +246,6 @@ const ImportPage: React.FC<ImportPageProps> = ({
                         >
                             <WrenchIcon className="w-6 h-6" /> Open Diagnostics Hub
                         </button>
-                        <p className="text-xs text-red-400 font-bold uppercase tracking-widest">Run "System Doctor" to recover core schemas</p>
                     </div>
                 </div>
             </div>
@@ -308,9 +299,10 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                 onClick={async () => {
                                                     setAppState('processing');
                                                     try {
+                                                        const targetAccount = accounts.find(a => a.id === pasteAccountId);
                                                         const raw = useAi 
                                                             ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) 
-                                                            : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage);
+                                                            : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage, targetAccount);
                                                         
                                                         const safeRaw = (raw || []).filter(tx => tx && typeof tx === 'object');
                                                         const validUsers = Array.isArray(users) ? users.filter(Boolean) : [];
@@ -319,7 +311,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                         setAppState('verifying_import');
                                                     } catch(e: any) { 
                                                         setAppState('error'); 
-                                                        setError(`Parsing failed: ${e.message || 'Unknown error'}. Ensure columns align.`); 
+                                                        setError(`Parsing failed: ${e.message || 'Unknown error'}`); 
                                                     }
                                                 }} 
                                                 disabled={!textInput.trim() || !pasteAccountId} 
@@ -335,7 +327,6 @@ const ImportPage: React.FC<ImportPageProps> = ({
                             <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
                                 <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
                                 <p className="font-black text-slate-800 text-lg">{progressMessage}</p>
-                                <p className="text-xs text-slate-400 mt-2">Gemini is synthesizing patterns and categorizing based on your preferences...</p>
                             </div>
                         ) : (
                             <ResultsDisplay appState={appState as any} error={error} progressMessage={progressMessage} transactions={[]} duplicatesIgnored={0} duplicatesImported={0} onClear={() => setAppState('idle')} />
@@ -359,7 +350,6 @@ const ImportPage: React.FC<ImportPageProps> = ({
                             <button onClick={() => { setAppState('idle'); setStagedImportedTxs([]); }} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Finish</button>
                         </div>
                         <div className="flex-1 overflow-hidden border border-slate-200 rounded-2xl relative shadow-inner">
-                            {/* Render using the staged local state instead of filtering the global prop to ensure instant UI responsiveness */}
                             <TransactionTable transactions={stagedImportedTxs} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={onUpdateTransaction} onDeleteTransaction={onDeleteTransaction} />
                         </div>
                     </div>

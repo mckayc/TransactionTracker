@@ -1,3 +1,4 @@
+
 export type BalanceEffect = 'incoming' | 'outgoing' | 'neutral';
 
 export interface TransactionType {
@@ -57,11 +58,23 @@ export interface AccountType {
     isDefault?: boolean;
 }
 
+export interface ParsingProfile {
+    dateColumn: string | number;
+    descriptionColumn: string | number;
+    amountColumn: string | number;
+    debitColumn?: string | number;
+    creditColumn?: string | number;
+    dateFormat?: string;
+    hasHeader: boolean;
+    delimiter: string;
+}
+
 export interface Account {
     id: string;
     name: string;
     identifier: string;
     accountTypeId: string;
+    parsingProfile?: ParsingProfile;
 }
 
 export interface RawTransaction {

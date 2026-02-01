@@ -34,7 +34,9 @@ interface ManagementHubProps {
     onSaveCategories: (cs: Category[]) => void;
     onSaveLocations: (ls: Location[]) => void;
     // Added for logic forge
+    rules?: ReconciliationRule[];
     onSaveRules?: (rules: ReconciliationRule[]) => void;
+    onDeleteRule?: (id: string) => void;
 }
 
 const TreeNode: React.FC<{ 
@@ -289,7 +291,9 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                             transactionTypes={props.transactionTypes}
                             accountTypes={props.accountTypes}
                             accounts={props.accounts}
+                            rules={props.rules}
                             onSaveRules={props.onSaveRules}
+                            onDeleteRule={props.onDeleteRule}
                         />
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">
