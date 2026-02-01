@@ -190,20 +190,18 @@ export const generateRulesFromData = async (
 };
 
 /**
- * Analyzes a CSV sample specifically for an Account to generate highly targeted rules 
- * AND identify the physical column layout of the CSV.
+ * Analyzes a CSV sample specifically for an Account to identify the physical column layout (Header Mapping).
  */
-export const generateAccountRulesFromSample = async (
+export const analyzeCsvLayout = async (
     csvSample: string,
     account: Account,
-    categories: Category[],
     onProgress: (msg: string) => void
-): Promise<{ rules: ReconciliationRule[], profile: ParsingProfile }> => {
+): Promise<{ profile: ParsingProfile }> => {
     const key = getApiKey();
     if (!key) throw new Error("Missing API Key.");
     const ai = new GoogleGenAI({ apiKey: key });
 
-    onProgress("Deconstructing bank CSV layout & logic...");
+    onProgress("Deconstructing bank CSV layout fingerprints...");
 
     const schema = {
         type: Type.OBJECT,
@@ -211,85 +209,62 @@ export const generateAccountRulesFromSample = async (
             profile: {
                 type: Type.OBJECT,
                 properties: {
-                    dateColumn: { type: Type.STRING, description: "Header name or index (0-based) for transaction date" },
-                    descriptionColumn: { type: Type.STRING, description: "Header name or index for description/payee" },
+                    dateColumn: { type: Type.STRING, description: "Header name or index for transaction date" },
+                    descriptionColumn: { type: Type.STRING, description: "Header name or index for description/memo" },
                     amountColumn: { type: Type.STRING, description: "Header name or index for single amount column" },
-                    debitColumn: { type: Type.STRING },
-                    creditColumn: { type: Type.STRING },
+                    debitColumn: { type: Type.STRING, description: "Header for outgoing funds" },
+                    creditColumn: { type: Type.STRING, description: "Header for incoming funds" },
+                    payeeColumn: { type: Type.STRING, description: "Header for merchant/entity name" },
+                    typeColumn: { type: Type.STRING, description: "Header for transaction type" },
+                    categoryColumn: { type: Type.STRING, description: "Header for category" },
+                    locationColumn: { type: Type.STRING, description: "Header for city/state/country" },
+                    tagsColumn: { type: Type.STRING, description: "Header for labels/tags" },
+                    notesColumn: { type: Type.STRING, description: "Header for additional notes" },
                     hasHeader: { type: Type.BOOLEAN },
                     delimiter: { type: Type.STRING }
                 },
                 required: ["dateColumn", "descriptionColumn", "hasHeader", "delimiter"]
-            },
-            rules: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        name: { type: Type.STRING },
-                        conditions: {
-                            type: Type.ARRAY,
-                            items: {
-                                type: Type.OBJECT,
-                                properties: {
-                                    field: { type: Type.STRING, enum: ["description", "amount", "accountId", "metadata"] },
-                                    operator: { type: Type.STRING, enum: ["contains", "equals", "starts_with", "ends_with"] },
-                                    value: { type: Type.STRING }
-                                },
-                                required: ["field", "operator", "value"]
-                            }
-                        },
-                        suggestedCategoryName: { type: Type.STRING },
-                        suggestedCounterpartyName: { type: Type.STRING },
-                        setDescription: { type: Type.STRING },
-                        skipImport: { type: Type.BOOLEAN }
-                    },
-                    required: ["name", "conditions"]
-                }
             }
         },
-        required: ["profile", "rules"]
+        required: ["profile"]
     };
 
     const systemInstruction = `You are a Senior Data Engineer specializing in Financial Ingestion.
     TASK: Analyze the provided CSV SAMPLE for account "${account.name}".
-    
-    1. Identify the PHYSICAL LAYOUT: which column is date, description, and amount?
-    2. Identify recurring merchants and patterns.
-    3. Generate Reconciliation Rules to automatically categorize these transactions.
-    4. EVERY RULE must have a condition checking accountId equals "${account.id}".
-    5. Propose 'setDescription' values to clean up messy bank strings.
-    6. Suggest categories from this list if possible: [${categories.map(c => c.name).join(', ')}].`;
+    Identify the PHYSICAL LAYOUT: which column corresponds to our app's internal fields?
+    Look for synonyms: 'Payee' might be 'Merchant', 'Description' might be 'Narrative', etc.`;
 
     try {
         const response = await ai.models.generateContent({
-            model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
+            model: currentAiConfig.textModel || 'gemini-3-flash-preview',
             contents: `CSV SAMPLE:\n${csvSample}`,
             config: {
                 systemInstruction,
                 responseMimeType: "application/json",
                 responseSchema: schema,
-                thinkingConfig: { thinkingBudget: 4000 }
+                thinkingConfig: { thinkingBudget: 0 }
             }
         });
 
-        const result = JSON.parse(response.text || '{"rules": [], "profile": {}}');
-        const forgedRules = (result.rules || []).map((r: any) => ({
-            ...r,
-            id: generateUUID(),
-            isAiDraft: true,
-            ruleCategoryId: 'rcat_manual',
-            conditions: [
-                ...r.conditions.map((c: any) => ({ ...c, id: generateUUID(), type: 'basic', nextLogic: 'AND' })),
-                { id: generateUUID(), type: 'basic', field: 'accountId', operator: 'equals', value: account.id, nextLogic: 'AND' }
-            ]
-        }));
-
-        return { rules: forgedRules, profile: result.profile };
+        const result = JSON.parse(response.text || '{"profile": {}}');
+        return { profile: result.profile };
     } catch (e: any) {
-        console.error("Account Forge Error:", e);
-        throw new Error(e.message || "Logic synthesis failed.");
+        console.error("Layout Audit Error:", e);
+        throw new Error(e.message || "Logical fingerprinting failed.");
     }
+};
+
+/**
+ * DEPRECATED: Use analyzeCsvLayout instead for cleaner account-specific mapping.
+ */
+export const generateAccountRulesFromSample = async (
+    csvSample: string,
+    account: Account,
+    categories: Category[],
+    onProgress: (msg: string) => void
+): Promise<{ rules: ReconciliationRule[], profile: ParsingProfile }> => {
+    const { profile } = await analyzeCsvLayout(csvSample, account, onProgress);
+    return { rules: [], profile };
 };
 
 export const forgeRulesWithCustomPrompt = async (

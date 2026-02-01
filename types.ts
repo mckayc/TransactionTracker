@@ -64,6 +64,13 @@ export interface ParsingProfile {
     amountColumn: string | number;
     debitColumn?: string | number;
     creditColumn?: string | number;
+    // New mapping fields
+    payeeColumn?: string | number;
+    typeColumn?: string | number;
+    categoryColumn?: string | number;
+    locationColumn?: string | number;
+    tagsColumn?: string | number;
+    notesColumn?: string | number;
     dateFormat?: string;
     hasHeader: boolean;
     delimiter: string;

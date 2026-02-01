@@ -1,10 +1,10 @@
-
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, BalanceEffect, Location, ReconciliationRule, ParsingProfile } from '../types';
 import { generateUUID } from '../utils';
-import { SaveIcon, CloseIcon, RobotIcon, SparklesIcon, CheckCircleIcon, WorkflowIcon, DatabaseIcon, TrashIcon, TableIcon, ShieldCheckIcon, EditIcon, ArrowRightIcon } from './Icons';
+/* Added missing icon imports: InfoIcon, CalendarIcon, DollarSign, ArrowUpIcon, ArrowDownIcon */
+import { SaveIcon, CloseIcon, RobotIcon, SparklesIcon, CheckCircleIcon, WorkflowIcon, DatabaseIcon, TrashIcon, TableIcon, ShieldCheckIcon, EditIcon, ArrowRightIcon, ListIcon, TagIcon, MapPinIcon, TypeIcon, UsersIcon, InfoIcon, CalendarIcon, DollarSign, ArrowUpIcon, ArrowDownIcon } from './Icons';
 import SearchableSelect from './SearchableSelect';
-import { generateAccountRulesFromSample } from '../services/geminiService';
+import { analyzeCsvLayout } from '../services/geminiService';
 
 export type EntityType = 'categories' | 'tags' | 'counterparties' | 'locations' | 'users' | 'transactionTypes' | 'accountTypes' | 'accounts';
 
@@ -48,15 +48,20 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     const [csvSample, setCsvSample] = useState('');
     const [isForging, setIsForging] = useState(false);
     const [forgeProgress, setForgeProgress] = useState('');
-    const [proposedRules, setProposedRules] = useState<ReconciliationRule[]>([]);
     const [proposedProfile, setProposedProfile] = useState<ParsingProfile | null>(null);
+    const isDirtyRef = useRef(false);
 
     const accountRules = useMemo(() => {
         if (type !== 'accounts' || !initialId) return [];
         return rules.filter(r => r.conditions.some(c => c.field === 'accountId' && c.value === initialId));
     }, [rules, initialId, type]);
 
+    // Robust Initialization: Only load from props if we aren't currently editing a new account ID
+    const lastIdRef = useRef<string | null | undefined>(undefined);
     useEffect(() => {
+        if (lastIdRef.current === initialId) return;
+        lastIdRef.current = initialId;
+
         let list: any[] = [];
         switch (type) {
             case 'categories': list = categories; break;
@@ -96,15 +101,14 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             setColor(type === 'transactionTypes' ? 'text-rose-600' : 'bg-slate-50 text-slate-600');
             setParsingProfile(undefined);
         }
-        setProposedRules([]);
         setProposedProfile(null);
         setCsvSample('');
-    }, [type, initialId, categories, tags, counterparties, locations, users, transactionTypes, accountTypes, accounts]);
+        isDirtyRef.current = false;
+    }, [type, initialId, categories, tags, counterparties, locations, users, transactionTypes, accountTypes]); // Removed 'accounts' to prevent background reset
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const id = initialId || generateUUID();
-        // Crucial: Use current parsingProfile from state, which might have been updated by handleCommitRules
         const payload: any = { id, name: name.trim() };
         switch (type) {
             case 'categories': Object.assign(payload, { parentId: parentId || undefined }); break;
@@ -115,6 +119,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             case 'accounts': Object.assign(payload, { identifier, accountTypeId, parsingProfile }); break;
         }
         onSave(type, payload);
+        isDirtyRef.current = false;
     };
 
     const handleForgeLogic = async () => {
@@ -122,32 +127,24 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
         setIsForging(true);
         try {
             const account = accounts.find(a => a.id === initialId)!;
-            const { rules, profile } = await generateAccountRulesFromSample(csvSample, account, categories, setForgeProgress);
-            setProposedRules(rules);
+            const { profile } = await analyzeCsvLayout(csvSample, account, setForgeProgress);
             setProposedProfile(profile);
+            isDirtyRef.current = true;
         } catch (e: any) {
-            alert(e.message || "Forge failed.");
+            alert(e.message || "Mapping analysis failed.");
         } finally {
             setIsForging(false);
             setForgeProgress('');
         }
     };
 
-    const handleCommitRules = () => {
-        // Sync the proposed profile to the active account profile state
+    const handleCommitProfile = () => {
         if (proposedProfile) {
             setParsingProfile(proposedProfile);
         }
-        // Save the rules to the registry immediately
-        if (proposedRules.length > 0 && onSaveRules) {
-            onSaveRules(proposedRules);
-        }
-        
-        // Reset workspace but KEEP parsingProfile in the parent component's state
-        setProposedRules([]);
         setProposedProfile(null);
         setCsvSample('');
-        alert("Account layout map and merchant rules committed to logic workspace. CLICK 'SAVE BLUEPRINT' AT TOP TO PERMANENTLY STORE IN DATABASE.");
+        alert("Consensus logic staged for saving. Click 'Save blueprint' to permanently commit to database.");
     };
 
     const parentOptions = useMemo(() => {
@@ -175,12 +172,12 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     };
 
     const handleProfileFieldChange = (field: keyof ParsingProfile, value: any) => {
+        isDirtyRef.current = true;
         if (proposedProfile) {
             setProposedProfile({ ...proposedProfile, [field]: value });
         } else if (parsingProfile) {
             setParsingProfile({ ...parsingProfile, [field]: value });
         } else {
-            // Create a fresh profile if manually editing without forge
             setParsingProfile({ 
                 dateColumn: field === 'dateColumn' ? value : '', 
                 descriptionColumn: field === 'descriptionColumn' ? value : '', 
@@ -196,28 +193,29 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
         if (!currentProfile) return null;
         
         return (
-            <div className="flex items-center gap-4 p-4 bg-black/30 border border-white/5 rounded-2xl group hover:border-indigo-500/50 transition-all">
-                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+            <div className="flex items-center gap-6 p-4 bg-black/30 border border-white/5 rounded-2xl group hover:border-indigo-500/50 transition-all w-full">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 shrink-0">
                     {icon}
                 </div>
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                     <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
-                    <div className="flex items-center gap-4 mt-1">
-                        <div className="flex-1">
+                    <div className="flex items-center gap-6 mt-1.5">
+                        <div className="w-64">
                             <select 
                                 value={String(currentProfile[field] || '')} 
                                 onChange={e => handleProfileFieldChange(field, e.target.value)}
-                                className="w-full bg-transparent border-none p-0 text-sm font-bold text-white focus:ring-0 cursor-pointer"
+                                className="w-full bg-slate-800 border border-white/10 rounded-xl p-2.5 text-sm font-bold text-white focus:ring-1 focus:ring-indigo-500 cursor-pointer outline-none"
                             >
-                                <option value="" className="bg-slate-900">-- Select Header --</option>
+                                <option value="" className="bg-slate-900">-- No Mapping --</option>
                                 {sampleDataRow?.headers.map((h, i) => (
                                     <option key={i} value={h} className="bg-slate-900">{h}</option>
                                 ))}
                             </select>
                         </div>
-                        <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-lg border border-white/5">
-                            <span className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Sample:</span>
-                            <span className="text-[10px] font-mono text-indigo-300 truncate max-w-[100px]">{getSampleValue(currentProfile[field] as string)}</span>
+                        <div className="flex-1 min-w-0 flex items-center gap-3 px-4 py-2.5 bg-white/5 rounded-xl border border-white/5 shadow-inner">
+                            <ArrowRightIcon className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-tighter shrink-0">Live Sample:</span>
+                            <span className="text-sm font-mono text-indigo-300 truncate font-bold">{getSampleValue(currentProfile[field] as string)}</span>
                         </div>
                     </div>
                 </div>
@@ -239,54 +237,54 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar bg-slate-50/10">
-                <div className="space-y-8 max-w-2xl mx-auto pb-12">
+                <div className="space-y-8 max-w-4xl mx-auto pb-12">
                     <div className="space-y-1">
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity Label</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:ring-0 font-bold text-slate-800 text-lg shadow-sm" placeholder="Display name..." required autoFocus />
+                        <input type="text" value={name} onChange={e => { setName(e.target.value); isDirtyRef.current = true; }} className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:ring-0 font-bold text-slate-800 text-lg shadow-sm" placeholder="Display name..." required autoFocus />
                     </div>
 
                     {type === 'accounts' && (
                         <div className="space-y-10 animate-fade-in">
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-6">
                                 <div className="space-y-1">
                                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unique Identifier</label>
-                                    <input type="text" value={identifier} onChange={e => setIdentifier(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold" placeholder="e.g. Last 4 digits" required />
+                                    <input type="text" value={identifier} onChange={e => { setIdentifier(e.target.value); isDirtyRef.current = true; }} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold" placeholder="e.g. Last 4 digits" required />
                                 </div>
                                 <div className="space-y-1">
                                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Account Category</label>
-                                    <select value={accountTypeId} onChange={e => setAccountTypeId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold">
+                                    <select value={accountTypeId} onChange={e => { setAccountTypeId(e.target.value); isDirtyRef.current = true; }} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold">
                                         {accountTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                     </select>
                                 </div>
                             </div>
 
                             {initialId && (
-                                <div className="space-y-8">
-                                    {/* NEURAL FORGE WORKSPACE */}
+                                <div className="space-y-10">
+                                    {/* HEADER MAPPING WORKSPACE */}
                                     <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white space-y-8 shadow-2xl relative overflow-hidden">
                                         <div className="relative z-10 flex justify-between items-center">
                                             <div className="flex items-center gap-3">
-                                                <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400 border border-indigo-500/20 shadow-lg"><RobotIcon className="w-6 h-6" /></div>
+                                                <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400 border border-indigo-500/20 shadow-lg"><TableIcon className="w-6 h-6" /></div>
                                                 <div>
-                                                    <h4 className="text-xl font-black tracking-tight">Neural Template Forge</h4>
-                                                    <p className="text-[10px] text-indigo-400 font-black uppercase tracking-widest mt-0.5">Automated Signature Identification</p>
+                                                    <h4 className="text-xl font-black tracking-tight">Header Mapping</h4>
+                                                    <p className="text-[10px] text-indigo-400 font-black uppercase tracking-widest mt-0.5">Physical to Logical Translation</p>
                                                 </div>
                                             </div>
-                                            {(proposedRules.length > 0 || proposedProfile) && (
-                                                <button type="button" onClick={() => { setProposedRules([]); setProposedProfile(null); }} className="p-2 bg-white/10 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-full transition-all">
+                                            {(proposedProfile) && (
+                                                <button type="button" onClick={() => { setProposedProfile(null); setCsvSample(''); }} className="p-2 bg-white/10 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-full transition-all">
                                                     <TrashIcon className="w-5 h-5" />
                                                 </button>
                                             )}
                                         </div>
 
-                                        {!proposedProfile && !proposedRules.length && (
+                                        {!proposedProfile && (
                                             <div className="relative z-10 space-y-4 animate-fade-in">
                                                 <div className="space-y-2">
                                                     <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Paste Raw CSV (Headers + First 5 Data Rows)</label>
                                                     <textarea 
                                                         value={csvSample} 
                                                         onChange={e => setCsvSample(e.target.value)}
-                                                        className="w-full h-40 bg-black/40 border border-white/5 rounded-[1.5rem] p-5 font-mono text-[11px] text-indigo-100 placeholder:text-slate-700 resize-none outline-none focus:border-indigo-500 transition-all shadow-inner"
+                                                        className="w-full h-48 bg-black/40 border border-white/5 rounded-[1.5rem] p-6 font-mono text-xs text-indigo-100 placeholder:text-slate-700 resize-none outline-none focus:border-indigo-500 transition-all shadow-inner"
                                                         placeholder="Date, Transaction Description, Amount, Category..."
                                                     />
                                                 </div>
@@ -298,55 +296,49 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                                                     className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 disabled:opacity-30 active:scale-95 group"
                                                 >
                                                     {isForging ? <div className="w-5 h-5 border-4 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-5 h-5 group-hover:scale-125 transition-transform" />}
-                                                    {isForging ? forgeProgress : 'Analyze Logic & Forge Blueprint'}
+                                                    {isForging ? forgeProgress : 'Analyze CSV Structure'}
                                                 </button>
                                             </div>
                                         )}
 
-                                        {(proposedRules.length > 0 || proposedProfile) && (
-                                            <div className="relative z-10 space-y-10 animate-slide-up">
-                                                {/* STEP 1: HEADER MAPPING */}
+                                        {proposedProfile && (
+                                            <div className="relative z-10 space-y-8 animate-slide-up">
                                                 <div className="space-y-4">
-                                                    <h5 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2 ml-1">
-                                                        <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[9px]">1</div>
-                                                        Layout Consensus
-                                                    </h5>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                                        {renderMapperRow('Transaction Date', 'dateColumn', <TableIcon className="w-4 h-4"/>)}
-                                                        {renderMapperRow('Description String', 'descriptionColumn', <EditIcon className="w-4 h-4"/>)}
-                                                        {renderMapperRow('Currency Value', 'amountColumn', <TableIcon className="w-4 h-4"/>)}
-                                                        {renderMapperRow('Batch Delimiter', 'delimiter', <TableIcon className="w-4 h-4"/>)}
-                                                    </div>
-                                                </div>
-
-                                                {/* STEP 2: MERCHANT RULES */}
-                                                <div className="space-y-4">
-                                                    <div className="flex justify-between items-center px-1">
-                                                        <h5 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                                                            <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[9px]">2</div>
-                                                            Synthesized Merchant Rules ({proposedRules.length})
+                                                    <div className="flex items-center justify-between px-1">
+                                                        <h5 className="text-[11px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+                                                            <WorkflowIcon className="w-4 h-4" /> Layout Consensus Matrix
                                                         </h5>
+                                                        <InfoIcon className="w-4 h-4 text-slate-500 cursor-help" title="Match your bank's columns to our transaction fields." />
                                                     </div>
-                                                    <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar pr-2 bg-black/20 p-4 rounded-[1.5rem] border border-white/5">
-                                                        {proposedRules.map((r, i) => (
-                                                            <div key={i} className="p-3 bg-white/5 border border-white/5 rounded-xl flex justify-between items-center group/rule transition-colors hover:bg-white/10">
-                                                                <div className="min-w-0 flex-1">
-                                                                    <p className="text-xs font-bold text-slate-200 truncate">{r.name}</p>
-                                                                    <p className="text-[9px] text-indigo-400 font-mono mt-0.5 truncate">{r.conditions[0].value}</p>
-                                                                </div>
-                                                                <button type="button" onClick={() => setProposedRules(proposedRules.filter((_, idx) => idx !== i))} className="p-2 text-slate-600 hover:text-red-400 opacity-0 group-hover/rule:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4"/></button>
-                                                            </div>
-                                                        ))}
+                                                    
+                                                    <div className="space-y-3 bg-black/20 p-4 rounded-[2rem] border border-white/5 shadow-inner">
+                                                        <div className="grid grid-cols-1 gap-3">
+                                                            {renderMapperRow('Posting Date', 'dateColumn', <CalendarIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Statement Description', 'descriptionColumn', <EditIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Currency Value', 'amountColumn', <DollarSign className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Outgoing Funds (Debit)', 'debitColumn', <ArrowDownIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Incoming Funds (Credit)', 'creditColumn', <ArrowUpIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Payee / Merchant', 'payeeColumn', <UsersIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Ledger Category', 'categoryColumn', <TagIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Transaction Type', 'typeColumn', <TypeIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('City / Location', 'locationColumn', <MapPinIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Organizational Tags', 'tagsColumn', <ListIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Additional Notes', 'notesColumn', <InfoIcon className="w-5 h-5"/>)}
+                                                            {renderMapperRow('Delimiter Character', 'delimiter', <DatabaseIcon className="w-5 h-5"/>)}
+                                                        </div>
                                                     </div>
                                                 </div>
 
-                                                <button 
-                                                    onClick={handleCommitRules} 
-                                                    className="w-full py-5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-[1.5rem] shadow-xl transition-all flex items-center justify-center gap-3 active:scale-95 group"
-                                                >
-                                                    <WorkflowIcon className="w-6 h-6 group-hover:scale-110 transition-transform" /> 
-                                                    Commit Synthesis to System
-                                                </button>
+                                                <div className="flex gap-4">
+                                                    <button type="button" onClick={() => setProposedProfile(null)} className="flex-1 py-5 bg-white/5 border border-white/10 text-slate-400 font-black rounded-2xl hover:bg-white/10 transition-all uppercase text-xs tracking-widest">Discard</button>
+                                                    <button 
+                                                        onClick={handleCommitProfile} 
+                                                        className="flex-[2] py-5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-[2rem] shadow-xl transition-all flex items-center justify-center gap-3 active:scale-95 group"
+                                                    >
+                                                        <WorkflowIcon className="w-6 h-6 group-hover:scale-110 transition-transform" /> 
+                                                        Commit Consensus
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                         <SparklesIcon className="absolute -right-16 -top-16 w-64 h-64 opacity-[0.03] text-indigo-400 pointer-events-none" />
@@ -362,50 +354,60 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                                         </div>
 
                                         {parsingProfile ? (
-                                            <div className="bg-indigo-50/50 p-6 rounded-3xl border-2 border-indigo-100 space-y-6 shadow-sm animate-fade-in">
-                                                <div className="flex justify-between items-center">
-                                                    <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2"><TableIcon className="w-4 h-4" /> Layout Fingerprint</h4>
-                                                    <button type="button" onClick={() => setParsingProfile(undefined)} className="px-3 py-1 bg-white text-[9px] font-black text-indigo-400 hover:text-red-500 rounded-lg border border-indigo-100 transition-colors uppercase">Clear Map</button>
+                                            <div className="bg-indigo-50/50 p-8 rounded-[2.5rem] border-2 border-indigo-100 space-y-6 shadow-sm animate-fade-in relative overflow-hidden group">
+                                                <div className="flex justify-between items-center relative z-10">
+                                                    <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2"><TableIcon className="w-4 h-4" /> Finalized Layout Fingerprint</h4>
+                                                    <button type="button" onClick={() => { setParsingProfile(undefined); isDirtyRef.current = true; }} className="px-4 py-1.5 bg-white text-[9px] font-black text-indigo-400 hover:text-red-500 rounded-xl border border-indigo-100 transition-colors uppercase shadow-sm">Clear Map</button>
                                                 </div>
-                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 relative z-10">
                                                     {[
-                                                        { label: 'Date', val: parsingProfile.dateColumn },
-                                                        { label: 'Description', val: parsingProfile.descriptionColumn },
-                                                        { label: 'Amount', val: parsingProfile.amountColumn }
-                                                    ].map(f => (
-                                                        <div key={f.label} className="bg-white p-3 rounded-2xl border border-indigo-100 shadow-sm">
-                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{f.label}</p>
+                                                        { label: 'Date', val: parsingProfile.dateColumn, icon: <CalendarIcon className="w-3 h-3"/> },
+                                                        { label: 'Desc', val: parsingProfile.descriptionColumn, icon: <EditIcon className="w-3 h-3"/> },
+                                                        { label: 'Amount', val: parsingProfile.amountColumn, icon: <DollarSign className="w-3 h-3"/> },
+                                                        { label: 'Payee', val: parsingProfile.payeeColumn, icon: <UsersIcon className="w-3 h-3"/> },
+                                                        { label: 'Type', val: parsingProfile.typeColumn, icon: <TypeIcon className="w-3 h-3"/> },
+                                                        { label: 'Category', val: parsingProfile.categoryColumn, icon: <TagIcon className="w-3 h-3"/> },
+                                                        { label: 'Location', val: parsingProfile.locationColumn, icon: <MapPinIcon className="w-3 h-3"/> },
+                                                        { label: 'Tags', val: parsingProfile.tagsColumn, icon: <ListIcon className="w-3 h-3"/> }
+                                                    ].filter(f => f.val).map(f => (
+                                                        <div key={f.label} className="bg-white p-4 rounded-2xl border border-indigo-100 shadow-sm flex flex-col gap-1">
+                                                            <div className="flex items-center gap-1.5 mb-1 opacity-50">
+                                                                <span className="text-indigo-600">{f.icon}</span>
+                                                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{f.label}</p>
+                                                            </div>
                                                             <p className="text-xs font-black text-slate-800 truncate">{f.val}</p>
                                                         </div>
                                                     ))}
                                                 </div>
+                                                <TableIcon className="absolute -bottom-6 -right-6 w-32 h-32 opacity-[0.03] text-indigo-600 group-hover:scale-110 transition-transform pointer-events-none" />
                                             </div>
                                         ) : !proposedProfile && (
-                                            <div className="p-10 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
-                                                <TableIcon className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                                                <p className="text-sm text-slate-400 font-medium max-w-xs mx-auto">No layout map active. Use the Neural Forge above to teach the system your bank's structure.</p>
+                                            /* Removed invalid onClick handler referring to non-existent setActiveTab state */
+                                            <div className="p-16 text-center bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200 group hover:border-indigo-300 transition-all cursor-pointer">
+                                                <TableIcon className="w-16 h-16 text-slate-200 mx-auto mb-4 group-hover:text-indigo-200 transition-colors" />
+                                                <p className="text-sm text-slate-400 font-bold max-w-xs mx-auto uppercase tracking-wide">Teach the system your bank's structure above.</p>
                                             </div>
                                         )}
 
-                                        <div className="space-y-3">
+                                        <div className="space-y-4">
                                             <div className="flex items-center justify-between px-1">
                                                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ShieldCheckIcon className="w-4 h-4" /> Linked Logic Manifest</h4>
-                                                <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">{accountRules.length} Rules</span>
+                                                <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-full">{accountRules.length} Automation Rules</span>
                                             </div>
                                             {accountRules.length === 0 ? (
-                                                <div className="p-6 text-center bg-white rounded-2xl border border-slate-100 italic"><p className="text-xs text-slate-300">No account-specific rules registered.</p></div>
+                                                <div className="p-10 text-center bg-white rounded-3xl border border-slate-100 italic"><p className="text-xs text-slate-300">No account-specific rules registered.</p></div>
                                             ) : (
-                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                     {accountRules.map(r => (
                                                         <div key={r.id} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between group hover:border-indigo-300 transition-all">
                                                             <div className="min-w-0">
-                                                                <p className="text-xs font-bold text-slate-700 truncate">{r.name}</p>
-                                                                <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5">{r.suggestedCategoryName || 'General'}</p>
+                                                                <p className="text-sm font-bold text-slate-700 truncate">{r.name}</p>
+                                                                <p className="text-[9px] text-slate-400 font-black uppercase mt-1 tracking-widest">{r.suggestedCategoryName || 'General'}</p>
                                                             </div>
                                                             <button 
                                                                 type="button" 
                                                                 onClick={() => onDeleteRule?.(r.id)} 
-                                                                className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                                                className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50"
                                                             >
                                                                 <TrashIcon className="w-4 h-4" />
                                                             </button>
@@ -439,7 +441,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">System Label Hue</label>
                             <div className="flex flex-wrap gap-2 p-4 bg-white rounded-2xl border border-slate-100 shadow-inner">
                                 {['bg-slate-100 text-slate-800', 'bg-red-100 text-red-800', 'bg-orange-100 text-orange-800', 'bg-amber-100 text-amber-800', 'bg-green-100 text-green-800', 'bg-emerald-100 text-emerald-800', 'bg-blue-100 text-blue-800', 'bg-indigo-100 text-indigo-800', 'bg-purple-100 text-purple-800'].map(c => (
-                                    <button key={c} type="button" onClick={() => setColor(c)} className={`w-8 h-8 rounded-full border-2 transition-all ${color === c ? 'border-indigo-600 scale-110 shadow-md' : 'border-slate-100 opacity-60 hover:opacity-100'}`} style={{ backgroundColor: c.split(' ')[0].replace('bg-', '') }} />
+                                    <button key={c} type="button" onClick={() => setColor(c)} className={`w-10 h-10 rounded-full border-2 transition-all ${color === c ? 'border-indigo-600 scale-110 shadow-md ring-4 ring-indigo-50' : 'border-slate-100 opacity-60 hover:opacity-100'}`} style={{ backgroundColor: c.split(' ')[0].replace('bg-', '') }} />
                                 ))}
                             </div>
                         </div>
@@ -448,7 +450,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                     {(type === 'counterparties' || type === 'categories' || type === 'accounts') && (
                         <div className="space-y-1">
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Archival Context & Logic</label>
-                            <textarea value={notes} onChange={e => setNotes(e.target.value)} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-medium min-h-[140px]" placeholder="Record account details, vendor logic, or institutional memory..." />
+                            <textarea value={notes} onChange={e => { setNotes(e.target.value); isDirtyRef.current = true; }} className="w-full p-6 border-2 border-slate-100 rounded-3xl font-medium min-h-[160px] shadow-inner focus:bg-white transition-all outline-none focus:border-indigo-500" placeholder="Record account details, vendor logic, or institutional memory..." />
                         </div>
                     )}
                 </div>

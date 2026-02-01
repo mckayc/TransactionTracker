@@ -116,9 +116,9 @@ export const parseTransactionsFromText = async (
     
     // Identify column indices based on common headers or Profile
     const findIndex = (labels: string[], profileField?: string | number) => {
-        if (profileField !== undefined) {
+        if (profileField !== undefined && profileField !== null && profileField !== '') {
             if (typeof profileField === 'number') return profileField;
-            const idx = firstLineParts.findIndex(p => p === profileField.toLowerCase());
+            const idx = firstLineParts.findIndex(p => p === String(profileField).toLowerCase());
             if (idx !== -1) return idx;
         }
         return firstLineParts.findIndex(p => labels.some(l => p.includes(l.toLowerCase())));
@@ -129,8 +129,14 @@ export const parseTransactionsFromText = async (
     const debitIdx = findIndex(['debit', 'withdraw'], profile?.debitColumn);
     const creditIdx = findIndex(['credit', 'deposit'], profile?.creditColumn);
     const descIdx = findIndex(['description', 'memo', 'transaction', 'details'], profile?.descriptionColumn);
-    const payeeIdx = findIndex(['payee', 'merchant', 'entity', 'name']);
-    const typeIdx = findIndex(['type', 'category']);
+    
+    // Extended fields
+    const payeeIdx = findIndex(['payee', 'merchant', 'entity', 'name'], profile?.payeeColumn);
+    const typeIdx = findIndex(['type'], profile?.typeColumn);
+    const catIdx = findIndex(['category'], profile?.categoryColumn);
+    const locIdx = findIndex(['location', 'city'], profile?.locationColumn);
+    const tagsIdx = findIndex(['tags', 'labels'], profile?.tagsColumn);
+    const notesIdx = findIndex(['notes', 'comment'], profile?.notesColumn);
 
     const hasHeader = profile?.hasHeader ?? (dateIdx !== -1 || amountIdx !== -1 || descIdx !== -1 || debitIdx !== -1);
     const startIndex = hasHeader ? 1 : 0;
@@ -199,8 +205,11 @@ export const parseTransactionsFromText = async (
             originalDescription: finalDesc,
             amount: Math.abs(amount),
             accountId,
-            category: 'Other',
+            category: catIdx !== -1 ? parts[catIdx] : 'Other',
             typeId: selectedTypeId,
+            location: locIdx !== -1 ? parts[locIdx] : undefined,
+            notes: notesIdx !== -1 ? parts[notesIdx] : undefined,
+            tagIds: tagsIdx !== -1 ? parts[tagsIdx]?.split(',').map(t => t.trim()) : undefined,
             metadata: {
                 raw_row: lines[i]
             }
