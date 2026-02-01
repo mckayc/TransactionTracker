@@ -308,7 +308,9 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                                                         <h5 className="text-[11px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
                                                             <WorkflowIcon className="w-4 h-4" /> Layout Consensus Matrix
                                                         </h5>
-                                                        <InfoIcon className="w-4 h-4 text-slate-500 cursor-help" title="Match your bank's columns to our transaction fields." />
+                                                        <span className="cursor-help" title="Match your bank's columns to our transaction fields.">
+                                                            <InfoIcon className="w-4 h-4 text-slate-500" />
+                                                        </span>
                                                     </div>
                                                     
                                                     <div className="space-y-3 bg-black/20 p-4 rounded-[2rem] border border-white/5 shadow-inner">
@@ -449,7 +451,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
 
                     {(type === 'counterparties' || type === 'categories' || type === 'accounts') && (
                         <div className="space-y-1">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Archival Context & Logic</label>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Archival Context & Logic</label>
                             <textarea value={notes} onChange={e => { setNotes(e.target.value); isDirtyRef.current = true; }} className="w-full p-6 border-2 border-slate-100 rounded-3xl font-medium min-h-[160px] shadow-inner focus:bg-white transition-all outline-none focus:border-indigo-500" placeholder="Record account details, vendor logic, or institutional memory..." />
                         </div>
                     )}
