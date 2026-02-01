@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, BalanceEffect, Location } from '../types';
+import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, BalanceEffect, Location, ReconciliationRule } from '../types';
 import { generateUUID } from '../utils';
-import { SaveIcon, CloseIcon } from './Icons';
+import { SaveIcon, CloseIcon, RobotIcon, SparklesIcon, CheckCircleIcon, WorkflowIcon, DatabaseIcon, TrashIcon } from './Icons';
 import SearchableSelect from './SearchableSelect';
+import { generateAccountRulesFromSample } from '../services/geminiService';
 
 export type EntityType = 'categories' | 'tags' | 'counterparties' | 'locations' | 'users' | 'transactionTypes' | 'accountTypes' | 'accounts';
 
@@ -21,11 +22,14 @@ interface EntityEditorProps {
     transactionTypes: TransactionType[];
     accountTypes: AccountType[];
     accounts: Account[];
+    // For account logic forge
+    onSaveRules?: (rules: ReconciliationRule[]) => void;
 }
 
 const EntityEditor: React.FC<EntityEditorProps> = ({ 
     type, initialId, onSave, onCancel,
-    categories, tags, counterparties, locations, users, transactionTypes, accountTypes, accounts 
+    categories, tags, counterparties, locations, users, transactionTypes, accountTypes, accounts,
+    onSaveRules
 }) => {
     const [name, setName] = useState('');
     const [parentId, setParentId] = useState('');
@@ -38,6 +42,12 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     const [balanceEffect, setBalanceEffect] = useState<BalanceEffect>('outgoing');
     const [identifier, setIdentifier] = useState('');
     const [accountTypeId, setAccountTypeId] = useState('');
+
+    // Account Logic Forge State
+    const [csvSample, setCsvSample] = useState('');
+    const [isForging, setIsForging] = useState(false);
+    const [forgeProgress, setForgeProgress] = useState('');
+    const [proposedRules, setProposedRules] = useState<ReconciliationRule[]>([]);
 
     useEffect(() => {
         let list: any[] = [];
@@ -75,6 +85,8 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             setBalanceEffect('outgoing');
             setColor(type === 'transactionTypes' ? 'text-rose-600' : 'bg-slate-50 text-slate-600');
         }
+        setProposedRules([]);
+        setCsvSample('');
     }, [type, initialId, categories, tags, counterparties, locations, users, transactionTypes, accountTypes, accounts]);
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -90,6 +102,30 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             case 'accounts': Object.assign(payload, { identifier, accountTypeId }); break;
         }
         onSave(type, payload);
+    };
+
+    const handleForgeLogic = async () => {
+        if (!csvSample.trim() || !initialId) return;
+        setIsForging(true);
+        try {
+            const account = accounts.find(a => a.id === initialId)!;
+            const rules = await generateAccountRulesFromSample(csvSample, account, categories, setForgeProgress);
+            setProposedRules(rules);
+        } catch (e: any) {
+            alert(e.message || "Forge failed.");
+        } finally {
+            setIsForging(false);
+            setForgeProgress('');
+        }
+    };
+
+    const handleCommitRules = () => {
+        if (onSaveRules && proposedRules.length > 0) {
+            onSaveRules(proposedRules);
+            setProposedRules([]);
+            setCsvSample('');
+            alert(`${proposedRules.length} account-specific rules added to system logic.`);
+        }
     };
 
     const parentOptions = useMemo(() => {
@@ -159,17 +195,90 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                     )}
 
                     {type === 'accounts' && (
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-1">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unique Identifier</label>
-                                <input type="text" value={identifier} onChange={e => setIdentifier(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold" placeholder="e.g. Last 4 digits" required />
+                        <div className="space-y-8 animate-fade-in">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unique Identifier</label>
+                                    <input type="text" value={identifier} onChange={e => setIdentifier(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold" placeholder="e.g. Last 4 digits" required />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Account Category</label>
+                                    <select value={accountTypeId} onChange={e => setAccountTypeId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold">
+                                        {accountTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                    </select>
+                                </div>
                             </div>
-                            <div className="space-y-1">
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Account Category</label>
-                                <select value={accountTypeId} onChange={e => setAccountTypeId(e.target.value)} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold">
-                                    {accountTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                </select>
-                            </div>
+
+                            {initialId && (
+                                <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white space-y-6 shadow-2xl relative overflow-hidden">
+                                    <div className="relative z-10 flex justify-between items-center">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400 border border-indigo-500/20">
+                                                <RobotIcon className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-lg font-black tracking-tight">Neural Template Forge</h4>
+                                                <p className="text-[10px] text-indigo-400 font-black uppercase tracking-widest">Teach AI your bank's fingerprint</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="relative z-10 space-y-4">
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Paste CSV Sample (Headers + 5 Rows)</label>
+                                            <textarea 
+                                                value={csvSample} 
+                                                onChange={e => setCsvSample(e.target.value)}
+                                                className="w-full h-32 bg-black/40 border-white/5 rounded-2xl p-4 font-mono text-[10px] text-indigo-100 placeholder:text-slate-700 resize-none focus:border-indigo-500 transition-all outline-none"
+                                                placeholder="Date, Description, Amount, Category..."
+                                            />
+                                        </div>
+                                        
+                                        <button 
+                                            type="button"
+                                            onClick={handleForgeLogic}
+                                            disabled={isForging || !csvSample.trim()}
+                                            className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-30"
+                                        >
+                                            {isForging ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-5 h-5" />}
+                                            {isForging ? forgeProgress : 'Analyze Signature & Generate Rules'}
+                                        </button>
+
+                                        {proposedRules.length > 0 && (
+                                            <div className="space-y-4 animate-slide-up pt-4">
+                                                <div className="flex justify-between items-center">
+                                                    <h5 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                                                        <CheckCircleIcon className="w-3 h-3" /> Proposed Logic ({proposedRules.length})
+                                                    </h5>
+                                                    <button type="button" onClick={() => setProposedRules([])} className="text-[9px] font-black text-slate-500 hover:text-white uppercase">Discard</button>
+                                                </div>
+                                                <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
+                                                    {proposedRules.map((r, i) => (
+                                                        <div key={i} className="p-3 bg-white/5 border border-white/5 rounded-xl flex justify-between items-center group">
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-xs font-bold text-slate-200 truncate">{r.name}</p>
+                                                                <p className="text-[9px] text-indigo-400 font-mono mt-0.5 truncate">{r.conditions.map(c => c.value).join(', ')}</p>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 uppercase">{r.suggestedCategoryName || 'Categorized'}</span>
+                                                                <button type="button" onClick={() => setProposedRules(proposedRules.filter((_, idx) => idx !== i))} className="p-1 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><TrashIcon className="w-3.5 h-3.5"/></button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                <button 
+                                                    type="button"
+                                                    onClick={handleCommitRules}
+                                                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2"
+                                                >
+                                                    <WorkflowIcon className="w-5 h-5" /> Commit to Rule Engine
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                    <SparklesIcon className="absolute -right-16 -top-16 w-64 h-64 opacity-[0.03] text-indigo-400" />
+                                </div>
+                            )}
                         </div>
                     )}
 

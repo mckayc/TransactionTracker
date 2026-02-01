@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, Location, Transaction } from '../types';
+import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, Location, Transaction, ReconciliationRule } from '../types';
 import { TagIcon, UsersIcon, UserGroupIcon, ChecklistIcon, ShieldCheckIcon, AddIcon, ChevronRightIcon, ChevronDownIcon, CloseIcon, BoxIcon, MapPinIcon, TrashIcon, CreditCardIcon, SearchCircleIcon, SparklesIcon } from '../components/Icons';
 import EntityEditor, { EntityType } from '../components/EntityEditor';
 
@@ -33,6 +33,8 @@ interface ManagementHubProps {
     onDeleteAccount: (id: string) => void;
     onSaveCategories: (cs: Category[]) => void;
     onSaveLocations: (ls: Location[]) => void;
+    // Added for logic forge
+    onSaveRules?: (rules: ReconciliationRule[]) => void;
 }
 
 const TreeNode: React.FC<{ 
@@ -287,6 +289,7 @@ const ManagementHub: React.FC<ManagementHubProps> = (props) => {
                             transactionTypes={props.transactionTypes}
                             accountTypes={props.accountTypes}
                             accounts={props.accounts}
+                            onSaveRules={props.onSaveRules}
                         />
                     ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-50/50">

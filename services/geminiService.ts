@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
-import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig, RuleForgePrompt } from '../types';
+import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig, RuleForgePrompt, Account } from '../types';
 // Added missing import for generateUUID
 import { generateUUID } from '../utils';
 
@@ -186,6 +186,92 @@ export const generateRulesFromData = async (
     } catch (e: any) {
         console.error("Gemini Rule Forge Error:", e);
         throw new Error(e.message || "Rule synthesis failed.");
+    }
+};
+
+/**
+ * Analyzes a CSV sample specifically for an Account to generate highly targeted rules.
+ */
+export const generateAccountRulesFromSample = async (
+    csvSample: string,
+    account: Account,
+    categories: Category[],
+    onProgress: (msg: string) => void
+): Promise<ReconciliationRule[]> => {
+    const key = getApiKey();
+    if (!key) throw new Error("Missing API Key.");
+    const ai = new GoogleGenAI({ apiKey: key });
+
+    onProgress("Deconstructing bank CSV signature...");
+
+    const schema = {
+        type: Type.OBJECT,
+        properties: {
+            rules: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        name: { type: Type.STRING },
+                        conditions: {
+                            type: Type.ARRAY,
+                            items: {
+                                type: Type.OBJECT,
+                                properties: {
+                                    field: { type: Type.STRING, enum: ["description", "amount", "accountId", "metadata"] },
+                                    operator: { type: Type.STRING, enum: ["contains", "equals", "starts_with", "ends_with"] },
+                                    value: { type: Type.STRING }
+                                },
+                                required: ["field", "operator", "value"]
+                            }
+                        },
+                        suggestedCategoryName: { type: Type.STRING },
+                        suggestedCounterpartyName: { type: Type.STRING },
+                        setDescription: { type: Type.STRING },
+                        skipImport: { type: Type.BOOLEAN }
+                    },
+                    required: ["name", "conditions"]
+                }
+            }
+        },
+        required: ["rules"]
+    };
+
+    const systemInstruction = `You are a Senior Data Engineer specializing in Financial Ingestion.
+    TASK: Analyze the provided CSV SAMPLE for account "${account.name}".
+    
+    1. Identify recurring merchants and patterns.
+    2. Generate Reconciliation Rules to automatically categorize these transactions.
+    3. EVERY RULE must have a condition checking accountId equals "${account.id}".
+    4. Propose 'setDescription' values to clean up messy bank strings (e.g. "POS DEBIT STARBUCKS #123" -> "Starbucks").
+    5. Suggest categories from common sense if they aren't in the provided list: [${categories.map(c => c.name).join(', ')}].`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
+            contents: `CSV SAMPLE:\n${csvSample}`,
+            config: {
+                systemInstruction,
+                responseMimeType: "application/json",
+                responseSchema: schema,
+                thinkingConfig: { thinkingBudget: 4000 }
+            }
+        });
+
+        const result = JSON.parse(response.text || '{"rules": []}');
+        return (result.rules || []).map((r: any) => ({
+            ...r,
+            id: generateUUID(),
+            isAiDraft: true,
+            ruleCategoryId: 'rcat_manual',
+            conditions: [
+                ...r.conditions.map((c: any) => ({ ...c, id: generateUUID(), type: 'basic', nextLogic: 'AND' })),
+                { id: generateUUID(), type: 'basic', field: 'accountId', operator: 'equals', value: account.id, nextLogic: 'AND' }
+            ]
+        }));
+    } catch (e: any) {
+        console.error("Account Forge Error:", e);
+        throw new Error(e.message || "Logic synthesis failed.");
     }
 };
 
