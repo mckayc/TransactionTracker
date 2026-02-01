@@ -51,7 +51,7 @@ app.get('/env.js', (req, res) => {
 });
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DOCUMENTS_DIR, { recursive: true });
+if (!fs.existsSync(DOCUMENTS_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 let db;
 
@@ -71,7 +71,7 @@ const createTables = () => {
         CREATE TABLE IF NOT EXISTS app_storage (key TEXT PRIMARY KEY, value TEXT);
         CREATE TABLE IF NOT EXISTS files_meta (id TEXT PRIMARY KEY, original_name TEXT, disk_filename TEXT, mime_type TEXT, size INTEGER, created_at TEXT, parent_id TEXT);
         CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT);
-        CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT);
+        CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY, name TEXT, identifier TEXT, account_type_id TEXT, parsing_profile TEXT);
         CREATE TABLE IF NOT EXISTS account_types (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER);
         CREATE TABLE IF NOT EXISTS transaction_types (id TEXT PRIMARY KEY, name TEXT, balance_effect TEXT, color TEXT);
         CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, is_default INTEGER DEFAULT 0);
@@ -120,8 +120,12 @@ const runMigrations = () => {
 
     db.transaction(() => {
         if (!tableExists('counterparties')) db.exec("CREATE TABLE counterparties (id TEXT PRIMARY KEY, name TEXT, parent_id TEXT, notes TEXT, user_id TEXT)");
+        
         const fileCols = getColumns('files_meta');
         if (!fileCols.some(c => c.name === 'parent_id')) db.exec("ALTER TABLE files_meta ADD COLUMN parent_id TEXT");
+
+        const accCols = getColumns('accounts');
+        if (!accCols.some(c => c.name === 'parsing_profile')) db.exec("ALTER TABLE accounts ADD COLUMN parsing_profile TEXT");
     })();
 };
 
@@ -424,7 +428,10 @@ app.get('/api/data', async (req, res) => {
     data.reconciliationRules = db.prepare("SELECT logic_json FROM reconciliation_rules").all().map(r => JSON.parse(r.logic_json));
     data.categories = db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all();
     data.ruleCategories = db.prepare("SELECT id, name, is_default AS isDefault FROM rule_categories").all().map(r => ({...r, isDefault: !!r.isDefault}));
-    data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId FROM accounts").all();
+    data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId, parsing_profile AS parsingProfile FROM accounts").all().map(a => ({
+        ...a,
+        parsingProfile: a.parsingProfile ? JSON.parse(a.parsingProfile) : undefined
+    }));
     data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all().map(a => ({...a, isDefault: !!a.isDefault}));
     data.users = db.prepare("SELECT id, name, is_default AS isDefault FROM users").all().map(u => ({...u, isDefault: !!u.isDefault}));
     data.counterparties = db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM counterparties").all();
@@ -453,8 +460,8 @@ app.post('/api/data/:key', (req, res) => {
         db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.parentId || null)))(value);
     } else if (key === 'accounts') {
         db.prepare('DELETE FROM accounts').run();
-        const insert = db.prepare('INSERT INTO accounts (id, name, identifier, account_type_id) VALUES (?, ?, ?, ?)');
-        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.identifier, i.accountTypeId)))(value);
+        const insert = db.prepare('INSERT INTO accounts (id, name, identifier, account_type_id, parsing_profile) VALUES (?, ?, ?, ?, ?)');
+        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.identifier, i.accountTypeId, i.parsingProfile ? JSON.stringify(i.parsingProfile) : null)))(value);
     } else if (key === 'users') {
         db.prepare('DELETE FROM users').run();
         const insert = db.prepare('INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)');

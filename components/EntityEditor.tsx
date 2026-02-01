@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, BalanceEffect, Location, ReconciliationRule, ParsingProfile } from '../types';
 import { generateUUID } from '../utils';
-import { SaveIcon, CloseIcon, RobotIcon, SparklesIcon, CheckCircleIcon, WorkflowIcon, DatabaseIcon, TrashIcon, TableIcon, ShieldCheckIcon, EditIcon } from './Icons';
+import { SaveIcon, CloseIcon, RobotIcon, SparklesIcon, CheckCircleIcon, WorkflowIcon, DatabaseIcon, TrashIcon, TableIcon, ShieldCheckIcon, EditIcon, ArrowRightIcon } from './Icons';
 import SearchableSelect from './SearchableSelect';
 import { generateAccountRulesFromSample } from '../services/geminiService';
 
@@ -133,16 +133,18 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     };
 
     const handleCommitRules = () => {
-        if (proposedRules.length > 0 && onSaveRules) {
-            onSaveRules(proposedRules);
-        }
         if (proposedProfile) {
             setParsingProfile(proposedProfile);
         }
+        if (proposedRules.length > 0 && onSaveRules) {
+            onSaveRules(proposedRules);
+        }
+        
+        // Clear workspace after committing to local state
         setProposedRules([]);
         setProposedProfile(null);
         setCsvSample('');
-        alert("Account layout map and merchant rules committed to registry.");
+        alert("Account layout map and merchant rules committed to staging. CLICK 'SAVE BLUEPRINT' AT TOP TO PERMANENTLY STORE IN DATABASE.");
     };
 
     const parentOptions = useMemo(() => {
@@ -151,10 +153,65 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
         return [];
     }, [type, categories, counterparties, initialId]);
 
-    const firstSampleLine = useMemo(() => {
-        if (!csvSample) return [];
-        return csvSample.split('\n')[0].split(',').map(s => s.trim());
+    const sampleDataRow = useMemo(() => {
+        if (!csvSample) return null;
+        const lines = csvSample.split('\n').filter(l => l.trim());
+        if (lines.length < 2) return null;
+        const delimiter = lines[0].includes('\t') ? '\t' : ',';
+        const headers = lines[0].split(delimiter).map(h => h.trim());
+        const row = lines[1].split(delimiter).map(v => v.trim());
+        return { headers, row };
     }, [csvSample]);
+
+    const getSampleValue = (headerName: string | number) => {
+        if (!sampleDataRow) return '---';
+        const idx = typeof headerName === 'number' 
+            ? headerName 
+            : sampleDataRow.headers.findIndex(h => h.toLowerCase() === String(headerName).toLowerCase());
+        return sampleDataRow.row[idx] || '---';
+    };
+
+    const handleProfileFieldChange = (field: keyof ParsingProfile, value: any) => {
+        if (proposedProfile) {
+            setProposedProfile({ ...proposedProfile, [field]: value });
+        } else if (parsingProfile) {
+            setParsingProfile({ ...parsingProfile, [field]: value });
+        }
+    };
+
+    const renderMapperRow = (label: string, field: keyof ParsingProfile, icon: React.ReactNode) => {
+        const currentProfile = proposedProfile || parsingProfile;
+        if (!currentProfile) return null;
+        
+        return (
+            <div className="flex items-center gap-4 p-4 bg-black/30 border border-white/5 rounded-2xl group hover:border-indigo-500/50 transition-all">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-400">
+                    {icon}
+                </div>
+                <div className="flex-1">
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</p>
+                    <div className="flex items-center gap-4 mt-1">
+                        <div className="flex-1">
+                            <select 
+                                value={String(currentProfile[field] || '')} 
+                                onChange={e => handleProfileFieldChange(field, e.target.value)}
+                                className="w-full bg-transparent border-none p-0 text-sm font-bold text-white focus:ring-0 cursor-pointer"
+                            >
+                                <option value="" className="bg-slate-900">-- Select Header --</option>
+                                {sampleDataRow?.headers.map((h, i) => (
+                                    <option key={i} value={h} className="bg-slate-900">{h}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="flex items-center gap-2 px-3 py-1 bg-white/5 rounded-lg border border-white/5">
+                            <span className="text-[8px] font-black text-slate-500 uppercase tracking-tighter">Sample:</span>
+                            <span className="text-[10px] font-mono text-indigo-300 truncate max-w-[100px]">{getSampleValue(currentProfile[field] as string)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     return (
         <form onSubmit={handleSubmit} className="flex flex-col h-full relative">
@@ -191,127 +248,158 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
 
                             {initialId && (
                                 <div className="space-y-8">
-                                    {/* EXISTING PROFILE DISPLAY */}
-                                    {parsingProfile && (
-                                        <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100 space-y-4">
-                                            <div className="flex justify-between items-center">
-                                                <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2"><TableIcon className="w-4 h-4" /> Layout Fingerprint Mapped</h4>
-                                                <button type="button" onClick={() => setParsingProfile(undefined)} className="text-[10px] font-black text-indigo-400 hover:text-indigo-600">Clear Map</button>
-                                            </div>
-                                            <div className="grid grid-cols-3 gap-3">
-                                                <div className="bg-white p-2.5 rounded-xl border border-indigo-100"><p className="text-[8px] font-black text-slate-400 uppercase">Date</p><p className="text-xs font-bold text-slate-800">{parsingProfile.dateColumn}</p></div>
-                                                <div className="bg-white p-2.5 rounded-xl border border-indigo-100"><p className="text-[8px] font-black text-slate-400 uppercase">Description</p><p className="text-xs font-bold text-slate-800">{parsingProfile.descriptionColumn}</p></div>
-                                                <div className="bg-white p-2.5 rounded-xl border border-indigo-100"><p className="text-[8px] font-black text-slate-400 uppercase">Amount</p><p className="text-xs font-bold text-slate-800">{parsingProfile.amountColumn}</p></div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* NEURAL FORGE */}
-                                    <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white space-y-6 shadow-2xl relative overflow-hidden">
+                                    {/* NEURAL FORGE WORKSPACE */}
+                                    <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white space-y-8 shadow-2xl relative overflow-hidden">
                                         <div className="relative z-10 flex justify-between items-center">
                                             <div className="flex items-center gap-3">
-                                                <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400 border border-indigo-500/20"><RobotIcon className="w-6 h-6" /></div>
+                                                <div className="p-3 bg-indigo-500/20 rounded-2xl text-indigo-400 border border-indigo-500/20 shadow-lg"><RobotIcon className="w-6 h-6" /></div>
                                                 <div>
-                                                    <h4 className="text-lg font-black tracking-tight">Neural Template Forge</h4>
-                                                    <p className="text-[10px] text-indigo-400 font-black uppercase tracking-widest">Identify bank layout & auto-categorize</p>
+                                                    <h4 className="text-xl font-black tracking-tight">Neural Template Forge</h4>
+                                                    <p className="text-[10px] text-indigo-400 font-black uppercase tracking-widest mt-0.5">Automated Signature Identification</p>
                                                 </div>
                                             </div>
+                                            {(proposedRules.length > 0 || proposedProfile) && (
+                                                <button type="button" onClick={() => { setProposedRules([]); setProposedProfile(null); }} className="p-2 bg-white/10 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-full transition-all">
+                                                    <TrashIcon className="w-5 h-5" />
+                                                </button>
+                                            )}
                                         </div>
 
-                                        <div className="relative z-10 space-y-4">
-                                            <div className="space-y-2">
-                                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Paste CSV Sample (Headers + 5 Rows)</label>
-                                                <textarea 
-                                                    value={csvSample} 
-                                                    onChange={e => setCsvSample(e.target.value)}
-                                                    className="w-full h-32 bg-black/40 border-white/5 rounded-2xl p-4 font-mono text-[10px] text-indigo-100 placeholder:text-slate-700 resize-none outline-none focus:border-indigo-500 transition-all"
-                                                    placeholder="Date, Description, Amount..."
-                                                />
+                                        {!proposedProfile && !proposedRules.length && (
+                                            <div className="relative z-10 space-y-4 animate-fade-in">
+                                                <div className="space-y-2">
+                                                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Paste Raw CSV (Headers + First 5 Data Rows)</label>
+                                                    <textarea 
+                                                        value={csvSample} 
+                                                        onChange={e => setCsvSample(e.target.value)}
+                                                        className="w-full h-40 bg-black/40 border border-white/5 rounded-[1.5rem] p-5 font-mono text-[11px] text-indigo-100 placeholder:text-slate-700 resize-none outline-none focus:border-indigo-500 transition-all shadow-inner"
+                                                        placeholder="Date, Transaction Description, Amount, Category..."
+                                                    />
+                                                </div>
+                                                
+                                                <button 
+                                                    type="button"
+                                                    onClick={handleForgeLogic}
+                                                    disabled={isForging || !csvSample.trim()}
+                                                    className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 disabled:opacity-30 active:scale-95 group"
+                                                >
+                                                    {isForging ? <div className="w-5 h-5 border-4 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-5 h-5 group-hover:scale-125 transition-transform" />}
+                                                    {isForging ? forgeProgress : 'Analyze Logic & Forge Blueprint'}
+                                                </button>
                                             </div>
-                                            
-                                            <button 
-                                                type="button"
-                                                onClick={handleForgeLogic}
-                                                disabled={isForging || !csvSample.trim()}
-                                                className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-30"
-                                            >
-                                                {isForging ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-5 h-5" />}
-                                                {isForging ? forgeProgress : 'Analyze Layout & Generate Logic'}
-                                            </button>
+                                        )}
 
-                                            {(proposedRules.length > 0 || proposedProfile) && (
-                                                <div className="space-y-6 animate-slide-up pt-4">
-                                                    {proposedProfile && (
-                                                        <div className="space-y-3 bg-white/5 p-4 rounded-2xl border border-white/10">
-                                                            <h5 className="text-[9px] font-black text-indigo-400 uppercase tracking-widest ml-1">Proposed Layout Map</h5>
-                                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                                                {['dateColumn', 'descriptionColumn', 'amountColumn', 'delimiter'].map(field => (
-                                                                    <div key={field} className="bg-black/30 p-2 rounded-lg border border-white/5">
-                                                                        <p className="text-[7px] text-slate-500 uppercase font-black">{field.replace('Column','')}</p>
-                                                                        <input 
-                                                                            type="text" 
-                                                                            value={(proposedProfile as any)[field]} 
-                                                                            onChange={e => setProposedProfile({...proposedProfile, [field]: e.target.value})}
-                                                                            className="w-full bg-transparent border-none p-0 text-[11px] font-bold text-white focus:ring-0"
-                                                                        />
-                                                                    </div>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    <div className="space-y-3">
-                                                        <div className="flex justify-between items-center px-1">
-                                                            <h5 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2"><CheckCircleIcon className="w-3 h-3" /> Proposed Merchant Rules ({proposedRules.length})</h5>
-                                                            <button type="button" onClick={() => { setProposedRules([]); setProposedProfile(null); }} className="text-[9px] font-black text-slate-500 hover:text-white uppercase">Discard</button>
-                                                        </div>
-                                                        <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-2">
-                                                            {proposedRules.map((r, i) => (
-                                                                <div key={i} className="p-3 bg-white/5 border border-white/5 rounded-xl flex justify-between items-center group">
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <p className="text-xs font-bold text-slate-200 truncate">{r.name}</p>
-                                                                        <p className="text-[9px] text-indigo-400 font-mono mt-0.5 truncate">{r.conditions[0].value}</p>
-                                                                    </div>
-                                                                    <button type="button" onClick={() => setProposedRules(proposedRules.filter((_, idx) => idx !== i))} className="p-1 text-slate-600 hover:text-red-400 opacity-0 group-hover:opacity-100"><TrashIcon className="w-3.5 h-3.5"/></button>
-                                                                </div>
-                                                            ))}
-                                                        </div>
+                                        {(proposedRules.length > 0 || proposedProfile) && (
+                                            <div className="relative z-10 space-y-10 animate-slide-up">
+                                                {/* STEP 1: HEADER MAPPING */}
+                                                <div className="space-y-4">
+                                                    <h5 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2 ml-1">
+                                                        <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[9px]">1</div>
+                                                        Layout Consensus
+                                                    </h5>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                        {renderMapperRow('Transaction Date', 'dateColumn', <TableIcon className="w-4 h-4"/>)}
+                                                        {renderMapperRow('Description String', 'descriptionColumn', <EditIcon className="w-4 h-4"/>)}
+                                                        {renderMapperRow('Currency Value', 'amountColumn', <TableIcon className="w-4 h-4"/>)}
+                                                        {renderMapperRow('Batch Delimiter', 'delimiter', <TableIcon className="w-4 h-4"/>)}
                                                     </div>
+                                                </div>
 
-                                                    <button onClick={handleCommitRules} className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2"><WorkflowIcon className="w-5 h-5" /> Commit to Rule Engine</button>
+                                                {/* STEP 2: MERCHANT RULES */}
+                                                <div className="space-y-4">
+                                                    <div className="flex justify-between items-center px-1">
+                                                        <h5 className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                                                            <div className="w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[9px]">2</div>
+                                                            Synthesized Merchant Rules ({proposedRules.length})
+                                                        </h5>
+                                                    </div>
+                                                    <div className="space-y-2 max-h-52 overflow-y-auto custom-scrollbar pr-2 bg-black/20 p-4 rounded-[1.5rem] border border-white/5">
+                                                        {proposedRules.map((r, i) => (
+                                                            <div key={i} className="p-3 bg-white/5 border border-white/5 rounded-xl flex justify-between items-center group/rule transition-colors hover:bg-white/10">
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-xs font-bold text-slate-200 truncate">{r.name}</p>
+                                                                    <p className="text-[9px] text-indigo-400 font-mono mt-0.5 truncate">{r.conditions[0].value}</p>
+                                                                </div>
+                                                                <button type="button" onClick={() => setProposedRules(proposedRules.filter((_, idx) => idx !== i))} className="p-2 text-slate-600 hover:text-red-400 opacity-0 group-hover/rule:opacity-100 transition-opacity"><TrashIcon className="w-4 h-4"/></button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <button 
+                                                    onClick={handleCommitRules} 
+                                                    className="w-full py-5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-[1.5rem] shadow-xl transition-all flex items-center justify-center gap-3 active:scale-95 group"
+                                                >
+                                                    <WorkflowIcon className="w-6 h-6 group-hover:scale-110 transition-transform" /> 
+                                                    Commit Synthesis to System
+                                                </button>
+                                            </div>
+                                        )}
+                                        <SparklesIcon className="absolute -right-16 -top-16 w-64 h-64 opacity-[0.03] text-indigo-400 pointer-events-none" />
+                                    </div>
+
+                                    {/* PERSISTENT REGISTRY SECTION */}
+                                    <div className="space-y-6 pt-4 border-t border-slate-200">
+                                        <div className="flex items-center justify-between px-1">
+                                            <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                                                <ShieldCheckIcon className="w-5 h-5 text-indigo-600" /> 
+                                                Active Registry Persistence
+                                            </h4>
+                                        </div>
+
+                                        {parsingProfile ? (
+                                            <div className="bg-indigo-50/50 p-6 rounded-3xl border-2 border-indigo-100 space-y-6 shadow-sm animate-fade-in">
+                                                <div className="flex justify-between items-center">
+                                                    <h4 className="text-[10px] font-black text-indigo-700 uppercase tracking-widest flex items-center gap-2"><TableIcon className="w-4 h-4" /> Layout Fingerprint</h4>
+                                                    <button type="button" onClick={() => setParsingProfile(undefined)} className="px-3 py-1 bg-white text-[9px] font-black text-indigo-400 hover:text-red-500 rounded-lg border border-indigo-100 transition-colors uppercase">Clear Map</button>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                                    {[
+                                                        { label: 'Date', val: parsingProfile.dateColumn },
+                                                        { label: 'Description', val: parsingProfile.descriptionColumn },
+                                                        { label: 'Amount', val: parsingProfile.amountColumn }
+                                                    ].map(f => (
+                                                        <div key={f.label} className="bg-white p-3 rounded-2xl border border-indigo-100 shadow-sm">
+                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">{f.label}</p>
+                                                            <p className="text-xs font-black text-slate-800 truncate">{f.val}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ) : !proposedProfile && (
+                                            <div className="p-10 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
+                                                <TableIcon className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                                                <p className="text-sm text-slate-400 font-medium max-w-xs mx-auto">No layout map active. Use the Neural Forge above to teach the system your bank's structure.</p>
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between px-1">
+                                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ShieldCheckIcon className="w-4 h-4" /> Linked Logic Manifest</h4>
+                                                <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">{accountRules.length} Rules</span>
+                                            </div>
+                                            {accountRules.length === 0 ? (
+                                                <div className="p-6 text-center bg-white rounded-2xl border border-slate-100 italic"><p className="text-xs text-slate-300">No account-specific rules registered.</p></div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    {accountRules.map(r => (
+                                                        <div key={r.id} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between group hover:border-indigo-300 transition-all">
+                                                            <div className="min-w-0">
+                                                                <p className="text-xs font-bold text-slate-700 truncate">{r.name}</p>
+                                                                <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5">{r.suggestedCategoryName || 'General'}</p>
+                                                            </div>
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={() => onDeleteRule?.(r.id)} 
+                                                                className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                                                            >
+                                                                <TrashIcon className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             )}
                                         </div>
-                                        <SparklesIcon className="absolute -right-16 -top-16 w-64 h-64 opacity-[0.03] text-indigo-400" />
-                                    </div>
-
-                                    {/* RULES LISTING */}
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between px-1">
-                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ShieldCheckIcon className="w-4 h-4 text-indigo-600" /> Active Account Logic</h4>
-                                            <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{accountRules.length}</span>
-                                        </div>
-                                        {accountRules.length === 0 ? (
-                                            <div className="p-8 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200"><p className="text-xs text-slate-400 italic">No account-specific rules configured.</p></div>
-                                        ) : (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                {accountRules.map(r => (
-                                                    <div key={r.id} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between group hover:border-indigo-300 transition-all">
-                                                        <div className="min-w-0">
-                                                            <p className="text-xs font-bold text-slate-700 truncate">{r.name}</p>
-                                                            <p className="text-[9px] text-slate-400 font-medium uppercase mt-0.5">{r.suggestedCategoryName || 'General'}</p>
-                                                        </div>
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={() => onDeleteRule?.(r.id)} 
-                                                            className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-                                                        >
-                                                            <TrashIcon className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
                                     </div>
                                 </div>
                             )}
