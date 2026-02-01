@@ -105,10 +105,27 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
   const categoryMap = useMemo(() => new Map(categories.map(c => [c.id, c.name])), [categories]);
   const accountMap = useMemo(() => new Map(accounts.map(a => [a.id, a.name])), [accounts]);
 
+  const days = useMemo(() => {
+      const d = new Date(currentDate);
+      if (viewMode === 'month') {
+          d.setDate(1); const startDay = d.getDay(); const calendarDays: Date[] = [];
+          const prevMonth = new Date(d); prevMonth.setDate(prevMonth.getDate() - startDay);
+          for (let i = 0; i < 42; i++) { calendarDays.push(new Date(prevMonth)); prevMonth.setDate(prevMonth.getDate() + 1); }
+          return calendarDays;
+      } else if (viewMode === 'week') {
+          const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay());
+          const weekDays: Date[] = [];
+          for (let i = 0; i < 7; i++) { weekDays.push(new Date(weekStart)); weekStart.setDate(weekStart.getDate() + 1); }
+          return weekDays;
+      }
+      return [new Date(currentDate)];
+  }, [currentDate, viewMode]);
+
   const { itemsByDay, monthlySummary } = useMemo(() => {
     const map = new Map<string, { transactions: Transaction[], events: ScheduledEvent[], tasks: TaskItem[], income: number, expenses: number, investments: number, donations: number }>();
     let mIncome = 0, mExpenses = 0, mInvestments = 0, mDonations = 0;
     const currentMonth = currentDate.getMonth(), currentYear = currentDate.getFullYear();
+    
     transactions.forEach(tx => {
         if (tx.userId && !selectedUserIds.has(tx.userId)) return;
         if (!map.has(tx.date)) map.set(tx.date, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0 });
@@ -128,25 +145,58 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
              else if (type?.balanceEffect === 'outgoing') mExpenses += tx.amount;
         }
     });
-    tasks.forEach(task => { if (task.dueDate) { if (!map.has(task.dueDate)) map.set(task.dueDate, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0 }); map.get(task.dueDate)!.tasks.push(task); } });
-    return { itemsByDay: map, monthlySummary: { income: mIncome, expenses: mExpenses, investments: mInvestments, donations: mDonations } };
-  }, [transactions, tasks, currentDate, selectedUserIds, transactionTypeMap]);
 
-  const days = useMemo(() => {
-      const d = new Date(currentDate);
-      if (viewMode === 'month') {
-          d.setDate(1); const startDay = d.getDay(); const calendarDays: Date[] = [];
-          const prevMonth = new Date(d); prevMonth.setDate(prevMonth.getDate() - startDay);
-          for (let i = 0; i < 42; i++) { calendarDays.push(new Date(prevMonth)); prevMonth.setDate(prevMonth.getDate() + 1); }
-          return calendarDays;
-      } else if (viewMode === 'week') {
-          const weekStart = new Date(d); weekStart.setDate(d.getDate() - d.getDay());
-          const weekDays: Date[] = [];
-          for (let i = 0; i < 7; i++) { weekDays.push(new Date(weekStart)); weekStart.setDate(weekStart.getDate() + 1); }
-          return weekDays;
-      }
-      return [new Date(currentDate)];
-  }, [currentDate, viewMode]);
+    // Projection Logic for Recurring Tasks
+    tasks.forEach(task => {
+        if (!task.dueDate) return;
+        
+        const taskStart = parseISOLocal(task.dueDate);
+        const taskStartYear = taskStart.getFullYear();
+        const taskStartMonth = taskStart.getMonth();
+        const taskStartDay = taskStart.getDate();
+
+        // 1. Direct Due Date (Always show the primary instance)
+        const dKey = task.dueDate;
+        if (!map.has(dKey)) map.set(dKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0 });
+        const dayEntry = map.get(dKey)!;
+        if (!dayEntry.tasks.find(t => t.id === task.id)) dayEntry.tasks.push(task);
+
+        // 2. Project Recurring Instances into the visible "days" array
+        if (task.recurrence) {
+            const { frequency } = task.recurrence;
+            
+            days.forEach(date => {
+                const dateKey = formatDate(date);
+                if (dateKey === dKey) return; // Already added
+                if (date < taskStart) return; // Don't project before start
+                if (task.recurrence?.endDate && date > parseISOLocal(task.recurrence.endDate)) return; // Don't project after end
+
+                let matches = false;
+                if (frequency === 'daily') {
+                    matches = true;
+                } else if (frequency === 'weekly') {
+                    const daysToMatch = task.recurrence?.byWeekDays || [taskStart.getDay()];
+                    matches = daysToMatch.includes(date.getDay());
+                } else if (frequency === 'monthly') {
+                    // Match the day of the month
+                    // Note: Handle months with fewer days (e.g. if task is 31st, show on 30th/28th for shorter months?)
+                    // For now, standard day match is safer.
+                    matches = date.getDate() === taskStartDay;
+                } else if (frequency === 'yearly') {
+                    matches = date.getDate() === taskStartDay && date.getMonth() === taskStartMonth;
+                }
+
+                if (matches) {
+                    if (!map.has(dateKey)) map.set(dateKey, { transactions: [], events: [], tasks: [], income: 0, expenses: 0, investments: 0, donations: 0 });
+                    const projEntry = map.get(dateKey)!;
+                    if (!projEntry.tasks.find(t => t.id === task.id)) projEntry.tasks.push(task);
+                }
+            });
+        }
+    });
+
+    return { itemsByDay: map, monthlySummary: { income: mIncome, expenses: mExpenses, investments: mInvestments, donations: mDonations } };
+  }, [transactions, tasks, currentDate, selectedUserIds, transactionTypeMap, days]);
 
   const navigate = (direction: 'prev' | 'next') => {
       setCurrentDate(prev => {
@@ -211,7 +261,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
           </div>
 
           <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0 overflow-hidden">
-              <div className={`bg-white rounded-[2rem] shadow-md border border-slate-200 flex flex-col min-h-0 overflow-hidden transition-all duration-500 ${selectedDate ? 'lg:w-[65%]' : 'w-full'}`}>
+              <div className={`bg-white rounded-[2.5rem] shadow-md border border-slate-200 flex flex-col min-h-0 overflow-hidden transition-all duration-500 ${selectedDate ? 'lg:w-[65%]' : 'w-full'}`}>
                   <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 bg-slate-50/50">
                       <div className="flex items-center gap-2">
                           <button onClick={() => { const now = new Date(); setCurrentDate(now); setSelectedDate(now); }} className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs font-black uppercase hover:bg-slate-100 shadow-sm transition-all active:scale-95">Today</button>

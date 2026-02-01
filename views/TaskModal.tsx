@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import type { TaskItem, SubTask, RecurrenceRule, TaskPriority } from '../types';
-// Added missing icons to imports
-import { CloseIcon, ChecklistIcon, CalendarIcon, RepeatIcon, DeleteIcon, AddIcon, LinkIcon, EditIcon, CheckBadgeIcon, CheckCircleIcon, TrashIcon, SparklesIcon, PlayIcon, ListIcon, InfoIcon, SaveIcon } from '../components/Icons';
+import { CloseIcon, ChecklistIcon, CalendarIcon, RepeatIcon, DeleteIcon, AddIcon, LinkIcon, EditIcon, CheckBadgeIcon, CheckCircleIcon, TrashIcon, SparklesIcon, PlayIcon, ListIcon, InfoIcon, SaveIcon, NotesIcon } from '../components/Icons';
 import { formatDate, getTodayDate } from '../dateUtils';
 import { generateUUID } from '../utils';
 
@@ -18,8 +17,8 @@ const LinkRenderer: React.FC<{ text: string, url?: string, linkText?: string }> 
     if (url) {
         return (
             <div className="flex flex-col">
-                <span>{text}</span>
-                <a href={url} target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline flex items-center gap-1 text-xs mt-0.5">
+                {text && <span>{text}</span>}
+                <a href={url} target="_blank" rel="noopener noreferrer" className="text-indigo-500 hover:underline flex items-center gap-1 text-xs mt-0.5 font-bold">
                     <LinkIcon className="w-3 h-3" />
                     {linkText || url}
                 </a>
@@ -62,7 +61,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
     const [newSubtaskText, setNewSubtaskText] = useState('');
     const [newSubtaskLink, setNewSubtaskLink] = useState('');
     const [newSubtaskLinkText, setNewSubtaskLinkText] = useState('');
-    const [showLinkInput, setShowLinkInput] = useState(false);
+    const [newSubtaskNotes, setNewSubtaskNotes] = useState('');
+    const [showSubtaskAdvanced, setShowSubtaskAdvanced] = useState(false);
 
     const dueDateRef = useRef<HTMLInputElement>(null);
     const endDateRef = useRef<HTMLInputElement>(null);
@@ -110,10 +110,11 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                 setIsCompleted(false);
                 setActiveTab('details');
             }
-            setShowLinkInput(false);
+            setShowSubtaskAdvanced(false);
             setNewSubtaskLink('');
             setNewSubtaskLinkText('');
             setNewSubtaskText('');
+            setNewSubtaskNotes('');
             setEditingSubtaskId(null);
             setEditSubtaskData(null);
         }
@@ -140,7 +141,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                 text: newSubtaskText.trim(),
                 isCompleted: false,
                 linkUrl: newSubtaskLink.trim() || undefined,
-                linkText: newSubtaskLinkText.trim() || undefined
+                linkText: newSubtaskLinkText.trim() || undefined,
+                notes: newSubtaskNotes.trim() || undefined
             });
         }
 
@@ -168,7 +170,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                 text: newSubtaskText.trim(), 
                 isCompleted: false,
                 linkUrl: newSubtaskLink.trim() || undefined,
-                linkText: newSubtaskLinkText.trim() || undefined
+                linkText: newSubtaskLinkText.trim() || undefined,
+                notes: newSubtaskNotes.trim() || undefined
             };
             
             const updatedSubtasks = [...subtasks, newSub];
@@ -176,7 +179,8 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
             setNewSubtaskText('');
             setNewSubtaskLink('');
             setNewSubtaskLinkText('');
-            setShowLinkInput(false);
+            setNewSubtaskNotes('');
+            setShowSubtaskAdvanced(false);
 
             if (mode === 'view') {
                 const newTask: TaskItem = {
@@ -456,7 +460,12 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                             <div key={st.id} className="p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 group transition-all hover:border-indigo-200">
                                                 {editingSubtaskId === st.id && editSubtaskData ? (
                                                     <div className="space-y-4">
-                                                        <input type="text" value={editSubtaskData.text} onChange={(e) => setEditSubtaskData({...editSubtaskData, text: e.target.value})} className="w-full p-3 border-none bg-white rounded-xl shadow-inner text-sm font-bold" autoFocus />
+                                                        <input type="text" value={editSubtaskData.text} onChange={(e) => setEditSubtaskData({...editSubtaskData, text: e.target.value})} className="w-full p-3 border-none bg-white rounded-xl shadow-inner text-sm font-bold" placeholder="Task description..." autoFocus />
+                                                        <div className="grid grid-cols-2 gap-3">
+                                                            <input type="text" value={editSubtaskData.linkUrl || ''} onChange={(e) => setEditSubtaskData({...editSubtaskData, linkUrl: e.target.value})} className="w-full p-2 border-2 border-slate-100 bg-white rounded-xl text-[10px] font-bold" placeholder="Resource URL (https://...)" />
+                                                            <input type="text" value={editSubtaskData.linkText || ''} onChange={(e) => setEditSubtaskData({...editSubtaskData, linkText: e.target.value})} className="w-full p-2 border-2 border-slate-100 bg-white rounded-xl text-[10px] font-bold" placeholder="Link Label" />
+                                                        </div>
+                                                        <textarea value={editSubtaskData.notes || ''} onChange={(e) => setEditSubtaskData({...editSubtaskData, notes: e.target.value})} className="w-full p-2 border-2 border-slate-100 bg-white rounded-xl text-[10px] font-medium min-h-[60px]" placeholder="Specific procedure notes..." />
                                                         <div className="flex gap-2 justify-end">
                                                             <button type="button" onClick={cancelEditingSubtask} className="px-5 py-2 bg-white text-slate-500 rounded-lg text-[10px] font-black uppercase border border-slate-200">Discard</button>
                                                             <button type="button" onClick={saveEditingSubtask} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase shadow-lg shadow-indigo-100">Commit</button>
@@ -466,7 +475,10 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex-1 min-w-0" onClick={() => startEditingSubtask(st)}>
                                                             <span className="text-sm font-bold text-slate-700 block truncate cursor-pointer hover:text-indigo-600 transition-colors">{st.text}</span>
-                                                            {st.linkUrl && <span className="text-[10px] text-indigo-400 font-bold flex items-center gap-1 mt-1"><LinkIcon className="w-3 h-3"/> {st.linkText || 'Linked Resource'}</span>}
+                                                            <div className="flex items-center gap-3 mt-1">
+                                                                {st.linkUrl && <span className="text-[10px] text-indigo-400 font-bold flex items-center gap-1"><LinkIcon className="w-3 h-3"/> {st.linkText || 'Linked'}</span>}
+                                                                {st.notes && <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1"><NotesIcon className="w-3 h-3"/> Procedure defined</span>}
+                                                            </div>
                                                         </div>
                                                         <button type="button" onClick={() => removeSubtask(st.id)} className="p-2 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><TrashIcon className="w-5 h-5"/></button>
                                                     </div>
@@ -476,12 +488,31 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                     </div>
 
                                     <div className="p-8 bg-indigo-50/30 rounded-[2.5rem] border-2 border-dashed border-indigo-100 space-y-6">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest ml-1">New Operation Token</label>
-                                            <div className="flex gap-3">
-                                                <input type="text" value={newSubtaskText} onChange={e => setNewSubtaskText(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addSubtask())} className="flex-1 p-4 border-none bg-white rounded-2xl shadow-sm font-bold text-sm focus:ring-2 focus:ring-indigo-500" placeholder="Identity of checkpoint..." />
-                                                <button type="button" onClick={addSubtask} className="p-4 bg-indigo-600 text-white rounded-2xl shadow-xl hover:bg-indigo-700 transition-all active:scale-95"><AddIcon className="w-6 h-6" /></button>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between items-center px-1">
+                                                <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">New Operation Token</label>
+                                                <button type="button" onClick={() => setShowSubtaskAdvanced(!showSubtaskAdvanced)} className="text-[9px] font-black text-indigo-600 uppercase hover:underline">
+                                                    {showSubtaskAdvanced ? 'Basic Input' : 'Add with details'}
+                                                </button>
                                             </div>
+                                            
+                                            <div className="flex gap-3">
+                                                <input type="text" value={newSubtaskText} onChange={e => setNewSubtaskText(e.target.value)} onKeyDown={e => e.key === 'Enter' && !showSubtaskAdvanced && (e.preventDefault(), addSubtask())} className="flex-1 p-4 border-none bg-white rounded-2xl shadow-sm font-bold text-sm focus:ring-2 focus:ring-indigo-500" placeholder="Identity of checkpoint..." />
+                                                {!showSubtaskAdvanced && (
+                                                    <button type="button" onClick={addSubtask} className="p-4 bg-indigo-600 text-white rounded-2xl shadow-xl hover:bg-indigo-700 transition-all active:scale-95"><AddIcon className="w-6 h-6" /></button>
+                                                )}
+                                            </div>
+
+                                            {showSubtaskAdvanced && (
+                                                <div className="space-y-3 animate-fade-in">
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <input type="text" value={newSubtaskLink} onChange={e => setNewSubtaskLink(e.target.value)} className="w-full p-3 bg-white border-none rounded-2xl shadow-sm text-[10px] font-bold" placeholder="Reference URL (https://...)" />
+                                                        <input type="text" value={newSubtaskLinkText} onChange={e => setNewSubtaskLinkText(e.target.value)} className="w-full p-3 bg-white border-none rounded-2xl shadow-sm text-[10px] font-bold" placeholder="Display Label" />
+                                                    </div>
+                                                    <textarea value={newSubtaskNotes} onChange={e => setNewSubtaskNotes(e.target.value)} className="w-full p-4 bg-white border-none rounded-2xl shadow-sm text-xs font-medium min-h-[80px]" placeholder="Extended notes or instructions..." />
+                                                    <button type="button" onClick={addSubtask} className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all text-xs uppercase tracking-widest">Register Checkpoint</button>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
