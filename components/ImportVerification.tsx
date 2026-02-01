@@ -97,14 +97,13 @@ const RawDataDrawer: React.FC<{ tx: VerifiableTransaction | null; onClose: () =>
                             </div>
                         </div>
                     </div>
-                    {Object.entries(metadata).length > 0 ? (
-                        Object.entries(metadata).map(([k, v]) => (
-                            <div key={k} className="bg-white/5 border border-white/5 rounded-xl p-4">
-                                <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 tracking-wider">{k}</p>
-                                <p className="text-sm text-slate-100 font-medium break-words leading-relaxed">{String(v) || <em className="text-slate-700 italic">empty</em>}</p>
-                            </div>
-                        ))
-                    ) : (
+                    {Object.entries(metadata).map(([k, v]) => (
+                        <div key={k} className="bg-white/5 border border-white/5 rounded-xl p-4">
+                            <p className="text-[10px] font-black text-indigo-400 uppercase mb-1 tracking-wider">{k}</p>
+                            <p className="text-sm text-slate-100 font-medium break-words leading-relaxed">{String(v) || <em className="text-slate-700 italic">empty</em>}</p>
+                        </div>
+                    ))}
+                    {Object.entries(metadata).length === 0 && (
                         <div className="py-20 text-center">
                             <InfoIcon className="w-12 h-12 text-slate-700 mx-auto mb-4" />
                             <p className="text-slate-500 font-bold">No additional metadata found for this record.</p>
@@ -429,7 +428,15 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     accounts={accounts} transactionTypes={transactionTypes} categories={categories} tags={tags} counterparties={counterparties} locations={locations} users={users} transaction={ruleTransactionContext}
                     ruleCategories={ruleCategories} onSaveRuleCategory={onSaveRuleCategory}
                     onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveTag={onSaveTag} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onAddTransactionType={onAddTransactionType}
-                    onSaveAndRun={(r) => { onSaveRule(r); const updated = applyRulesToTransactions(transactions, [rules.filter(Boolean), r].flat(), accounts); setTransactions(updated as VerifiableTransaction[]); setIsRuleModalOpen(false); setToastMessage(`Logic updated and re-applied.`); }}
+                    onSaveAndRun={(r) => { 
+                        onSaveRule(r); 
+                        // When re-applying, we need to ensure the updated rule replaces its old version if present.
+                        const nextRules = [...rules.filter(rule => rule.id !== r.id), r];
+                        const updated = applyRulesToTransactions(transactions, nextRules, accounts); 
+                        setTransactions(updated as VerifiableTransaction[]); 
+                        setIsRuleModalOpen(false); 
+                        setToastMessage(`Logic updated and re-applied.`); 
+                    }}
                     existingRules={rules}
                 />
             )}

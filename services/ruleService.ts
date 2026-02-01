@@ -13,21 +13,21 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
     if (!tx || !condition || !condition.field) return true;
 
     // Helper to evaluate a single token against the tx field
-    const checkValue = (actualValue: string, expectedValue: string): boolean => {
-        const normActual = normalizeText(actualValue);
-        const normExpected = normalizeText(expectedValue);
+    const checkValue = (actualValue: any, expectedValue: any): boolean => {
+        const strActual = normalizeText(String(actualValue ?? ''));
+        const strExpected = normalizeText(String(expectedValue ?? ''));
         
-        if (!normExpected) return false;
+        if (!strExpected && condition.operator !== 'exists') return false;
 
         switch (condition.operator) {
-            case 'contains': return normActual.includes(normExpected);
-            case 'does_not_contain': return !normActual.includes(normExpected);
-            case 'equals': return normActual === normExpected;
-            case 'starts_with': return normActual.startsWith(normExpected);
-            case 'ends_with': return normActual.endsWith(normExpected);
+            case 'contains': return strActual.includes(strExpected);
+            case 'does_not_contain': return !strActual.includes(strExpected);
+            case 'equals': return strActual === strExpected;
+            case 'starts_with': return strActual.startsWith(strExpected);
+            case 'ends_with': return strActual.endsWith(strExpected);
             case 'regex_match': 
                 try {
-                    return new RegExp(expectedValue.trim(), 'i').test(actualValue);
+                    return new RegExp(strExpected.trim(), 'i').test(String(actualValue));
                 } catch (e) {
                     return false;
                 }
@@ -36,42 +36,47 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
     };
 
     if (condition.field === 'description') {
-        const txValue = (tx.originalDescription || tx.description || '');
+        // Match against both cleaned and original description for maximum resilience
+        const original = tx.originalDescription || '';
+        const cleaned = tx.description || '';
         const condValue = String(condition.value || '');
         
         // Handle inline OR logic: split by ||
         const tokens = condValue.split(/\s*\|\|\s*/).filter(Boolean);
-        if (tokens.length <= 1) return checkValue(txValue, condValue);
+        if (tokens.length <= 1) return checkValue(original, condValue) || checkValue(cleaned, condValue);
         
-        // Logical NOT check: Must not contain ANY of the tokens (Logical AND NOT)
         if (condition.operator === 'does_not_contain') {
-            return tokens.every(token => checkValue(txValue, token));
+            return tokens.every(token => !normalizeText(original).includes(normalizeText(token)) && !normalizeText(cleaned).includes(normalizeText(token)));
         }
-        // Logical OR: match any token in the group
-        return tokens.some(token => checkValue(txValue, token));
+        return tokens.some(token => checkValue(original, token) || checkValue(cleaned, token));
 
     } else if (condition.field === 'metadata') {
-        const key = condition.metadataKey || '';
-        const metadataValue = tx.metadata?.[key];
+        const searchKey = normalizeText(condition.metadataKey || '');
+        const metadata = tx.metadata || {};
+        
+        // Robust case-insensitive key lookup
+        const actualKey = Object.keys(metadata).find(k => normalizeText(k) === searchKey);
+        const metadataValue = actualKey ? metadata[actualKey] : undefined;
         
         if (condition.operator === 'exists') {
             return metadataValue !== undefined && metadataValue !== null && String(metadataValue).trim() !== '';
         }
 
-        const txValue = String(metadataValue || '');
+        const txValue = String(metadataValue ?? '');
         const condValue = String(condition.value || '');
         const tokens = condValue.split(/\s*\|\|\s*/).filter(Boolean);
         
         if (tokens.length <= 1) return checkValue(txValue, condValue);
         if (condition.operator === 'does_not_contain') {
-            return tokens.every(token => checkValue(txValue, token));
+            return tokens.every(token => !normalizeText(txValue).includes(normalizeText(token)));
         }
         return tokens.some(token => checkValue(txValue, token));
 
     } else if (condition.field === 'amount') {
-        const actualAmount = tx.amount || 0;
-        const condValue = Number(condition.value);
+        const actualAmount = Math.abs(tx.amount || 0);
+        const condValue = Math.abs(Number(condition.value));
         if (isNaN(condValue)) return false;
+        
         switch (condition.operator) {
             case 'equals': return Math.abs(actualAmount - condValue) < 0.01;
             case 'greater_than': return actualAmount > condValue;
@@ -81,55 +86,49 @@ const evaluateCondition = (tx: RawTransaction | Transaction, condition: RuleCond
     } else if (condition.field === 'accountId') {
         const txAccountId = tx.accountId || '';
         if (condition.operator === 'equals') {
-            return txAccountId === String(condition.value);
+            return normalizeText(txAccountId) === normalizeText(String(condition.value));
         } else {
             const account = (accounts || []).find(a => a && a.id === txAccountId);
             const accountName = account?.name || '';
-            const condValue = String(condition.value || '');
-            return checkValue(accountName, condValue);
+            return checkValue(accountName, condition.value);
         }
     } else if (condition.field === 'counterpartyId') {
         const txValue = tx.counterpartyId || '';
         const condValue = String(condition.value || '');
-        if (condition.operator === 'equals') return txValue === condValue;
+        if (condition.operator === 'equals') return normalizeText(txValue) === normalizeText(condValue);
         return false;
     } else if (condition.field === 'locationId') {
         const txValue = tx.locationId || '';
         const condValue = String(condition.value || '');
-        if (condition.operator === 'equals') return txValue === condValue;
+        if (condition.operator === 'equals') return normalizeText(txValue) === normalizeText(condValue);
         return false;
     }
     return false;
 };
 
 const matchesRule = (tx: RawTransaction | Transaction, rule: ReconciliationRule, accounts: Account[]): boolean => {
-    if (!rule || !rule.id) return false;
+    if (!rule || !rule.id || !rule.conditions || rule.conditions.length === 0) return false;
     
-    if (rule.conditions && rule.conditions.length > 0) {
-        const validConditions = rule.conditions.filter(c => c && 'field' in c) as RuleCondition[];
-        
-        if (validConditions.length === 0) return true;
+    const validConditions = rule.conditions.filter(c => c && c.field) as RuleCondition[];
+    if (validConditions.length === 0) return false;
 
-        let result = evaluateCondition(tx, validConditions[0], accounts);
+    // Sequential evaluation of conditions with their respective nextLogic
+    let result = evaluateCondition(tx, validConditions[0], accounts);
 
-        for (let i = 0; i < validConditions.length - 1; i++) {
-            const currentCond = validConditions[i];
-            const nextCond = validConditions[i + 1];
-            if (!nextCond) continue;
+    for (let i = 0; i < validConditions.length - 1; i++) {
+        const currentCond = validConditions[i];
+        const nextCond = validConditions[i + 1];
+        const logic = currentCond.nextLogic || 'AND';
+        const nextResult = evaluateCondition(tx, nextCond, accounts);
 
-            const logic = currentCond.nextLogic || 'AND';
-            const nextResult = evaluateCondition(tx, nextCond, accounts);
-
-            if (logic === 'AND') {
-                result = result && nextResult;
-            } else {
-                result = result || nextResult;
-            }
+        if (logic === 'AND') {
+            result = result && nextResult;
+        } else {
+            result = result || nextResult;
         }
-        
-        return result;
     }
-    return true;
+    
+    return result;
 };
 
 export const applyRulesToTransactions = (
@@ -137,13 +136,14 @@ export const applyRulesToTransactions = (
   rules: ReconciliationRule[],
   accounts: Account[] = []
 ): (RawTransaction & { categoryId?: string; isIgnored?: boolean })[] => {
-  const safeRules = (rules || []).filter(r => r && r.id);
+  const safeRules = (rules || []).filter(r => r && r.id && r.conditions && r.conditions.length > 0);
   if (safeRules.length === 0) {
     return rawTransactions;
   }
 
   return rawTransactions.filter(Boolean).map(tx => {
-    let modifiedTx: RawTransaction & { categoryId?: string; isIgnored?: boolean; appliedRuleId?: string; appliedRuleIds?: string[] } = { ...tx };
+    // Preserve all properties including staging tempId and metadata
+    let modifiedTx: any = { ...tx };
     const matchedRuleIds: string[] = [];
     
     if (!modifiedTx.originalDescription) {
@@ -154,29 +154,17 @@ export const applyRulesToTransactions = (
       if (matchesRule(modifiedTx, rule, accounts)) {
         matchedRuleIds.push(rule.id);
         
-        if (rule.skipImport) {
-            modifiedTx.isIgnored = true;
-        }
-        if (rule.setCategoryId) {
-          modifiedTx.categoryId = rule.setCategoryId;
-        }
-        // Support both new 'setCounterpartyId' and legacy 'setPayeeId'
+        if (rule.skipImport) modifiedTx.isIgnored = true;
+        if (rule.setCategoryId) modifiedTx.categoryId = rule.setCategoryId;
+        
         const targetCounterpartyId = rule.setCounterpartyId || rule.setPayeeId;
-        if (targetCounterpartyId) {
-          modifiedTx.counterpartyId = targetCounterpartyId;
-        }
-        if (rule.setLocationId) {
-          modifiedTx.locationId = rule.setLocationId;
-        }
-        if (rule.setUserId) {
-          modifiedTx.userId = rule.setUserId;
-        }
-        if (rule.setTransactionTypeId) {
-          modifiedTx.typeId = rule.setTransactionTypeId;
-        }
-        if (rule.setDescription) {
-          modifiedTx.description = rule.setDescription;
-        }
+        if (targetCounterpartyId) modifiedTx.counterpartyId = targetCounterpartyId;
+        
+        if (rule.setLocationId) modifiedTx.locationId = rule.setLocationId;
+        if (rule.setUserId) modifiedTx.userId = rule.setUserId;
+        if (rule.setTransactionTypeId) modifiedTx.typeId = rule.setTransactionTypeId;
+        if (rule.setDescription) modifiedTx.description = rule.setDescription;
+        
         if (rule.assignTagIds && rule.assignTagIds.length > 0) {
             const currentTags = new Set(modifiedTx.tagIds || []);
             rule.assignTagIds.forEach(id => { if(id) currentTags.add(id); });
@@ -200,7 +188,7 @@ export const findMatchingTransactions = (
   accounts: Account[] = []
 ): { original: Transaction; updated: Transaction }[] => {
   const matchedPairs: { original: Transaction; updated: Transaction }[] = [];
-  if (!rule || !rule.id) return [];
+  if (!rule || !rule.id || !rule.conditions) return [];
 
   (transactions || []).filter(Boolean).forEach(tx => {
     if (matchesRule(tx, rule, accounts)) {
