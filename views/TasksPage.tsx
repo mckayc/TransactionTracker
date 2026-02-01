@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Template, Task, ScheduledEvent, TaskItem, TaskPriority, Category } from '../types';
-// Added CheckBadgeIcon to imports
 import { AddIcon, DeleteIcon, EditIcon, CheckCircleIcon, CalendarIcon, RepeatIcon, ChecklistIcon, BoxIcon, SearchCircleIcon, TagIcon, ChevronRightIcon, ChevronDownIcon, TrashIcon, CloseIcon, PlayIcon, InfoIcon, ShieldCheckIcon, ListIcon, CheckBadgeIcon } from '../components/Icons';
 import TaskModal from './TaskModal';
 import { formatDate } from '../dateUtils';
@@ -44,13 +43,13 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
     const activeTask = useMemo(() => tasks.find(t => t.id === selectedTaskId), [tasks, selectedTaskId]);
 
     return (
-        <div className="h-full flex flex-col gap-6">
+        <div className="h-full flex flex-col gap-6 relative">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 tracking-tight">Operations Center</h1>
                     <p className="text-sm text-slate-500 font-medium uppercase tracking-widest mt-1 opacity-70">Definition & Metadata Registry</p>
                 </div>
-                <button onClick={() => { setIsCreating(true); }} className="px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95">
+                <button onClick={() => { setSelectedTaskId(null); setIsCreating(true); }} className="px-6 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all flex items-center gap-2 active:scale-95">
                     <AddIcon className="w-5 h-5" /> New Task Definition
                 </button>
             </div>
@@ -122,19 +121,9 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
                     </div>
                 </div>
 
-                {/* COLUMN 3: EDITOR */}
-                <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 relative">
-                    {isCreating ? (
-                         <div className="h-full bg-white relative overflow-hidden animate-fade-in">
-                            <TaskModal 
-                                isOpen={isCreating} 
-                                onClose={() => setIsCreating(false)} 
-                                onSave={(t) => { onSaveTask(t); setIsCreating(false); setSelectedTaskId(t.id); }} 
-                                task={activeTask || null} 
-                                initialMode="edit"
-                            />
-                         </div>
-                    ) : selectedTaskId && activeTask ? (
+                {/* COLUMN 3: VIEWER */}
+                <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-col min-h-0 relative overflow-hidden">
+                    {selectedTaskId && activeTask ? (
                         <div className="flex flex-col h-full animate-fade-in bg-white">
                             <div className="p-6 border-b bg-slate-50 flex justify-between items-center z-10">
                                 <div className="flex items-center gap-4">
@@ -214,6 +203,15 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
                     )}
                 </div>
             </div>
+
+            {/* Global Modal Instance for UI isolation */}
+            <TaskModal 
+                isOpen={isCreating} 
+                onClose={() => setIsCreating(false)} 
+                onSave={(t) => { onSaveTask(t); setIsCreating(false); setSelectedTaskId(t.id); }} 
+                task={activeTask || null} 
+                initialMode="edit"
+            />
         </div>
     );
 };
