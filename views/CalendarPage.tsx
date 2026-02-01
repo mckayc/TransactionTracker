@@ -290,7 +290,7 @@ const CalendarPage: React.FC<CalendarPageProps> = ({ transactions, templates, sc
 
           <ScheduleEventModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onSave={onAddEvent} templates={templates} initialDate={selectedDate || currentDate} />
           <TransactionModal isOpen={isModalOpen} transaction={editingTransaction} onClose={() => { setIsModalOpen(false); setEditingTransaction(null); }} onSave={(formData) => { if (editingTransaction) onUpdateTransaction({ ...formData, id: editingTransaction.id }); else onAddTransaction({ ...formData, id: crypto.randomUUID() } as Transaction); setIsModalOpen(false); }} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} />
-          <TaskModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} onSave={(t) => { if(onSaveTask) onSaveTask(t); setIsTaskModalOpen(false); }} task={editingTask} initialMode="edit" />
+          <TaskModal isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} onSave={(t) => { if(onSaveTask) onSaveTask(t); setIsTaskModalOpen(false); }} task={editingTask} initialMode="view" />
           <MetricBreakdownModal isOpen={!!breakdownMetric} onClose={() => setBreakdownMetric(null)} title={breakdownMetric || ''} transactions={breakdownTransactions} counterparties={counterparties} total={breakdownMetric === 'incoming' ? activeSummary.income : activeSummary.expenses} colorClass={breakdownMetric === 'incoming' ? 'text-emerald-600' : 'text-rose-600'} />
       </div>
   );
