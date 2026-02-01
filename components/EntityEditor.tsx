@@ -104,6 +104,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         const id = initialId || generateUUID();
+        // Crucial: Use current parsingProfile from state, which might have been updated by handleCommitRules
         const payload: any = { id, name: name.trim() };
         switch (type) {
             case 'categories': Object.assign(payload, { parentId: parentId || undefined }); break;
@@ -133,18 +134,20 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     };
 
     const handleCommitRules = () => {
+        // Sync the proposed profile to the active account profile state
         if (proposedProfile) {
             setParsingProfile(proposedProfile);
         }
+        // Save the rules to the registry immediately
         if (proposedRules.length > 0 && onSaveRules) {
             onSaveRules(proposedRules);
         }
         
-        // Clear workspace after committing to local state
+        // Reset workspace but KEEP parsingProfile in the parent component's state
         setProposedRules([]);
         setProposedProfile(null);
         setCsvSample('');
-        alert("Account layout map and merchant rules committed to staging. CLICK 'SAVE BLUEPRINT' AT TOP TO PERMANENTLY STORE IN DATABASE.");
+        alert("Account layout map and merchant rules committed to logic workspace. CLICK 'SAVE BLUEPRINT' AT TOP TO PERMANENTLY STORE IN DATABASE.");
     };
 
     const parentOptions = useMemo(() => {
@@ -176,6 +179,15 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             setProposedProfile({ ...proposedProfile, [field]: value });
         } else if (parsingProfile) {
             setParsingProfile({ ...parsingProfile, [field]: value });
+        } else {
+            // Create a fresh profile if manually editing without forge
+            setParsingProfile({ 
+                dateColumn: field === 'dateColumn' ? value : '', 
+                descriptionColumn: field === 'descriptionColumn' ? value : '', 
+                amountColumn: field === 'amountColumn' ? value : '', 
+                delimiter: field === 'delimiter' ? value : ',',
+                hasHeader: true 
+            } as ParsingProfile);
         }
     };
 
@@ -219,9 +231,11 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                 <div className="flex items-center gap-2">
                     <button type="button" onClick={onCancel} className="px-4 py-2 text-xs font-black uppercase text-slate-500 hover:bg-slate-100 rounded-xl transition-all">Discard</button>
                 </div>
-                <button type="submit" className="px-8 py-2 bg-indigo-600 text-white text-xs font-black uppercase rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 active:scale-95 transition-all flex items-center gap-2">
-                    <SaveIcon className="w-4 h-4" /> Save blueprint
-                </button>
+                <div className="flex items-center gap-3">
+                    <button type="submit" className="px-8 py-2 bg-indigo-600 text-white text-xs font-black uppercase rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 active:scale-95 transition-all flex items-center gap-2">
+                        <SaveIcon className="w-4 h-4" /> Save blueprint
+                    </button>
+                </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar bg-slate-50/10">

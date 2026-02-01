@@ -461,7 +461,12 @@ app.post('/api/data/:key', (req, res) => {
     } else if (key === 'accounts') {
         db.prepare('DELETE FROM accounts').run();
         const insert = db.prepare('INSERT INTO accounts (id, name, identifier, account_type_id, parsing_profile) VALUES (?, ?, ?, ?, ?)');
-        db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.identifier, i.accountTypeId, i.parsingProfile ? JSON.stringify(i.parsingProfile) : null)))(value);
+        db.transaction((items) => items.forEach(i => {
+            // Robust check for camelCase vs snake_case during save
+            const accTypeId = i.accountTypeId || i.account_type_id;
+            const profile = i.parsingProfile || i.parsing_profile;
+            insert.run(i.id, i.name, i.identifier, accTypeId, profile ? JSON.stringify(profile) : null);
+        }))(value);
     } else if (key === 'users') {
         db.prepare('DELETE FROM users').run();
         const insert = db.prepare('INSERT INTO users (id, name, is_default) VALUES (?, ?, ?)');
