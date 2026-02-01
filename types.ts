@@ -249,14 +249,13 @@ export interface DashboardWidget {
     config?: {
         title?: string;
         goalId?: string;
-        // Fix: Use 'day' instead of 'group' to match implementation
         period?: 'day' | 'week' | 'month' | 'quarter' | 'year' | 'custom';
         limit?: number;
         reportId?: string;
         vizType?: 'pie' | 'bar' | 'cards';
         pieStyle?: 'standard' | 'magnified' | 'labeled' | 'callout';
         lookback?: number;
-        displayDataType?: 'category' | 'counterparty' | 'account' | 'type';
+        displayDataType?: 'category' | 'counterparty' | 'account' | 'type' | 'tag';
         excludeKeywords?: string;
         showIncome?: boolean;
         showExpenses?: boolean;

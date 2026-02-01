@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Category, Counterparty, DashboardWidget, Account, TransactionType, User } from '../../types';
-import { ChevronRightIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TrendingUpIcon, TableIcon, CloseIcon, ChevronLeftIcon } from '../Icons';
+import type { Transaction, Category, Counterparty, DashboardWidget, Account, TransactionType, User, Tag } from '../../types';
+import { ChevronRightIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TrendingUpIcon, CloseIcon } from '../Icons';
 import { parseISOLocal } from '../../dateUtils';
 import TransactionTable from '../TransactionTable';
 
@@ -12,6 +12,7 @@ interface Props {
     accounts: Account[];
     transactionTypes: TransactionType[];
     users: User[];
+    tags: Tag[];
     onUpdateConfig: (newConfig: DashboardWidget['config']) => void;
 }
 
@@ -30,7 +31,6 @@ interface BreakdownNode {
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 
-// Fix: DynamicArcChart now correctly returns a ReactNode instead of void and handles truncated logic
 const DynamicArcChart: React.FC<{ 
     data: { label: string; value: number; color: string; transactions: Transaction[] }[]; 
     total: number;
@@ -69,7 +69,6 @@ const DynamicArcChart: React.FC<{
         const ix1 = center + innerRadius * Math.cos(rad(startAngle));
         const iy1 = center + innerRadius * Math.sin(rad(startAngle));
         const ix2 = center + innerRadius * Math.cos(rad(endAngle));
-        // Fix: Completing truncated property assignment and resolving "end" vs "endAngle"
         const iy2 = center + innerRadius * Math.sin(rad(endAngle));
 
         const largeArc = angle > 180 ? 1 : 0;
@@ -108,12 +107,21 @@ const DynamicArcChart: React.FC<{
     );
 };
 
-// Fix: Exporting CashFlowWidget to resolve missing export error in Dashboard view
-export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categories, counterparties, accounts, transactionTypes, users, onUpdateConfig }) => {
+export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categories, counterparties, accounts, transactionTypes, users, tags, onUpdateConfig }) => {
     const [inspectingNode, setInspectingNode] = useState<BreakdownNode | null>(null);
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-    const { period = 'month', lookback = 0, displayDataType = 'type', excludeUnknown = true, excludeKeywords = '', showIncome = true, showExpenses = true, hiddenDataIds = [] } = widget.config || {};
+    const { 
+        period = 'month', 
+        lookback = 0, 
+        displayDataType = 'type', 
+        excludeUnknown = true, 
+        excludeKeywords = '', 
+        showIncome = true, 
+        showExpenses = true, 
+        hiddenDataIds = [] 
+    } = widget.config || {};
+    
     const hiddenSet = new Set(hiddenDataIds);
 
     const activeRange = useMemo(() => {
@@ -167,7 +175,6 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             return true;
         });
 
-        const roots: BreakdownNode[] = [];
         const nodeMap = new Map<string, BreakdownNode>();
 
         const getNode = (id: string, label: string, pId?: string): BreakdownNode => {
@@ -178,40 +185,53 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         };
 
         filtered.forEach(tx => {
-            let id = '', label = '', pId: string | undefined = undefined;
-
-            if (displayDataType === 'category') {
-                id = tx.categoryId;
-                const cat = categories.find(c => c.id === id);
-                label = cat?.name || 'Unallocated';
-                pId = cat?.parentId;
-            } else if (displayDataType === 'counterparty') {
-                id = tx.counterpartyId || `desc_${tx.description}`;
-                const cp = counterparties.find(c => c.id === tx.counterpartyId);
-                label = cp?.name || tx.description || 'Unknown Entity';
-                pId = cp?.parentId;
-            } else if (displayDataType === 'account') {
-                id = tx.accountId;
-                label = accounts.find(a => a.id === id)?.name || 'Unknown Account';
+            if (displayDataType === 'tag') {
+                const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
+                txTags.forEach(tagId => {
+                    const tagObj = tags.find(t => t.id === tagId);
+                    const label = tagObj?.name || (tagId === 'no-tag' ? 'No Label' : 'Unknown Label');
+                    const node = getNode(tagId, label);
+                    node.directValue += tx.amount;
+                    node.transactions.push(tx);
+                });
             } else {
-                id = tx.typeId;
-                label = typeRegistry.get(id)?.name || 'Other';
+                let id = '', label = '', pId: string | undefined = undefined;
+
+                if (displayDataType === 'category') {
+                    id = tx.categoryId;
+                    const cat = categories.find(c => c.id === id);
+                    label = cat?.name || 'Unallocated';
+                    pId = cat?.parentId;
+                } else if (displayDataType === 'counterparty') {
+                    id = tx.counterpartyId || `desc_${tx.description}`;
+                    const cp = counterparties.find(c => c.id === tx.counterpartyId);
+                    label = cp?.name || tx.description || 'Unknown Entity';
+                    pId = cp?.parentId;
+                } else if (displayDataType === 'account') {
+                    id = tx.accountId;
+                    label = accounts.find(a => a.id === id)?.name || 'Unknown Account';
+                } else {
+                    id = tx.typeId;
+                    label = typeRegistry.get(id)?.name || 'Other';
+                }
+
+                if (excludeUnknown && (label === 'Unallocated' || label === 'Unknown Entity' || label === 'No Label' || tx.categoryId === 'cat_other')) return;
+
+                const node = getNode(id, label, pId);
+                node.directValue += tx.amount;
+                node.transactions.push(tx);
             }
-
-            if (excludeUnknown && (label === 'Unallocated' || label === 'Unknown Entity' || tx.categoryId === 'cat_other')) return;
-
-            const node = getNode(id, label, pId);
-            node.directValue += tx.amount;
-            node.transactions.push(tx);
         });
 
-        // Build hierarchy
-        nodeMap.forEach(node => {
-            if (node.parentId && nodeMap.has(node.parentId)) {
-                const parent = nodeMap.get(node.parentId)!;
-                if (!parent.children.find(c => c.id === node.id)) parent.children.push(node);
-            }
-        });
+        // Build hierarchy for categories/counterparties
+        if (displayDataType === 'category' || displayDataType === 'counterparty') {
+            nodeMap.forEach(node => {
+                if (node.parentId && nodeMap.has(node.parentId)) {
+                    const parent = nodeMap.get(node.parentId)!;
+                    if (!parent.children.find(c => c.id === node.id)) parent.children.push(node);
+                }
+            });
+        }
 
         const finalRoots = Array.from(nodeMap.values()).filter(n => !n.parentId || !nodeMap.has(n.parentId));
         
@@ -219,7 +239,11 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             let sum = n.directValue;
             n.children.forEach(c => {
                 sum += aggregate(c);
-                n.transactions = [...n.transactions, ...c.transactions];
+                // Unique set of transactions to avoid duplicates in drilldown
+                const seen = new Set(n.transactions.map(t => t.id));
+                c.transactions.forEach(t => {
+                    if (!seen.has(t.id)) n.transactions.push(t);
+                });
             });
             n.value = sum;
             return sum;
@@ -230,8 +254,8 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         finalRoots.forEach((r, i) => {
             r.color = COLORS[i % COLORS.length];
             const shade = (node: BreakdownNode, base: string) => {
-                node.children.forEach((c, idx) => {
-                    c.color = base; // Simplification for dashboard
+                node.children.forEach((c) => {
+                    c.color = base; 
                     shade(c, base);
                 });
             };
@@ -239,7 +263,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         });
 
         return finalRoots;
-    }, [transactions, activeRange, displayDataType, showIncome, showExpenses, excludeKeywords, excludeUnknown, categories, counterparties, accounts, transactionTypes]);
+    }, [transactions, activeRange, displayDataType, showIncome, showExpenses, excludeKeywords, excludeUnknown, categories, counterparties, accounts, transactionTypes, tags]);
 
     const totalValue = useMemo(() => chartData.filter(r => !hiddenSet.has(r.id)).reduce((s, r) => s + r.value, 0), [chartData, hiddenSet]);
 
@@ -310,6 +334,9 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                 <div className="space-y-1">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Breakdown</p>
                     {chartData.map(r => renderNode(r))}
+                    {chartData.length === 0 && (
+                        <p className="text-xs text-slate-300 italic text-center py-4">No data matches these criteria.</p>
+                    )}
                 </div>
             </div>
 

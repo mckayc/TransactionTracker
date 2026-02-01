@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import type { Transaction, DashboardWidget, Category, Counterparty, Account, TransactionType } from '../../types';
+import type { Transaction, DashboardWidget, Category, Counterparty, Account, TransactionType, Tag } from '../../types';
 import { parseISOLocal } from '../../dateUtils';
 import { ArrowUpIcon, ArrowDownIcon, ExclamationTriangleIcon, RepeatIcon } from '../Icons';
 
@@ -11,11 +11,12 @@ interface Props {
     counterparties: Counterparty[];
     accounts: Account[];
     transactionTypes: TransactionType[];
+    tags: Tag[];
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
-export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transactions, categories, counterparties, accounts, transactionTypes }) => {
+export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transactions, categories, counterparties, accounts, transactionTypes, tags }) => {
     const config = widget.config;
     const baseId = config?.comparisonBaseId;
     const targetId = config?.comparisonTargetId;
@@ -72,12 +73,13 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
             if (displayDataType === 'category') label = categories.find(c => c.id === tx.categoryId)?.name || '';
             else if (displayDataType === 'counterparty') label = counterparties.find(cp => cp.id === tx.counterpartyId)?.name || '';
             else if (displayDataType === 'account') label = accounts.find(a => a.id === tx.accountId)?.name || '';
+            else if (displayDataType === 'tag') label = tags.find(t => tx.tagIds?.includes(t.id))?.name || '';
             else label = txType?.name || '';
             
             label = label || tx.description || 'Other';
 
             if (keywords.length > 0 && keywords.some(kw => `${tx.description} ${tx.originalDescription || ''} ${label}`.toLowerCase().includes(kw))) return false;
-            if (excludeUnknown && (label === 'Unallocated' || label === 'Unknown Entity' || tx.categoryId === 'cat_other')) return false;
+            if (excludeUnknown && (label === 'Unallocated' || label === 'Unknown Entity' || label === '' || tx.categoryId === 'cat_other')) return false;
             return true;
         });
     };
@@ -91,26 +93,26 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
         const aggregate = (txs: Transaction[]) => {
             const map = new Map<string, { label: string, total: number }>();
             txs.forEach(tx => {
-                let key = '', label = '';
-                if (dimension === 'category') { 
-                    key = tx.categoryId; 
-                    label = categories.find(c => c.id === key)?.name || 'Other'; 
-                }
-                else if (dimension === 'counterparty') { 
-                    key = tx.counterpartyId || `desc_${tx.description}`; 
-                    label = counterparties.find(cp => cp.id === tx.counterpartyId)?.name || tx.description || 'Other'; 
-                }
-                else if (dimension === 'account') { 
-                    key = tx.accountId; 
-                    label = accounts.find(a => a.id === key)?.name || 'Other'; 
-                }
-                else { 
-                    key = tx.typeId; 
-                    label = transactionTypes.find(t => t.id === key)?.name || 'Other'; 
+                const keys: { id: string, label: string }[] = [];
+                
+                if (dimension === 'tag') {
+                    const txTags = tx.tagIds && tx.tagIds.length > 0 ? tx.tagIds : ['no-tag'];
+                    txTags.forEach(tId => {
+                        keys.push({ id: tId, label: tags.find(t => t.id === tId)?.name || 'No Label' });
+                    });
+                } else {
+                    let id = '', label = '';
+                    if (dimension === 'category') { id = tx.categoryId; label = categories.find(c => c.id === id)?.name || 'Other'; }
+                    else if (dimension === 'counterparty') { id = tx.counterpartyId || `desc_${tx.description}`; label = counterparties.find(cp => cp.id === tx.counterpartyId)?.name || tx.description || 'Other'; }
+                    else if (dimension === 'account') { id = tx.accountId; label = accounts.find(a => a.id === id)?.name || 'Other'; }
+                    else { id = tx.typeId; label = transactionTypes.find(t => t.id === id)?.name || 'Other'; }
+                    keys.push({ id, label });
                 }
                 
-                if (!map.has(key)) map.set(key, { label, total: 0 });
-                map.get(key)!.total += tx.amount;
+                keys.forEach(k => {
+                    if (!map.has(k.id)) map.set(k.id, { label: k.label, total: 0 });
+                    map.get(k.id)!.total += tx.amount;
+                });
             });
             return map;
         };
@@ -132,7 +134,7 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
                 pct: bVal !== 0 ? (diff / Math.abs(bVal)) * 100 : (tVal !== 0 ? 100 : 0) 
             };
         }).filter(d => Math.abs(d.diff) > 0.01).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
-    }, [baseWidget, targetWidget, transactions, categories, counterparties, accounts, transactionTypes]);
+    }, [baseWidget, targetWidget, transactions, categories, counterparties, accounts, transactionTypes, tags]);
 
     if (!baseId || !targetId) return <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50/50"><RepeatIcon className="w-12 h-12 text-slate-200 mb-3" /><p className="text-xs font-black text-slate-400 uppercase tracking-widest">Configuration Required</p></div>;
     if (!baseWidget || !targetWidget) return <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-red-50/30"><ExclamationTriangleIcon className="w-10 h-10 text-red-200 mb-3" /><p className="text-xs font-black text-red-400 uppercase tracking-widest">Logic Severed</p></div>;
@@ -161,7 +163,8 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 pr-2">
                 {comparisonData?.map(item => {
                     const isIncrease = item.diff > 0;
-                    const barWidth = (Math.abs(item.diff) / Math.max(...comparisonData.map(d => Math.abs(d.diff)))) * 100;
+                    const maxDiff = Math.max(...comparisonData.map(d => Math.abs(d.diff)), 1);
+                    const barWidth = (Math.abs(item.diff) / maxDiff) * 100;
                     return (
                         <div key={item.id} className="space-y-1.5 p-2 hover:bg-slate-50 rounded-xl transition-all group">
                             <div className="flex justify-between items-start">

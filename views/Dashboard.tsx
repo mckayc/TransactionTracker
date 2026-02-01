@@ -95,6 +95,7 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
                 accounts={accounts} 
                 transactionTypes={transactionTypes} 
                 users={users} 
+                tags={tags}
                 onUpdateConfig={onUpdateConfig} 
             />
         );
@@ -107,6 +108,7 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
                 counterparties={counterparties} 
                 accounts={accounts} 
                 transactionTypes={transactionTypes} 
+                tags={tags}
             />
         );
         if (widget.type === 'video_earnings') return <VideoEarningsWidget metrics={joinedMetrics} config={widget.config} />;
@@ -148,7 +150,6 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
     );
 };
 
-// Added missing DashboardProps interface
 interface DashboardProps {
     transactions: Transaction[];
     savedReports: SavedReport[];
@@ -728,7 +729,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                                     onClick={() => setConfigPeriod(p)}
                                                                     className={`py-3 rounded-xl border-2 font-bold text-xs transition-all ${configPeriod === p ? 'bg-white border-indigo-50 text-indigo-700 shadow-sm' : 'bg-transparent border-slate-200 text-slate-400'}`}
                                                                 >
-                                                                    {/* Fix: Display correct label for day and custom periods */}
                                                                     {p === 'day' ? 'daily' : (p === 'custom' ? 'custom' : p + 'ly')}
                                                                 </button>
                                                             ))}
@@ -796,6 +796,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                         <option value="category">Category Hierarchy</option>
                                                         <option value="counterparty">Counterparty / Vendor</option>
                                                         <option value="account">Target Ledger Account</option>
+                                                        <option value="tag">System Tags</option>
                                                     </select>
                                                 </div>
                                                 <div className="space-y-3">
