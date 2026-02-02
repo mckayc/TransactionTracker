@@ -34,14 +34,14 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
             setSplits([
                 {
                     id: generateUUID(),
-                    description: 'Primary Allocation',
+                    description: 'Allocation 1',
                     amount: transaction.amount,
                     categoryId: categoryId,
                     typeId: typeId
                 },
                 {
                     id: generateUUID(),
-                    description: 'Secondary Split',
+                    description: 'Allocation 2',
                     amount: 0,
                     categoryId: categoryId,
                     typeId: typeId
@@ -55,11 +55,11 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
     const remaining = originalAmount - currentTotal;
     const isBalanced = Math.abs(remaining) < 0.01;
 
-    // Suggestion logic for the FIRST part
+    // Logic to suggest the correct balance for the FIRST part if the others change
     const suggestedFirstPartAmount = useMemo(() => {
         if (splits.length < 2) return originalAmount;
         const sumOthers = splits.slice(1).reduce((sum, item) => sum + (item.amount || 0), 0);
-        return originalAmount - sumOthers;
+        return Math.max(0, originalAmount - sumOthers);
     }, [splits, originalAmount]);
 
     const showSuggestion = !isBalanced && splits.length > 1;
@@ -81,7 +81,7 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
     const handleAddSplit = () => {
         setSplits(prev => [...prev, {
             id: generateUUID(),
-            description: `Split Part ${prev.length + 1}`,
+            description: `Split Item ${prev.length + 1}`,
             amount: 0,
             categoryId: transaction.categoryId,
             typeId: transaction.typeId
@@ -98,10 +98,11 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
 
     const handleSave = () => {
         if (!isBalanced) {
-            alert(`The splits must sum up to the original amount of $${originalAmount.toFixed(2)}.`);
+            alert(`The total of all splits must equal the original amount of $${originalAmount.toFixed(2)}.`);
             return;
         }
 
+        // The parent remains in the database as a hidden container
         const parent: Transaction = {
             ...transaction,
             description: splitTitle || transaction.description,
@@ -109,6 +110,7 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
             linkGroupId: transaction.linkGroupId || generateUUID() 
         };
 
+        // Children represent the actual impact in the ledger
         const children: Transaction[] = splits.map(s => {
             const catName = categories.find(c => c.id === s.categoryId)?.name || 'Split';
             return {
@@ -153,9 +155,9 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50/30 custom-scrollbar">
-                    {/* GLOBAL TITLE INPUT */}
+                    {/* Master description for the container */}
                     <div className="bg-white p-6 rounded-3xl border-2 border-slate-100 shadow-sm">
-                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1 mb-1 block">Master Transaction Title</label>
+                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1 mb-1 block">Master Ledger Entry Title</label>
                         <input 
                             type="text" 
                             value={splitTitle} 
@@ -171,7 +173,7 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${index === 0 ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600'}`}>
-                                            Part {index + 1} {index === 0 ? '(Target)' : ''}
+                                            Part {index + 1} {index === 0 ? '(Primary)' : ''}
                                         </span>
                                     </div>
                                     {index > 0 && (
@@ -183,31 +185,31 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                                 
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
                                     <div className="md:col-span-5">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Description</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Specific Part Description</label>
                                         <input 
                                             type="text" 
                                             value={split.description} 
                                             onChange={(e) => handleUpdateSplit(split.id, 'description', e.target.value)}
                                             className="w-full p-3 text-sm font-bold border-2 border-slate-50 bg-slate-50/50 rounded-2xl focus:bg-white focus:border-indigo-500 outline-none"
-                                            placeholder="Part context..."
+                                            placeholder="Description for this part..."
                                         />
                                     </div>
                                     <div className="md:col-span-4">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Logic Type / Category</label>
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Category / Type</label>
                                         <div className="space-y-2">
-                                            <select 
-                                                value={split.typeId} 
-                                                onChange={(e) => handleUpdateSplit(split.id, 'typeId', e.target.value)}
-                                                className="w-full p-2.5 text-[11px] font-black border-2 border-slate-50 bg-slate-50/50 rounded-xl outline-none uppercase tracking-tighter"
-                                            >
-                                                {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                            </select>
                                             <select 
                                                 value={split.categoryId} 
                                                 onChange={(e) => handleUpdateSplit(split.id, 'categoryId', e.target.value)}
                                                 className="w-full p-2.5 text-[11px] font-black border-2 border-slate-50 bg-slate-50/50 rounded-xl outline-none uppercase tracking-tighter"
                                             >
                                                 {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                            </select>
+                                            <select 
+                                                value={split.typeId} 
+                                                onChange={(e) => handleUpdateSplit(split.id, 'typeId', e.target.value)}
+                                                className="w-full p-2.5 text-[11px] font-black border-2 border-slate-50 bg-slate-50/50 rounded-xl outline-none uppercase tracking-tighter"
+                                            >
+                                                {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                             </select>
                                         </div>
                                     </div>
@@ -248,7 +250,7 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                 <div className={`p-8 border-t bg-white flex flex-col sm:flex-row justify-between items-center gap-6 shrink-0`}>
                     <div className="flex items-center gap-10">
                         <div className="space-y-1">
-                            <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400">Ledger Variance</span>
+                            <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400">Total Unallocated</span>
                             <div className="flex items-center gap-3">
                                 <span className={`font-mono font-black text-3xl transition-colors ${isBalanced ? 'text-emerald-600' : 'text-rose-600'}`}>
                                     ${remaining.toFixed(2)}

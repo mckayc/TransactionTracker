@@ -208,9 +208,11 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
 
   const handleUnlink = async (txs: Transaction[]) => {
       try {
+          // Identify if we are unlinking a split vs a group link (transfers)
           const parent = txs.find(t => t.isParent);
+          
           if (parent) {
-              // It's a split: Delete individual parts and restore parent to single transaction
+              // It's a split: Delete individual parts and restore parent to a visible, non-parent state
               const children = txs.filter(t => t.id !== parent.id);
               for (const child of children) {
                   await api.deleteTransaction(child.id);
@@ -218,17 +220,21 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
               const restoredParent = { 
                   ...parent, 
                   isParent: false, 
-                  linkGroupId: undefined 
+                  linkGroupId: null,
+                  parentTransactionId: null 
               };
               await api.saveTransactions([restoredParent]);
+              setToastMessage("Split dissolved. Parent transaction restored.");
           } else {
-              // Standard link (transfers etc): Just remove the group ID
-              const updates = txs.map(t => ({ ...t, linkGroupId: undefined }));
+              // Standard link (e.g. Credit Card Payment linked to specific expenses)
+              // Just remove the group logic from all participants
+              const updates = txs.map(t => ({ ...t, linkGroupId: null }));
               await api.saveTransactions(updates);
+              setToastMessage("Group link detached.");
           }
           
           setManagingLinkGroupId(null);
-          setToastMessage("Group link dissolved. Original state restored.");
+          // Force refetch to ensure the resurrected parent (isParent=false) appears in the ledger
           fetchTransactions();
       } catch (err) {
           console.error("Unlink error:", err);

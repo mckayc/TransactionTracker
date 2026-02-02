@@ -27,8 +27,8 @@ const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, tr
 
     const handleUnlink = () => {
         const msg = isSplitGroup 
-            ? "Unlinking this split will delete all individual parts and restore the parent as a single transaction. Proceed?"
-            : "Remove the link between these transactions? They will remain in your list but will no longer be grouped.";
+            ? "Dissolving this split will delete all individual parts and restore the master transaction to your ledger. Proceed?"
+            : "Remove the logical link between these items? They will remain as individual records but will no longer be grouped.";
             
         if (window.confirm(msg)) {
             onUnlink(transactions);
@@ -46,7 +46,7 @@ const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, tr
                         </div>
                         <div>
                             <h2 className="text-2xl font-black text-slate-800 tracking-tight">
-                                {isSplitGroup ? 'Split Logic Registry' : 'Linked Group Management'}
+                                {isSplitGroup ? 'Split Record Management' : 'Linked Identity Analysis'}
                             </h2>
                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
                                 {transactions.length} record(s) participating in cluster
@@ -59,7 +59,7 @@ const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, tr
                 <div className="flex-1 overflow-y-auto p-8 space-y-6 bg-slate-50/30 custom-scrollbar">
                     {isSplitGroup && parentTx && (
                         <div className="bg-white p-6 rounded-[2rem] border-2 border-indigo-500 shadow-sm relative">
-                            <div className="absolute -top-3 left-6 px-3 py-1 bg-indigo-600 text-white text-[8px] font-black uppercase rounded-lg shadow-md">Container (Original)</div>
+                            <div className="absolute -top-3 left-6 px-3 py-1 bg-indigo-600 text-white text-[8px] font-black uppercase rounded-lg shadow-md">Master Record (Container)</div>
                             <div className="flex justify-between items-start pt-2">
                                 <div className="min-w-0 flex-1">
                                     <h4 className="text-lg font-black text-slate-800 truncate pr-4">{parentTx.description}</h4>
@@ -76,7 +76,7 @@ const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, tr
 
                     <div className="space-y-3">
                         <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2 flex items-center gap-2">
-                            <ListIcon className="w-3 h-3" /> {isSplitGroup ? 'Defined Components' : 'Participating Transactions'}
+                            <ListIcon className="w-3 h-3" /> {isSplitGroup ? 'Allocated Components' : 'Associated Transactions'}
                         </h5>
                         {(isSplitGroup ? childTxs : transactions).map(tx => (
                             <div key={tx.id} className={`bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:border-indigo-200 transition-all`}>
@@ -96,8 +96,8 @@ const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, tr
                         <InfoIcon className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
                         <p className="text-xs text-amber-800 leading-relaxed font-medium">
                             {isSplitGroup 
-                                ? "This record has been programmatically deconstructed. Changes to the container title or its parts will propagate across the ledger."
-                                : "These items share a logical bond. Unlinking will detach them and return them to individual ledger entries."}
+                                ? "This transaction has been logically deconstructed. Dissolving this link will purge the parts and restore the original entry."
+                                : "These items share a logical identity. Unlinking will separate them and return them to individual entries in your ledger."}
                         </p>
                     </div>
                 </div>
@@ -107,7 +107,7 @@ const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, tr
                         onClick={handleUnlink}
                         className="px-6 py-3 bg-red-50 text-red-600 font-black rounded-xl hover:bg-red-600 hover:text-white transition-all flex items-center gap-2 text-[10px] uppercase tracking-widest border border-red-100"
                     >
-                        <TrashIcon className="w-4 h-4" /> Dissolve Link Logic
+                        <TrashIcon className="w-4 h-4" /> Dissolve Logical Link
                     </button>
                     <div className="flex gap-3">
                         {!isSplitGroup && (
@@ -115,7 +115,7 @@ const LinkedGroupModal: React.FC<LinkedGroupModalProps> = ({ isOpen, onClose, tr
                                 onClick={() => onFindSimilar(transactions)}
                                 className="px-6 py-3 bg-indigo-50 text-indigo-600 font-black rounded-xl hover:bg-indigo-100 transition-all flex items-center gap-2 text-[10px] uppercase tracking-widest border border-indigo-100"
                             >
-                                <SparklesIcon className="w-4 h-4" /> Find Pattern Matches
+                                <SparklesIcon className="w-4 h-4" /> Find Similar Patterns
                             </button>
                         )}
                         <button onClick={onClose} className="px-10 py-3 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">Dismiss</button>

@@ -1,3 +1,4 @@
+
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
@@ -282,7 +283,9 @@ app.delete('/api/transactions/:id', (req, res) => {
 app.get('/api/transactions', (req, res) => {
     try {
         const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC', search, startDate, endDate, userId } = req.query;
-        let filterQuery = ` WHERE 1=1 AND t.is_parent = 0`;
+        // Logic change: We no longer filter out parents in the main list. 
+        // The TransactionTable component is capable of grouping these logically on the frontend.
+        let filterQuery = ` WHERE 1=1`; 
         const values = [];
         if (search) {
             filterQuery += ` AND (t.description LIKE ? OR t.notes LIKE ? OR t.original_description LIKE ?)`;
@@ -442,9 +445,6 @@ app.get('/api/data', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/**
- * SMART SYNC STORAGE
- */
 app.post('/api/data/:key', (req, res) => {
   try {
     const key = req.params.key;
@@ -452,18 +452,15 @@ app.post('/api/data/:key', (req, res) => {
     
     db.prepare('INSERT INTO app_storage (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, JSON.stringify(value));
     
-    // Sync specific relational tables if the key matches a registry array
     if (key === 'categories') {
         db.prepare('DELETE FROM categories').run();
         const insert = db.prepare('INSERT INTO categories (id, name, parent_id) VALUES (?, ?, ?)');
         db.transaction((items) => items.forEach(i => insert.run(i.id, i.name, i.parentId || null)))(value);
     } else if (key === 'accounts') {
-        // Wrap entire sync in a single transaction to ensure atomicity
         db.transaction((items) => {
             db.prepare('DELETE FROM accounts').run();
             const insert = db.prepare('INSERT INTO accounts (id, name, identifier, account_type_id, parsing_profile) VALUES (?, ?, ?, ?, ?)');
             items.forEach(i => {
-                // Explicit handling of both casing patterns to prevent property loss
                 const accTypeId = i.accountTypeId || i.account_type_id;
                 const profile = i.parsingProfile || i.parsing_profile;
                 insert.run(i.id, i.name, i.identifier, accTypeId, profile ? JSON.stringify(profile) : null);
@@ -499,9 +496,6 @@ app.post('/api/data/:key', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-/**
- * ADMIN DIAGNOSTICS & REPAIR
- */
 app.get('/api/admin/diagnose', (req, res) => {
     try {
         const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
