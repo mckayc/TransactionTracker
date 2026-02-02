@@ -25,6 +25,9 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
     const [splitTitle, setSplitTitle] = useState('');
     const [splits, setSplits] = useState<SplitItem[]>([]);
     
+    // Helper to round to 2 decimal places strictly
+    const roundCurrency = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
+
     useEffect(() => {
         if (isOpen && transaction) {
             setSplitTitle(transaction.description);
@@ -35,7 +38,7 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                 {
                     id: generateUUID(),
                     description: 'Allocation 1',
-                    amount: transaction.amount,
+                    amount: roundCurrency(transaction.amount),
                     categoryId: categoryId,
                     typeId: typeId
                 },
@@ -52,14 +55,14 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
 
     const originalAmount = transaction?.amount || 0;
     const currentTotal = splits.reduce((sum, item) => sum + (item.amount || 0), 0);
-    const remaining = originalAmount - currentTotal;
+    const remaining = roundCurrency(originalAmount - currentTotal);
     const isBalanced = Math.abs(remaining) < 0.01;
 
-    // Logic to suggest the correct balance for the FIRST part if the others change
+    // Anchor logic: Part 1 is the suggested remainder collector
     const suggestedFirstPartAmount = useMemo(() => {
-        if (splits.length < 2) return originalAmount;
+        if (splits.length < 2) return roundCurrency(originalAmount);
         const sumOthers = splits.slice(1).reduce((sum, item) => sum + (item.amount || 0), 0);
-        return Math.max(0, originalAmount - sumOthers);
+        return roundCurrency(Math.max(0, originalAmount - sumOthers));
     }, [splits, originalAmount]);
 
     const showSuggestion = !isBalanced && splits.length > 1;
@@ -67,7 +70,10 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
     if (!isOpen || !transaction) return null;
 
     const handleUpdateSplit = (id: string, field: keyof SplitItem, value: any) => {
-        setSplits(prev => prev.map(s => s.id === id ? { ...s, [field]: field === 'amount' ? parseFloat(value) || 0 : value } : s));
+        setSplits(prev => prev.map(s => s.id === id ? { 
+            ...s, 
+            [field]: field === 'amount' ? (parseFloat(value) || 0) : value 
+        } : s));
     };
 
     const applySuggestion = () => {
@@ -117,7 +123,8 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                 id: generateUUID(),
                 date: transaction.date,
                 description: s.description,
-                amount: s.amount,
+                // FINAL ROUNDING on commit to ensure database values are clean
+                amount: roundCurrency(s.amount),
                 categoryId: s.categoryId,
                 category: catName,
                 typeId: s.typeId,
@@ -173,7 +180,7 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${index === 0 ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-600'}`}>
-                                            Part {index + 1} {index === 0 ? '(Primary)' : ''}
+                                            Part {index + 1} {index === 0 ? '(Primary Remainder)' : ''}
                                         </span>
                                     </div>
                                     {index > 0 && (
