@@ -436,7 +436,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                                 <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-100"><TrendingUpIcon className="w-5 h-5" /></div>
                                 <div>
                                     <h3 className="text-lg font-black text-slate-800">{inspectingNode.label} Analysis</h3>
-                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Transaction Drilldown</p>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Total Transactions: {inspectingNode.transactions.length}</p>
                                 </div>
                             </div>
                             <button onClick={() => setInspectingNode(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>

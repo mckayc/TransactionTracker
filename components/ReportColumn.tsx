@@ -547,7 +547,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
             newEnd = new Date(newStart.getFullYear(), newStart.getMonth() + 1, 0);
         } else if (isYear) {
             newStart.setFullYear(newStart.getFullYear() + (direction === 'next' ? 1 : -1));
-            newEnd.setFullYear(newEnd.getFullYear() + (direction === 'next' ? 1 : -1));
+            newEnd = new Date(newStart.getFullYear(), 11, 31);
         } else {
             const shiftMs = (diffDays + 1) * 24 * 60 * 60 * 1000 * (direction === 'next' ? 1 : -1);
             newStart = new Date(start.getTime() + shiftMs);
@@ -653,7 +653,7 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                         <div className="flex justify-between items-center p-6 border-b bg-slate-50 flex-shrink-0">
                             <div>
                                 <h3 className="text-lg font-black text-slate-800">{inspectingTitle}</h3>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Institutional Audit Trace</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Total Transactions: {inspectingItems.length}</p>
                             </div>
                             <button onClick={() => setInspectingItems(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
