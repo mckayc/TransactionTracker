@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, Counterparty, Category, User, Tag } from '../types';
 import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon, WrenchIcon, EditIcon } from './Icons';
@@ -215,46 +214,46 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     <thead className="bg-slate-50 sticky top-0 z-30 shadow-sm">
                         <tr>
                             {showCheckboxes && (
-                                <th className="p-4 w-12 border-b bg-slate-50">
+                                <th className="p-3 w-10 border-b bg-slate-50">
                                     <input 
                                         type="checkbox" 
                                         onChange={onToggleSelectAll} 
                                         checked={selectedTxIds.size === transactions.length && transactions.length > 0}
-                                        className="rounded text-indigo-600 cursor-pointer" 
+                                        className="rounded text-indigo-600 cursor-pointer h-3.5 w-3.5" 
                                     />
                                 </th>
                             )}
                             {visibleColumns.has('date') && (
-                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('date')}>
+                                <th className="px-3 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors whitespace-nowrap" onClick={() => handleHeaderClick('date')}>
                                     <div className="flex items-center gap-1">Date <SortIndicator activeKey="date" /></div>
                                 </th>
                             )}
                             {visibleColumns.has('description') && (
-                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('description')}>
+                                <th className="px-3 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('description')}>
                                     <div className="flex items-center gap-1">Description <SortIndicator activeKey="description" /></div>
                                 </th>
                             )}
                             {visibleColumns.has('counterparty') && (
-                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('counterpartyId')}>
+                                <th className="px-3 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors whitespace-nowrap" onClick={() => handleHeaderClick('counterpartyId')}>
                                     <div className="flex items-center gap-1">Entity <SortIndicator activeKey="counterpartyId" /></div>
                                 </th>
                             )}
                             {visibleColumns.has('category') && (
-                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('categoryId')}>
+                                <th className="px-3 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors whitespace-nowrap" onClick={() => handleHeaderClick('categoryId')}>
                                     <div className="flex items-center gap-1">Category <SortIndicator activeKey="categoryId" /></div>
                                 </th>
                             )}
                             {visibleColumns.has('account') && (
-                                <th className="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('accountId')}>
+                                <th className="px-3 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors whitespace-nowrap" onClick={() => handleHeaderClick('accountId')}>
                                     <div className="flex items-center gap-1">Account <SortIndicator activeKey="accountId" /></div>
                                 </th>
                             )}
                             {visibleColumns.has('amount') && (
-                                <th className="px-4 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors" onClick={() => handleHeaderClick('amount')}>
+                                <th className="px-3 py-3 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors whitespace-nowrap" onClick={() => handleHeaderClick('amount')}>
                                     <div className="flex items-center justify-end gap-1">Amount <SortIndicator activeKey="amount" /></div>
                                 </th>
                             )}
-                            {visibleColumns.has('actions') && <th className="px-4 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest border-b">Actions</th>}
+                            {visibleColumns.has('actions') && <th className="px-3 py-3 text-center text-[9px] font-black text-slate-400 uppercase tracking-widest border-b whitespace-nowrap">Actions</th>}
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-100">
@@ -266,30 +265,30 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
                                 return (
                                     <tr key={tx.id} className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-indigo-50/50' : ''}`}>
-                                        {showCheckboxes && <td className="p-4 text-center"><input type="checkbox" checked={isSelected} onChange={() => onToggleSelection?.(tx.id)} className="rounded text-indigo-600 cursor-pointer" /></td>}
-                                        {visibleColumns.has('date') && <td className="px-4 py-3 text-xs font-mono text-slate-500 whitespace-nowrap">{tx.date}</td>}
+                                        {showCheckboxes && <td className="p-3 text-center border-b border-slate-50"><input type="checkbox" checked={isSelected} onChange={() => onToggleSelection?.(tx.id)} className="rounded text-indigo-600 cursor-pointer h-3.5 w-3.5" /></td>}
+                                        {visibleColumns.has('date') && <td className="px-3 py-2 text-[10px] font-mono text-slate-500 whitespace-nowrap border-b border-slate-50">{tx.date}</td>}
                                         {visibleColumns.has('description') && (
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-bold text-slate-800 truncate max-w-md">{tx.description}</span>
-                                                    {tx.originalDescription && tx.originalDescription !== tx.description && <span className="text-[9px] text-slate-400 uppercase font-black tracking-tighter truncate max-w-xs">{tx.originalDescription}</span>}
+                                            <td className="px-3 py-2 border-b border-slate-50">
+                                                <div className="flex flex-col min-w-0 max-w-[200px] lg:max-w-sm">
+                                                    <span className="text-[11px] font-bold text-slate-800 truncate leading-none" title={tx.description}>{tx.description}</span>
+                                                    {tx.originalDescription && tx.originalDescription !== tx.description && <span className="text-[8px] text-slate-400 uppercase font-black tracking-tighter truncate opacity-70 mt-0.5" title={tx.originalDescription}>{tx.originalDescription}</span>}
                                                 </div>
                                             </td>
                                         )}
-                                        {visibleColumns.has('counterparty') && <td className="px-4 py-3"><span className="text-sm font-medium text-slate-600">{counterpartyMap.get(tx.counterpartyId || '') || <em className="text-slate-300">--</em>}</span></td>}
-                                        {visibleColumns.has('category') && <td className="px-4 py-3"><span className="px-2 py-1 bg-slate-100 text-slate-600 text-[10px] font-black uppercase rounded-lg border border-slate-200">{categoryMap.get(tx.categoryId) || 'Uncategorized'}</span></td>}
-                                        {visibleColumns.has('account') && <td className="px-4 py-3 text-xs font-bold text-slate-500">{accountMap.get(tx.accountId || '') || 'Unknown'}</td>}
-                                        {visibleColumns.has('amount') && <td className={`px-4 py-3 text-right text-sm font-black font-mono ${getAmountColor(tx.typeId)}`}>{formatCurrency(tx.amount, tx.typeId)}</td>}
+                                        {visibleColumns.has('counterparty') && <td className="px-3 py-2 border-b border-slate-50 whitespace-nowrap"><span className="text-[11px] font-medium text-slate-600">{counterpartyMap.get(tx.counterpartyId || '') || <em className="text-slate-300">--</em>}</span></td>}
+                                        {visibleColumns.has('category') && <td className="px-3 py-2 border-b border-slate-50 whitespace-nowrap"><span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-black uppercase rounded border border-slate-200">{categoryMap.get(tx.categoryId) || 'Uncategorized'}</span></td>}
+                                        {visibleColumns.has('account') && <td className="px-3 py-2 text-[10px] font-bold text-slate-400 whitespace-nowrap border-b border-slate-50">{accountMap.get(tx.accountId || '') || 'Unknown'}</td>}
+                                        {visibleColumns.has('amount') && <td className={`px-3 py-2 text-right text-[11px] font-black font-mono border-b border-slate-50 whitespace-nowrap ${getAmountColor(tx.typeId)}`}>{formatCurrency(tx.amount, tx.typeId)}</td>}
                                         {visibleColumns.has('actions') && (
-                                            <td className="px-4 py-3 text-center">
+                                            <td className="px-3 py-2 text-center border-b border-slate-50 whitespace-nowrap">
                                                 <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     {appliedIds.length > 0 && onEditRule && (
-                                                        <button onClick={() => onEditRule(appliedIds[0], tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Edit Applied Rule"><WrenchIcon className="w-4 h-4" /></button>
+                                                        <button onClick={() => onEditRule(appliedIds[0], tx)} className="p-1 text-slate-300 hover:text-indigo-600 rounded transition-all" title="Edit Applied Rule"><WrenchIcon className="w-3.5 h-3.5" /></button>
                                                     )}
-                                                    <button onClick={() => onEditTransaction?.(tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Edit Transaction"><EditIcon className="w-4 h-4" /></button>
-                                                    <button onClick={() => setInspectedTx(tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Inspect Record"><DatabaseIcon className="w-4 h-4" /></button>
-                                                    <button onClick={() => onSplit?.(tx)} className="p-1.5 text-slate-300 hover:text-indigo-600 rounded-lg transition-all" title="Split Transaction"><SplitIcon className="w-4 h-4" /></button>
-                                                    <button onClick={() => onDeleteTransaction(tx.id)} className="p-1.5 text-slate-300 hover:text-red-600 rounded-lg transition-all" title="Delete Record"><DeleteIcon className="w-4 h-4" /></button>
+                                                    <button onClick={() => onEditTransaction?.(tx)} className="p-1 text-slate-300 hover:text-indigo-600 rounded transition-all" title="Edit Transaction"><EditIcon className="w-3.5 h-3.5" /></button>
+                                                    <button onClick={() => setInspectedTx(tx)} className="p-1 text-slate-300 hover:text-indigo-600 rounded transition-all" title="Inspect Record"><DatabaseIcon className="w-3.5 h-3.5" /></button>
+                                                    <button onClick={() => onSplit?.(tx)} className="p-1 text-slate-300 hover:text-indigo-600 rounded transition-all" title="Split Transaction"><SplitIcon className="w-3.5 h-3.5" /></button>
+                                                    <button onClick={() => onDeleteTransaction(tx.id)} className="p-1 text-slate-300 hover:text-red-600 rounded transition-all" title="Delete Record"><DeleteIcon className="w-3.5 h-3.5" /></button>
                                                 </div>
                                             </td>
                                         )}
@@ -301,42 +300,42 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                 return (
                                     <React.Fragment key={item.id}>
                                         <tr className="bg-indigo-50/30 hover:bg-indigo-50 transition-colors group">
-                                            {showCheckboxes && <td className="p-4 text-center"></td>}
-                                            {visibleColumns.has('date') && <td className="px-4 py-3 text-xs font-mono text-indigo-400">{item.primaryTx.date}</td>}
+                                            {showCheckboxes && <td className="p-3 text-center border-b border-slate-100"></td>}
+                                            {visibleColumns.has('date') && <td className="px-3 py-2 text-[10px] font-mono text-indigo-400 border-b border-slate-100 whitespace-nowrap">{item.primaryTx.date}</td>}
                                             {visibleColumns.has('description') && (
-                                                <td className="px-4 py-3">
-                                                    <button onClick={() => toggleGroup(item.id)} className="flex items-center gap-2 group/btn">
-                                                        <div className={`p-1 rounded-md bg-white border border-indigo-100 text-indigo-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}><ChevronRightIcon className="w-3 h-3" /></div>
-                                                        <div className="text-left">
+                                                <td className="px-3 py-2 border-b border-slate-100">
+                                                    <button onClick={() => toggleGroup(item.id)} className="flex items-center gap-2 group/btn min-w-0 max-w-sm text-left">
+                                                        <div className={`p-0.5 rounded bg-white border border-indigo-100 text-indigo-600 transition-transform ${isExpanded ? 'rotate-90' : ''}`}><ChevronRightIcon className="w-3 h-3" /></div>
+                                                        <div className="min-w-0">
                                                             <div className="flex items-center gap-2">
-                                                                <span className="text-sm font-black text-indigo-900">{item.primaryTx.description}</span>
-                                                                <span className={`text-[10px] font-black uppercase ${groupColor} flex items-center gap-1 bg-white px-1.5 py-0.5 rounded border border-indigo-100 shadow-sm`}><LinkIcon className="w-3 h-3"/> Linked Group</span>
+                                                                <span className="text-[11px] font-black text-indigo-900 truncate block">{item.primaryTx.description}</span>
+                                                                <span className={`text-[7px] font-black uppercase ${groupColor} flex items-center gap-0.5 bg-white px-1 rounded border border-indigo-100 shadow-sm flex-shrink-0`}><LinkIcon className="w-2 h-2"/> GROUP</span>
                                                             </div>
-                                                            <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-widest">{item.children.length + 1} nested entries</p>
+                                                            <p className="text-[8px] text-indigo-400 font-bold uppercase tracking-widest">{item.children.length + 1} nested entries</p>
                                                         </div>
                                                     </button>
                                                 </td>
                                             )}
-                                            {visibleColumns.has('counterparty') && <td className="px-4 py-3"><span className="text-sm font-medium text-indigo-600/60 italic">Grouped</span></td>}
-                                            {visibleColumns.has('category') && <td className="px-4 py-3"><span className="text-[10px] font-black uppercase text-indigo-400 italic">Composite</span></td>}
-                                            {visibleColumns.has('account') && <td className="px-4 py-3 text-xs font-bold text-indigo-400">{accountMap.get(item.primaryTx.accountId || '')}</td>}
-                                            {visibleColumns.has('amount') && <td className={`px-4 py-3 text-right text-sm font-black text-indigo-700 font-mono underline decoration-dotted decoration-indigo-300`}>{formatCurrency(item.totalAmount, item.primaryTx.typeId)}</td>}
+                                            {visibleColumns.has('counterparty') && <td className="px-3 py-2 border-b border-slate-100 whitespace-nowrap"><span className="text-[10px] font-medium text-indigo-600/60 italic">Composite</span></td>}
+                                            {visibleColumns.has('category') && <td className="px-3 py-2 border-b border-slate-100 whitespace-nowrap"><span className="text-[8px] font-black uppercase text-indigo-400 italic">Composite</span></td>}
+                                            {visibleColumns.has('account') && <td className="px-3 py-2 text-[10px] font-bold text-indigo-400 border-b border-slate-100 whitespace-nowrap">{accountMap.get(item.primaryTx.accountId || '')}</td>}
+                                            {visibleColumns.has('amount') && <td className={`px-3 py-2 text-right text-[11px] font-black text-indigo-700 font-mono border-b border-slate-100 whitespace-nowrap underline decoration-dotted decoration-indigo-300`}>{formatCurrency(item.totalAmount, item.primaryTx.typeId)}</td>}
                                             {visibleColumns.has('actions') && (
-                                                <td className="px-4 py-3 text-center">
-                                                    <button onClick={() => onManageLink?.(item.id)} className="p-2 bg-white text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all border border-indigo-200 shadow-sm" title="Manage Links"><LinkIcon className="w-4 h-4" /></button>
+                                                <td className="px-3 py-2 text-center border-b border-slate-100 whitespace-nowrap">
+                                                    <button onClick={() => onManageLink?.(item.id)} className="p-1 bg-white text-indigo-600 rounded border border-indigo-200 shadow-sm hover:bg-indigo-600 hover:text-white transition-all" title="Manage Links"><LinkIcon className="w-3.5 h-3.5" /></button>
                                                 </td>
                                             )}
                                         </tr>
                                         {isExpanded && item.children.map(child => (
                                             <tr key={child.id} className="bg-white/50 border-l-4 border-l-indigo-200 group">
-                                                {showCheckboxes && <td className="p-4 text-center"><input type="checkbox" checked={selectedTxIds.has(child.id)} onChange={() => onToggleSelection?.(child.id)} className="rounded text-indigo-600 cursor-pointer" /></td>}
-                                                {visibleColumns.has('date') && <td className="px-4 py-2 text-[10px] font-mono text-slate-400 pl-8">{child.date}</td>}
-                                                {visibleColumns.has('description') && <td className="px-4 py-2 pl-12"><div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-slate-200"></div><span className="text-xs font-bold text-slate-600">{child.description}</span></div></td>}
-                                                {visibleColumns.has('counterparty') && <td className="px-4 py-2 text-xs text-slate-400">{counterpartyMap.get(child.counterpartyId || '')}</td>}
-                                                {visibleColumns.has('category') && <td className="px-4 py-2"><span className="text-[9px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded uppercase">{categoryMap.get(child.categoryId) || 'Uncategorized'}</span></td>}
-                                                {visibleColumns.has('account') && <td className="px-4 py-2 text-[10px] text-slate-400 uppercase font-black">{accountMap.get(child.accountId || '')}</td>}
-                                                {visibleColumns.has('amount') && <td className={`px-4 py-2 text-right text-xs font-black font-mono ${getAmountColor(child.typeId)}`}>{formatCurrency(child.amount, child.typeId)}</td>}
-                                                {visibleColumns.has('actions') && <td className="px-4 py-2 text-center"><button onClick={() => setInspectedTx(child)} className="p-1 text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all"><DatabaseIcon className="w-3 h-3" /></button></td>}
+                                                {showCheckboxes && <td className="p-3 text-center border-b border-slate-50"><input type="checkbox" checked={selectedTxIds.has(child.id)} onChange={() => onToggleSelection?.(child.id)} className="rounded text-indigo-600 h-3.5 w-3.5" /></td>}
+                                                {visibleColumns.has('date') && <td className="px-3 py-2 text-[9px] font-mono text-slate-400 pl-6 border-b border-slate-50 whitespace-nowrap">{child.date}</td>}
+                                                {visibleColumns.has('description') && <td className="px-3 py-2 pl-8 border-b border-slate-50"><div className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-slate-200"></div><span className="text-[10px] font-bold text-slate-500 truncate block max-w-xs">{child.description}</span></div></td>}
+                                                {visibleColumns.has('counterparty') && <td className="px-3 py-2 text-[10px] text-slate-400 border-b border-slate-50 whitespace-nowrap">{counterpartyMap.get(child.counterpartyId || '')}</td>}
+                                                {visibleColumns.has('category') && <td className="px-3 py-2 border-b border-slate-50 whitespace-nowrap"><span className="text-[8px] font-bold text-slate-400 bg-slate-100 px-1 py-0.5 rounded uppercase">{categoryMap.get(child.categoryId) || 'Other'}</span></td>}
+                                                {visibleColumns.has('account') && <td className="px-3 py-2 text-[9px] text-slate-300 uppercase font-black border-b border-slate-50 whitespace-nowrap">{accountMap.get(child.accountId || '')}</td>}
+                                                {visibleColumns.has('amount') && <td className={`px-3 py-2 text-right text-[10px] font-black font-mono border-b border-slate-50 whitespace-nowrap ${getAmountColor(child.typeId)}`}>{formatCurrency(child.amount, child.typeId)}</td>}
+                                                {visibleColumns.has('actions') && <td className="px-3 py-2 text-center border-b border-slate-50 whitespace-nowrap"><button onClick={() => setInspectedTx(child)} className="p-1 text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all"><DatabaseIcon className="w-3 h-3" /></button></td>}
                                             </tr>
                                         ))}
                                     </React.Fragment>

@@ -649,19 +649,21 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
 
             {inspectingItems && (
                 <div className="fixed inset-0 z-50 flex justify-center items-center p-4 bg-black bg-opacity-50" onClick={() => setInspectingItems(null)}>
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="flex justify-between items-center p-4 border-b">
-                            <h3 className="font-bold text-lg text-slate-800">{inspectingTitle}</h3>
-                            <button onClick={() => setInspectingItems(null)} className="p-1 rounded-full hover:bg-slate-100"><CloseIcon className="w-6 h-6"/></button>
+                    <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="flex justify-between items-center p-6 border-b bg-slate-50 flex-shrink-0">
+                            <div>
+                                <h3 className="text-lg font-black text-slate-800">{inspectingTitle}</h3>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Institutional Audit Trace</p>
+                            </div>
+                            <button onClick={() => setInspectingItems(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
-                        <div className="flex-1 overflow-auto">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
                             <TransactionTable 
                                 transactions={inspectingItems}
                                 accounts={accounts}
                                 categories={categories}
                                 tags={tags}
                                 transactionTypes={transactionTypes}
-                                // Fixed: Use counterparties prop instead of payees to match TransactionTable definition
                                 counterparties={payees}
                                 users={users}
                                 onUpdateTransaction={() => {}} 
@@ -669,8 +671,8 @@ const ReportColumn: React.FC<ReportColumnProps> = ({ config: initialConfig, tran
                                 visibleColumns={new Set(['date', 'description', 'amount', 'account'])}
                             />
                         </div>
-                        <div className="p-4 border-t bg-slate-50 flex justify-end">
-                            <button onClick={() => setInspectingItems(null)} className="px-4 py-2 bg-slate-200 hover:bg-slate-300 rounded text-slate-700 font-medium">Close</button>
+                        <div className="p-4 border-t bg-slate-50 flex justify-end shrink-0">
+                            <button onClick={() => setInspectingItems(null)} className="px-8 py-2.5 bg-slate-900 text-white font-black rounded-xl uppercase text-[10px] tracking-widest">Close</button>
                         </div>
                     </div>
                 </div>

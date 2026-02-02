@@ -27,7 +27,7 @@ const lightenColor = (color: string, percent: number) => {
     const R = (num >> 16) + amt;
     const G = ((num >> 8) & 0x00FF) + amt;
     const B = (num & 0x0000FF) + amt;
-    return "#" + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 + (G<255?G<1?0:G:255)*0x100 + (B<255?B<1?0:B:255)).toString(16).slice(1);
+    return "#" + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 + (B<255?B<1?0:B:255)*0x100 + (G<255?G<1?0:G:255)).toString(16).slice(1);
 };
 
 interface BreakdownNode {
@@ -430,7 +430,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
             {inspectingNode && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setInspectingNode(null)}>
-                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b bg-slate-50 flex justify-between items-center shrink-0">
                             <div className="flex items-center gap-3">
                                 <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-100"><TrendingUpIcon className="w-5 h-5" /></div>
@@ -441,7 +441,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                             </div>
                             <button onClick={() => setInspectingNode(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                         </div>
-                        <div className="flex-1 overflow-hidden">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
                             <TransactionTable 
                                 transactions={inspectingNode.transactions}
                                 accounts={accounts}
