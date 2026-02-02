@@ -1,4 +1,3 @@
-
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition, Account } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -97,7 +96,7 @@ const formatDate = (date: Date): string => {
 
 /**
  * Standard transaction parsers with intelligent header detection.
- * Updated to check if a specific account profile already defines the layout.
+ * Updated to provide clear errors when mappings are missing or incorrect.
  */
 export const parseTransactionsFromText = async (
     text: string, 
@@ -106,41 +105,54 @@ export const parseTransactionsFromText = async (
     onProgress: (msg: string) => void,
     accountContext?: Account
 ): Promise<RawTransaction[]> => {
-    onProgress("Parsing ledger data...");
+    onProgress("Deconstructing bank CSV stream...");
     const lines = text.split('\n').filter(l => l.trim());
     if (lines.length < 1) return [];
     
     const profile = accountContext?.parsingProfile;
-    const delimiter = profile?.delimiter || (lines[0].includes('\t') ? '\t' : ',');
-    const firstLineParts = splitCsvLine(lines[0], delimiter).map(p => p.trim().toLowerCase());
+    if (!profile) {
+        throw new Error(`The account '${accountContext?.name || accountId}' does not have a Header Map. Please configure it in Identity Hub.`);
+    }
+
+    const delimiter = profile.delimiter || (lines[0].includes('\t') ? '\t' : ',');
+    const headerLine = lines[0];
+    const firstLineParts = splitCsvLine(headerLine, delimiter).map(p => p.trim().toLowerCase());
     
-    // Identify column indices based on common headers or Profile
-    const findIndex = (labels: string[], profileField?: string | number) => {
-        if (profileField !== undefined && profileField !== null && profileField !== '') {
-            if (typeof profileField === 'number') return profileField;
-            const idx = firstLineParts.findIndex(p => p === String(profileField).toLowerCase());
-            if (idx !== -1) return idx;
+    // Identify column indices based on Profile. Use strict errors if profile claims a column exists.
+    const findIndexStrict = (profileField: string | number | undefined, label: string) => {
+        if (profileField === undefined || profileField === null || profileField === '') return -1;
+        
+        if (typeof profileField === 'number') return profileField;
+        const idx = firstLineParts.findIndex(p => p === String(profileField).toLowerCase());
+        
+        if (idx === -1) {
+            throw new Error(`Column '${profileField}' (mapped to ${label}) was not found in the uploaded file's headers.`);
         }
-        return firstLineParts.findIndex(p => labels.some(l => p.includes(l.toLowerCase())));
+        return idx;
     };
     
-    const dateIdx = findIndex(['date'], profile?.dateColumn);
-    const amountIdx = findIndex(['amount', 'value', 'total', 'price'], profile?.amountColumn);
-    const debitIdx = findIndex(['debit', 'withdraw'], profile?.debitColumn);
-    const creditIdx = findIndex(['credit', 'deposit'], profile?.creditColumn);
-    const descIdx = findIndex(['description', 'memo', 'transaction', 'details'], profile?.descriptionColumn);
+    const dateIdx = findIndexStrict(profile.dateColumn, 'Transaction Date');
+    const amountIdx = findIndexStrict(profile.amountColumn, 'Amount');
+    const debitIdx = findIndexStrict(profile.debitColumn, 'Debit/Withdrawal');
+    const creditIdx = findIndexStrict(profile.creditColumn, 'Credit/Deposit');
+    const descIdx = findIndexStrict(profile.descriptionColumn, 'Statement Memo');
     
-    // Extended fields
-    const payeeIdx = findIndex(['payee', 'merchant', 'entity', 'name'], profile?.payeeColumn);
-    const typeIdx = findIndex(['type'], profile?.typeColumn);
-    const catIdx = findIndex(['category'], profile?.categoryColumn);
-    const locIdx = findIndex(['location', 'city'], profile?.locationColumn);
-    const tagsIdx = findIndex(['tags', 'labels'], profile?.tagsColumn);
-    const notesIdx = findIndex(['notes', 'comment'], profile?.notesColumn);
+    // Optional mappings
+    const payeeIdx = findIndexStrict(profile.payeeColumn, 'Entity/Payee');
+    const typeIdx = findIndexStrict(profile.typeColumn, 'Transaction Type');
+    const catIdx = findIndexStrict(profile.categoryColumn, 'Category');
+    const locIdx = findIndexStrict(profile.locationColumn, 'Location');
+    const tagsIdx = findIndexStrict(profile.tagsColumn, 'Tags');
+    const notesIdx = findIndexStrict(profile.notesColumn, 'Notes');
 
-    const hasHeader = profile?.hasHeader ?? (dateIdx !== -1 || amountIdx !== -1 || descIdx !== -1 || debitIdx !== -1);
-    const startIndex = hasHeader ? 1 : 0;
-    
+    // Validation: Require at least Date, Description, and either Amount or Debit/Credit
+    if (dateIdx === -1) throw new Error("A valid mapping for 'Transaction Date' is required to parse records.");
+    if (descIdx === -1) throw new Error("A valid mapping for 'Statement Memo' is required to parse records.");
+    if (amountIdx === -1 && debitIdx === -1 && creditIdx === -1) {
+        throw new Error("Missing amount mapping. You must define either a single 'Amount' column or both 'Debit' and 'Credit' columns.");
+    }
+
+    const startIndex = profile.hasHeader ? 1 : 0;
     const txs: RawTransaction[] = [];
     const incomingType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
     const outgoingType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
@@ -149,8 +161,8 @@ export const parseTransactionsFromText = async (
         const parts = splitCsvLine(lines[i], delimiter);
         if (parts.length < 2) continue;
 
-        const dateStr = parts[dateIdx !== -1 ? dateIdx : 0];
-        const rawDesc = parts[descIdx !== -1 ? descIdx : (payeeIdx !== -1 ? payeeIdx : 1)];
+        const dateStr = parts[dateIdx];
+        const rawDesc = parts[descIdx];
         
         let amount = 0;
         let forceType: string | null = null;
@@ -170,16 +182,15 @@ export const parseTransactionsFromText = async (
                 amount = Math.abs(creditNum);
                 forceType = incomingType.id;
             }
-        } else {
-            // Single amount column support
-            const rawAmount = parts[amountIdx !== -1 ? amountIdx : 2]?.replace(/[^-0.9.]/g, '') || '0';
+        } else if (amountIdx !== -1) {
+            const rawAmount = parts[amountIdx]?.replace(/[^-0.9.]/g, '') || '0';
             amount = parseFloat(rawAmount) || 0;
         }
         
-        if (!dateStr || amount === 0) continue;
+        if (!dateStr || (amount === 0 && !rawDesc)) continue;
 
         let finalDesc = rawDesc;
-        if (payeeIdx !== -1 && payeeIdx !== (descIdx !== -1 ? descIdx : -1) && parts[payeeIdx]) {
+        if (payeeIdx !== -1 && payeeIdx !== descIdx && parts[payeeIdx]) {
             finalDesc = `${parts[payeeIdx]} - ${rawDesc}`.trim();
             if (finalDesc.endsWith(' -')) finalDesc = parts[payeeIdx];
             if (finalDesc.startsWith('- ')) finalDesc = rawDesc;
@@ -188,7 +199,6 @@ export const parseTransactionsFromText = async (
         const date = parseDate(dateStr);
         if (!date) continue;
 
-        // Auto-detect type based on headers or amount sign
         let selectedTypeId = forceType || (amount >= 0 ? incomingType.id : outgoingType.id);
         if (!forceType && typeIdx !== -1 && parts[typeIdx]) {
             const rowType = parts[typeIdx].toLowerCase();
@@ -211,10 +221,16 @@ export const parseTransactionsFromText = async (
             notes: notesIdx !== -1 ? parts[notesIdx] : undefined,
             tagIds: tagsIdx !== -1 ? parts[tagsIdx]?.split(',').map(t => t.trim()) : undefined,
             metadata: {
-                raw_row: lines[i]
+                raw_row: lines[i],
+                file_line: i + 1
             }
         });
     }
+
+    if (txs.length === 0) {
+        throw new Error(`Successfully found columns, but failed to extract any valid transaction rows. Check your date format or delimiter settings.`);
+    }
+
     return txs;
 };
 
@@ -233,8 +249,12 @@ export const parseTransactionsFromFiles = async (
             reader.onload = () => res(reader.result as string);
             reader.readAsText(file);
         });
-        const txs = await parseTransactionsFromText(text, accountId, transactionTypes, onProgress, accountContext);
-        allTxs.push(...txs);
+        try {
+            const txs = await parseTransactionsFromText(text, accountId, transactionTypes, onProgress, accountContext);
+            allTxs.push(...txs);
+        } catch (e: any) {
+            throw new Error(`File: ${file.name} - ${e.message}`);
+        }
     }
     return allTxs;
 };
@@ -451,7 +471,6 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
     if (lines.length < 2) return [];
 
     const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    // Fixed: Defined headerLine before use on line 445
     const headerLine = lines[0].trim();
     const header = splitCsvLine(headerLine, delimiter).map(h => h.trim().toLowerCase());
     
@@ -518,7 +537,7 @@ export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
         rules.push({
             id: generateUUID(),
             name: row[col('rule name')] || 'Untitled Rule',
-            conditions: [{ id: generateUUID(), type: 'basic', field: row[col('match field')] as any || 'description', operator: row[col('operator')] as any || 'contains', value: row[col('match value')] || '', nextLogic: 'AND' }],
+            conditions: [{ id: generateUUID(), type: 'basic', field: row[col('match field')] as any || 'description', operator: 'contains', value: row[col('match value')] || '', nextLogic: 'AND' }],
             suggestedCategoryName: row[col('target category')],
             suggestedCounterpartyName: row[col('target entity')],
             suggestedLocationName: row[col('target location')],

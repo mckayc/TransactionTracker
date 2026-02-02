@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location, RuleCategory } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
@@ -9,7 +8,7 @@ import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import ImportVerification from '../components/ImportVerification';
-import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, CloudArrowUpIcon, ExclamationTriangleIcon, AddIcon, ChecklistIcon, DatabaseIcon, WrenchIcon } from '../components/Icons';
+import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, CloudArrowUpIcon, ExclamationTriangleIcon, AddIcon, ChecklistIcon, DatabaseIcon, WrenchIcon, InfoIcon, ArrowRightIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 
@@ -112,7 +111,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
     try {
         if (!rawTransactions || rawTransactions.length === 0) {
-            setError("No transactions were found in the provided data. Please check the file format or try AI mode.");
+            setError("No transactions were found in the provided data. This often happens if the CSV format doesn't match your Header Map.");
             setAppState('error');
             return;
         }
@@ -155,10 +154,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
         : await parseTransactionsFromFiles(files, accountId, transactionTypes, setProgressMessage, targetAccount);
       
       const safeRaw = (raw || []).filter(tx => tx && typeof tx === 'object');
-      if (safeRaw.length === 0) {
-          throw new Error("The parser returned 0 results. If using local parsing, check if headers match your Account's Neural Forge profile.");
-      }
-
+      
       const validUsers = Array.isArray(users) ? users.filter(Boolean) : [];
       const defaultUser = validUsers.length > 0 ? (validUsers.find(u => u.isDefault) || validUsers[0]) : null;
       applyRulesAndSetStaging(safeRaw, defaultUser?.id || 'user_primary', rules);
@@ -298,6 +294,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                             <button 
                                                 onClick={async () => {
                                                     setAppState('processing');
+                                                    setError(null);
                                                     try {
                                                         const targetAccount = accounts.find(a => a.id === pasteAccountId);
                                                         const raw = useAi 
@@ -311,7 +308,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                         setAppState('verifying_import');
                                                     } catch(e: any) { 
                                                         setAppState('error'); 
-                                                        setError(`Parsing failed: ${e.message || 'Unknown error'}`); 
+                                                        setError(e.message || 'Unknown error'); 
                                                     }
                                                 }} 
                                                 disabled={!textInput.trim() || !pasteAccountId} 
@@ -329,7 +326,47 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                 <p className="font-black text-slate-800 text-lg">{progressMessage}</p>
                             </div>
                         ) : (
-                            <ResultsDisplay appState={appState as any} error={error} progressMessage={progressMessage} transactions={[]} duplicatesIgnored={0} duplicatesImported={0} onClear={() => setAppState('idle')} />
+                            <div className="space-y-6">
+                                <div className="bg-red-50 border-2 border-red-100 p-8 rounded-[2rem] text-center space-y-4 animate-slide-up">
+                                    <div className="w-16 h-16 bg-red-600 rounded-full text-white flex items-center justify-center mx-auto shadow-lg"><ExclamationTriangleIcon className="w-8 h-8" /></div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-red-800">Processing Interrupted</h3>
+                                        <p className="text-red-700 mt-2 font-medium leading-relaxed">{error}</p>
+                                    </div>
+                                    
+                                    {error?.toLowerCase().includes('header map') || error?.toLowerCase().includes('column') ? (
+                                        <div className="bg-white/50 p-6 rounded-2xl border border-red-200 mt-4 space-y-4">
+                                            <div className="flex items-start gap-4 text-left">
+                                                <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><InfoIcon className="w-5 h-5"/></div>
+                                                <p className="text-sm text-slate-600 leading-relaxed">
+                                                    This system uses <strong>Header Maps</strong> to read local files. You must teach the engine which columns in your bank's CSV represent the date, memo, and amount.
+                                                </p>
+                                            </div>
+                                            <div className="flex flex-col sm:flex-row gap-3">
+                                                <button 
+                                                    onClick={() => window.location.href = '#management'}
+                                                    className="flex-1 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-md"
+                                                >
+                                                    Go to Identity Hub <ArrowRightIcon className="w-4 h-4" />
+                                                </button>
+                                                <button 
+                                                    onClick={() => setAppState('idle')}
+                                                    className="px-6 py-3 bg-white text-slate-600 font-bold rounded-xl border border-slate-200 hover:bg-slate-100"
+                                                >
+                                                    Dismiss
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button 
+                                            onClick={() => setAppState('idle')}
+                                            className="px-10 py-3 bg-slate-900 text-white font-black rounded-xl hover:bg-black transition-all"
+                                        >
+                                            Back to Dashboard
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         )}
                     </div>
                 </div>

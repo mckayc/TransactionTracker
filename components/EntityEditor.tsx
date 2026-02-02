@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, BalanceEffect, Location, ReconciliationRule, ParsingProfile } from '../types';
 import { generateUUID } from '../utils';
-import { SaveIcon, RobotIcon, SparklesIcon, WorkflowIcon, DatabaseIcon, TrashIcon, TableIcon, ShieldCheckIcon, EditIcon, ArrowRightIcon, ListIcon, TagIcon, MapPinIcon, TypeIcon, UsersIcon, InfoIcon, CalendarIcon, DollarSign, ArrowUpIcon, ArrowDownIcon } from './Icons';
+import { SaveIcon, RobotIcon, SparklesIcon, WorkflowIcon, DatabaseIcon, TrashIcon, TableIcon, ShieldCheckIcon, EditIcon, ArrowRightIcon, ListIcon, TagIcon, MapPinIcon, TypeIcon, UsersIcon, InfoIcon, CalendarIcon, DollarSign, ArrowUpIcon, ArrowDownIcon, CloseIcon } from './Icons';
 import SearchableSelect from './SearchableSelect';
 import { analyzeCsvLayout } from '../services/geminiService';
 
@@ -47,17 +47,20 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     const [csvSample, setCsvSample] = useState('');
     const [isForging, setIsForging] = useState(false);
     const [forgeProgress, setForgeProgress] = useState('');
-    const [proposedProfile, setProposedProfile] = useState<ParsingProfile | null>(null);
-    const isDirtyRef = useRef(false);
+    const [isDirty, setIsDirty] = useState(false);
 
     const accountRules = useMemo(() => {
         if (type !== 'accounts' || !initialId) return [];
         return rules.filter(r => r.conditions.some(c => c.field === 'accountId' && c.value === initialId));
     }, [rules, initialId, type]);
 
-    // Robust Initialization: Reset and Load strictly when identity (type or id) changes.
-    // This prevents background props refreshes (from broadcast syncs) from wiping out
-    // active, unsaved header mapping work.
+    // Fix: Defined missing parentOptions memo to populate parent selection while preventing circular hierarchy
+    const parentOptions = useMemo(() => {
+        if (type === 'categories') return categories.filter(c => c.id !== initialId);
+        if (type === 'counterparties') return counterparties.filter(p => p.id !== initialId);
+        return [];
+    }, [type, categories, counterparties, initialId]);
+
     useEffect(() => {
         let list: any[] = [];
         switch (type) {
@@ -98,10 +101,9 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             setColor(type === 'transactionTypes' ? 'text-rose-600' : 'bg-slate-50 text-slate-600');
             setParsingProfile(undefined);
         }
-        setProposedProfile(null);
         setCsvSample('');
-        isDirtyRef.current = false;
-    }, [type, initialId]); // DO NOT include 'accounts' here to avoid background sync resets.
+        setIsDirty(false);
+    }, [type, initialId]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -116,18 +118,18 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
             case 'accounts': Object.assign(payload, { identifier, accountTypeId, parsingProfile }); break;
         }
         onSave(type, payload);
-        isDirtyRef.current = false;
+        setIsDirty(false);
     };
 
     const handleForgeLogic = async () => {
         if (!csvSample.trim()) return;
         setIsForging(true);
         try {
-            // Use current state to ensure latest metadata is used even if save hasn't been hit
             const tempAccount = { name: name || 'Analysis Target', id: initialId || 'temp' } as Account;
             const { profile } = await analyzeCsvLayout(csvSample, tempAccount, setForgeProgress);
-            setProposedProfile(profile);
-            isDirtyRef.current = true;
+            setParsingProfile(profile);
+            setIsDirty(true);
+            setCsvSample('');
         } catch (e: any) {
             alert(e.message || "Mapping analysis failed.");
         } finally {
@@ -136,25 +138,10 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
         }
     };
 
-    const handleCommitProfile = () => {
-        if (proposedProfile) {
-            setParsingProfile(proposedProfile);
-        }
-        setProposedProfile(null);
-        alert("Layout consensus staged. Click 'Save Blueprint' above to permanently commit to database.");
-    };
-
-    const parentOptions = useMemo(() => {
-        if (type === 'categories') return categories.filter(c => c.id !== initialId);
-        if (type === 'counterparties') return counterparties.filter(c => c.id !== initialId);
-        return [];
-    }, [type, categories, counterparties, initialId]);
-
     const sampleDataRow = useMemo(() => {
         if (!csvSample) return null;
         const lines = csvSample.split('\n').filter(l => l.trim());
         if (lines.length < 2) return null;
-        // Detect delimiter based on first line
         const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
         const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
         const row = lines[1].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
@@ -170,52 +157,50 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     };
 
     const handleProfileFieldChange = (field: keyof ParsingProfile, value: any) => {
-        isDirtyRef.current = true;
-        const baseProfile = proposedProfile || parsingProfile || { 
+        setIsDirty(true);
+        const baseProfile = parsingProfile || { 
             dateColumn: '', 
             descriptionColumn: '', 
             amountColumn: '', 
-            delimiter: sampleDataRow?.headers ? (csvSample.includes('\t') ? '\t' : ',') : ',',
+            delimiter: ',',
             hasHeader: true 
         };
-        
-        const nextProfile = { ...baseProfile, [field]: value };
-        
-        if (proposedProfile) setProposedProfile(nextProfile as ParsingProfile);
-        else setParsingProfile(nextProfile as ParsingProfile);
+        setParsingProfile({ ...baseProfile, [field]: value });
     };
 
     const renderMapperRow = (label: string, field: keyof ParsingProfile, icon: React.ReactNode) => {
-        const currentProfile = proposedProfile || parsingProfile;
-        if (!currentProfile && !sampleDataRow) return null;
-        
-        const currentValue = currentProfile ? String(currentProfile[field] || '') : '';
+        const currentValue = parsingProfile ? String(parsingProfile[field] || '') : '';
         
         return (
-            <div className="flex items-center gap-6 p-4 bg-white border border-slate-200 rounded-2xl group hover:border-indigo-400 transition-all w-full shadow-sm">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+            <div className="flex items-center gap-3 p-2 bg-white border border-slate-100 rounded-xl group hover:border-indigo-300 transition-all w-full shadow-sm">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
                     {icon}
                 </div>
                 <div className="flex-1 min-w-0">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
-                    <div className="flex items-center gap-6 mt-1.5">
-                        <div className="w-72">
+                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+                    <div className="flex items-center gap-3 mt-0.5">
+                        <div className="flex-1 min-w-0">
                             <select 
                                 value={currentValue} 
                                 onChange={e => handleProfileFieldChange(field, e.target.value)}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-sm font-bold text-slate-800 focus:ring-1 focus:ring-indigo-500 cursor-pointer outline-none"
+                                className="w-full bg-slate-50 border-none rounded-lg p-1.5 text-[11px] font-bold text-slate-700 cursor-pointer outline-none focus:ring-1 focus:ring-indigo-500"
                             >
                                 <option value="">-- No Mapping --</option>
                                 {sampleDataRow?.headers.map((h, i) => (
                                     <option key={i} value={h}>{h}</option>
                                 ))}
+                                {/* If no sample is loaded but a mapping exists, show it as an option */}
+                                {currentValue && !sampleDataRow?.headers.includes(currentValue) && (
+                                    <option value={currentValue}>{currentValue} (Saved)</option>
+                                )}
                             </select>
                         </div>
-                        <div className="flex-1 min-w-0 flex items-center gap-3 px-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 shadow-inner overflow-hidden">
-                            <ArrowRightIcon className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter shrink-0">Live Value:</span>
-                            <span className="text-sm font-mono text-indigo-600 truncate font-bold">{getSampleValue(currentValue)}</span>
-                        </div>
+                        {sampleDataRow && (
+                            <div className="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 bg-indigo-50/30 rounded-lg border border-indigo-50 overflow-hidden">
+                                <span className="text-[7px] font-black text-indigo-400 uppercase shrink-0">Sample:</span>
+                                <span className="text-[10px] font-mono text-indigo-600 truncate font-bold">{getSampleValue(currentValue)}</span>
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
@@ -230,198 +215,141 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                 </div>
                 <div className="flex items-center gap-3">
                     <button type="submit" className="px-8 py-2 bg-indigo-600 text-white text-xs font-black uppercase rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 active:scale-95 transition-all flex items-center gap-2">
-                        <SaveIcon className="w-4 h-4" /> Save Blueprint
+                        <SaveIcon className="w-4 h-4" /> Save {type.slice(0, -1)}
                     </button>
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar bg-slate-50/10">
-                <div className="space-y-8 max-w-4xl mx-auto pb-12">
-                    <div className="space-y-1">
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity Label</label>
-                        <input type="text" value={name} onChange={e => { setName(e.target.value); isDirtyRef.current = true; }} className="w-full p-4 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:ring-0 font-bold text-slate-800 text-lg shadow-sm" placeholder="Display name..." required autoFocus />
-                    </div>
-
-                    {type === 'accounts' && (
-                        <div className="space-y-10 animate-fade-in">
-                            <div className="grid grid-cols-2 gap-6">
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar bg-slate-50/10">
+                <div className="max-w-4xl mx-auto space-y-6 pb-12">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Identity Label</label>
+                            <input type="text" value={name} onChange={e => { setName(e.target.value); setIsDirty(true); }} className="w-full p-3 border-2 border-slate-100 rounded-xl focus:border-indigo-500 focus:ring-0 font-bold text-slate-800 shadow-sm" placeholder="Display name..." required autoFocus />
+                        </div>
+                        {type === 'accounts' && (
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unique Identifier</label>
-                                    <input type="text" value={identifier} onChange={e => { setIdentifier(e.target.value); isDirtyRef.current = true; }} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold" placeholder="e.g. Last 4 digits" required />
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">ID (Last 4)</label>
+                                    <input type="text" value={identifier} onChange={e => { setIdentifier(e.target.value); setIsDirty(true); }} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold" placeholder="0000" required />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Account Category</label>
-                                    <select value={accountTypeId} onChange={e => { setAccountTypeId(e.target.value); isDirtyRef.current = true; }} className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Category</label>
+                                    <select value={accountTypeId} onChange={e => { setAccountTypeId(e.target.value); setIsDirty(true); }} className="w-full p-3 border-2 border-slate-100 rounded-xl font-bold text-xs">
                                         {accountTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                                     </select>
                                 </div>
                             </div>
+                        )}
+                    </div>
 
-                            <div className="space-y-10">
-                                {/* HEADER MAPPING WORKSPACE */}
-                                <div className="bg-slate-900 rounded-[2.5rem] p-8 text-white space-y-8 shadow-2xl relative overflow-hidden">
-                                    <div className="relative z-10 flex justify-between items-center">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-3 bg-indigo-50/20 rounded-2xl text-indigo-400 border border-indigo-500/20 shadow-lg"><TableIcon className="w-6 h-6" /></div>
-                                            <div>
-                                                <h4 className="text-xl font-black tracking-tight">Header Mapping</h4>
-                                                <p className="text-[10px] text-indigo-400 font-black uppercase tracking-widest mt-0.5">Physical to Logical Translation</p>
-                                            </div>
+                    {type === 'accounts' && (
+                        <div className="space-y-6 animate-fade-in">
+                            <div className="bg-slate-900 rounded-[2rem] p-6 text-white space-y-6 shadow-xl relative overflow-hidden">
+                                <div className="relative z-10 flex justify-between items-center">
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400 border border-indigo-500/20 shadow-lg"><TableIcon className="w-5 h-5" /></div>
+                                        <div>
+                                            <h4 className="text-lg font-black tracking-tight">Header Mapping</h4>
+                                            <p className="text-[9px] text-indigo-400 font-black uppercase tracking-widest mt-0.5">Logical Translation Grid</p>
                                         </div>
-                                        {(proposedProfile || csvSample) && (
-                                            <button type="button" onClick={() => { setProposedProfile(null); setCsvSample(''); }} className="p-2 bg-white/10 hover:bg-red-500/20 text-slate-400 hover:text-red-400 rounded-full transition-all">
-                                                <TrashIcon className="w-5 h-5" />
-                                            </button>
-                                        )}
                                     </div>
-
-                                    {!proposedProfile && (
-                                        <div className="relative z-10 space-y-4 animate-fade-in">
-                                            <div className="space-y-2">
-                                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Paste Raw CSV Data (Header + Sample Rows)</label>
-                                                <textarea 
-                                                    value={csvSample} 
-                                                    onChange={e => setCsvSample(e.target.value)}
-                                                    className="w-full h-48 bg-black/40 border border-white/5 rounded-[1.5rem] p-6 font-mono text-xs text-indigo-100 placeholder:text-slate-700 resize-none outline-none focus:border-indigo-500 transition-all shadow-inner"
-                                                    placeholder="Date, Transaction Description, Amount..."
-                                                />
-                                            </div>
-                                            
-                                            <button 
-                                                type="button"
-                                                onClick={handleForgeLogic}
-                                                disabled={isForging || !csvSample.trim()}
-                                                className="w-full py-5 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-3 disabled:opacity-30 active:scale-95 group"
-                                            >
-                                                {isForging ? <div className="w-5 h-5 border-4 border-t-white rounded-full animate-spin" /> : <SparklesIcon className="w-5 h-5 group-hover:scale-125 transition-transform" />}
-                                                {isForging ? forgeProgress : 'Analyze CSV Layout'}
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {proposedProfile && (
-                                        <div className="relative z-10 space-y-8 animate-slide-up">
-                                            <div className="space-y-4">
-                                                <div className="flex items-center justify-between px-1">
-                                                    <h5 className="text-[11px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-                                                        <WorkflowIcon className="w-4 h-4" /> Layout Consensus matrix
-                                                    </h5>
-                                                    <span className="cursor-help" title="Manually verify the column mapping discovered by AI.">
-                                                        <InfoIcon className="w-4 h-4 text-slate-500" />
-                                                    </span>
-                                                </div>
-                                                
-                                                <div className="space-y-3 bg-black/20 p-6 rounded-[2rem] border border-white/5 shadow-inner">
-                                                    <div className="space-y-2">
-                                                        {renderMapperRow('Transaction Date', 'dateColumn', <CalendarIcon className="w-5 h-5"/>)}
-                                                        {renderMapperRow('Statement Memo', 'descriptionColumn', <EditIcon className="w-5 h-5"/>)}
-                                                        {renderMapperRow('Standard Amount', 'amountColumn', <DollarSign className="w-5 h-5"/>)}
-                                                        {renderMapperRow('Withdrawal (Debit)', 'debitColumn', <ArrowDownIcon className="w-5 h-5"/>)}
-                                                        {renderMapperRow('Deposit (Credit)', 'creditColumn', <ArrowUpIcon className="w-5 h-5"/>)}
-                                                        {renderMapperRow('Entity / Payee', 'payeeColumn', <UsersIcon className="w-5 h-5"/>)}
-                                                        {renderMapperRow('Ledger Category', 'categoryColumn', <TagIcon className="w-5 h-5"/>)}
-                                                        {renderMapperRow('Transaction Type', 'typeColumn', <TypeIcon className="w-5 h-5"/>)}
-                                                        {renderMapperRow('City / Location', 'locationColumn', <MapPinIcon className="w-5 h-5"/>)}
-                                                        {renderMapperRow('Labels / Tags', 'tagsColumn', <ListIcon className="w-5 h-5"/>)}
-                                                        {renderMapperRow('Internal Notes', 'notesColumn', <InfoIcon className="w-5 h-5"/>)}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex gap-4">
-                                                <button type="button" onClick={() => setProposedProfile(null)} className="flex-1 py-5 bg-white/5 border border-white/10 text-slate-400 font-black rounded-2xl hover:bg-white/10 transition-all uppercase text-xs tracking-widest">Cancel</button>
-                                                <button 
-                                                    onClick={handleCommitProfile} 
-                                                    className="flex-[2] py-5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-[2rem] shadow-xl transition-all flex items-center justify-center gap-3 active:scale-95 group"
-                                                >
-                                                    <WorkflowIcon className="w-6 h-6 group-hover:scale-110 transition-transform" /> 
-                                                    Commit Mapping
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <SparklesIcon className="absolute -right-16 -top-16 w-64 h-64 opacity-[0.03] text-indigo-400 pointer-events-none" />
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setCsvSample(csvSample ? '' : ' ')} 
+                                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 ${csvSample ? 'bg-indigo-600 text-white shadow-lg' : 'bg-white/10 hover:bg-white/20'}`}
+                                    >
+                                        <SparklesIcon className="w-3 h-3" />
+                                        {csvSample ? 'Cancel Sample' : 'Load CSV Sample'}
+                                    </button>
                                 </div>
 
-                                {/* PERSISTENT REGISTRY SECTION */}
-                                <div className="space-y-6 pt-4 border-t border-slate-200">
-                                    <div className="flex items-center justify-between px-1">
-                                        <h4 className="text-[11px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                                            <ShieldCheckIcon className="w-5 h-5 text-indigo-600" /> 
-                                            Active Parsing Blueprint
-                                        </h4>
+                                {csvSample && (
+                                    <div className="relative z-10 space-y-4 animate-fade-in bg-black/30 p-4 rounded-2xl border border-white/5 shadow-inner">
+                                        <div className="space-y-2">
+                                            <label className="text-[8px] font-black text-slate-500 uppercase tracking-widest ml-1">Paste Raw CSV Rows (Header + Data)</label>
+                                            <textarea 
+                                                value={csvSample.trim()} 
+                                                onChange={e => setCsvSample(e.target.value)}
+                                                className="w-full h-24 bg-black/40 border border-white/5 rounded-xl p-3 font-mono text-[10px] text-indigo-100 placeholder:text-slate-700 resize-none outline-none focus:border-indigo-500 transition-all"
+                                                placeholder="Date, Description, Amount..."
+                                            />
+                                        </div>
+                                        <button 
+                                            type="button"
+                                            onClick={handleForgeLogic}
+                                            disabled={isForging || !csvSample.trim()}
+                                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-30 text-[10px] uppercase"
+                                        >
+                                            {isForging ? <div className="w-4 h-4 border-2 border-t-white rounded-full animate-spin" /> : <RobotIcon className="w-4 h-4" />}
+                                            {isForging ? forgeProgress : 'Analyze with Gemini AI'}
+                                        </button>
                                     </div>
+                                )}
 
-                                    {parsingProfile ? (
-                                        <div className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-200 space-y-6 shadow-sm animate-fade-in relative overflow-hidden group">
-                                            <div className="flex justify-between items-center relative z-10">
-                                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><TableIcon className="w-4 h-4" /> Active Column Map</h4>
-                                                <button type="button" onClick={() => { setParsingProfile(undefined); isDirtyRef.current = true; }} className="px-4 py-1.5 bg-slate-100 text-[9px] font-black text-slate-500 hover:text-red-500 rounded-xl border border-slate-200 transition-colors uppercase">Clear Configuration</button>
-                                            </div>
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 relative z-10">
-                                                {[
-                                                    { label: 'Date', val: parsingProfile.dateColumn, icon: <CalendarIcon className="w-3 h-3"/> },
-                                                    { label: 'Desc', val: parsingProfile.descriptionColumn, icon: <EditIcon className="w-3 h-3"/> },
-                                                    { label: 'Amount', val: parsingProfile.amountColumn, icon: <DollarSign className="w-3 h-3"/> },
-                                                    { label: 'Payee', val: parsingProfile.payeeColumn, icon: <UsersIcon className="w-3 h-3"/> },
-                                                    { label: 'Type', val: parsingProfile.typeColumn, icon: <TypeIcon className="w-3 h-3"/> },
-                                                    { label: 'Category', val: parsingProfile.categoryColumn, icon: <TagIcon className="w-3 h-3"/> },
-                                                    { label: 'Location', val: parsingProfile.locationColumn, icon: <MapPinIcon className="w-3 h-3"/> },
-                                                    { label: 'Tags', val: parsingProfile.tagsColumn, icon: <ListIcon className="w-3 h-3"/> }
-                                                ].filter(f => f.val).map(f => (
-                                                    <div key={f.label} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 shadow-inner flex flex-col gap-1">
-                                                        <div className="flex items-center gap-1.5 mb-1 opacity-50">
-                                                            <span className="text-slate-500">{f.icon}</span>
-                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{f.label}</p>
-                                                        </div>
-                                                        <p className="text-xs font-black text-slate-800 truncate">{f.val}</p>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    ) : !proposedProfile && (
-                                        <div className="p-16 text-center bg-slate-100 rounded-[3rem] border-2 border-dashed border-slate-300">
-                                            <TableIcon className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                                            <p className="text-sm text-slate-500 font-bold max-w-xs mx-auto uppercase tracking-wide">Provide a CSV sample above to teach the system how to read this account's statements.</p>
-                                        </div>
-                                    )}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 relative z-10">
+                                    {renderMapperRow('Transaction Date', 'dateColumn', <CalendarIcon className="w-4 h-4"/>)}
+                                    {renderMapperRow('Statement Memo', 'descriptionColumn', <EditIcon className="w-4 h-4"/>)}
+                                    {renderMapperRow('Standard Amount', 'amountColumn', <DollarSign className="w-4 h-4"/>)}
+                                    {renderMapperRow('Withdrawal (Debit)', 'debitColumn', <ArrowDownIcon className="w-4 h-4"/>)}
+                                    {renderMapperRow('Deposit (Credit)', 'creditColumn', <ArrowUpIcon className="w-4 h-4"/>)}
+                                    {renderMapperRow('Entity / Payee', 'payeeColumn', <UsersIcon className="w-4 h-4"/>)}
+                                    {renderMapperRow('Ledger Category', 'categoryColumn', <TagIcon className="w-4 h-4"/>)}
+                                    {renderMapperRow('Transaction Type', 'typeColumn', <TypeIcon className="w-4 h-4"/>)}
+                                    {renderMapperRow('City / Location', 'locationColumn', <MapPinIcon className="w-4 h-4"/>)}
+                                    {renderMapperRow('Labels / Tags', 'tagsColumn', <ListIcon className="w-4 h-4"/>)}
+                                </div>
+                                
+                                <SparklesIcon className="absolute -right-12 -top-12 w-48 h-48 opacity-[0.03] text-indigo-400 pointer-events-none" />
+                            </div>
 
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between px-1">
-                                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ShieldCheckIcon className="w-4 h-4" /> Associated Automation Logic</h4>
-                                            <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-3 py-1 rounded-full">{accountRules.length} Linked Rules</span>
-                                        </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ShieldCheckIcon className="w-4 h-4 text-indigo-500" /> Linked Automation</label>
+                                    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                                         {accountRules.length === 0 ? (
-                                            <div className="p-10 text-center bg-white rounded-3xl border border-slate-100 italic"><p className="text-xs text-slate-300">No account-specific automation registered.</p></div>
+                                            <div className="p-8 text-center text-slate-400 italic text-[11px]">No account-specific logic found.</div>
                                         ) : (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <div className="divide-y divide-slate-100">
                                                 {accountRules.map(r => (
-                                                    <div key={r.id} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm flex items-center justify-between group hover:border-indigo-300 transition-all">
+                                                    <div key={r.id} className="p-3 flex justify-between items-center group hover:bg-slate-50">
                                                         <div className="min-w-0">
-                                                            <p className="text-sm font-bold text-slate-700 truncate">{r.name}</p>
-                                                            <p className="text-[9px] text-slate-400 font-black uppercase mt-1 tracking-widest">{r.suggestedCategoryName || 'Categorization Applied'}</p>
+                                                            <p className="text-xs font-bold text-slate-700 truncate">{r.name}</p>
+                                                            <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mt-0.5">{r.suggestedCategoryName || 'Categorization'}</p>
                                                         </div>
-                                                        <button 
-                                                            type="button" 
-                                                            onClick={() => onDeleteRule?.(r.id)} 
-                                                            className="p-2 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg"
-                                                        >
-                                                            <TrashIcon className="w-4 h-4" />
-                                                        </button>
+                                                        <button type="button" onClick={() => onDeleteRule?.(r.id)} className="p-1.5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><TrashIcon className="w-3.5 h-3.5"/></button>
                                                     </div>
                                                 ))}
                                             </div>
                                         )}
                                     </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><ListIcon className="w-4 h-4 text-indigo-500" /> Administrative Context</label>
+                                    <textarea 
+                                        value={notes} 
+                                        onChange={e => { setNotes(e.target.value); setIsDirty(true); }} 
+                                        className="w-full p-4 border-2 border-slate-100 rounded-2xl text-xs font-medium bg-white h-[140px] focus:border-indigo-500 outline-none shadow-inner" 
+                                        placeholder="Note institutional logic or bank contact details..." 
+                                    />
                                 </div>
                             </div>
                         </div>
                     )}
 
                     {(type === 'categories' || type === 'counterparties') && (
-                        <div className="space-y-1">
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Parent Hierarchy</label>
-                            <SearchableSelect options={parentOptions} value={parentId} onChange={setParentId} isHierarchical placeholder="-- No Parent (Root) --" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-1">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Parent Hierarchy</label>
+                                <SearchableSelect options={parentOptions} value={parentId} onChange={setParentId} isHierarchical placeholder="-- No Parent (Root) --" />
+                            </div>
+                            {type === 'counterparties' && (
+                                <div className="space-y-1">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Ledger Owner</label>
+                                    <SearchableSelect options={users} value={userId} onChange={setUserId} placeholder="Select identity..." />
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -436,10 +364,10 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                         </div>
                     )}
 
-                    {(type === 'counterparties' || type === 'categories' || type === 'accounts') && (
+                    {(type !== 'accounts') && (
                         <div className="space-y-1">
                             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Administrative Context</label>
-                            <textarea value={notes} onChange={e => { setNotes(e.target.value); isDirtyRef.current = true; }} className="w-full p-6 border-2 border-slate-100 rounded-3xl font-medium min-h-[160px] shadow-inner focus:bg-white transition-all outline-none focus:border-indigo-500" placeholder="Record specific details or institutional logic for this identity..." />
+                            <textarea value={notes} onChange={e => { setNotes(e.target.value); setIsDirty(true); }} className="w-full p-4 border-2 border-slate-100 rounded-xl font-medium min-h-[120px] shadow-inner focus:bg-white transition-all outline-none focus:border-indigo-500 text-sm" placeholder="Record specific details or institutional memory..." />
                         </div>
                     )}
                 </div>
