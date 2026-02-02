@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { Category, Tag, Counterparty, User, TransactionType, AccountType, Account, BalanceEffect, Location, ReconciliationRule, ParsingProfile } from '../types';
 import { generateUUID } from '../utils';
-import { SaveIcon, RobotIcon, SparklesIcon, WorkflowIcon, DatabaseIcon, TrashIcon, TableIcon, ShieldCheckIcon, EditIcon, ArrowRightIcon, ListIcon, TagIcon, MapPinIcon, TypeIcon, UsersIcon, InfoIcon, CalendarIcon, DollarSign, ArrowUpIcon, ArrowDownIcon, CloseIcon } from './Icons';
+import { SaveIcon, RobotIcon, SparklesIcon, WorkflowIcon, DatabaseIcon, TrashIcon, TableIcon, ShieldCheckIcon, EditIcon, ArrowRightIcon, ListIcon, TagIcon, MapPinIcon, TypeIcon, UsersIcon, InfoIcon, CalendarIcon, DollarSign, ArrowUpIcon, ArrowDownIcon, CloseIcon, CheckCircleIcon } from './Icons';
 import SearchableSelect from './SearchableSelect';
 import { analyzeCsvLayout } from '../services/geminiService';
 
@@ -43,6 +43,9 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
     const [accountTypeId, setAccountTypeId] = useState('');
     const [parsingProfile, setParsingProfile] = useState<ParsingProfile | undefined>(undefined);
 
+    // Feedback State
+    const [isSuccess, setIsSuccess] = useState(false);
+
     // Account Logic Forge State
     const [csvSample, setCsvSample] = useState('');
     const [isForging, setIsForging] = useState(false);
@@ -54,7 +57,6 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
         return rules.filter(r => r.conditions.some(c => c.field === 'accountId' && c.value === initialId));
     }, [rules, initialId, type]);
 
-    // Fix: Defined missing parentOptions memo to populate parent selection while preventing circular hierarchy
     const parentOptions = useMemo(() => {
         if (type === 'categories') return categories.filter(c => c.id !== initialId);
         if (type === 'counterparties') return counterparties.filter(p => p.id !== initialId);
@@ -103,6 +105,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
         }
         setCsvSample('');
         setIsDirty(false);
+        setIsSuccess(false);
     }, [type, initialId]);
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -119,6 +122,8 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
         }
         onSave(type, payload);
         setIsDirty(false);
+        setIsSuccess(true);
+        setTimeout(() => setIsSuccess(false), 2500);
     };
 
     const handleForgeLogic = async () => {
@@ -140,7 +145,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
 
     const sampleDataRow = useMemo(() => {
         if (!csvSample) return null;
-        const lines = csvSample.split('\n').filter(l => l.trim());
+        const lines = csvSample.split(/\r?\n/).filter(l => l.trim());
         if (lines.length < 2) return null;
         const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
         const headers = lines[0].split(delimiter).map(h => h.trim().replace(/^"|"$/g, ''));
@@ -189,7 +194,6 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                                 {sampleDataRow?.headers.map((h, i) => (
                                     <option key={i} value={h}>{h}</option>
                                 ))}
-                                {/* If no sample is loaded but a mapping exists, show it as an option */}
                                 {currentValue && !sampleDataRow?.headers.includes(currentValue) && (
                                     <option value={currentValue}>{currentValue} (Saved)</option>
                                 )}
@@ -214,8 +218,9 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                     <button type="button" onClick={onCancel} className="px-4 py-2 text-xs font-black uppercase text-slate-400 hover:bg-slate-100 rounded-xl transition-all">Discard</button>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button type="submit" className="px-8 py-2 bg-indigo-600 text-white text-xs font-black uppercase rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 active:scale-95 transition-all flex items-center gap-2">
-                        <SaveIcon className="w-4 h-4" /> Save {type.slice(0, -1)}
+                    <button type="submit" className={`px-8 py-2 text-white text-xs font-black uppercase rounded-xl shadow-lg transition-all flex items-center gap-2 active:scale-95 ${isSuccess ? 'bg-emerald-600 shadow-emerald-100' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'}`}>
+                        {isSuccess ? <CheckCircleIcon className="w-4 h-4" /> : <SaveIcon className="w-4 h-4" />}
+                        {isSuccess ? 'Blueprint Saved' : `Save ${type.slice(0, -1)}`}
                     </button>
                 </div>
             </div>

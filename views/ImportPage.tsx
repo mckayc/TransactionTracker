@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location, RuleCategory } from '../types';
+import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location, RuleCategory, View } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
 import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
@@ -47,6 +47,7 @@ interface ImportPageProps {
   onSaveCounterparties: (ps: Counterparty[]) => void;
   onSaveLocations: (ls: Location[]) => void;
   onSaveCategories: (cs: Category[]) => void;
+  onNavigate?: (view: View) => void;
 }
 
 const ImportPage: React.FC<ImportPageProps> = ({ 
@@ -54,7 +55,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
     onSaveLocation, onSaveUser,
     onSaveTag, onAddTransactionType, onUpdateTransaction, onDeleteTransaction, onSaveRule, onDeleteRule, onAddAccount,
     ruleCategories, onSaveRuleCategory,
-    onSaveCounterparties, onSaveLocations, onSaveCategories
+    onSaveCounterparties, onSaveLocations, onSaveCategories, onNavigate
 }) => {
   const [appState, setAppState] = useState<AppState>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -111,7 +112,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
   const applyRulesAndSetStaging = useCallback((rawTransactions: RawTransaction[], userId: string, currentRules: ReconciliationRule[]) => {
     try {
         if (!rawTransactions || rawTransactions.length === 0) {
-            setError("No transactions were found in the provided data. This often happens if the CSV format doesn't match your Header Map.");
+            setError("No transactions were found. Check if the file matches your Account's Header Map.");
             setAppState('error');
             return;
         }
@@ -222,7 +223,6 @@ const ImportPage: React.FC<ImportPageProps> = ({
                         {isInitializing ? <div className="w-6 h-6 border-4 border-t-white rounded-full animate-spin" /> : <AddIcon className="w-6 h-6" />}
                         {isInitializing ? 'INITIALIZING...' : 'One-Click Quick Start'}
                     </button>
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">or manually configure in <span className="text-indigo-600 underline">identity hub</span></p>
                  </div>
              </div>
         ) : !hasCoreConfiguration && appState === 'idle' ? (
@@ -237,7 +237,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                     </div>
                     <div className="flex flex-col gap-3">
                         <button 
-                            onClick={() => window.location.href = '#settings'}
+                            onClick={() => onNavigate?.('settings')}
                             className="w-full py-5 bg-red-600 text-white font-black text-xl rounded-2xl shadow-xl hover:bg-red-700 transition-all flex items-center justify-center gap-3"
                         >
                             <WrenchIcon className="w-6 h-6" /> Open Diagnostics Hub
@@ -334,7 +334,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                         <p className="text-red-700 mt-2 font-medium leading-relaxed">{error}</p>
                                     </div>
                                     
-                                    {error?.toLowerCase().includes('header map') || error?.toLowerCase().includes('column') ? (
+                                    {(error?.toLowerCase().includes('header') || error?.toLowerCase().includes('column') || error?.toLowerCase().includes('map')) ? (
                                         <div className="bg-white/50 p-6 rounded-2xl border border-red-200 mt-4 space-y-4">
                                             <div className="flex items-start gap-4 text-left">
                                                 <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><InfoIcon className="w-5 h-5"/></div>
@@ -344,10 +344,10 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                             </div>
                                             <div className="flex flex-col sm:flex-row gap-3">
                                                 <button 
-                                                    onClick={() => window.location.href = '#management'}
+                                                    onClick={() => onNavigate?.('management')}
                                                     className="flex-1 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-md"
                                                 >
-                                                    Go to Identity Hub <ArrowRightIcon className="w-4 h-4" />
+                                                    Setup Mapping in Identity Hub <ArrowRightIcon className="w-4 h-4" />
                                                 </button>
                                                 <button 
                                                     onClick={() => setAppState('idle')}
@@ -362,7 +362,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                             onClick={() => setAppState('idle')}
                                             className="px-10 py-3 bg-slate-900 text-white font-black rounded-xl hover:bg-black transition-all"
                                         >
-                                            Back to Dashboard
+                                            Try Again
                                         </button>
                                     )}
                                 </div>

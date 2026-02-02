@@ -2,8 +2,6 @@ import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, Amaz
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
 
-declare const pdfjsLib: any;
-
 /**
  * Robustly splits a CSV line, respecting quoted fields and escaped quotes.
  */
@@ -18,11 +16,9 @@ const splitCsvLine = (line: string, delimiter: string): string[] => {
 
         if (char === '"') {
             if (inQuotes && nextChar === '"') {
-                // Escaped quote
                 curVal += '"';
-                i++; // Skip next quote
+                i++;
             } else {
-                // Toggle quote state
                 inQuotes = !inQuotes;
             }
         } else if (char === delimiter && !inQuotes) {
@@ -51,21 +47,39 @@ const cleanDescription = (string: string): string => {
   return cleaned.trim();
 };
 
+/**
+ * Sanitizes headers by removing Byte Order Marks (BOM) and invisible whitespace.
+ */
+const sanitizeHeader = (h: string): string => {
+    return h.replace(/^\uFEFF/, '').trim().toLowerCase();
+};
+
 const parseDate = (dateStr: string): Date | null => {
   if (!dateStr || dateStr.length < 5) return null;
   const cleanedDateStr = dateStr.replace(/^"|"$/g, '').trim();
 
+  // YYYY-MM-DD
   if (/^\d{4}-\d{1,2}-\d{1,2}/.test(cleanedDateStr)) {
     const datePart = cleanedDateStr.split(' ')[0];
     const date = new Date(datePart + 'T00:00:00');
     if (!isNaN(date.getTime())) return date;
   }
 
+  // DD.MM.YYYY or DD/MM/YYYY (common in Europe)
+  if (/^\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4}/.test(cleanedDateStr)) {
+      const sep = cleanedDateStr.includes('.') ? '.' : '/';
+      const parts = cleanedDateStr.split(sep);
+      const date = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+      if (!isNaN(date.getTime())) return date;
+  }
+
+  // Month Day, Year
   if (/[A-Za-z]{3}\s\d{1,2},?\s\d{4}/.test(cleanedDateStr)) {
       const date = new Date(cleanedDateStr);
       if (!isNaN(date.getTime())) return date;
   }
 
+  // MM-DD-YYYY
   if (/^\d{1,2}-\d{1,2}-\d{2,4}/.test(cleanedDateStr)) {
     const parts = cleanedDateStr.split('-');
     let year = parseInt(parts[2], 10);
@@ -74,6 +88,7 @@ const parseDate = (dateStr: string): Date | null => {
     if (!isNaN(date.getTime())) return date;
   }
 
+  // MM/DD/YYYY
   if (/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(cleanedDateStr)) {
     const parts = cleanedDateStr.split('/');
     let year = parseInt(parts[2], 10);
@@ -94,10 +109,6 @@ const formatDate = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-/**
- * Standard transaction parsers with intelligent header detection.
- * Updated to provide clear errors when mappings are missing or incorrect.
- */
 export const parseTransactionsFromText = async (
     text: string, 
     accountId: string, 
@@ -106,7 +117,7 @@ export const parseTransactionsFromText = async (
     accountContext?: Account
 ): Promise<RawTransaction[]> => {
     onProgress("Deconstructing bank CSV stream...");
-    const lines = text.split('\n').filter(l => l.trim());
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 1) return [];
     
     const profile = accountContext?.parsingProfile;
@@ -114,19 +125,22 @@ export const parseTransactionsFromText = async (
         throw new Error(`The account '${accountContext?.name || accountId}' does not have a Header Map. Please configure it in Identity Hub.`);
     }
 
-    const delimiter = profile.delimiter || (lines[0].includes('\t') ? '\t' : ',');
-    const headerLine = lines[0];
-    const firstLineParts = splitCsvLine(headerLine, delimiter).map(p => p.trim().toLowerCase());
+    // Determine delimiter (Saved vs Detected)
+    let delimiter = profile.delimiter || (lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ','));
     
-    // Identify column indices based on Profile. Use strict errors if profile claims a column exists.
+    // Sanitize headers to handle BOM and hidden chars
+    const headerLine = lines[0];
+    const firstLineParts = splitCsvLine(headerLine, delimiter).map(sanitizeHeader);
+    
     const findIndexStrict = (profileField: string | number | undefined, label: string) => {
         if (profileField === undefined || profileField === null || profileField === '') return -1;
-        
         if (typeof profileField === 'number') return profileField;
-        const idx = firstLineParts.findIndex(p => p === String(profileField).toLowerCase());
+        
+        const cleanTarget = profileField.toString().toLowerCase().trim();
+        const idx = firstLineParts.findIndex(p => p === cleanTarget);
         
         if (idx === -1) {
-            throw new Error(`Column '${profileField}' (mapped to ${label}) was not found in the uploaded file's headers.`);
+            throw new Error(`Header '${profileField}' (mapped to ${label}) was not found in the file. Detected headers: ${firstLineParts.join(', ')}`);
         }
         return idx;
     };
@@ -137,7 +151,6 @@ export const parseTransactionsFromText = async (
     const creditIdx = findIndexStrict(profile.creditColumn, 'Credit/Deposit');
     const descIdx = findIndexStrict(profile.descriptionColumn, 'Statement Memo');
     
-    // Optional mappings
     const payeeIdx = findIndexStrict(profile.payeeColumn, 'Entity/Payee');
     const typeIdx = findIndexStrict(profile.typeColumn, 'Transaction Type');
     const catIdx = findIndexStrict(profile.categoryColumn, 'Category');
@@ -145,17 +158,13 @@ export const parseTransactionsFromText = async (
     const tagsIdx = findIndexStrict(profile.tagsColumn, 'Tags');
     const notesIdx = findIndexStrict(profile.notesColumn, 'Notes');
 
-    // Validation: Require at least Date, Description, and either Amount or Debit/Credit
-    if (dateIdx === -1) throw new Error("A valid mapping for 'Transaction Date' is required to parse records.");
-    if (descIdx === -1) throw new Error("A valid mapping for 'Statement Memo' is required to parse records.");
-    if (amountIdx === -1 && debitIdx === -1 && creditIdx === -1) {
-        throw new Error("Missing amount mapping. You must define either a single 'Amount' column or both 'Debit' and 'Credit' columns.");
-    }
-
     const startIndex = profile.hasHeader ? 1 : 0;
     const txs: RawTransaction[] = [];
     const incomingType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
     const outgoingType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
+
+    let dateFailures = 0;
+    let amountFailures = 0;
 
     for (let i = startIndex; i < lines.length; i++) {
         const parts = splitCsvLine(lines[i], delimiter);
@@ -167,7 +176,6 @@ export const parseTransactionsFromText = async (
         let amount = 0;
         let forceType: string | null = null;
 
-        // Support for separate Debit/Credit columns
         if (debitIdx !== -1 || creditIdx !== -1) {
             const debitVal = debitIdx !== -1 ? parts[debitIdx]?.replace(/[^-0.9.]/g, '') : '';
             const creditVal = creditIdx !== -1 ? parts[creditIdx]?.replace(/[^-0.9.]/g, '') : '';
@@ -184,7 +192,11 @@ export const parseTransactionsFromText = async (
             }
         } else if (amountIdx !== -1) {
             const rawAmount = parts[amountIdx]?.replace(/[^-0.9.]/g, '') || '0';
-            amount = parseFloat(rawAmount) || 0;
+            amount = parseFloat(rawAmount);
+            if (isNaN(amount)) {
+                amountFailures++;
+                continue;
+            }
         }
         
         if (!dateStr || (amount === 0 && !rawDesc)) continue;
@@ -192,23 +204,16 @@ export const parseTransactionsFromText = async (
         let finalDesc = rawDesc;
         if (payeeIdx !== -1 && payeeIdx !== descIdx && parts[payeeIdx]) {
             finalDesc = `${parts[payeeIdx]} - ${rawDesc}`.trim();
-            if (finalDesc.endsWith(' -')) finalDesc = parts[payeeIdx];
-            if (finalDesc.startsWith('- ')) finalDesc = rawDesc;
         }
 
         const date = parseDate(dateStr);
-        if (!date) continue;
-
-        let selectedTypeId = forceType || (amount >= 0 ? incomingType.id : outgoingType.id);
-        if (!forceType && typeIdx !== -1 && parts[typeIdx]) {
-            const rowType = parts[typeIdx].toLowerCase();
-            if (rowType.includes('receive') || rowType.includes('credit') || rowType.includes('deposit')) {
-                selectedTypeId = incomingType.id;
-            } else if (rowType.includes('spend') || rowType.includes('debit') || rowType.includes('purchase')) {
-                selectedTypeId = outgoingType.id;
-            }
+        if (!date) {
+            dateFailures++;
+            continue;
         }
 
+        let selectedTypeId = forceType || (amount >= 0 ? incomingType.id : outgoingType.id);
+        
         txs.push({
             date: formatDate(date),
             description: cleanDescription(finalDesc || 'Untitled Transaction'),
@@ -228,7 +233,13 @@ export const parseTransactionsFromText = async (
     }
 
     if (txs.length === 0) {
-        throw new Error(`Successfully found columns, but failed to extract any valid transaction rows. Check your date format or delimiter settings.`);
+        if (dateFailures > 0) {
+            throw new Error(`Extracted ${lines.length - startIndex} potential rows, but they ALL failed date parsing in column '${profile.dateColumn}'. Check your Date format in the CSV.`);
+        }
+        if (amountFailures > 0) {
+            throw new Error(`Found data rows, but failed to parse amounts in column '${profile.amountColumn}'. Make sure it contains only numbers and symbols like $ or ,.`);
+        }
+        throw new Error(`Successfully found columns, but failed to extract any valid transaction rows. Check if the CSV uses headers but the 'Has Header' setting is incorrect.`);
     }
 
     return txs;
@@ -253,7 +264,7 @@ export const parseTransactionsFromFiles = async (
             const txs = await parseTransactionsFromText(text, accountId, transactionTypes, onProgress, accountContext);
             allTxs.push(...txs);
         } catch (e: any) {
-            throw new Error(`File: ${file.name} - ${e.message}`);
+            throw new Error(`File Error (${file.name}): ${e.message}`);
         }
     }
     return allTxs;
@@ -509,51 +520,91 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
     return metrics;
 };
 
-export const parseYouTubeReport = parseYouTubeDetailedReport;
-export const parseAmazonReport = parseAmazonEarningsReport;
-export const parseAmazonVideos = parseAmazonStorefrontVideos;
+// Fix: Adding missing rule template generator
+export const generateRuleTemplate = (): string => {
+    return "Rule Name,Match Field,Operator,Match Value,Target Category,Target Counterparty,Target Location,Target Type,Description Cleanup,Tags,Skip Import\n" +
+           "Starbucks Logic,description,contains,STARBUCKS,Dining,Starbucks,Seattle,Purchase,Starbucks Coffee,coffee||morning,false\n";
+};
 
+// Fix: Adding missing rule format validator
 export const validateRuleFormat = (lines: string[]): { isValid: boolean; error?: string } => {
-    if (lines.length === 0) return { isValid: false, error: "Empty file" };
-    const header = lines[0].toLowerCase();
-    if (!header.includes('rule name') || !header.includes('match field')) return { isValid: false, error: "Missing required headers" };
+    if (lines.length < 1) return { isValid: false, error: "File is empty." };
+    const header = sanitizeHeader(lines[0]);
+    if (!header.includes('rule name') || !header.includes('match value')) {
+        return { isValid: false, error: "Missing required headers. Ensure 'Rule Name' and 'Match Value' are present." };
+    }
     return { isValid: true };
 };
 
-export const generateRuleTemplate = (): string => {
-    return "Rule Name,Match Field,Operator,Match Value,Target Category,Target Entity,Target Location,Target Type,Set Description,Skip Import\n" +
-           "Starbucks Coffee,description,contains,STARBUCKS,Dining,Starbucks,,Purchase,Starbucks,false";
-};
-
+// Fix: Adding missing rule logic parser
 export const parseRulesFromLines = (lines: string[]): ReconciliationRule[] => {
-    const rules: ReconciliationRule[] = [];
     if (lines.length < 2) return [];
-    const delimiter = lines[0].includes('\t') ? '\t' : ',';
-    const header = splitCsvLine(lines[0], delimiter).map(h => h.trim().toLowerCase());
-    const col = (name: string) => header.indexOf(name);
+    const delimiter = lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ',');
+    const header = splitCsvLine(lines[0], delimiter).map(sanitizeHeader);
+    
+    const col = {
+        name: header.indexOf('rule name'),
+        field: header.indexOf('match field'),
+        op: header.indexOf('operator'),
+        val: header.indexOf('match value'),
+        cat: header.indexOf('target category'),
+        entity: header.indexOf('target counterparty'),
+        loc: header.indexOf('target location'),
+        type: header.indexOf('target type'),
+        clean: header.indexOf('description cleanup'),
+        tags: header.indexOf('tags'),
+        skip: header.indexOf('skip import')
+    };
+
+    const rules: ReconciliationRule[] = [];
     for (let i = 1; i < lines.length; i++) {
         const row = splitCsvLine(lines[i], delimiter);
-        if (row.length < 4) continue;
+        if (row.length < 2) continue;
+
+        const name = row[col.name] || 'Imported Rule';
+        const field = (row[col.field] || 'description') as any;
+        const operator = (row[col.op] || 'contains') as any;
+        const value = row[col.val] || '';
+        
+        if (!value) continue;
+
         rules.push({
             id: generateUUID(),
-            name: row[col('rule name')] || 'Untitled Rule',
-            conditions: [{ id: generateUUID(), type: 'basic', field: row[col('match field')] as any || 'description', operator: 'contains', value: row[col('match value')] || '', nextLogic: 'AND' }],
-            suggestedCategoryName: row[col('target category')],
-            suggestedCounterpartyName: row[col('target entity')],
-            suggestedLocationName: row[col('target location')],
-            suggestedTypeName: row[col('target type')],
-            setDescription: row[col('set description')],
-            skipImport: row[col('skip import')] === 'true'
+            name,
+            conditions: [{ id: generateUUID(), type: 'basic', field, operator, value, nextLogic: 'AND' }],
+            suggestedCategoryName: row[col.cat],
+            suggestedCounterpartyName: row[col.entity],
+            suggestedLocationName: row[col.loc],
+            suggestedTypeName: row[col.type],
+            setDescription: row[col.clean],
+            suggestedTags: row[col.tags] ? row[col.tags].split('||').map(t => t.trim()) : undefined,
+            skipImport: row[col.skip]?.toLowerCase() === 'true'
         });
     }
     return rules;
 };
 
+// Fix: Adding missing rule file parser
 export const parseRulesFromFile = async (file: File): Promise<ReconciliationRule[]> => {
     const reader = new FileReader();
-    const text = await new Promise<string>((res) => {
-        reader.onload = () => res(reader.result as string);
+    const text = await new Promise<string>((resolve) => {
+        reader.onload = () => resolve(reader.result as string);
         reader.readAsText(file);
     });
-    return parseRulesFromLines(text.split('\n'));
+    return parseRulesFromLines(text.split(/\r?\n/).filter(l => l.trim()));
 };
+
+// Fix: Adding missing amazon report multiplexer
+export const parseAmazonReport = async (file: File, onProgress: (msg: string) => void): Promise<AmazonMetric[]> => {
+    const name = file.name.toLowerCase();
+    if (name.includes('creator') || name.includes('connection')) {
+        return parseCreatorConnectionsReport(file, onProgress);
+    }
+    return parseAmazonEarningsReport(file, onProgress);
+};
+
+// Fix: Adding missing amazon video export wrapper
+export const parseAmazonVideos = parseAmazonStorefrontVideos;
+
+// Fix: Adding missing youtube report export wrapper
+export const parseYouTubeReport = parseYouTubeDetailedReport;
