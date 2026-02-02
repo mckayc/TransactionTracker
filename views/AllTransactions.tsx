@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, User, Tag, SavedReport, DateRangePreset, RuleCategory, Location } from '../types';
 import TransactionTable from '../components/TransactionTable';
@@ -6,6 +7,7 @@ import BulkEditModal from '../components/BulkEditModal';
 import RuleModal from '../components/RuleModal';
 import CopyTransactionsModal from '../components/CopyTransactionsModal';
 import SplitTransactionModal from '../components/SplitTransactionModal';
+import LinkedGroupModal from '../components/LinkedGroupModal';
 import { AddIcon, DeleteIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, SparklesIcon, CalendarIcon, TrendingUpIcon, TagIcon, TrashIcon, InfoIcon, CopyIcon, CheckCircleIcon, SplitIcon } from '../components/Icons';
 import { api } from '../services/apiService';
 import { generateUUID } from '../utils';
@@ -130,6 +132,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
   const [splitTransaction, setSplitTransaction] = useState<Transaction | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [managingLinkGroupId, setManagingLinkGroupId] = useState<string | null>(null);
 
   const { start, end, label } = useMemo(() => calculateDateRange(datePreset, customStart, customEnd, []), [datePreset, customStart, customEnd]);
 
@@ -195,18 +198,52 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
 
   const handleSplitComplete = async (parent: Transaction, children: Transaction[]) => {
       try {
-          // Save the parent (now container) and the new children
           await api.saveTransactions([parent, ...children]);
-          setToastMessage(`Split "${parent.description}" into ${children.length} parts.`);
+          setToastMessage(`Split committed successfully.`);
           fetchTransactions();
       } catch (err) {
           alert("Failed to save split data.");
       }
   };
 
+  const handleUnlink = async (txs: Transaction[]) => {
+      try {
+          const parent = txs.find(t => t.isParent);
+          if (parent) {
+              // It's a split: Delete individual parts and restore parent to single transaction
+              const children = txs.filter(t => t.id !== parent.id);
+              for (const child of children) {
+                  await api.deleteTransaction(child.id);
+              }
+              const restoredParent = { 
+                  ...parent, 
+                  isParent: false, 
+                  linkGroupId: undefined 
+              };
+              await api.saveTransactions([restoredParent]);
+          } else {
+              // Standard link (transfers etc): Just remove the group ID
+              const updates = txs.map(t => ({ ...t, linkGroupId: undefined }));
+              await api.saveTransactions(updates);
+          }
+          
+          setManagingLinkGroupId(null);
+          setToastMessage("Group link dissolved. Original state restored.");
+          fetchTransactions();
+      } catch (err) {
+          console.error("Unlink error:", err);
+          alert("Failed to dissolve group link.");
+      }
+  };
+
   const selectedTransactions = useMemo(() => 
     transactions.filter(tx => selectedIds.has(tx.id)), 
   [transactions, selectedIds]);
+
+  const managingGroupTxs = useMemo(() => {
+    if (!managingLinkGroupId) return [];
+    return transactions.filter(t => t.linkGroupId === managingLinkGroupId);
+  }, [transactions, managingLinkGroupId]);
 
   return (
     <div className="flex flex-col h-full gap-4">
@@ -277,6 +314,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
                 onToggleSelectAll={() => { if (selectedIds.size === transactions.length) setSelectedIds(new Set()); else setSelectedIds(new Set(transactions.map(t => t.id))); }} 
                 onEditRule={handleEditRule}
                 onSplit={handleSplitRequested}
+                onManageLink={setManagingLinkGroupId}
             />
           </div>
 
@@ -350,6 +388,16 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
         categories={categories}
         transactionTypes={transactionTypes}
         onSplit={handleSplitComplete}
+      />
+
+      <LinkedGroupModal 
+        isOpen={!!managingLinkGroupId}
+        onClose={() => setManagingLinkGroupId(null)}
+        transactions={managingGroupTxs}
+        transactionTypes={transactionTypes}
+        accounts={accounts}
+        onUnlink={handleUnlink}
+        onFindSimilar={() => {}}
       />
 
       {toastMessage && (
