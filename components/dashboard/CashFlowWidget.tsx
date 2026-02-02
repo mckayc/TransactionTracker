@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Category, Counterparty, DashboardWidget, Account, TransactionType, User, Tag } from '../../types';
-import { ChevronRightIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TrendingUpIcon, CloseIcon } from '../Icons';
+import { ChevronRightIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TrendingUpIcon, CloseIcon, LinkIcon, ListIcon } from '../Icons';
 import { parseISOLocal } from '../../dateUtils';
 import TransactionTable from '../TransactionTable';
 
@@ -359,26 +359,16 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
     const totalValue = useMemo(() => chartData.filter(r => !hiddenSet.has(r.id)).reduce((s, r) => s + r.value, 0), [chartData, hiddenSet]);
 
-    // Data passed to the inspection table should include ALL relevant records for the chosen period
-    // but the table itself will handle the visual grouping if `linkGroupId` exists.
     const inspectionData = useMemo(() => {
         if (!inspectingNode) return [];
-        
-        // Find all records that match the inspection criteria (including those hidden from the chart)
         const nodeTxs = inspectingNode.transactions;
         const groupIds = new Set(nodeTxs.map(t => t.linkGroupId).filter(Boolean));
-        
-        // To ensure the table looks correct (shows the group container), 
-        // we need to include the "Parent" containers in the data list if we are inspecting a group.
         const containers = transactions.filter(t => t.isParent && groupIds.has(t.linkGroupId));
-        
-        // Return unique set of transactions
         const result = [...nodeTxs];
         const resultIds = new Set(result.map(t => t.id));
         containers.forEach(c => {
             if (!resultIds.has(c.id)) result.push(c);
         });
-        
         return result;
     }, [inspectingNode, transactions]);
 
@@ -398,16 +388,36 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         const isHidden = hiddenSet.has(node.id);
         const isExpanded = expandedIds.has(node.id);
         const hasVisibleChildren = node.children.some(c => c.value > 0 || c.transactions.length > 0);
+        const hasDirectTransactions = node.directValue > 0 && node.transactions.length > 0;
+        
+        // Group transactions by link group for "nested items" display
+        const nestedGroups = useMemo(() => {
+            // Added fix: Return an object with groups and singles instead of an empty array on early exit
+            if (!isExpanded || !hasDirectTransactions) return { groups: [], singles: [] };
+            const groups = new Map<string, Transaction[]>();
+            const singles: Transaction[] = [];
+            
+            node.transactions.filter(t => !t.isParent).forEach(t => {
+                if (t.linkGroupId) {
+                    if (!groups.has(t.linkGroupId)) groups.set(t.linkGroupId, []);
+                    groups.get(t.linkGroupId)!.push(t);
+                } else {
+                    singles.push(t);
+                }
+            });
+            
+            return { groups: Array.from(groups.entries()), singles };
+        }, [isExpanded, hasDirectTransactions, node.transactions]);
 
         return (
             <div key={node.id} className="select-none">
                 <div 
                     className={`flex items-center gap-3 p-2 rounded-xl transition-all cursor-pointer hover:bg-slate-50 border-2 border-transparent ${isHidden ? 'opacity-40 grayscale' : ''}`}
                     style={{ marginLeft: `${depth * 16}px` }}
-                    onClick={() => setInspectingNode(node)}
+                    onClick={() => (hasVisibleChildren || hasDirectTransactions) ? toggleExpand(node.id) : setInspectingNode(node)}
                 >
                     <div className="w-5 flex justify-center shrink-0">
-                        {hasVisibleChildren && (
+                        {(hasVisibleChildren || hasDirectTransactions) && (
                             <button onClick={(e) => { e.stopPropagation(); toggleExpand(node.id); }} className="p-0.5 rounded hover:bg-slate-200">
                                 {isExpanded ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
                             </button>
@@ -417,7 +427,9 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                     <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-center mb-1">
                             <span className="text-[11px] font-bold text-slate-700 truncate">{node.label}</span>
-                            <span className="text-[11px] font-black text-slate-900 font-mono">{formatCurrency(node.value)}</span>
+                            <span className="text-[11px] font-black text-slate-900 font-mono">
+                                {isHidden ? '---' : formatCurrency(node.value)}
+                            </span>
                         </div>
                         {!isHidden && totalValue > 0 && (
                             <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
@@ -432,7 +444,43 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                         {isHidden ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
                     </button>
                 </div>
-                {isExpanded && node.children.filter(c => c.value > 0 || c.transactions.length > 0).map(c => renderNode(c, depth + 1))}
+                
+                {isExpanded && !isHidden && (
+                    <div className="space-y-0.5">
+                        {/* Nested Sub-categories */}
+                        {node.children.filter(c => c.value > 0 || c.transactions.length > 0).map(c => renderNode(c, depth + 1))}
+                        
+                        {/* Nested Direct Transactions (Logical Groups) */}
+                        {nestedGroups.groups.map(([groupId, txs]) => (
+                            <div key={groupId} className="py-1" style={{ marginLeft: `${(depth + 1) * 16 + 24}px` }}>
+                                <div className="flex items-center gap-2 mb-1">
+                                    <LinkIcon className="w-2.5 h-2.5 text-indigo-400" />
+                                    <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Linked Group ({txs.length})</span>
+                                </div>
+                                <div className="space-y-1">
+                                    {txs.map(tx => (
+                                        <div key={tx.id} className="flex justify-between items-center pr-4">
+                                            <span className="text-[9px] font-medium text-slate-500 truncate max-w-[120px]">• {tx.description}</span>
+                                            <span className="text-[9px] font-mono text-slate-400">{formatCurrency(tx.amount)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+
+                        {/* Flat Transactions (Singles) */}
+                        {nestedGroups.singles.length > 0 && (
+                            <div className="py-1" style={{ marginLeft: `${(depth + 1) * 16 + 24}px` }}>
+                                {nestedGroups.singles.map(tx => (
+                                    <div key={tx.id} className="flex justify-between items-center pr-4 py-0.5">
+                                        <span className="text-[9px] font-medium text-slate-500 truncate max-w-[140px]">• {tx.description}</span>
+                                        <span className="text-[9px] font-mono text-slate-400">{formatCurrency(tx.amount)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         );
     };
@@ -479,7 +527,6 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                                 users={users}
                                 onUpdateTransaction={() => {}}
                                 onDeleteTransaction={() => {}}
-                                // Limit columns for cleaner popup look
                                 visibleColumns={new Set(['date', 'description', 'counterparty', 'account', 'amount'])}
                             />
                         </div>
