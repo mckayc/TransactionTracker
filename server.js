@@ -355,7 +355,16 @@ app.post('/api/transactions/batch', (req, res) => {
 app.get('/api/analytics/summary', (req, res) => {
     try {
         const { startDate, endDate, search } = req.query;
-        let where = ` WHERE 1=1 AND t.is_parent = 0`;
+        // IMPROVED ANALYTICS LOGIC:
+        // Exclude records that are parents ONLY if they have children.
+        // If a record is a parent but has no children citing it, it's a 'Ghost Parent' and SHOULD be counted.
+        let where = ` 
+            WHERE 1=1 
+            AND (
+                t.is_parent = 0 
+                OR t.id NOT IN (SELECT DISTINCT parent_transaction_id FROM transactions WHERE parent_transaction_id IS NOT NULL)
+            )
+        `;
         const values = [];
         if (startDate) { where += ` AND t.date >= ?`; values.push(startDate); }
         if (endDate) { where += ` AND t.date <= ?`; values.push(endDate); }
@@ -386,7 +395,14 @@ app.get('/api/analytics/summary', (req, res) => {
 app.get('/api/analytics/breakdown', (req, res) => {
     try {
         const { type, startDate, endDate, search } = req.query;
-        let where = ` WHERE 1=1 AND t.is_parent = 0`;
+        // Same improved logic for breakdown to ensure consistency between totals and segments
+        let where = ` 
+            WHERE 1=1 
+            AND (
+                t.is_parent = 0 
+                OR t.id NOT IN (SELECT DISTINCT parent_transaction_id FROM transactions WHERE parent_transaction_id IS NOT NULL)
+            )
+        `;
         const values = [];
         if (startDate) { where += ` AND t.date >= ?`; values.push(startDate); }
         if (endDate) { where += ` AND t.date <= ?`; values.push(endDate); }
@@ -514,7 +530,7 @@ app.get('/api/admin/audit-integrity', (req, res) => {
             AND parent_transaction_id NOT IN (SELECT id FROM transactions)
         `).all();
 
-        // 2. Find Empty Parents
+        // 2. Find Empty Parents (Ghost Parents)
         const emptyParents = db.prepare(`
             SELECT * FROM transactions 
             WHERE is_parent = 1 
@@ -544,7 +560,9 @@ app.post('/api/admin/repair', (req, res) => {
         
         // --- DATA INTEGRITY: LOGICAL REBALANCING ---
         db.transaction(() => {
-            // 1. Convert "Orphaned Parents" back to normal transactions.
+            // 1. FIX: Convert "Orphaned Parents" back to normal transactions.
+            // These are records marked as parents but have ZERO children associated with them.
+            // This is the primary cause of 'doubled income' or 'missing income' discrepancies.
             db.exec(`
                 UPDATE transactions 
                 SET is_parent = 0 

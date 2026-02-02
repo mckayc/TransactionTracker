@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, Counterparty, Category, User, Tag } from '../types';
-import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon, WrenchIcon, EditIcon } from './Icons';
+// Added TrashIcon to the import list from './Icons'
+import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon, WrenchIcon, EditIcon, ExclamationTriangleIcon, TrashIcon } from './Icons';
 
 interface TransactionTableProps {
   transactions: Transaction[];
@@ -36,11 +37,13 @@ interface GroupItem {
     primaryTx: Transaction;
     children: Transaction[];
     totalAmount: number;
+    isBroken?: boolean;
 }
 
 interface SingleItem {
     type: 'single';
     tx: Transaction;
+    warning?: string;
 }
 
 type DisplayItem = GroupItem | SingleItem;
@@ -150,14 +153,14 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         });
 
         const items: DisplayItem[] = [];
-        const processedGroupIds = new Set<string>();
+        const processedIds = new Set<string>();
 
+        // 1. First Pass: Handle Groups
         sorted.forEach(tx => {
+            if (processedIds.has(tx.id)) return;
+
             if (tx.linkGroupId) {
-                if (processedGroupIds.has(tx.linkGroupId)) return;
-                
                 const groupTxs = transactions.filter(t => t.linkGroupId === tx.linkGroupId);
-                // INTEGRITY FIX: Find the designated container. If missing, use the first member.
                 const primary = groupTxs.find(t => t.isParent) || groupTxs[0];
                 
                 if (groupTxs.length > 1) {
@@ -169,22 +172,25 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         children,
                         totalAmount: groupTxs.reduce((sum, t) => sum + (t.isParent ? 0 : t.amount), 0) || primary.amount
                     });
-                    processedGroupIds.add(tx.linkGroupId);
+                    groupTxs.forEach(t => processedIds.add(t.id));
                 } else {
-                    // CRITICAL: It's a "group" of one (orphan). Force it to single visibility to prevent "hiding" broken state.
-                    items.push({ type: 'single', tx: groupTxs[0] });
-                    processedGroupIds.add(tx.linkGroupId);
+                    // It's a broken group (only one member). 
+                    // Render it as a single but show it as an orphan.
+                    items.push({ type: 'single', tx, warning: "Orphaned logical link" });
+                    processedIds.add(tx.id);
                 }
             } else if (!tx.parentTransactionId) {
                 // Normal record
                 items.push({ type: 'single', tx });
-            } else {
-                // It's a child record (has parentTransactionId) but the parent is missing from the list
-                // Force visibility if the parent isn't in the current transaction set
-                const parentIsMissing = !transactions.some(p => p.id === tx.parentTransactionId);
-                if (parentIsMissing) {
-                    items.push({ type: 'single', tx });
-                }
+                processedIds.add(tx.id);
+            }
+        });
+
+        // 2. Second Pass: Catch any records missed (e.g. child records whose parent is missing)
+        sorted.forEach(tx => {
+            if (!processedIds.has(tx.id)) {
+                items.push({ type: 'single', tx, warning: "Hidden split component (Parent Missing)" });
+                processedIds.add(tx.id);
             }
         });
 
@@ -275,20 +281,30 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-slate-100">
-                        {displayItems.map((item) => {
+                        {displayItems.map((item, index) => {
                             if (item.type === 'single') {
                                 const tx = item.tx;
                                 const isSelected = selectedTxIds.has(tx.id);
                                 const appliedIds = tx.appliedRuleIds || (tx.appliedRuleId ? [tx.appliedRuleId] : []);
 
                                 return (
-                                    <tr key={tx.id} className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-indigo-50/50' : ''}`}>
+                                    <tr key={tx.id} className={`hover:bg-slate-50/80 transition-colors group ${isSelected ? 'bg-indigo-50/50' : ''} ${item.warning ? 'bg-amber-50/30' : ''}`}>
                                         {showCheckboxes && <td className="p-3 text-center border-b border-slate-50"><input type="checkbox" checked={isSelected} onChange={() => onToggleSelection?.(tx.id)} className="rounded text-indigo-600 cursor-pointer h-3.5 w-3.5" /></td>}
                                         {visibleColumns.has('date') && <td className="px-3 py-2 text-[10px] font-mono text-slate-500 whitespace-nowrap border-b border-slate-50">{tx.date}</td>}
                                         {visibleColumns.has('description') && (
                                             <td className="px-3 py-2 border-b border-slate-50">
                                                 <div className="flex flex-col min-w-0 max-w-[200px] lg:max-w-sm">
-                                                    <span className="text-[11px] font-bold text-slate-800 truncate leading-none" title={tx.description}>{tx.description}</span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[11px] font-bold text-slate-800 truncate leading-none" title={tx.description}>{tx.description}</span>
+                                                        {item.warning && (
+                                                            <div className="group/warning relative cursor-help">
+                                                                <ExclamationTriangleIcon className="w-3 h-3 text-amber-500" />
+                                                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/warning:block w-32 p-2 bg-slate-900 text-white text-[8px] font-black uppercase rounded shadow-xl z-50 text-center leading-tight">
+                                                                    {item.warning}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                     {tx.originalDescription && tx.originalDescription !== tx.description && <span className="text-[8px] text-slate-400 uppercase font-black tracking-tighter truncate opacity-70 mt-0.5" title={tx.originalDescription}>{tx.originalDescription}</span>}
                                                 </div>
                                             </td>
@@ -336,11 +352,13 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                             )}
                                             {visibleColumns.has('counterparty') && <td className="px-3 py-2 border-b border-slate-100 whitespace-nowrap"><span className="text-[10px] font-medium text-indigo-600/60 italic">Composite</span></td>}
                                             {visibleColumns.has('category') && <td className="px-3 py-2 border-b border-slate-100 whitespace-nowrap"><span className="text-[8px] font-black uppercase text-indigo-400 italic">Composite</span></td>}
-                                            {visibleColumns.has('account') && <td className="px-3 py-2 text-[10px] font-bold text-indigo-400 border-b border-slate-100 whitespace-nowrap">{accountMap.get(item.primaryTx.accountId || '')}</td>}
                                             {visibleColumns.has('amount') && <td className={`px-3 py-2 text-right text-[11px] font-black text-indigo-700 font-mono border-b border-slate-100 whitespace-nowrap underline decoration-dotted decoration-indigo-300`}>{formatCurrency(item.totalAmount, item.primaryTx.typeId)}</td>}
                                             {visibleColumns.has('actions') && (
                                                 <td className="px-3 py-2 text-center border-b border-slate-100 whitespace-nowrap">
-                                                    <button onClick={() => onManageLink?.(item.id)} className="p-1 bg-white text-indigo-600 rounded border border-indigo-200 shadow-sm hover:bg-indigo-600 hover:text-white transition-all" title="Manage Links"><LinkIcon className="w-3.5 h-3.5" /></button>
+                                                    <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={() => onManageLink?.(item.id)} className="p-1 bg-white text-indigo-600 rounded border border-indigo-200 shadow-sm hover:bg-indigo-600 hover:text-white transition-all" title="Manage Links"><LinkIcon className="w-3.5 h-3.5" /></button>
+                                                        <button onClick={() => onEditTransaction?.(item.primaryTx)} className="p-1 bg-white text-slate-400 hover:text-indigo-600 rounded border border-slate-100 shadow-sm transition-all" title="Edit Group Master"><EditIcon className="w-3 h-3" /></button>
+                                                    </div>
                                                 </td>
                                             )}
                                         </tr>
@@ -353,7 +371,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                                 {visibleColumns.has('category') && <td className="px-3 py-2 border-b border-slate-50 whitespace-nowrap"><span className="text-[8px] font-bold text-slate-400 bg-slate-100 px-1 py-0.5 rounded uppercase">{categoryMap.get(child.categoryId) || 'Other'}</span></td>}
                                                 {visibleColumns.has('account') && <td className="px-3 py-2 text-[9px] text-slate-300 uppercase font-black border-b border-slate-50 whitespace-nowrap">{accountMap.get(child.accountId || '')}</td>}
                                                 {visibleColumns.has('amount') && <td className={`px-3 py-2 text-right text-[10px] font-black font-mono border-b border-slate-50 whitespace-nowrap ${getAmountColor(child.typeId)}`}>{formatCurrency(child.amount, child.typeId)}</td>}
-                                                {visibleColumns.has('actions') && <td className="px-3 py-2 text-center border-b border-slate-50 whitespace-nowrap"><button onClick={() => setInspectedTx(child)} className="p-1 text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all"><DatabaseIcon className="w-3 h-3" /></button></td>}
+                                                {visibleColumns.has('actions') && <td className="px-3 py-2 text-center border-b border-slate-50 whitespace-nowrap"><div className="flex items-center justify-center gap-1"><button onClick={() => setInspectedTx(child)} className="p-1 text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all"><DatabaseIcon className="w-3 h-3" /></button><button onClick={() => onDeleteTransaction(child.id)} className="p-1 text-slate-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"><TrashIcon className="w-3 h-3"/></button></div></td>}
                                             </tr>
                                         ))}
                                     </React.Fragment>
