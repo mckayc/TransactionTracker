@@ -505,6 +505,37 @@ app.get('/api/admin/diagnose', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/admin/audit-integrity', (req, res) => {
+    try {
+        // 1. Find Orphaned Children
+        const orphans = db.prepare(`
+            SELECT * FROM transactions 
+            WHERE parent_transaction_id IS NOT NULL 
+            AND parent_transaction_id NOT IN (SELECT id FROM transactions)
+        `).all();
+
+        // 2. Find Empty Parents
+        const emptyParents = db.prepare(`
+            SELECT * FROM transactions 
+            WHERE is_parent = 1 
+            AND id NOT IN (SELECT DISTINCT parent_transaction_id FROM transactions WHERE parent_transaction_id IS NOT NULL)
+        `).all();
+
+        // 3. Find Broken Link Groups
+        const brokenLinks = db.prepare(`
+            SELECT * FROM transactions 
+            WHERE link_group_id IS NOT NULL 
+            AND link_group_id NOT IN (SELECT DISTINCT link_group_id FROM transactions WHERE is_parent = 1)
+        `).all();
+
+        res.json({
+            orphans,
+            emptyParents,
+            brokenLinks
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/repair', (req, res) => {
     try {
         createTables();
@@ -514,7 +545,6 @@ app.post('/api/admin/repair', (req, res) => {
         // --- DATA INTEGRITY: LOGICAL REBALANCING ---
         db.transaction(() => {
             // 1. Convert "Orphaned Parents" back to normal transactions.
-            // A parent with no children (is_parent=1 but no children citing it as parent_transaction_id)
             db.exec(`
                 UPDATE transactions 
                 SET is_parent = 0 
@@ -523,7 +553,6 @@ app.post('/api/admin/repair', (req, res) => {
             `);
             
             // 2. Identify and Deduplicate potential double-splits.
-            // We look for records with identical signature created in the same logical split batch.
             const dupSignatures = db.prepare(`
                 SELECT date, amount, original_description, account_id, COUNT(*) as cnt 
                 FROM transactions 
@@ -533,7 +562,6 @@ app.post('/api/admin/repair', (req, res) => {
             `).all();
 
             for (const sig of dupSignatures) {
-                // Keep only the first occurrence for these specific signatures
                 const matches = db.prepare(`
                     SELECT id FROM transactions 
                     WHERE date = ? AND amount = ? AND original_description = ? AND account_id = ?

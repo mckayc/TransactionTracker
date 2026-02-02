@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location, RuleCategory, View } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
@@ -70,6 +71,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
 
   const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
   const [stagedImportedTxs, setStagedImportedTxs] = useState<Transaction[]>([]);
+  const [duplicatesStats, setDuplicatesStats] = useState({ ignored: 0, imported: 0 });
 
   const hasCoreConfiguration = transactionTypes.length >= 6 && categories.length > 0;
   const hasAccount = accounts.length > 0;
@@ -167,13 +169,19 @@ const ImportPage: React.FC<ImportPageProps> = ({
   }, [transactionTypes, categories, users, rules, accounts, applyRulesAndSetStaging]);
 
   const handleVerificationComplete = async (verified: (RawTransaction & { categoryId: string; })[]) => {
-      const { added } = mergeTransactions(recentGlobalTransactions.filter(Boolean), verified.filter(Boolean));
+      const { added, duplicates } = mergeTransactions(recentGlobalTransactions.filter(Boolean), verified.filter(Boolean));
       setStagedImportedTxs(added);
-      onTransactionsAdded(added, []);
-      setAppState('post_import_edit');
+      setDuplicatesStats({ ignored: duplicates.length, imported: 0 });
+      
+      if (added.length > 0) {
+        onTransactionsAdded(added, []);
+        setAppState('post_import_edit');
+      } else {
+        setAppState('success');
+      }
   };
 
-  const isImportFormVisible = appState === 'idle' || appState === 'processing' || appState === 'error';
+  const isImportFormVisible = appState === 'idle' || appState === 'processing' || appState === 'error' || appState === 'success';
 
   return (
     <div className="space-y-6 h-full flex flex-col">
@@ -325,6 +333,16 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                 <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin mb-4" />
                                 <p className="font-black text-slate-800 text-lg">{progressMessage}</p>
                             </div>
+                        ) : appState === 'success' ? (
+                            <ResultsDisplay 
+                                appState="success" 
+                                error={null} 
+                                progressMessage="" 
+                                transactions={[]} 
+                                duplicatesIgnored={duplicatesStats.ignored} 
+                                duplicatesImported={duplicatesStats.imported} 
+                                onClear={() => setAppState('idle')} 
+                            />
                         ) : (
                             <div className="space-y-6">
                                 <div className="bg-red-50 border-2 border-red-100 p-8 rounded-[2rem] text-center space-y-4 animate-slide-up">
@@ -382,7 +400,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                         <div className="flex justify-between items-center mb-6 bg-indigo-50 p-5 rounded-2xl border border-indigo-100 shadow-sm">
                             <div>
                                 <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2"><SparklesIcon className="w-6 h-6 text-indigo-600" /> Final Polish</h2>
-                                <p className="text-sm text-slate-500">Review {stagedImportedTxs.length} ingested transactions.</p>
+                                <p className="text-sm text-slate-500">Review {stagedImportedTxs.length} ingested transactions. ({duplicatesStats.ignored} duplicates were automatically skipped).</p>
                             </div>
                             <button onClick={() => { setAppState('idle'); setStagedImportedTxs([]); }} className="px-10 py-3 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 transition-all">Finish</button>
                         </div>

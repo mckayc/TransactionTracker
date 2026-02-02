@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, TransactionType, SystemSettings, Account, Category, Counterparty, ReconciliationRule, Template, ScheduledEvent, TaskCompletions, TaskItem, User, BusinessProfile, DocumentFolder, BusinessDocument, Tag, SavedReport, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, Location, AccountType, AiConfig, BackupConfig } from '../types';
-import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, TableIcon, CreditCardIcon, TasksIcon, BarChartIcon, DownloadIcon, BoxIcon, YoutubeIcon, InfoIcon, TrashIcon, DatabaseIcon, RobotIcon, VideoIcon } from '../components/Icons';
+// Added missing RepeatIcon import to fix "Cannot find name 'RepeatIcon'" error on line 215
+import { CloudArrowUpIcon, UploadIcon, CheckCircleIcon, DocumentIcon, ExclamationTriangleIcon, DeleteIcon, ShieldCheckIcon, CloseIcon, TableIcon, CreditCardIcon, TasksIcon, BarChartIcon, DownloadIcon, BoxIcon, YoutubeIcon, InfoIcon, TrashIcon, DatabaseIcon, RobotIcon, VideoIcon, SearchCircleIcon, SparklesIcon, RepeatIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
 import { hasApiKey, validateApiKeyConnectivity, updateGeminiConfig, getActiveModels } from '../services/geminiService';
@@ -85,6 +86,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     const [isPurging, setIsPurging] = useState(false);
     const [isConfirmPurgeOpen, setIsConfirmPurgeOpen] = useState(false);
 
+    // Integrity Lab State
+    const [isScanningIntegrity, setIsScanningIntegrity] = useState(false);
+    const [integrityReport, setIntegrityReport] = useState<{ orphans: Transaction[], emptyParents: Transaction[], brokenLinks: Transaction[] } | null>(null);
+
     const runDiagnostics = async () => {
         try { const data = await api.getDiagnostics(); setDiagnostics(data); } catch (e) { console.error(e); }
     };
@@ -102,6 +107,29 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         setIsRepairing(true);
         try { if (await api.repairSystem()) window.location.reload(); } catch (err) { alert("Repair failed."); }
         finally { setIsRepairing(false); }
+    };
+
+    const handleScanIntegrity = async () => {
+        setIsScanningIntegrity(true);
+        try {
+            const report = await api.auditIntegrity();
+            setIntegrityReport(report);
+        } catch (e) {
+            alert("Scan failed.");
+        } finally {
+            setIsScanningIntegrity(false);
+        }
+    };
+
+    const handleExpungeGhost = async (id: string) => {
+        if (!confirm("Permanently expunge this broken record?")) return;
+        try {
+            await api.deleteTransaction(id);
+            // Re-scan to refresh
+            await handleScanIntegrity();
+        } catch (e) {
+            alert("Deletion failed.");
+        }
     };
 
     const handleUpdateAiConfig = (key: keyof AiConfig, value: any) => {
@@ -168,6 +196,78 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                 logs={backupLogs}
                 onUpdate={handleUpdateBackupSettings} 
             />
+
+            <Section title="Data Integrity Lab">
+                <div className="space-y-6">
+                    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col md:flex-row items-center gap-8">
+                        <div className="p-5 bg-indigo-600 rounded-[1.5rem] text-white shadow-xl">
+                            <SparklesIcon className="w-10 h-10" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-2xl font-black text-slate-800">Scan for Ghost Transactions</h3>
+                            <p className="text-sm text-slate-500 mt-1 max-w-lg">Identifies orphaned records that contribute to calculations but are hidden from the primary ledger due to broken logical links.</p>
+                        </div>
+                        <button 
+                            onClick={handleScanIntegrity} 
+                            disabled={isScanningIntegrity}
+                            className="px-8 py-4 bg-slate-900 text-white font-black rounded-2xl shadow-xl hover:bg-black transition-all flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isScanningIntegrity ? <RepeatIcon className="w-5 h-5 animate-spin" /> : <SearchCircleIcon className="w-5 h-5" />}
+                            Scan Ledger
+                        </button>
+                    </div>
+
+                    {integrityReport && (
+                        <div className="space-y-4 animate-slide-up">
+                            {([...integrityReport.orphans, ...integrityReport.emptyParents, ...integrityReport.brokenLinks].length === 0) ? (
+                                <div className="p-8 text-center bg-emerald-50 text-emerald-700 border-2 border-dashed border-emerald-200 rounded-[2rem] font-bold">
+                                    <CheckCircleIcon className="w-10 h-10 mx-auto mb-2" />
+                                    Institutional data is clean. No broken links detected.
+                                </div>
+                            ) : (
+                                <div className="bg-white rounded-[2rem] border border-slate-200 shadow-sm overflow-hidden">
+                                    <table className="min-w-full divide-y divide-slate-100">
+                                        <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400">
+                                            <tr>
+                                                <th className="px-6 py-4 text-left">Anomaly Class</th>
+                                                <th className="px-6 py-4 text-left">Description</th>
+                                                <th className="px-6 py-4 text-right">Amount</th>
+                                                <th className="px-6 py-4 text-center">Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100">
+                                            {integrityReport.orphans.map(t => (
+                                                <tr key={t.id} className="hover:bg-red-50/30">
+                                                    <td className="px-6 py-4"><span className="px-2 py-0.5 bg-red-100 text-red-700 rounded text-[9px] font-black uppercase">Orphaned Child</span></td>
+                                                    <td className="px-6 py-4 text-xs font-bold text-slate-700 truncate max-w-[200px]">{t.description}</td>
+                                                    <td className="px-6 py-4 text-right font-mono font-bold text-slate-800">${t.amount.toFixed(2)}</td>
+                                                    <td className="px-6 py-4 text-center"><button onClick={() => handleExpungeGhost(t.id)} className="p-2 text-slate-300 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button></td>
+                                                </tr>
+                                            ))}
+                                            {integrityReport.emptyParents.map(t => (
+                                                <tr key={t.id} className="hover:bg-amber-50/30">
+                                                    <td className="px-6 py-4"><span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-[9px] font-black uppercase">Empty Parent</span></td>
+                                                    <td className="px-6 py-4 text-xs font-bold text-slate-700 truncate max-w-[200px]">{t.description}</td>
+                                                    <td className="px-6 py-4 text-right font-mono font-bold text-slate-800">${t.amount.toFixed(2)}</td>
+                                                    <td className="px-6 py-4 text-center"><button onClick={() => handleExpungeGhost(t.id)} className="p-2 text-slate-300 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button></td>
+                                                </tr>
+                                            ))}
+                                            {integrityReport.brokenLinks.map(t => (
+                                                <tr key={t.id} className="hover:bg-indigo-50/30">
+                                                    <td className="px-6 py-4"><span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-[9px] font-black uppercase">Frag. Link Group</span></td>
+                                                    <td className="px-6 py-4 text-xs font-bold text-slate-700 truncate max-w-[200px]">{t.description}</td>
+                                                    <td className="px-6 py-4 text-right font-mono font-bold text-slate-800">${t.amount.toFixed(2)}</td>
+                                                    <td className="px-6 py-4 text-center"><button onClick={() => handleExpungeGhost(t.id)} className="p-2 text-slate-300 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button></td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </Section>
 
             <MaintenancePanel 
                 diagnostics={diagnostics} onRepair={handleRepairSystem} 

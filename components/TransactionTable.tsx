@@ -157,8 +157,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 if (processedGroupIds.has(tx.linkGroupId)) return;
                 
                 const groupTxs = transactions.filter(t => t.linkGroupId === tx.linkGroupId);
-                // INTEGRITY FIX: If we have no group container (parent) but we have "child" records,
-                // we treat the records as singles to prevent them from becoming invisible.
+                // INTEGRITY FIX: Find the designated container. If missing, use the first member.
                 const primary = groupTxs.find(t => t.isParent) || groupTxs[0];
                 
                 if (groupTxs.length > 1) {
@@ -172,8 +171,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     });
                     processedGroupIds.add(tx.linkGroupId);
                 } else {
-                    // It's a "group" of one, show it as a single to avoid confusion
-                    items.push({ type: 'single', tx });
+                    // CRITICAL: It's a "group" of one (orphan). Force it to single visibility to prevent "hiding" broken state.
+                    items.push({ type: 'single', tx: groupTxs[0] });
+                    processedGroupIds.add(tx.linkGroupId);
                 }
             } else if (!tx.parentTransactionId) {
                 // Normal record
