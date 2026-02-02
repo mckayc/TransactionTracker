@@ -217,17 +217,17 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
                   // CRITICAL: Call prop handler to ensure global state in App.tsx is synced
                   onDeleteTransaction(child.id);
               }
-              const restoredParent = { 
+              const restoredParent: Transaction = { 
                   ...parent, 
                   isParent: false, 
-                  linkGroupId: null,
-                  parentTransactionId: null 
+                  linkGroupId: undefined,
+                  parentTransactionId: undefined 
               };
               onUpdateTransaction(restoredParent);
               setToastMessage("Split dissolved. Master entry restored.");
           } else {
               // Standard detachment
-              const updates = txs.map(t => ({ ...t, linkGroupId: null }));
+              const updates: Transaction[] = txs.map(t => ({ ...t, linkGroupId: undefined }));
               await api.saveTransactions(updates);
               // Sync state for each updated item
               updates.forEach(u => onUpdateTransaction(u));
@@ -410,7 +410,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
       {toastMessage && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[300] animate-slide-up">
             <div className="bg-slate-900 text-white px-6 py-3 rounded-2xl shadow-2xl border border-white/10 flex items-center gap-3">
-                <div className="bg-indigo-500 rounded-full p-1">
+                <div className="bg-indigo-50 rounded-full p-1">
                     <CheckCircleIcon className="w-4 h-4 text-white" />
                 </div>
                 <span className="text-sm font-bold tracking-tight">{toastMessage}</span>
