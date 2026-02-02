@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, Counterparty, Category, User, Tag } from '../types';
 import { SortIcon, NotesIcon, DeleteIcon, LinkIcon, SparklesIcon, InfoIcon, ChevronRightIcon, ChevronLeftIcon, ChevronDownIcon, SplitIcon, DatabaseIcon, CloseIcon, WrenchIcon, EditIcon } from './Icons';
@@ -154,19 +155,36 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         sorted.forEach(tx => {
             if (tx.linkGroupId) {
                 if (processedGroupIds.has(tx.linkGroupId)) return;
+                
                 const groupTxs = transactions.filter(t => t.linkGroupId === tx.linkGroupId);
+                // INTEGRITY FIX: If we have no group container (parent) but we have "child" records,
+                // we treat the records as singles to prevent them from becoming invisible.
                 const primary = groupTxs.find(t => t.isParent) || groupTxs[0];
-                const children = groupTxs.filter(t => t.id !== primary.id);
-                items.push({
-                    type: 'group',
-                    id: tx.linkGroupId,
-                    primaryTx: primary,
-                    children,
-                    totalAmount: groupTxs.reduce((sum, t) => sum + (t.isParent ? 0 : t.amount), 0) || primary.amount
-                });
-                processedGroupIds.add(tx.linkGroupId);
+                
+                if (groupTxs.length > 1) {
+                    const children = groupTxs.filter(t => t.id !== primary.id);
+                    items.push({
+                        type: 'group',
+                        id: tx.linkGroupId,
+                        primaryTx: primary,
+                        children,
+                        totalAmount: groupTxs.reduce((sum, t) => sum + (t.isParent ? 0 : t.amount), 0) || primary.amount
+                    });
+                    processedGroupIds.add(tx.linkGroupId);
+                } else {
+                    // It's a "group" of one, show it as a single to avoid confusion
+                    items.push({ type: 'single', tx });
+                }
             } else if (!tx.parentTransactionId) {
+                // Normal record
                 items.push({ type: 'single', tx });
+            } else {
+                // It's a child record (has parentTransactionId) but the parent is missing from the list
+                // Force visibility if the parent isn't in the current transaction set
+                const parentIsMissing = !transactions.some(p => p.id === tx.parentTransactionId);
+                if (parentIsMissing) {
+                    items.push({ type: 'single', tx });
+                }
             }
         });
 

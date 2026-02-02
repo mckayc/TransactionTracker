@@ -283,8 +283,6 @@ app.delete('/api/transactions/:id', (req, res) => {
 app.get('/api/transactions', (req, res) => {
     try {
         const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC', search, startDate, endDate, userId } = req.query;
-        // Logic change: We no longer filter out parents in the main list. 
-        // The TransactionTable component is capable of grouping these logically on the frontend.
         let filterQuery = ` WHERE 1=1`; 
         const values = [];
         if (search) {
@@ -512,7 +510,45 @@ app.post('/api/admin/repair', (req, res) => {
         createTables();
         runMigrations();
         ensureSeedData();
-        res.json({ success: true, message: "System core normalized" });
+        
+        // --- DATA INTEGRITY: LOGICAL REBALANCING ---
+        db.transaction(() => {
+            // 1. Convert "Orphaned Parents" back to normal transactions.
+            // A parent with no children (is_parent=1 but no children citing it as parent_transaction_id)
+            db.exec(`
+                UPDATE transactions 
+                SET is_parent = 0 
+                WHERE is_parent = 1 
+                AND id NOT IN (SELECT DISTINCT parent_transaction_id FROM transactions WHERE parent_transaction_id IS NOT NULL)
+            `);
+            
+            // 2. Identify and Deduplicate potential double-splits.
+            // We look for records with identical signature created in the same logical split batch.
+            const dupSignatures = db.prepare(`
+                SELECT date, amount, original_description, account_id, COUNT(*) as cnt 
+                FROM transactions 
+                WHERE is_parent = 0 
+                GROUP BY date, amount, original_description, account_id 
+                HAVING cnt > 1
+            `).all();
+
+            for (const sig of dupSignatures) {
+                // Keep only the first occurrence for these specific signatures
+                const matches = db.prepare(`
+                    SELECT id FROM transactions 
+                    WHERE date = ? AND amount = ? AND original_description = ? AND account_id = ?
+                    ORDER BY id ASC
+                `).all(sig.date, sig.amount, sig.original_description, sig.account_id);
+                
+                if (matches.length > 1) {
+                    const toDelete = matches.slice(1);
+                    const del = db.prepare('DELETE FROM transactions WHERE id = ?');
+                    toDelete.forEach(m => del.run(m.id));
+                }
+            }
+        })();
+
+        res.json({ success: true, message: "System core normalized and logical orphans rebalanced." });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

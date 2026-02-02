@@ -211,32 +211,35 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
           const parent = txs.find(t => t.isParent);
           
           if (parent) {
-              // Dissolve split
+              // BATCH DISSOLVE: 
+              // 1. Delete all children records first
               const children = txs.filter(t => t.id !== parent.id);
               for (const child of children) {
-                  // CRITICAL: Call prop handler to ensure global state in App.tsx is synced
-                  onDeleteTransaction(child.id);
+                  await api.deleteTransaction(child.id);
               }
+              
+              // 2. Restore parent to normal state
               const restoredParent: Transaction = { 
                   ...parent, 
                   isParent: false, 
                   linkGroupId: undefined,
                   parentTransactionId: undefined 
               };
+              
+              // 3. Update global state and DB
               onUpdateTransaction(restoredParent);
               setToastMessage("Split dissolved. Master entry restored.");
           } else {
               // Standard detachment
               const updates: Transaction[] = txs.map(t => ({ ...t, linkGroupId: undefined }));
               await api.saveTransactions(updates);
-              // Sync state for each updated item
               updates.forEach(u => onUpdateTransaction(u));
               setToastMessage("Group link detached.");
           }
           
           setManagingLinkGroupId(null);
-          // Immediate re-fetch for safety, though local state is already updating via props
-          setTimeout(fetchTransactions, 100);
+          // Small delay before fetch to allow WAL checkpointing if busy
+          setTimeout(fetchTransactions, 200);
       } catch (err) {
           console.error("Unlink error:", err);
           alert("Failed to dissolve group link.");
