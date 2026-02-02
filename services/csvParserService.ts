@@ -1,3 +1,4 @@
+
 import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition, Account } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
@@ -54,9 +55,30 @@ const sanitizeHeader = (h: string): string => {
     return h.replace(/^\uFEFF/, '').trim().toLowerCase();
 };
 
-const parseDate = (dateStr: string): Date | null => {
+const parseDate = (dateStr: string, preferredFormat?: string): Date | null => {
   if (!dateStr || dateStr.length < 5) return null;
   const cleanedDateStr = dateStr.replace(/^"|"$/g, '').trim();
+
+  // If user provided a specific format hint (e.g. "MM/DD/YYYY" or "DD/MM/YYYY")
+  if (preferredFormat) {
+      const sep = preferredFormat.includes('/') ? '/' : (preferredFormat.includes('.') ? '.' : '-');
+      const parts = cleanedDateStr.split(/[\/\.\-]/);
+      const fmtParts = preferredFormat.split(/[\/\.\-]/);
+      
+      if (parts.length === 3 && fmtParts.length === 3) {
+          const yearIdx = fmtParts.findIndex(p => p.toLowerCase().includes('y'));
+          const monthIdx = fmtParts.findIndex(p => p.toLowerCase().includes('m'));
+          const dayIdx = fmtParts.findIndex(p => p.toLowerCase().includes('d'));
+          
+          let year = parseInt(parts[yearIdx]);
+          if (year < 100) year += year < 70 ? 2000 : 1900;
+          const month = parseInt(parts[monthIdx]) - 1;
+          const day = parseInt(parts[dayIdx]);
+          
+          const date = new Date(year, month, day);
+          if (!isNaN(date.getTime())) return date;
+      }
+  }
 
   // YYYY-MM-DD
   if (/^\d{4}-\d{1,2}-\d{1,2}/.test(cleanedDateStr)) {
@@ -65,11 +87,32 @@ const parseDate = (dateStr: string): Date | null => {
     if (!isNaN(date.getTime())) return date;
   }
 
-  // DD.MM.YYYY or DD/MM/YYYY (common in Europe)
+  // Improved Heuristic for XX/XX/YYYY or XX.XX.YYYY
+  // Handles US (MM/DD) vs European (DD/MM) by checking values > 12
   if (/^\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4}/.test(cleanedDateStr)) {
       const sep = cleanedDateStr.includes('.') ? '.' : '/';
       const parts = cleanedDateStr.split(sep);
-      const date = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+      const p0 = parseInt(parts[0]);
+      const p1 = parseInt(parts[1]);
+      const year = parseInt(parts[2]);
+
+      // p0/p1/year
+      // If p0 > 12, it MUST be DD/MM/YYYY
+      // If p1 > 12, it MUST be MM/DD/YYYY
+      // If both <= 12, it's ambiguous. We default to US (MM/DD) for '/' and Euro (DD/MM) for '.'
+      
+      let month, day;
+      if (p0 > 12) { // Definitely Day first
+          day = p0; month = p1 - 1;
+      } else if (p1 > 12) { // Definitely Month first
+          month = p0 - 1; day = p1;
+      } else {
+          // Ambiguous. Default by separator
+          if (sep === '.') { month = p1 - 1; day = p0; } // Euro default
+          else { month = p0 - 1; day = p1; } // US default
+      }
+
+      const date = new Date(year, month, day);
       if (!isNaN(date.getTime())) return date;
   }
 
@@ -79,21 +122,19 @@ const parseDate = (dateStr: string): Date | null => {
       if (!isNaN(date.getTime())) return date;
   }
 
-  // MM-DD-YYYY
+  // MM-DD-YYYY or DD-MM-YYYY (Standardizing to MM-DD if ambiguous)
   if (/^\d{1,2}-\d{1,2}-\d{2,4}/.test(cleanedDateStr)) {
     const parts = cleanedDateStr.split('-');
+    const p0 = parseInt(parts[0]);
+    const p1 = parseInt(parts[1]);
     let year = parseInt(parts[2], 10);
     if (year < 100) year += year < 70 ? 2000 : 1900;
-    const date = new Date(year, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
-    if (!isNaN(date.getTime())) return date;
-  }
+    
+    let month, day;
+    if (p0 > 12) { day = p0; month = p1 - 1; }
+    else { month = p0 - 1; day = p1; }
 
-  // MM/DD/YYYY
-  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}/.test(cleanedDateStr)) {
-    const parts = cleanedDateStr.split('/');
-    let year = parseInt(parts[2], 10);
-    if (year < 100) year += year < 70 ? 2000 : 1900;
-    const date = new Date(year, parseInt(parts[0], 10) - 1, parseInt(parts[1], 10));
+    const date = new Date(year, month, day);
     if (!isNaN(date.getTime())) return date;
   }
 
@@ -102,7 +143,7 @@ const parseDate = (dateStr: string): Date | null => {
   return null;
 };
 
-const formatDate = (date: Date): string => {
+const formatDateString = (date: Date): string => {
   const year = date.getFullYear();
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
   const day = date.getDate().toString().padStart(2, '0');
@@ -217,7 +258,7 @@ export const parseTransactionsFromText = async (
             finalDesc = (notesIdx !== -1 ? parts[notesIdx] : '') || 'Untitled Transaction';
         }
 
-        const date = parseDate(dateStr);
+        const date = parseDate(dateStr, profile.dateFormat);
         if (!date) {
             dateFailures++;
             continue;
@@ -238,7 +279,7 @@ export const parseTransactionsFromText = async (
         let selectedTypeId = forceType || (amount >= 0 ? incomingType.id : outgoingType.id);
         
         txs.push({
-            date: formatDate(date),
+            date: formatDateString(date),
             description: cleanDescription(finalDesc),
             originalDescription: finalDesc,
             amount: Math.abs(amount),
@@ -330,7 +371,7 @@ export const parseYouTubeDetailedReport = async (file: File, onProgress: (msg: s
             id: generateUUID(),
             videoId: values[colMap.id],
             videoTitle: values[colMap.title],
-            publishDate: formatDate(parseDate(values[colMap.date]) || new Date()),
+            publishDate: formatDateString(parseDate(values[colMap.date]) || new Date()),
             duration: values[colMap.duration],
             views: parseInt(values[colMap.views]) || 0,
             watchTimeHours: parseFloat(values[colMap.hours]) || 0,
@@ -384,7 +425,7 @@ export const parseAmazonStorefrontVideos = async (file: File, onProgress: (msg: 
             hearts: parseInt(values[colMap.hearts]) || 0,
             avgPctViewed: parseFloat(values[colMap.avgView]?.replace('%', '')) || 0,
             duration: values[colMap.duration],
-            uploadDate: formatDate(parseDate(values[colMap.date]) || new Date()),
+            uploadDate: formatDateString(parseDate(values[colMap.date]) || new Date()),
             videoUrl: values[colMap.url]
         });
     }
@@ -474,7 +515,7 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
         const trackingId = values[colMap.tracking] || '';
         metrics.push({
             id: generateUUID(),
-            saleDate: formatDate(parseDate(values[colMap.date]) || new Date()),
+            saleDate: formatDateString(parseDate(values[colMap.date]) || new Date()),
             asin: values[colMap.asin],
             productTitle: values[colMap.name] || 'Unknown',
             category: values[colMap.category],
@@ -523,7 +564,7 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
 
         metrics.push({
             id: generateUUID(),
-            saleDate: formatDate(parseDate(values[colMap.date]) || new Date()),
+            saleDate: formatDateString(parseDate(values[colMap.date]) || new Date()),
             asin: values[colMap.asin],
             productTitle: values[colMap.campaign] || 'CC Campaign',
             ccTitle: values[colMap.campaign],
