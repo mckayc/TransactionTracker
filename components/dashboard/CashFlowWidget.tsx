@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Category, Counterparty, DashboardWidget, Account, TransactionType, User, Tag } from '../../types';
 import { ChevronRightIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TrendingUpIcon, CloseIcon } from '../Icons';
@@ -181,8 +182,11 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
         const filtered = transactions.filter(tx => {
             const txDate = parseISOLocal(tx.date);
-            if (txDate < activeRange.start || txDate > activeRange.end || tx.isParent) return false;
+            if (txDate < activeRange.start || txDate > activeRange.end) return false;
             
+            // CRITICAL: Filter out Parents (isParent: true) to prevent double counting in analytics
+            if (tx.isParent) return false;
+
             const type = typeRegistry.get(tx.typeId);
             const effect = type?.balanceEffect || 'outgoing';
             
@@ -355,6 +359,29 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
     const totalValue = useMemo(() => chartData.filter(r => !hiddenSet.has(r.id)).reduce((s, r) => s + r.value, 0), [chartData, hiddenSet]);
 
+    // Data passed to the inspection table should include ALL relevant records for the chosen period
+    // but the table itself will handle the visual grouping if `linkGroupId` exists.
+    const inspectionData = useMemo(() => {
+        if (!inspectingNode) return [];
+        
+        // Find all records that match the inspection criteria (including those hidden from the chart)
+        const nodeTxs = inspectingNode.transactions;
+        const groupIds = new Set(nodeTxs.map(t => t.linkGroupId).filter(Boolean));
+        
+        // To ensure the table looks correct (shows the group container), 
+        // we need to include the "Parent" containers in the data list if we are inspecting a group.
+        const containers = transactions.filter(t => t.isParent && groupIds.has(t.linkGroupId));
+        
+        // Return unique set of transactions
+        const result = [...nodeTxs];
+        const resultIds = new Set(result.map(t => t.id));
+        containers.forEach(c => {
+            if (!resultIds.has(c.id)) result.push(c);
+        });
+        
+        return result;
+    }, [inspectingNode, transactions]);
+
     const handleToggleVisibility = (id: string) => {
         const next = new Set(hiddenSet);
         if (next.has(id)) next.delete(id); else next.add(id);
@@ -443,7 +470,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                         </div>
                         <div className="flex-1 overflow-y-auto custom-scrollbar">
                             <TransactionTable 
-                                transactions={inspectingNode.transactions}
+                                transactions={inspectionData}
                                 accounts={accounts}
                                 categories={categories}
                                 tags={tags}
@@ -452,6 +479,8 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                                 users={users}
                                 onUpdateTransaction={() => {}}
                                 onDeleteTransaction={() => {}}
+                                // Limit columns for cleaner popup look
+                                visibleColumns={new Set(['date', 'description', 'counterparty', 'account', 'amount'])}
                             />
                         </div>
                         <div className="p-4 bg-slate-50 border-t flex justify-end">

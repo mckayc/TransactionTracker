@@ -208,14 +208,14 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
 
   const handleUnlink = async (txs: Transaction[]) => {
       try {
-          // Identify if we are unlinking a split vs a group link (transfers)
           const parent = txs.find(t => t.isParent);
           
           if (parent) {
-              // It's a split: Delete individual parts and restore parent to a visible, non-parent state
+              // Dissolve split
               const children = txs.filter(t => t.id !== parent.id);
               for (const child of children) {
-                  await api.deleteTransaction(child.id);
+                  // CRITICAL: Call prop handler to ensure global state in App.tsx is synced
+                  onDeleteTransaction(child.id);
               }
               const restoredParent = { 
                   ...parent, 
@@ -223,19 +223,20 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
                   linkGroupId: null,
                   parentTransactionId: null 
               };
-              await api.saveTransactions([restoredParent]);
-              setToastMessage("Split dissolved. Parent transaction restored.");
+              onUpdateTransaction(restoredParent);
+              setToastMessage("Split dissolved. Master entry restored.");
           } else {
-              // Standard link (e.g. Credit Card Payment linked to specific expenses)
-              // Just remove the group logic from all participants
+              // Standard detachment
               const updates = txs.map(t => ({ ...t, linkGroupId: null }));
               await api.saveTransactions(updates);
+              // Sync state for each updated item
+              updates.forEach(u => onUpdateTransaction(u));
               setToastMessage("Group link detached.");
           }
           
           setManagingLinkGroupId(null);
-          // Force refetch to ensure the resurrected parent (isParent=false) appears in the ledger
-          fetchTransactions();
+          // Immediate re-fetch for safety, though local state is already updating via props
+          setTimeout(fetchTransactions, 100);
       } catch (err) {
           console.error("Unlink error:", err);
           alert("Failed to dissolve group link.");
