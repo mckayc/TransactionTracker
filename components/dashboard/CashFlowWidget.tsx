@@ -177,11 +177,31 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
         const nodeMap = new Map<string, BreakdownNode>();
 
-        const getNode = (id: string, label: string, pId?: string): BreakdownNode => {
+        const ensureNode = (id: string, label: string, pId?: string): BreakdownNode => {
             if (!nodeMap.has(id)) {
                 nodeMap.set(id, { id, label, value: 0, directValue: 0, color: '', transactions: [], children: [], parentId: pId });
             }
             return nodeMap.get(id)!;
+        };
+
+        // Recursive function to pull in ancestors from master lists even if they have no direct transactions
+        const ensureAncestry = (id: string) => {
+            if (displayDataType === 'category') {
+                const cat = categories.find(c => c.id === id);
+                if (cat) {
+                    const node = ensureNode(cat.id, cat.name, cat.parentId);
+                    if (cat.parentId) ensureAncestry(cat.parentId);
+                    return node;
+                }
+            } else if (displayDataType === 'counterparty') {
+                const cp = counterparties.find(c => c.id === id);
+                if (cp) {
+                    const node = ensureNode(cp.id, cp.name, cp.parentId);
+                    if (cp.parentId) ensureAncestry(cp.parentId);
+                    return node;
+                }
+            }
+            return null;
         };
 
         filtered.forEach(tx => {
@@ -190,7 +210,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                 txTags.forEach(tagId => {
                     const tagObj = tags.find(t => t.id === tagId);
                     const label = tagObj?.name || (tagId === 'no-tag' ? 'No Label' : 'Unknown Label');
-                    const node = getNode(tagId, label);
+                    const node = ensureNode(tagId, label);
                     node.directValue += tx.amount;
                     node.transactions.push(tx);
                 });
@@ -199,36 +219,50 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
                 if (displayDataType === 'category') {
                     id = tx.categoryId;
-                    const cat = categories.find(c => c.id === id);
-                    label = cat?.name || 'Unallocated';
-                    pId = cat?.parentId;
+                    const node = ensureAncestry(id);
+                    if (node) {
+                        node.directValue += tx.amount;
+                        node.transactions.push(tx);
+                    }
                 } else if (displayDataType === 'counterparty') {
                     id = tx.counterpartyId || `desc_${tx.description}`;
-                    const cp = counterparties.find(c => c.id === tx.counterpartyId);
-                    label = cp?.name || tx.description || 'Unknown Entity';
-                    pId = cp?.parentId;
+                    if (tx.counterpartyId) {
+                        const node = ensureAncestry(tx.counterpartyId);
+                        if (node) {
+                            node.directValue += tx.amount;
+                            node.transactions.push(tx);
+                        }
+                    } else {
+                        // Fallback for description-only nodes
+                        const label = tx.description || 'Unknown Entity';
+                        const node = ensureNode(id, label);
+                        node.directValue += tx.amount;
+                        node.transactions.push(tx);
+                    }
                 } else if (displayDataType === 'account') {
                     id = tx.accountId;
                     label = accounts.find(a => a.id === id)?.name || 'Unknown Account';
+                    const node = ensureNode(id, label);
+                    node.directValue += tx.amount;
+                    node.transactions.push(tx);
                 } else {
                     id = tx.typeId;
                     label = typeRegistry.get(id)?.name || 'Other';
+                    const node = ensureNode(id, label);
+                    node.directValue += tx.amount;
+                    node.transactions.push(tx);
                 }
-
-                if (excludeUnknown && (label === 'Unallocated' || label === 'Unknown Entity' || label === 'No Label' || tx.categoryId === 'cat_other')) return;
-
-                const node = getNode(id, label, pId);
-                node.directValue += tx.amount;
-                node.transactions.push(tx);
             }
         });
 
-        // Build hierarchy for categories/counterparties
+        // Finalize hierarchy links
         if (displayDataType === 'category' || displayDataType === 'counterparty') {
             nodeMap.forEach(node => {
                 if (node.parentId && nodeMap.has(node.parentId)) {
                     const parent = nodeMap.get(node.parentId)!;
-                    if (!parent.children.find(c => c.id === node.id)) parent.children.push(node);
+                    if (!parent.children.find(c => c.id === node.id)) {
+                        parent.children.push(node);
+                    }
                 }
             });
         }
@@ -239,7 +273,6 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             let sum = n.directValue;
             n.children.forEach(c => {
                 sum += aggregate(c);
-                // Unique set of transactions to avoid duplicates in drilldown
                 const seen = new Set(n.transactions.map(t => t.id));
                 c.transactions.forEach(t => {
                     if (!seen.has(t.id)) n.transactions.push(t);
@@ -249,9 +282,12 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             return sum;
         };
 
+        // Filter out nodes that end up with 0 value (and no direct transactions)
         finalRoots.forEach(aggregate);
-        finalRoots.sort((a, b) => b.value - a.value);
-        finalRoots.forEach((r, i) => {
+        
+        const filteredRoots = finalRoots.filter(r => r.value > 0 || r.transactions.length > 0);
+        filteredRoots.sort((a, b) => b.value - a.value);
+        filteredRoots.forEach((r, i) => {
             r.color = COLORS[i % COLORS.length];
             const shade = (node: BreakdownNode, base: string) => {
                 node.children.forEach((c) => {
@@ -262,7 +298,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             shade(r, r.color);
         });
 
-        return finalRoots;
+        return filteredRoots;
     }, [transactions, activeRange, displayDataType, showIncome, showExpenses, excludeKeywords, excludeUnknown, categories, counterparties, accounts, transactionTypes, tags]);
 
     const totalValue = useMemo(() => chartData.filter(r => !hiddenSet.has(r.id)).reduce((s, r) => s + r.value, 0), [chartData, hiddenSet]);
@@ -282,7 +318,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
     const renderNode = (node: BreakdownNode, depth = 0) => {
         const isHidden = hiddenSet.has(node.id);
         const isExpanded = expandedIds.has(node.id);
-        const hasChildren = node.children.length > 0;
+        const hasVisibleChildren = node.children.some(c => c.value > 0 || c.transactions.length > 0);
 
         return (
             <div key={node.id} className="select-none">
@@ -292,7 +328,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                     onClick={() => setInspectingNode(node)}
                 >
                     <div className="w-5 flex justify-center shrink-0">
-                        {hasChildren && (
+                        {hasVisibleChildren && (
                             <button onClick={(e) => { e.stopPropagation(); toggleExpand(node.id); }} className="p-0.5 rounded hover:bg-slate-200">
                                 {isExpanded ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
                             </button>
@@ -317,7 +353,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                         {isHidden ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
                     </button>
                 </div>
-                {isExpanded && node.children.map(c => renderNode(c, depth + 1))}
+                {isExpanded && node.children.filter(c => c.value > 0 || c.transactions.length > 0).map(c => renderNode(c, depth + 1))}
             </div>
         );
     };
