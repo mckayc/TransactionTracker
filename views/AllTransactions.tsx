@@ -1,12 +1,12 @@
-
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, User, Tag, SavedReport, DateRangePreset, RuleCategory, Location } from '../types';
 import TransactionTable from '../components/TransactionTable';
 import TransactionModal from './TransactionModal';
 import BulkEditModal from '../components/BulkEditModal';
 import RuleModal from '../components/RuleModal';
-import CopyTransactionsModal from '../components/CopyTransactionsModal'; // Import new modal
-import { AddIcon, DeleteIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, SparklesIcon, CalendarIcon, TrendingUpIcon, TagIcon, TrashIcon, InfoIcon, CopyIcon, CheckCircleIcon } from '../components/Icons';
+import CopyTransactionsModal from '../components/CopyTransactionsModal';
+import SplitTransactionModal from '../components/SplitTransactionModal';
+import { AddIcon, DeleteIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, SparklesIcon, CalendarIcon, TrendingUpIcon, TagIcon, TrashIcon, InfoIcon, CopyIcon, CheckCircleIcon, SplitIcon } from '../components/Icons';
 import { api } from '../services/apiService';
 import { generateUUID } from '../utils';
 import { calculateDateRange, formatDate, shiftDateRange } from '../dateUtils';
@@ -127,6 +127,8 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
   const [isRuleModalOpen, setIsRuleModalOpen] = useState(false);
   const [ruleContextTx, setRuleContextTx] = useState<Transaction | null>(null);
   const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [splitTransaction, setSplitTransaction] = useState<Transaction | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const { start, end, label } = useMemo(() => calculateDateRange(datePreset, customStart, customEnd, []), [datePreset, customStart, customEnd]);
@@ -186,6 +188,22 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
       setIsModalOpen(true);
   };
 
+  const handleSplitRequested = (tx: Transaction) => {
+    setSplitTransaction(tx);
+    setIsSplitModalOpen(true);
+  };
+
+  const handleSplitComplete = async (parent: Transaction, children: Transaction[]) => {
+      try {
+          // Save the parent (now container) and the new children
+          await api.saveTransactions([parent, ...children]);
+          setToastMessage(`Split "${parent.description}" into ${children.length} parts.`);
+          fetchTransactions();
+      } catch (err) {
+          alert("Failed to save split data.");
+      }
+  };
+
   const selectedTransactions = useMemo(() => 
     transactions.filter(tx => selectedIds.has(tx.id)), 
   [transactions, selectedIds]);
@@ -199,27 +217,34 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
           <MetricPill label="Investments" value={rangeSummary.investments} color="text-purple-600" icon={<SparklesIcon className="w-4 h-4" />} isLoading={isSummaryLoading} onClick={() => setActiveMetricBreakdown('investments')} />
       </div>
 
-      <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 flex flex-col lg:flex-row justify-between items-center gap-4">
+      <div className="bg-white p-3 rounded-3xl shadow-sm border border-slate-200 flex flex-col lg:flex-row justify-between items-center gap-4">
         <div className="flex flex-1 items-center gap-4 w-full">
-            <div className="relative group flex-1 max-w-md">
-                <input type="text" placeholder="Filter ledger..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(0); }} className="w-full px-4 py-2 border rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 border-slate-200 bg-slate-50/50" />
+            <div className="relative group flex-1 max-w-sm">
+                <input type="text" placeholder="Filter ledger..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(0); }} className="w-full px-4 py-1.5 border rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 border-slate-200 bg-slate-50/50" />
             </div>
             
-            <div className="flex items-center gap-1 bg-slate-900 p-1.5 rounded-2xl border border-slate-800 shadow-lg">
-                <button onClick={() => handleDateShift('prev')} className="p-1.5 text-slate-400 hover:text-white"><ChevronLeftIcon className="w-5 h-5" /></button>
-                <div className="relative flex items-center gap-2 px-3 border-x border-white/5">
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-2xl border border-slate-800 shadow-lg group">
+                <button onClick={() => handleDateShift('prev')} className="p-1.5 text-slate-400 hover:text-white transition-colors" title="Previous Period"><ChevronLeftIcon className="w-5 h-5" /></button>
+                <div className="relative flex items-center gap-2 px-4 border-x border-white/5 min-w-[200px] justify-center">
                     <CalendarIcon className="w-3.5 h-3.5 text-indigo-400" />
-                    <select value={datePreset} onChange={e => { setDatePreset(e.target.value); setPage(0); }} className="bg-transparent text-white font-black text-[10px] uppercase outline-none cursor-pointer">
-                        <option value="allTime">All History</option>
-                        <option value="thisMonth">This Month</option>
-                        <option value="lastMonth">Last Month</option>
-                        <option value="last30Days">Last 30 Days</option>
-                        <option value="thisYear">This Year</option>
-                        <option value="lastYear">Last Year</option>
-                        <option value="custom">Manual...</option>
-                    </select>
+                    <div className="flex flex-col">
+                        <select 
+                            value={datePreset} 
+                            onChange={e => { setDatePreset(e.target.value); setPage(0); }} 
+                            className="bg-transparent text-white font-black text-[10px] uppercase outline-none cursor-pointer hover:text-indigo-200 transition-colors py-0.5"
+                        >
+                            <option value="allTime">All History</option>
+                            <option value="thisMonth">This Month</option>
+                            <option value="lastMonth">Last Month</option>
+                            <option value="last30Days">Last 30 Days</option>
+                            <option value="thisYear">This Year</option>
+                            <option value="lastYear">Last Year</option>
+                            <option value="custom">Custom Selection</option>
+                        </select>
+                        <span className="text-[8px] font-mono text-slate-400 text-center">{label}</span>
+                    </div>
                 </div>
-                <button onClick={() => handleDateShift('next')} className="p-1.5 text-slate-400 hover:text-white"><ChevronRightIcon className="w-5 h-5" /></button>
+                <button onClick={() => handleDateShift('next')} className="p-1.5 text-slate-400 hover:text-white transition-colors" title="Next Period"><ChevronRightIcon className="w-5 h-5" /></button>
             </div>
         </div>
 
@@ -234,7 +259,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
                     <button onClick={() => setSelectedIds(new Set())} className="p-2 text-slate-500 hover:text-white"><CloseIcon className="w-4 h-4"/></button>
                 </div>
             )}
-            <button onClick={() => { setEditingTransaction(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all active:scale-95 whitespace-nowrap">
+            <button onClick={() => { setEditingTransaction(null); setIsModalOpen(true); }} className="flex items-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-2xl font-black shadow-lg hover:bg-indigo-700 transition-all active:scale-95 whitespace-nowrap text-xs">
                 <AddIcon className="w-4 h-4"/> Add Entry
             </button>
         </div>
@@ -251,6 +276,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
                 onToggleSelection={(id) => { const n = new Set(selectedIds); if (n.has(id)) n.delete(id); else n.add(id); setSelectedIds(n); }} 
                 onToggleSelectAll={() => { if (selectedIds.size === transactions.length) setSelectedIds(new Set()); else setSelectedIds(new Set(transactions.map(t => t.id))); }} 
                 onEditRule={handleEditRule}
+                onSplit={handleSplitRequested}
             />
           </div>
 
@@ -284,7 +310,9 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
         }} 
         accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onSaveCounterparty={onSaveCounterparty} onSaveCategory={onSaveCategory} 
       />
+      
       {bulkEditType && <BulkEditModal type={bulkEditType} isOpen={!!bulkEditType} onClose={() => setBulkEditType(null)} onConfirm={(val) => handleBulkUpdate(bulkEditType, val)} categories={categories} />}
+      
       <MetricBreakdownModal isOpen={!!activeMetricBreakdown} onClose={() => setActiveMetricBreakdown(null)} title={activeMetricBreakdown === 'inflow' ? 'Total Inflow' : activeMetricBreakdown === 'outflow' ? 'Total Outflow' : 'Investments'} items={breakdownData.items} total={breakdownData.total} isLoading={isBreakdownLoading} colorClass={activeMetricBreakdown === 'inflow' ? 'text-emerald-600' : activeMetricBreakdown === 'outflow' ? 'text-rose-600' : 'text-purple-600'} />
       
       {isRuleModalOpen && (
@@ -313,6 +341,15 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
             setToastMessage(`${count} records copied in spreadsheet format.`);
             setSelectedIds(new Set());
         }}
+      />
+
+      <SplitTransactionModal 
+        isOpen={isSplitModalOpen}
+        onClose={() => { setIsSplitModalOpen(false); setSplitTransaction(null); }}
+        transaction={splitTransaction}
+        categories={categories}
+        transactionTypes={transactionTypes}
+        onSplit={handleSplitComplete}
       />
 
       {toastMessage && (

@@ -1,7 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Transaction, Category, TransactionType } from '../types';
-import { CloseIcon, SplitIcon, AddIcon, DeleteIcon } from './Icons';
+// Import missing ExclamationTriangleIcon and CheckBadgeIcon
+import { CloseIcon, SplitIcon, AddIcon, DeleteIcon, CheckCircleIcon, ExclamationTriangleIcon, CheckBadgeIcon } from './Icons';
 import { generateUUID } from '../utils';
 
 interface SplitTransactionModalProps {
@@ -40,7 +40,7 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                 },
                 {
                     id: generateUUID(),
-                    description: 'Split 2',
+                    description: 'New Split',
                     amount: 0,
                     categoryId: categoryId,
                     typeId: typeId
@@ -80,7 +80,7 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
 
     const handleSave = () => {
         if (!isBalanced) {
-            alert(`The splits must sum up to the original amount of ${originalAmount.toFixed(2)}.`);
+            alert(`The splits must sum up to the original amount of $${originalAmount.toFixed(2)}.`);
             return;
         }
 
@@ -88,7 +88,7 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
         const parent: Transaction = {
             ...transaction,
             isParent: true,
-            linkGroupId: transaction.linkGroupId || generateUUID() // Generate group ID if not exists
+            linkGroupId: transaction.linkGroupId || generateUUID() 
         };
 
         const children: Transaction[] = splits.map(s => {
@@ -102,13 +102,12 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
                 category: catName,
                 typeId: s.typeId,
                 accountId: transaction.accountId,
-                // Use counterpartyId instead of payeeId to match types.ts
                 counterpartyId: transaction.counterpartyId,
                 userId: transaction.userId,
                 location: transaction.location,
                 sourceFilename: transaction.sourceFilename,
-                linkGroupId: parent.linkGroupId, // Link to parent's group
-                parentTransactionId: transaction.id // Explicit link to parent
+                linkGroupId: parent.linkGroupId,
+                parentTransactionId: transaction.id
             };
         });
 
@@ -117,105 +116,118 @@ const SplitTransactionModal: React.FC<SplitTransactionModalProps> = ({ isOpen, o
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex justify-center items-center p-4" onClick={onClose}>
+            <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                 
-                <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-xl">
-                    <div className="flex items-center gap-3">
-                        <div className="bg-indigo-100 p-2 rounded-lg text-indigo-600">
-                            <SplitIcon className="w-6 h-6" />
+                <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
+                    <div className="flex items-center gap-4">
+                        <div className="p-4 bg-indigo-600 rounded-2xl text-white shadow-lg shadow-indigo-100">
+                            <SplitIcon className="w-8 h-8" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-slate-800">Split Transaction</h2>
-                            <p className="text-sm text-slate-500">Break down <span className="font-mono font-bold">${originalAmount.toFixed(2)}</span> into multiple categories.</p>
+                            <h2 className="text-2xl font-black text-slate-800 tracking-tight">Split Registry Entry</h2>
+                            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
+                                Allocating <span className="text-slate-800 font-black font-mono">${originalAmount.toFixed(2)}</span> total
+                            </p>
                         </div>
                     </div>
-                    <button onClick={onClose} className="p-1 rounded-full hover:bg-slate-200 text-slate-500"><CloseIcon className="w-6 h-6" /></button>
+                    <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-200 text-slate-400 transition-colors"><CloseIcon className="w-8 h-8" /></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 bg-slate-50">
-                    <div className="space-y-3">
-                        {splits.map((split, index) => (
-                            <div key={split.id} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex flex-col gap-3 relative group">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="text-xs font-bold text-slate-400 uppercase">Split {index + 1}</h4>
-                                    {splits.length > 2 && (
-                                        <button onClick={() => handleRemoveSplit(split.id)} className="text-slate-300 hover:text-red-500 transition-colors">
-                                            <DeleteIcon className="w-4 h-4" />
-                                        </button>
-                                    )}
+                <div className="flex-1 overflow-y-auto p-8 space-y-4 bg-slate-50/30 custom-scrollbar">
+                    {splits.map((split, index) => (
+                        <div key={split.id} className="bg-white p-6 rounded-3xl border-2 border-slate-100 shadow-sm flex flex-col gap-4 relative group transition-all hover:border-indigo-200">
+                            <div className="flex items-center justify-between">
+                                <span className="px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-[10px] font-black uppercase tracking-widest">Part {index + 1}</span>
+                                {splits.length > 2 && (
+                                    <button onClick={() => handleRemoveSplit(split.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100">
+                                        <DeleteIcon className="w-5 h-5" />
+                                    </button>
+                                )}
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                                <div className="md:col-span-5">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Description</label>
+                                    <input 
+                                        type="text" 
+                                        value={split.description} 
+                                        onChange={(e) => handleUpdateSplit(split.id, 'description', e.target.value)}
+                                        className="w-full p-3 text-sm font-bold border-2 border-slate-50 bg-slate-50/50 rounded-2xl focus:bg-white focus:border-indigo-500 outline-none"
+                                        placeholder="Split purpose..."
+                                    />
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                                    <div className="sm:col-span-4">
-                                        <input 
-                                            type="text" 
-                                            value={split.description} 
-                                            onChange={(e) => handleUpdateSplit(split.id, 'description', e.target.value)}
-                                            className="w-full p-2 text-sm border rounded-md"
-                                            placeholder="Description"
-                                        />
-                                    </div>
-                                    <div className="sm:col-span-3">
+                                <div className="md:col-span-4">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Logic Type / Category</label>
+                                    <div className="space-y-2">
+                                        <select 
+                                            value={split.typeId} 
+                                            onChange={(e) => handleUpdateSplit(split.id, 'typeId', e.target.value)}
+                                            className="w-full p-2.5 text-[11px] font-black border-2 border-slate-50 bg-slate-50/50 rounded-xl outline-none uppercase tracking-tighter"
+                                        >
+                                            {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                                        </select>
                                         <select 
                                             value={split.categoryId} 
                                             onChange={(e) => handleUpdateSplit(split.id, 'categoryId', e.target.value)}
-                                            className="w-full p-2 text-sm border rounded-md"
+                                            className="w-full p-2.5 text-[11px] font-black border-2 border-slate-50 bg-slate-50/50 rounded-xl outline-none uppercase tracking-tighter"
                                         >
                                             {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                         </select>
                                     </div>
-                                    <div className="sm:col-span-3">
-                                        <select 
-                                            value={split.typeId} 
-                                            onChange={(e) => handleUpdateSplit(split.id, 'typeId', e.target.value)}
-                                            className="w-full p-2 text-sm border rounded-md"
-                                        >
-                                            {transactionTypes.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                                        </select>
-                                    </div>
-                                    <div className="sm:col-span-2">
+                                </div>
+                                <div className="md:col-span-3">
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 mb-1 block">Amount</label>
+                                    <div className="relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-300">$</span>
                                         <input 
                                             type="number" 
                                             step="0.01" 
                                             value={split.amount} 
                                             onChange={(e) => handleUpdateSplit(split.id, 'amount', e.target.value)}
-                                            className="w-full p-2 text-sm border rounded-md font-mono text-right font-bold"
+                                            className="w-full p-3 pl-8 text-lg font-black border-2 border-slate-50 bg-slate-50/50 rounded-2xl font-mono text-right focus:bg-white focus:border-indigo-500 outline-none"
                                         />
                                     </div>
                                 </div>
                             </div>
-                        ))}
-                    </div>
+                        </div>
+                    ))}
                     
                     <button 
                         onClick={handleAddSplit} 
-                        className="mt-4 flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+                        className="w-full py-6 rounded-3xl border-4 border-dashed border-slate-100 flex items-center justify-center gap-3 text-slate-300 hover:border-indigo-200 hover:text-indigo-400 transition-all font-black uppercase tracking-widest text-xs"
                     >
-                        <AddIcon className="w-4 h-4" /> Add Split
+                        <AddIcon className="w-6 h-6" /> Deploy New Split Token
                     </button>
                 </div>
 
-                <div className={`p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4 ${isBalanced ? 'bg-green-50' : 'bg-red-50'} rounded-b-xl`}>
-                    <div className="flex items-center gap-4 text-sm">
-                        <div>
-                            <span className="block text-xs font-bold uppercase text-slate-500">Remaining</span>
-                            <span className={`font-mono font-bold text-lg ${isBalanced ? 'text-green-600' : 'text-red-600'}`}>
-                                {remaining.toFixed(2)}
-                            </span>
+                <div className={`p-8 border-t bg-white flex flex-col sm:flex-row justify-between items-center gap-6 shrink-0`}>
+                    <div className="flex items-center gap-10">
+                        <div className="space-y-1">
+                            <span className="block text-[10px] font-black uppercase tracking-widest text-slate-400">Ledger Balance</span>
+                            <div className="flex items-center gap-3">
+                                <span className={`font-mono font-black text-3xl transition-colors ${isBalanced ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    ${remaining.toFixed(2)}
+                                </span>
+                                {isBalanced && <CheckCircleIcon className="w-8 h-8 text-emerald-500 animate-fade-in" />}
+                            </div>
                         </div>
-                        {!isBalanced && <p className="text-red-600 font-medium text-xs">Must be 0.00 to save</p>}
+                        {!isBalanced && (
+                            <div className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-600 rounded-xl border border-rose-100 animate-pulse">
+                                <ExclamationTriangleIcon className="w-4 h-4" />
+                                <span className="text-[10px] font-black uppercase tracking-widest">Unbalanced Registry</span>
+                            </div>
+                        )}
                     </div>
                     
-                    <div className="flex gap-3">
-                        <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50">
-                            Cancel
-                        </button>
+                    <div className="flex gap-4 w-full sm:w-auto">
+                        <button onClick={onClose} className="flex-1 sm:flex-none px-10 py-4 text-xs font-black uppercase tracking-widest text-slate-400 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-all">Abort</button>
                         <button 
                             onClick={handleSave} 
                             disabled={!isBalanced}
-                            className="px-6 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-slate-300 disabled:cursor-not-allowed shadow-sm transition-colors"
+                            className="flex-2 sm:flex-none px-12 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 shadow-xl shadow-indigo-100 disabled:opacity-30 disabled:shadow-none transition-all text-xs uppercase tracking-widest active:scale-95 flex items-center justify-center gap-3"
                         >
-                            Save Splits
+                            <CheckBadgeIcon className="w-5 h-5" /> Commit Split Logic
                         </button>
                     </div>
                 </div>
