@@ -1,7 +1,7 @@
-
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Category, Counterparty, Account, TransactionType, Tag } from '../types';
 import { CloseIcon, CopyIcon, CheckCircleIcon, TableIcon, ListIcon } from './Icons';
+import { copyToClipboard } from '../utils';
 
 interface CopyTransactionsModalProps {
     isOpen: boolean;
@@ -71,12 +71,12 @@ const CopyTransactionsModal: React.FC<CopyTransactionsModalProps> = ({
 
         const clipboardText = [header, ...rows].join('\n');
 
-        try {
-            await navigator.clipboard.writeText(clipboardText);
+        const success = await copyToClipboard(clipboardText);
+        if (success) {
             onSuccess(selectedTransactions.length);
             onClose();
-        } catch (err) {
-            alert("Clipboard access failed. Check browser permissions.");
+        } else {
+            alert("Copy failed. Please try again or manually select text.");
         }
     };
 

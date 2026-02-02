@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Transaction, ReconciliationRule, Account, TransactionType, Counterparty, Category, RuleCondition, Tag, Location, User, RuleImportDraft, RuleCategory, RuleForgePrompt, SystemSettings, ImportBatchStats, FieldRequirement } from '../types';
 import { DeleteIcon, AddIcon, SearchCircleIcon, SparklesIcon, ShieldCheckIcon, TagIcon, TableIcon, BoxIcon, MapPinIcon, UserGroupIcon, CloudArrowUpIcon, TrashIcon, CloseIcon, FileCodeIcon, UploadIcon, DownloadIcon, InfoIcon, ExclamationTriangleIcon, EditIcon, ChevronRightIcon, FolderIcon, CheckCircleIcon, RobotIcon, PlayIcon, SaveIcon, RepeatIcon, ListIcon, DatabaseIcon, WorkflowIcon, SlashIcon, TypeIcon, ChecklistIcon, UsersIcon, CopyIcon } from '../components/Icons';
@@ -7,7 +6,7 @@ import RuleImportVerification from '../components/RuleImportVerification';
 import RulePreviewModal from '../components/RulePreviewModal';
 import { parseRulesFromFile, parseRulesFromLines, generateRuleTemplate, validateRuleFormat } from '../services/csvParserService';
 import { forgeRulesWithCustomPrompt } from '../services/geminiService';
-import { generateUUID } from '../utils';
+import { generateUUID, copyToClipboard } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
 
 interface RulesPageProps {
@@ -159,7 +158,7 @@ const RulesPage: React.FC<RulesPageProps> = ({
         setTimeout(() => setNotification(prev => prev?.id === id ? null : prev), 5000);
     };
 
-    const handleCopyForExternalAi = () => {
+    const handleCopyForExternalAi = async () => {
         const template = generateRuleTemplate();
         const fields = activeForgePrompt.fields || {};
         
@@ -186,28 +185,11 @@ ${forgeData || '[Please paste transaction data here for the AI to analyze]'}
 
 Please output ONLY the resulting CSV content. Do not include conversational text.`.trim();
 
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(prompt).then(() => {
-                notify('success', 'Prompt Copied', 'External AI instructions ready in clipboard.');
-            }).catch(() => {
-                alert("Clipboard access failed.");
-            });
+        const success = await copyToClipboard(prompt);
+        if (success) {
+            notify('success', 'Prompt Copied', 'External AI instructions ready in clipboard.');
         } else {
-            const textArea = document.createElement("textarea");
-            textArea.value = prompt;
-            textArea.style.position = "fixed";
-            textArea.style.left = "-9999px";
-            textArea.style.top = "0";
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            const successful = document.execCommand('copy');
-            document.body.removeChild(textArea);
-            if (successful) {
-                notify('success', 'Prompt Copied', 'External AI instructions ready in clipboard.');
-            } else {
-                alert("Manual copy required.");
-            }
+            alert("Clipboard access failed. Please select text manually.");
         }
     };
 
@@ -863,7 +845,7 @@ e.g. 'Rule Name, Match Field, Operator, Match Value'
                                 autoFocus
                             />
                             <div className="flex gap-2">
-                                <button type="submit" className="flex-1 bg-indigo-600 text-white text-[10px] font-black py-1 rounded">Save</button>
+                                <button type="submit" className="flex-1 bg-indigo-600 text-white text-[10px] font-black font-black py-1 rounded">Save</button>
                                 <button type="button" onClick={() => setIsCreatingCategory(false)} className="flex-1 bg-slate-100 text-slate-500 text-[10px] font-black py-1 rounded">Cancel</button>
                             </div>
                         </form>

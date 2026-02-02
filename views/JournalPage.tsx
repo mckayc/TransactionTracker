@@ -1,8 +1,7 @@
-
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { BusinessNote, BusinessProfile } from '../types';
 import { CheckCircleIcon, SparklesIcon, SendIcon, AddIcon, EditIcon, BugIcon, NotesIcon, SearchCircleIcon, CloseIcon, ListIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChecklistIcon, LightBulbIcon, ChevronRightIcon, ChevronDownIcon, ShieldCheckIcon, BoxIcon, InfoIcon, RobotIcon, CopyIcon, FileTextIcon, SaveIcon, DatabaseIcon } from '../components/Icons';
-import { generateUUID } from '../utils';
+import { generateUUID, copyToClipboard } from '../utils';
 
 interface JournalPageProps {
     notes: BusinessNote[];
@@ -36,30 +35,6 @@ const Toast: React.FC<{ message: string; onClose: () => void }> = ({ message, on
             </div>
         </div>
     );
-};
-
-const copyToClipboard = (text: string, onDone: (msg: string) => void) => {
-    if (navigator.clipboard && window.isSecureContext) {
-        navigator.clipboard.writeText(text).then(() => onDone("Copied to clipboard")).catch(() => fallbackCopy(text, onDone));
-    } else {
-        fallbackCopy(text, onDone);
-    }
-};
-
-const fallbackCopy = (text: string, onDone: (msg: string) => void) => {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-9999px";
-    textArea.style.top = "0";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    try {
-        const successful = document.execCommand('copy');
-        if (successful) onDone("Copied to clipboard (fallback)");
-    } catch (err) {}
-    document.body.removeChild(textArea);
 };
 
 const parseMarkdownToBlocks = (markdown: string): ContentBlock[] => {
@@ -354,10 +329,13 @@ const JournalPage: React.FC<JournalPageProps> = ({ notes, onUpdateNotes, profile
         setSelectedNoteId(id);
     };
 
-    const handleCopyForAI = (text: string) => {
-        copyToClipboard(text, (msg) => {
+    const handleCopyForAI = async (text: string) => {
+        const success = await copyToClipboard(text);
+        if (success) {
             setToastMessage("Context Copied (Excludes Completed Tasks)");
-        });
+        } else {
+            alert("Copy failed. Please manually select the text.");
+        }
     };
 
     return (
