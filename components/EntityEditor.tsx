@@ -194,6 +194,7 @@ const EntityEditor: React.FC<EntityEditorProps> = ({
                                 {sampleDataRow?.headers.map((h, i) => (
                                     <option key={i} value={h}>{h}</option>
                                 ))}
+                                {/* If no sample is loaded but a mapping exists, show it as an option */}
                                 {currentValue && !sampleDataRow?.headers.includes(currentValue) && (
                                     <option value={currentValue}>{currentValue} (Saved)</option>
                                 )}

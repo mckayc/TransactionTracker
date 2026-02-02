@@ -177,8 +177,8 @@ export const parseTransactionsFromText = async (
         let forceType: string | null = null;
 
         if (debitIdx !== -1 || creditIdx !== -1) {
-            const debitVal = debitIdx !== -1 ? parts[debitIdx]?.replace(/[^-0.9.]/g, '') : '';
-            const creditVal = creditIdx !== -1 ? parts[creditIdx]?.replace(/[^-0.9.]/g, '') : '';
+            const debitVal = debitIdx !== -1 ? parts[debitIdx]?.replace(/[^0-9.+-]/g, '') : '';
+            const creditVal = creditIdx !== -1 ? parts[creditIdx]?.replace(/[^0-9.+-]/g, '') : '';
             
             const debitNum = parseFloat(debitVal) || 0;
             const creditNum = parseFloat(creditVal) || 0;
@@ -191,7 +191,8 @@ export const parseTransactionsFromText = async (
                 forceType = incomingType.id;
             }
         } else if (amountIdx !== -1) {
-            const rawAmount = parts[amountIdx]?.replace(/[^-0.9.]/g, '') || '0';
+            // FIX: Regex was stripping all numbers except 0 and 9 because of [^-0.9.]
+            const rawAmount = parts[amountIdx]?.replace(/[^0-9.+-]/g, '') || '0';
             amount = parseFloat(rawAmount);
             if (isNaN(amount)) {
                 amountFailures++;
@@ -199,11 +200,20 @@ export const parseTransactionsFromText = async (
             }
         }
         
-        if (!dateStr || (amount === 0 && !rawDesc)) continue;
+        if (!dateStr || (amount === 0 && !rawDesc && (!payeeIdx || !parts[payeeIdx]))) continue;
 
-        let finalDesc = rawDesc;
-        if (payeeIdx !== -1 && payeeIdx !== descIdx && parts[payeeIdx]) {
-            finalDesc = `${parts[payeeIdx]} - ${rawDesc}`.trim();
+        // Intelligent Description Construction
+        let finalDesc = rawDesc || '';
+        const payee = (payeeIdx !== -1 && parts[payeeIdx]) ? parts[payeeIdx] : '';
+
+        if (payee && payee !== finalDesc) {
+            if (finalDesc) finalDesc = `${payee} - ${finalDesc}`;
+            else finalDesc = payee;
+        }
+
+        // If after all that it's still empty, fallback to notes or 'Untitled'
+        if (!finalDesc) {
+            finalDesc = (notesIdx !== -1 ? parts[notesIdx] : '') || 'Untitled Transaction';
         }
 
         const date = parseDate(dateStr);
@@ -216,7 +226,7 @@ export const parseTransactionsFromText = async (
         
         txs.push({
             date: formatDate(date),
-            description: cleanDescription(finalDesc || 'Untitled Transaction'),
+            description: cleanDescription(finalDesc),
             originalDescription: finalDesc,
             amount: Math.abs(amount),
             accountId,
