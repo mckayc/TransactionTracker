@@ -131,6 +131,8 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         excludeKeywords = '', 
         showIncome = true, 
         showExpenses = true, 
+        showInvestments = true,
+        showDonations = true,
         hiddenDataIds = [] 
     } = widget.config || {};
     
@@ -171,18 +173,43 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
     const chartData = useMemo(() => {
         const typeRegistry = new Map(transactionTypes.map(t => [t.id, t]));
+        const categoryRegistry = new Map(categories.map(c => [c.id, c.name]));
+        const counterpartyRegistry = new Map(counterparties.map(p => [p.id, p.name]));
+        const accountRegistry = new Map(accounts.map(a => [a.id, a.name]));
+
+        const keywords = excludeKeywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+
         const filtered = transactions.filter(tx => {
             const txDate = parseISOLocal(tx.date);
             if (txDate < activeRange.start || txDate > activeRange.end || tx.isParent) return false;
             
             const type = typeRegistry.get(tx.typeId);
             const effect = type?.balanceEffect || 'outgoing';
+            
+            // Effect Filtering Logic
             if (effect === 'neutral') return false;
             if (!showIncome && effect === 'incoming') return false;
-            if (!showExpenses && effect === 'outgoing') return false;
+            if (!showExpenses && effect === 'outgoing' && tx.typeId !== 'type_investment' && tx.typeId !== 'type_donation') return false;
+            
+            // Sub-type Specialty Filtering
+            if (!showInvestments && tx.typeId === 'type_investment') return false;
+            if (!showDonations && tx.typeId === 'type_donation') return false;
 
-            const keywords = excludeKeywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
-            if (keywords.length > 0 && keywords.some(kw => `${tx.description} ${tx.originalDescription || ''}`.toLowerCase().includes(kw))) return false;
+            const categoryName = categoryRegistry.get(tx.categoryId) || '';
+            const counterpartyName = counterpartyRegistry.get(tx.counterpartyId || '') || '';
+            const accountName = accountRegistry.get(tx.accountId || '') || '';
+
+            // Unknown / Unallocated Logic
+            if (excludeUnknown) {
+                if (tx.categoryId === 'cat_other' || categoryName.toLowerCase().includes('unallocated') || categoryName.toLowerCase() === 'other') return false;
+                if (!tx.counterpartyId && !tx.description) return false;
+            }
+
+            // Enhanced Keyword Search Context (Description + Meta Labels)
+            if (keywords.length > 0) {
+                const fullSearchString = `${tx.description} ${tx.originalDescription || ''} ${categoryName} ${counterpartyName} ${accountName}`.toLowerCase();
+                if (keywords.some(kw => fullSearchString.includes(kw))) return false;
+            }
 
             return true;
         });
@@ -324,7 +351,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         });
 
         return filteredRoots;
-    }, [transactions, activeRange, displayDataType, showIncome, showExpenses, excludeKeywords, excludeUnknown, categories, counterparties, accounts, transactionTypes, tags]);
+    }, [transactions, activeRange, displayDataType, showIncome, showExpenses, showInvestments, showDonations, excludeKeywords, excludeUnknown, categories, counterparties, accounts, transactionTypes, tags]);
 
     const totalValue = useMemo(() => chartData.filter(r => !hiddenSet.has(r.id)).reduce((s, r) => s + r.value, 0), [chartData, hiddenSet]);
 

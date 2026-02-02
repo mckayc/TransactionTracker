@@ -26,8 +26,11 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
 
     const getFilteredTransactions = (w: DashboardWidget) => {
         if (w.type !== 'cashflow' || !w.config) return [];
-        const { period = 'month', lookback = 0, displayDataType = 'type', excludeUnknown = true, excludeKeywords = '' } = w.config;
+        const { period = 'month', lookback = 0, displayDataType = 'type', excludeUnknown = true, excludeKeywords = '', showIncome = true, showExpenses = true, showInvestments = true, showDonations = true } = w.config;
         const typeRegistry = new Map(transactionTypes.map(t => [t.id, t]));
+        const categoryRegistry = new Map(categories.map(c => [c.id, c.name]));
+        const counterpartyRegistry = new Map(counterparties.map(p => [p.id, p.name]));
+        const accountRegistry = new Map(accounts.map(a => [a.id, a.name]));
 
         const now = new Date();
         const s = new Date(now); s.setHours(0,0,0,0);
@@ -65,21 +68,26 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
             if (txDate < s || txDate > e || tx.isParent) return false;
             const txType = typeRegistry.get(tx.typeId);
             const effect = txType?.balanceEffect || 'outgoing';
+            
             if (effect === 'neutral') return false;
-            if (effect === 'incoming' && w.config?.showIncome === false) return false;
-            if (effect === 'outgoing' && w.config?.showExpenses === false) return false;
+            if (!showIncome && effect === 'incoming') return false;
+            if (!showExpenses && effect === 'outgoing' && tx.typeId !== 'type_investment' && tx.typeId !== 'type_donation') return false;
+            if (!showInvestments && tx.typeId === 'type_investment') return false;
+            if (!showDonations && tx.typeId === 'type_donation') return false;
             
-            let label = '';
-            if (displayDataType === 'category') label = categories.find(c => c.id === tx.categoryId)?.name || '';
-            else if (displayDataType === 'counterparty') label = counterparties.find(cp => cp.id === tx.counterpartyId)?.name || '';
-            else if (displayDataType === 'account') label = accounts.find(a => a.id === tx.accountId)?.name || '';
-            else if (displayDataType === 'tag') label = tags.find(t => tx.tagIds?.includes(t.id))?.name || '';
-            else label = txType?.name || '';
-            
-            label = label || tx.description || 'Other';
+            const categoryName = categoryRegistry.get(tx.categoryId) || '';
+            const counterpartyName = counterpartyRegistry.get(tx.counterpartyId || '') || '';
+            const accountName = accountRegistry.get(tx.accountId || '') || '';
 
-            if (keywords.length > 0 && keywords.some(kw => `${tx.description} ${tx.originalDescription || ''} ${label}`.toLowerCase().includes(kw))) return false;
-            if (excludeUnknown && (label === 'Unallocated' || label === 'Unknown Entity' || label === '' || tx.categoryId === 'cat_other')) return false;
+            if (excludeUnknown) {
+                if (tx.categoryId === 'cat_other' || categoryName.toLowerCase().includes('unallocated') || categoryName.toLowerCase() === 'other') return false;
+            }
+
+            if (keywords.length > 0) {
+                const fullSearchString = `${tx.description} ${tx.originalDescription || ''} ${categoryName} ${counterpartyName} ${accountName}`.toLowerCase();
+                if (keywords.some(kw => fullSearchString.includes(kw))) return false;
+            }
+
             return true;
         });
     };
