@@ -18,6 +18,18 @@ interface Props {
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
 
+/**
+ * Helper to generate lighter shades of a hex color
+ */
+const lightenColor = (color: string, percent: number) => {
+    const num = parseInt(color.replace("#", ""), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = (num >> 16) + amt;
+    const G = ((num >> 8) & 0x00FF) + amt;
+    const B = (num & 0x0000FF) + amt;
+    return "#" + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 + (G<255?G<1?0:G:255)*0x100 + (B<255?B<1?0:B:255)).toString(16).slice(1);
+};
+
 interface BreakdownNode {
     id: string;
     label: string;
@@ -184,7 +196,6 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             return nodeMap.get(id)!;
         };
 
-        // Recursive function to pull in ancestors from master lists even if they have no direct transactions
         const ensureAncestry = (id: string) => {
             if (displayDataType === 'category') {
                 const cat = categories.find(c => c.id === id);
@@ -233,7 +244,6 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                             node.transactions.push(tx);
                         }
                     } else {
-                        // Fallback for description-only nodes
                         const label = tx.description || 'Unknown Entity';
                         const node = ensureNode(id, label);
                         node.directValue += tx.amount;
@@ -255,7 +265,6 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             }
         });
 
-        // Finalize hierarchy links
         if (displayDataType === 'category' || displayDataType === 'counterparty') {
             nodeMap.forEach(node => {
                 if (node.parentId && nodeMap.has(node.parentId)) {
@@ -282,20 +291,36 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             return sum;
         };
 
-        // Filter out nodes that end up with 0 value (and no direct transactions)
         finalRoots.forEach(aggregate);
         
+        // Sorting function for descending value
+        const recursiveSort = (node: BreakdownNode) => {
+            if (node.children.length > 0) {
+                node.children.sort((a, b) => b.value - a.value);
+                node.children.forEach(recursiveSort);
+            }
+        };
+
         const filteredRoots = finalRoots.filter(r => r.value > 0 || r.transactions.length > 0);
         filteredRoots.sort((a, b) => b.value - a.value);
+        
+        // Sort all children recursively
+        filteredRoots.forEach(recursiveSort);
+
+        // Monochromatic Shading System
         filteredRoots.forEach((r, i) => {
-            r.color = COLORS[i % COLORS.length];
-            const shade = (node: BreakdownNode, base: string) => {
-                node.children.forEach((c) => {
-                    c.color = base; 
-                    shade(c, base);
+            const baseColor = COLORS[i % COLORS.length];
+            r.color = baseColor;
+            
+            const assignChildColors = (node: BreakdownNode, parentColor: string, depth: number) => {
+                node.children.forEach((c, idx) => {
+                    // Combine depth and sibling rank to vary lightness
+                    const shift = Math.min((depth + 1) * 12 + (idx * 3), 70); 
+                    c.color = lightenColor(parentColor, shift);
+                    assignChildColors(c, parentColor, depth + 1);
                 });
             };
-            shade(r, r.color);
+            assignChildColors(r, baseColor, 0);
         });
 
         return filteredRoots;

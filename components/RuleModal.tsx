@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import type { Transaction, Account, TransactionType, ReconciliationRule, Counterparty, Category, RuleCondition, Tag, Location, User, RuleCategory } from '../types';
 import { CloseIcon, SlashIcon, SparklesIcon, AddIcon, PlayIcon, TypeIcon, ExclamationTriangleIcon, InfoIcon, DatabaseIcon, ChevronDownIcon, ShieldCheckIcon, TrashIcon } from './Icons';
@@ -120,6 +119,20 @@ const RuleModal: React.FC<RuleModalProps> = ({
         }
     }, [isOpen, transaction]);
 
+    const handleAddMetadataCondition = (key: string, value: string) => {
+        const newCond: RuleCondition = {
+            id: generateUUID(),
+            type: 'basic',
+            field: 'metadata',
+            metadataKey: key,
+            operator: 'equals',
+            value: value,
+            nextLogic: 'AND'
+        };
+        setConditions(prev => [...prev, newCond]);
+        setShowMetadata(false);
+    };
+
     const handleQuickAddSave = (type: EntityType | 'ruleCategory', payload: any) => {
         if (type === 'ruleCategory') {
             onSaveRuleCategory(payload);
@@ -151,7 +164,6 @@ const RuleModal: React.FC<RuleModalProps> = ({
 
     const handleDelete = () => {
         if (onDeleteRule && ruleId) {
-            // Logic is already confirmed via ConfirmationModal, browser confirm() is redundant
             onDeleteRule(ruleId);
             onClose();
         }
@@ -246,9 +258,18 @@ const RuleModal: React.FC<RuleModalProps> = ({
                                     {showMetadata && hasMetadata && (
                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 animate-fade-in bg-black/20 p-4 rounded-2xl border border-white/5 shadow-inner">
                                             {Object.entries(transaction.metadata).map(([key, val]) => (
-                                                <div key={key} className="bg-white/5 p-2 rounded-lg border border-white/5">
-                                                    <p className="text-[8px] font-black text-indigo-300 uppercase tracking-widest truncate">{key}</p>
-                                                    <p className="text-[10px] font-mono text-slate-300 truncate" title={String(val)}>{String(val)}</p>
+                                                <div key={key} className="bg-white/5 p-3 rounded-xl border border-white/5 flex flex-col justify-between group/meta">
+                                                    <div>
+                                                        <p className="text-[8px] font-black text-indigo-300 uppercase tracking-widest truncate">{key}</p>
+                                                        <p className="text-[10px] font-mono text-slate-300 truncate mb-2" title={String(val)}>{String(val)}</p>
+                                                    </div>
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => handleAddMetadataCondition(key, String(val))}
+                                                        className="text-[8px] font-black uppercase py-1 bg-white/10 rounded-lg hover:bg-indigo-600 transition-colors opacity-0 group-hover/meta:opacity-100"
+                                                    >
+                                                        + Add Logic
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>

@@ -130,7 +130,8 @@ export const parseTransactionsFromText = async (
     
     // Sanitize headers to handle BOM and hidden chars
     const headerLine = lines[0];
-    const firstLineParts = splitCsvLine(headerLine, delimiter).map(sanitizeHeader);
+    const rawHeaders = splitCsvLine(headerLine, delimiter);
+    const firstLineParts = rawHeaders.map(sanitizeHeader);
     
     const findIndexStrict = (profileField: string | number | undefined, label: string) => {
         if (profileField === undefined || profileField === null || profileField === '') return -1;
@@ -157,6 +158,9 @@ export const parseTransactionsFromText = async (
     const locIdx = findIndexStrict(profile.locationColumn, 'Location');
     const tagsIdx = findIndexStrict(profile.tagsColumn, 'Tags');
     const notesIdx = findIndexStrict(profile.notesColumn, 'Notes');
+
+    // Indices used for primary fields - everything else goes to metadata
+    const usedIndices = new Set([dateIdx, amountIdx, debitIdx, creditIdx, descIdx, payeeIdx, typeIdx, catIdx, locIdx, tagsIdx, notesIdx]);
 
     const startIndex = profile.hasHeader ? 1 : 0;
     const txs: RawTransaction[] = [];
@@ -191,7 +195,6 @@ export const parseTransactionsFromText = async (
                 forceType = incomingType.id;
             }
         } else if (amountIdx !== -1) {
-            // FIX: Regex was stripping all numbers except 0 and 9 because of [^-0.9.]
             const rawAmount = parts[amountIdx]?.replace(/[^0-9.+-]/g, '') || '0';
             amount = parseFloat(rawAmount);
             if (isNaN(amount)) {
@@ -202,7 +205,6 @@ export const parseTransactionsFromText = async (
         
         if (!dateStr || (amount === 0 && !rawDesc && (!payeeIdx || !parts[payeeIdx]))) continue;
 
-        // Intelligent Description Construction
         let finalDesc = rawDesc || '';
         const payee = (payeeIdx !== -1 && parts[payeeIdx]) ? parts[payeeIdx] : '';
 
@@ -211,7 +213,6 @@ export const parseTransactionsFromText = async (
             else finalDesc = payee;
         }
 
-        // If after all that it's still empty, fallback to notes or 'Untitled'
         if (!finalDesc) {
             finalDesc = (notesIdx !== -1 ? parts[notesIdx] : '') || 'Untitled Transaction';
         }
@@ -221,6 +222,18 @@ export const parseTransactionsFromText = async (
             dateFailures++;
             continue;
         }
+
+        // Automatic Metadata Collection: Capture every column that wasn't unmapped
+        const metadata: Record<string, any> = {
+            raw_row: lines[i],
+            file_line: i + 1
+        };
+        parts.forEach((val, idx) => {
+            if (!usedIndices.has(idx) && val.trim()) {
+                const headerName = rawHeaders[idx] || `Col_${idx}`;
+                metadata[headerName] = val.trim();
+            }
+        });
 
         let selectedTypeId = forceType || (amount >= 0 ? incomingType.id : outgoingType.id);
         
@@ -235,10 +248,7 @@ export const parseTransactionsFromText = async (
             location: locIdx !== -1 ? parts[locIdx] : undefined,
             notes: notesIdx !== -1 ? parts[notesIdx] : undefined,
             tagIds: tagsIdx !== -1 ? parts[tagsIdx]?.split(',').map(t => t.trim()) : undefined,
-            metadata: {
-                raw_row: lines[i],
-                file_line: i + 1
-            }
+            metadata
         });
     }
 

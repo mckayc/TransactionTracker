@@ -1,4 +1,3 @@
-
 import type { RawTransaction, ReconciliationRule, Transaction, RuleCondition, Account } from '../types';
 
 /**
