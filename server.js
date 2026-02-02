@@ -544,10 +544,18 @@ app.get('/api/admin/audit-integrity', (req, res) => {
             AND link_group_id NOT IN (SELECT DISTINCT link_group_id FROM transactions WHERE is_parent = 1)
         `).all();
 
+        // 4. Find Logical Future Dates (Import Overflows)
+        const today = new Date().toISOString().split('T')[0];
+        const futureDates = db.prepare(`
+            SELECT * FROM transactions
+            WHERE date > ?
+        `).all(today);
+
         res.json({
             orphans,
             emptyParents,
-            brokenLinks
+            brokenLinks,
+            futureDates
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
