@@ -19,9 +19,6 @@ interface Props {
 
 const COLORS = ['#4f46e5', '#10b981', '#ef4444', '#f97316', '#8b5cf6', '#3b82f6', '#ec4899', '#f59e0b', '#14b8a6', '#6366f1'];
 
-/**
- * Helper to generate lighter shades of a hex color
- */
 const lightenColor = (color: string, percent: number) => {
     const num = parseInt(color.replace("#", ""), 16);
     const amt = Math.round(2.55 * percent);
@@ -120,6 +117,125 @@ const DynamicArcChart: React.FC<{
     );
 };
 
+interface BreakdownRowProps {
+    node: BreakdownNode;
+    depth: number;
+    hiddenSet: Set<string>;
+    expandedIds: Set<string>;
+    totalValue: number;
+    onToggleExpand: (id: string) => void;
+    onToggleVisibility: (id: string) => void;
+    onInspect: (node: BreakdownNode) => void;
+}
+
+const BreakdownRow: React.FC<BreakdownRowProps> = ({ 
+    node, depth, hiddenSet, expandedIds, totalValue, onToggleExpand, onToggleVisibility, onInspect 
+}) => {
+    const isHidden = hiddenSet.has(node.id);
+    const isExpanded = expandedIds.has(node.id);
+    const hasVisibleChildren = node.children.some(c => c.value > 0 || c.transactions.length > 0);
+    const hasDirectTransactions = node.directValue > 0 && node.transactions.length > 0;
+
+    const nestedGroups = useMemo(() => {
+        if (!isExpanded || !hasDirectTransactions) return { groups: [], singles: [] };
+        const groups = new Map<string, Transaction[]>();
+        const singles: Transaction[] = [];
+        
+        node.transactions.filter(t => !t.isParent).forEach(t => {
+            if (t.linkGroupId) {
+                if (!groups.has(t.linkGroupId)) groups.set(t.linkGroupId, []);
+                groups.get(t.linkGroupId)!.push(t);
+            } else {
+                singles.push(t);
+            }
+        });
+        
+        return { groups: Array.from(groups.entries()), singles };
+    }, [isExpanded, hasDirectTransactions, node.transactions]);
+
+    return (
+        <div className="select-none">
+            <div 
+                className={`flex items-center gap-3 p-2 rounded-xl transition-all cursor-pointer hover:bg-slate-50 border-2 border-transparent ${isHidden ? 'opacity-40 grayscale' : ''}`}
+                style={{ marginLeft: `${depth * 16}px` }}
+                onClick={() => (hasVisibleChildren || hasDirectTransactions) ? onToggleExpand(node.id) : onInspect(node)}
+            >
+                <div className="w-5 flex justify-center shrink-0">
+                    {(hasVisibleChildren || hasDirectTransactions) && (
+                        <button onClick={(e) => { e.stopPropagation(); onToggleExpand(node.id); }} className="p-0.5 rounded hover:bg-slate-200">
+                            {isExpanded ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
+                        </button>
+                    )}
+                </div>
+                <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: node.color }} />
+                <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-center mb-1">
+                        <span className="text-[11px] font-bold text-slate-700 truncate">{node.label}</span>
+                        <span className="text-[11px] font-black text-slate-900 font-mono">
+                            {isHidden ? '---' : formatCurrency(node.value)}
+                        </span>
+                    </div>
+                    {!isHidden && totalValue > 0 && (
+                        <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
+                            <div className="h-full transition-all duration-1000 ease-out" style={{ backgroundColor: node.color, width: `${(node.value / totalValue) * 100}%` }} />
+                        </div>
+                    )}
+                </div>
+                <button 
+                    onClick={(e) => { e.stopPropagation(); onToggleVisibility(node.id); }}
+                    className="p-1.5 text-slate-300 hover:text-indigo-600 transition-colors"
+                >
+                    {isHidden ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                </button>
+            </div>
+            
+            {isExpanded && !isHidden && (
+                <div className="space-y-0.5">
+                    {node.children.filter(c => c.value > 0 || c.transactions.length > 0).map(c => (
+                        <BreakdownRow 
+                            key={c.id} 
+                            node={c} 
+                            depth={depth + 1} 
+                            hiddenSet={hiddenSet} 
+                            expandedIds={expandedIds} 
+                            totalValue={totalValue} 
+                            onToggleExpand={onToggleExpand} 
+                            onToggleVisibility={onToggleVisibility} 
+                            onInspect={onInspect}
+                        />
+                    ))}
+                    
+                    {nestedGroups.groups.map(([groupId, txs]) => (
+                        <div key={groupId} className="py-1" style={{ marginLeft: `${(depth + 1) * 16 + 24}px` }}>
+                            <div className="flex items-center gap-2 mb-1">
+                                <LinkIcon className="w-2.5 h-2.5 text-indigo-400" />
+                                <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Linked Group ({txs.length})</span>
+                            </div>
+                            <div className="space-y-1">
+                                {txs.map(tx => (
+                                    <div key={tx.id} className="flex justify-between items-center pr-4">
+                                        <span className="text-[9px] font-medium text-slate-500 truncate max-w-[120px]">• {tx.description}</span>
+                                        <span className="text-[9px] font-mono text-slate-400">{formatCurrency(tx.amount)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+
+                    {nestedGroups.singles.map(tx => (
+                        <div key={tx.id} className="py-1" style={{ marginLeft: `${(depth + 1) * 16 + 24}px` }}>
+                            <div className="flex justify-between items-center pr-4 py-0.5">
+                                <span className="text-[9px] font-medium text-slate-500 truncate max-w-[140px]">• {tx.description}</span>
+                                <span className="text-[9px] font-mono text-slate-400">{formatCurrency(tx.amount)}</span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categories, counterparties, accounts, transactionTypes, users, tags, onUpdateConfig }) => {
     const [inspectingNode, setInspectingNode] = useState<BreakdownNode | null>(null);
     const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -183,19 +299,14 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         const filtered = transactions.filter(tx => {
             const txDate = parseISOLocal(tx.date);
             if (txDate < activeRange.start || txDate > activeRange.end) return false;
-            
-            // CRITICAL: Filter out Parents (isParent: true) to prevent double counting in analytics
             if (tx.isParent) return false;
 
             const type = typeRegistry.get(tx.typeId);
             const effect = type?.balanceEffect || 'outgoing';
             
-            // Effect Filtering Logic
             if (effect === 'neutral') return false;
             if (!showIncome && effect === 'incoming') return false;
             if (!showExpenses && effect === 'outgoing' && tx.typeId !== 'type_investment' && tx.typeId !== 'type_donation') return false;
-            
-            // Sub-type Specialty Filtering
             if (!showInvestments && tx.typeId === 'type_investment') return false;
             if (!showDonations && tx.typeId === 'type_donation') return false;
 
@@ -203,13 +314,11 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             const counterpartyName = counterpartyRegistry.get(tx.counterpartyId || '') || '';
             const accountName = accountRegistry.get(tx.accountId || '') || '';
 
-            // Unknown / Unallocated Logic
             if (excludeUnknown) {
                 if (tx.categoryId === 'cat_other' || categoryName.toLowerCase().includes('unallocated') || categoryName.toLowerCase() === 'other') return false;
                 if (!tx.counterpartyId && !tx.description) return false;
             }
 
-            // Enhanced Keyword Search Context (Description + Meta Labels)
             if (keywords.length > 0) {
                 const fullSearchString = `${tx.description} ${tx.originalDescription || ''} ${categoryName} ${counterpartyName} ${accountName}`.toLowerCase();
                 if (keywords.some(kw => fullSearchString.includes(kw))) return false;
@@ -324,7 +433,6 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
         finalRoots.forEach(aggregate);
         
-        // Sorting function for descending value
         const recursiveSort = (node: BreakdownNode) => {
             if (node.children.length > 0) {
                 node.children.sort((a, b) => b.value - a.value);
@@ -334,18 +442,14 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
         const filteredRoots = finalRoots.filter(r => r.value > 0 || r.transactions.length > 0);
         filteredRoots.sort((a, b) => b.value - a.value);
-        
-        // Sort all children recursively
         filteredRoots.forEach(recursiveSort);
 
-        // Monochromatic Shading System
         filteredRoots.forEach((r, i) => {
             const baseColor = COLORS[i % COLORS.length];
             r.color = baseColor;
             
             const assignChildColors = (node: BreakdownNode, parentColor: string, depth: number) => {
                 node.children.forEach((c, idx) => {
-                    // Combine depth and sibling rank to vary lightness
                     const shift = Math.min((depth + 1) * 12 + (idx * 3), 70); 
                     c.color = lightenColor(parentColor, shift);
                     assignChildColors(c, parentColor, depth + 1);
@@ -384,107 +488,6 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         setExpandedIds(next);
     };
 
-    const renderNode = (node: BreakdownNode, depth = 0) => {
-        const isHidden = hiddenSet.has(node.id);
-        const isExpanded = expandedIds.has(node.id);
-        const hasVisibleChildren = node.children.some(c => c.value > 0 || c.transactions.length > 0);
-        const hasDirectTransactions = node.directValue > 0 && node.transactions.length > 0;
-        
-        // Group transactions by link group for "nested items" display
-        const nestedGroups = useMemo(() => {
-            // Added fix: Return an object with groups and singles instead of an empty array on early exit
-            if (!isExpanded || !hasDirectTransactions) return { groups: [], singles: [] };
-            const groups = new Map<string, Transaction[]>();
-            const singles: Transaction[] = [];
-            
-            node.transactions.filter(t => !t.isParent).forEach(t => {
-                if (t.linkGroupId) {
-                    if (!groups.has(t.linkGroupId)) groups.set(t.linkGroupId, []);
-                    groups.get(t.linkGroupId)!.push(t);
-                } else {
-                    singles.push(t);
-                }
-            });
-            
-            return { groups: Array.from(groups.entries()), singles };
-        }, [isExpanded, hasDirectTransactions, node.transactions]);
-
-        return (
-            <div key={node.id} className="select-none">
-                <div 
-                    className={`flex items-center gap-3 p-2 rounded-xl transition-all cursor-pointer hover:bg-slate-50 border-2 border-transparent ${isHidden ? 'opacity-40 grayscale' : ''}`}
-                    style={{ marginLeft: `${depth * 16}px` }}
-                    onClick={() => (hasVisibleChildren || hasDirectTransactions) ? toggleExpand(node.id) : setInspectingNode(node)}
-                >
-                    <div className="w-5 flex justify-center shrink-0">
-                        {(hasVisibleChildren || hasDirectTransactions) && (
-                            <button onClick={(e) => { e.stopPropagation(); toggleExpand(node.id); }} className="p-0.5 rounded hover:bg-slate-200">
-                                {isExpanded ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
-                            </button>
-                        )}
-                    </div>
-                    <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: node.color }} />
-                    <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-center mb-1">
-                            <span className="text-[11px] font-bold text-slate-700 truncate">{node.label}</span>
-                            <span className="text-[11px] font-black text-slate-900 font-mono">
-                                {isHidden ? '---' : formatCurrency(node.value)}
-                            </span>
-                        </div>
-                        {!isHidden && totalValue > 0 && (
-                            <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-                                <div className="h-full transition-all duration-1000 ease-out" style={{ backgroundColor: node.color, width: `${(node.value / totalValue) * 100}%` }} />
-                            </div>
-                        )}
-                    </div>
-                    <button 
-                        onClick={(e) => { e.stopPropagation(); handleToggleVisibility(node.id); }}
-                        className="p-1.5 text-slate-300 hover:text-indigo-600 transition-colors"
-                    >
-                        {isHidden ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
-                    </button>
-                </div>
-                
-                {isExpanded && !isHidden && (
-                    <div className="space-y-0.5">
-                        {/* Nested Sub-categories */}
-                        {node.children.filter(c => c.value > 0 || c.transactions.length > 0).map(c => renderNode(c, depth + 1))}
-                        
-                        {/* Nested Direct Transactions (Logical Groups) */}
-                        {nestedGroups.groups.map(([groupId, txs]) => (
-                            <div key={groupId} className="py-1" style={{ marginLeft: `${(depth + 1) * 16 + 24}px` }}>
-                                <div className="flex items-center gap-2 mb-1">
-                                    <LinkIcon className="w-2.5 h-2.5 text-indigo-400" />
-                                    <span className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Linked Group ({txs.length})</span>
-                                </div>
-                                <div className="space-y-1">
-                                    {txs.map(tx => (
-                                        <div key={tx.id} className="flex justify-between items-center pr-4">
-                                            <span className="text-[9px] font-medium text-slate-500 truncate max-w-[120px]">• {tx.description}</span>
-                                            <span className="text-[9px] font-mono text-slate-400">{formatCurrency(tx.amount)}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ))}
-
-                        {/* Flat Transactions (Singles) */}
-                        {nestedGroups.singles.length > 0 && (
-                            <div className="py-1" style={{ marginLeft: `${(depth + 1) * 16 + 24}px` }}>
-                                {nestedGroups.singles.map(tx => (
-                                    <div key={tx.id} className="flex justify-between items-center pr-4 py-0.5">
-                                        <span className="text-[9px] font-medium text-slate-500 truncate max-w-[140px]">• {tx.description}</span>
-                                        <span className="text-[9px] font-mono text-slate-400">{formatCurrency(tx.amount)}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-        );
-    };
-
     return (
         <div className="flex flex-col h-full overflow-hidden">
             <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
@@ -496,7 +499,19 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
                 
                 <div className="space-y-1">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Breakdown</p>
-                    {chartData.map(r => renderNode(r))}
+                    {chartData.map(r => (
+                        <BreakdownRow 
+                            key={r.id}
+                            node={r}
+                            depth={0}
+                            hiddenSet={hiddenSet}
+                            expandedIds={expandedIds}
+                            totalValue={totalValue}
+                            onToggleExpand={toggleExpand}
+                            onToggleVisibility={handleToggleVisibility}
+                            onInspect={setInspectingNode}
+                        />
+                    ))}
                     {chartData.length === 0 && (
                         <p className="text-xs text-slate-300 italic text-center py-4">No data matches these criteria.</p>
                     )}
