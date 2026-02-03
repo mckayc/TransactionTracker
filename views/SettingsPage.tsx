@@ -61,6 +61,12 @@ const ENTITY_LABELS: Record<string, { label: string, icon: React.ReactNode, warn
     files_meta: { label: 'Vault Metadata', icon: <DocumentIcon className="w-4 h-4" />, warning: 'Does not delete local physical files.' }
 };
 
+interface AnomalyEntry {
+    t: Transaction;
+    type: string;
+    color: string;
+}
+
 const SettingsPage: React.FC<SettingsPageProps> = ({ 
     transactions, systemSettings, onUpdateSystemSettings,
     accounts, categories, tags, counterparties, rules, templates, tasks, users, businessProfile, businessDocuments, documentFolders,
@@ -176,9 +182,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         }
     };
 
-    const anomalyList = useMemo(() => {
+    const anomalyList = useMemo<AnomalyEntry[]>(() => {
         if (!integrityReport) return [];
-        const list = [];
+        const list: AnomalyEntry[] = [];
         integrityReport.orphans.forEach(t => list.push({ t, type: 'Orphaned Child', color: 'bg-red-100 text-red-700' }));
         integrityReport.emptyParents.forEach(t => list.push({ t, type: 'Empty Parent', color: 'bg-amber-100 text-amber-700' }));
         integrityReport.brokenLinks.forEach(t => list.push({ t, type: 'Frag. Link Group', color: 'bg-indigo-100 text-indigo-700' }));
