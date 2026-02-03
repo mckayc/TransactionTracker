@@ -256,7 +256,8 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         showExpenses = true, 
         showInvestments = true,
         showDonations = true,
-        hiddenDataIds = [] 
+        hiddenDataIds = [],
+        userIds = []
     } = widget.config || {};
     
     const hiddenSet = new Set(hiddenDataIds);
@@ -310,6 +311,8 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
             const txDate = parseISOLocal(tx.date);
             if (txDate < activeRange.start || txDate > activeRange.end) return false;
             if (tx.isParent) return false;
+
+            if (userIds && userIds.length > 0 && !userIds.includes(tx.userId || '')) return false;
 
             const type = typeRegistry.get(tx.typeId);
             const effect = type?.balanceEffect || 'outgoing';
@@ -469,7 +472,7 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
         });
 
         return filteredRoots;
-    }, [transactions, activeRange, displayDataType, showIncome, showExpenses, showInvestments, showDonations, excludeKeywords, excludeUnknown, categories, counterparties, accounts, transactionTypes, tags]);
+    }, [transactions, activeRange, displayDataType, showIncome, showExpenses, showInvestments, showDonations, userIds, excludeKeywords, excludeUnknown, categories, counterparties, accounts, transactionTypes, tags]);
 
     const totalValue = useMemo(() => chartData.filter(r => !hiddenSet.has(r.id)).reduce((s, r) => s + r.value, 0), [chartData, hiddenSet]);
 

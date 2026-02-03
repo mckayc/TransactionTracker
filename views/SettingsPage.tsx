@@ -95,6 +95,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     // Integrity Lab State
     const [isScanningIntegrity, setIsScanningIntegrity] = useState(false);
     const [integrityReport, setIntegrityReport] = useState<{ orphans: Transaction[], emptyParents: Transaction[], brokenLinks: Transaction[], futureDates?: Transaction[] } | null>(null);
+    const [selectedAnomalyIds, setSelectedAnomalyIds] = useState<Set<string>>(new Set());
 
     const runDiagnostics = async () => {
         try { const data = await api.getDiagnostics(); setDiagnostics(data); } catch (e) { console.error(e); }
@@ -117,6 +118,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
     const handleScanIntegrity = async () => {
         setIsScanningIntegrity(true);
+        setSelectedAnomalyIds(new Set());
         try {
             const report = await api.auditIntegrity();
             setIntegrityReport(report);
@@ -131,10 +133,29 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         if (!confirm("Permanently expunge this broken record?")) return;
         try {
             await api.deleteTransaction(id);
-            // Re-scan to refresh
+            // Update local state without full re-scan if possible, but re-scan is safer for data consistency
             await handleScanIntegrity();
         } catch (e) {
             alert("Deletion failed.");
+        }
+    };
+
+    const handleBulkExpunge = async () => {
+        if (selectedAnomalyIds.size === 0) return;
+        if (!confirm(`Permanently expunge ${selectedAnomalyIds.size} selected records?`)) return;
+        
+        setIsScanningIntegrity(true);
+        try {
+            for (const id of selectedAnomalyIds) {
+                await api.deleteTransaction(id);
+            }
+            setSelectedAnomalyIds(new Set());
+            await handleScanIntegrity();
+        } catch (e) {
+            alert("Bulk deletion failed partway through. Re-scanning recommended.");
+            await handleScanIntegrity();
+        } finally {
+            setIsScanningIntegrity(false);
         }
     };
 
@@ -192,6 +213,20 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         return list;
     }, [integrityReport]);
 
+    const toggleAnomalySelection = (id: string) => {
+        const next = new Set(selectedAnomalyIds);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        setSelectedAnomalyIds(next);
+    };
+
+    const toggleSelectAllAnomalies = () => {
+        if (selectedAnomalyIds.size === anomalyList.length) {
+            setSelectedAnomalyIds(new Set());
+        } else {
+            setSelectedAnomalyIds(new Set(anomalyList.map(a => a.t.id)));
+        }
+    };
+
     return (
         <div className="max-w-5xl mx-auto space-y-10 pb-20">
             <header>
@@ -220,7 +255,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                             <SparklesIcon className="w-10 h-10" />
                         </div>
                         <div className="flex-1">
-                            <h3 className="text-2xl font-black text-slate-800">Scan Ledger Health</h3>
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-2xl font-black text-slate-800">Scan Ledger Health</h3>
+                                {selectedAnomalyIds.size > 0 && (
+                                    <button 
+                                        onClick={handleBulkExpunge}
+                                        className="px-6 py-2 bg-red-600 text-white text-xs font-black uppercase rounded-xl shadow-lg hover:bg-red-700 transition-all flex items-center gap-2 animate-bounce-subtle"
+                                    >
+                                        <TrashIcon className="w-4 h-4" /> Expunge Selected ({selectedAnomalyIds.size})
+                                    </button>
+                                )}
+                            </div>
                             <p className="text-sm text-slate-500 mt-1 max-w-lg">Checks for orphaned records, empty parent containers, and future-dated records (often caused by CSV parsing overflows).</p>
                         </div>
                         <button 
@@ -245,6 +290,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                     <table className="min-w-full divide-y divide-slate-100">
                                         <thead className="bg-slate-50 text-[9px] font-black uppercase text-slate-400">
                                             <tr>
+                                                <th className="px-6 py-4 text-center w-12">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="rounded text-indigo-600" 
+                                                        checked={selectedAnomalyIds.size === anomalyList.length && anomalyList.length > 0}
+                                                        onChange={toggleSelectAllAnomalies}
+                                                    />
+                                                </th>
                                                 <th className="px-6 py-4 text-left">Anomaly Class</th>
                                                 <th className="px-6 py-4 text-left">Description</th>
                                                 <th className="px-6 py-4 text-left">Date</th>
@@ -254,12 +307,24 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
                                             {anomalyList.map(({ t, type, color }) => (
-                                                <tr key={t.id} className="hover:bg-red-50/30">
+                                                <tr key={t.id} className={`hover:bg-red-50/30 transition-colors ${selectedAnomalyIds.has(t.id) ? 'bg-red-50/50' : ''}`}>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            className="rounded text-indigo-600" 
+                                                            checked={selectedAnomalyIds.has(t.id)}
+                                                            onChange={() => toggleAnomalySelection(t.id)}
+                                                        />
+                                                    </td>
                                                     <td className="px-6 py-4"><span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${color}`}>{type}</span></td>
                                                     <td className="px-6 py-4 text-xs font-bold text-slate-700 truncate max-w-[200px]">{t.description}</td>
                                                     <td className="px-6 py-4 text-[10px] font-mono font-bold text-slate-500">{t.date}</td>
                                                     <td className="px-6 py-4 text-right font-mono font-bold text-slate-800">${t.amount.toFixed(2)}</td>
-                                                    <td className="px-6 py-4 text-center"><button onClick={() => handleExpungeGhost(t.id)} title="Expunge Logical Error" className="p-2 text-slate-300 hover:text-red-500"><TrashIcon className="w-4 h-4" /></button></td>
+                                                    <td className="px-6 py-4 text-center">
+                                                        <button onClick={() => handleExpungeGhost(t.id)} title="Expunge Logical Error" className="p-2 text-slate-300 hover:text-red-500">
+                                                            <TrashIcon className="w-4 h-4" />
+                                                        </button>
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>

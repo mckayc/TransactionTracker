@@ -1,3 +1,4 @@
+
 export type BalanceEffect = 'incoming' | 'outgoing' | 'neutral';
 
 export interface TransactionType {
@@ -269,6 +270,7 @@ export interface DashboardWidget {
         videoCount?: number;
         publishYear?: string;
         reportYear?: string;
+        userIds?: string[];
     };
 }
 

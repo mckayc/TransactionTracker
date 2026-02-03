@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import type { Transaction, DashboardWidget, Category, Counterparty, Account, TransactionType, Tag } from '../../types';
 import { parseISOLocal } from '../../dateUtils';
@@ -26,7 +27,19 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
 
     const getFilteredTransactions = (w: DashboardWidget) => {
         if (w.type !== 'cashflow' || !w.config) return [];
-        const { period = 'month', lookback = 0, displayDataType = 'type', excludeUnknown = true, excludeKeywords = '', showIncome = true, showExpenses = true, showInvestments = true, showDonations = true } = w.config;
+        const { 
+            period = 'month', 
+            lookback = 0, 
+            displayDataType = 'type', 
+            excludeUnknown = true, 
+            excludeKeywords = '', 
+            showIncome = true, 
+            showExpenses = true, 
+            showInvestments = true, 
+            showDonations = true,
+            userIds = []
+        } = w.config;
+        
         const typeRegistry = new Map(transactionTypes.map(t => [t.id, t]));
         const categoryRegistry = new Map(categories.map(c => [c.id, c.name]));
         const counterpartyRegistry = new Map(counterparties.map(p => [p.id, p.name]));
@@ -66,6 +79,9 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
         return transactions.filter(tx => {
             const txDate = parseISOLocal(tx.date);
             if (txDate < s || txDate > e || tx.isParent) return false;
+
+            if (userIds && userIds.length > 0 && !userIds.includes(tx.userId || '')) return false;
+
             const txType = typeRegistry.get(tx.typeId);
             const effect = txType?.balanceEffect || 'outgoing';
             

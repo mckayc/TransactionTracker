@@ -1,14 +1,17 @@
+
 import React, { useMemo } from 'react';
-import type { Transaction } from '../../types';
+import type { Transaction, DashboardWidget } from '../../types';
 import { parseISOLocal } from '../../dateUtils';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 
 interface Props {
     transactions: Transaction[];
+    config?: DashboardWidget['config'];
 }
 
-export const TaxProjectionWidget: React.FC<Props> = ({ transactions }) => {
+export const TaxProjectionWidget: React.FC<Props> = ({ transactions, config }) => {
+    const userIds = config?.userIds || [];
     const now = new Date();
     const currentYear = now.getFullYear();
     
@@ -18,6 +21,8 @@ export const TaxProjectionWidget: React.FC<Props> = ({ transactions }) => {
         transactions.forEach(tx => {
             const d = parseISOLocal(tx.date);
             if (d.getFullYear() === currentYear && !tx.isParent) {
+                if (userIds && userIds.length > 0 && !userIds.includes(tx.userId || '')) return;
+
                 if (tx.typeId.includes('income')) income += tx.amount;
                 else if (tx.typeId.includes('tax') || tx.categoryId.includes('business') || tx.categoryId.includes('office')) deductible += tx.amount;
             }
@@ -25,7 +30,7 @@ export const TaxProjectionWidget: React.FC<Props> = ({ transactions }) => {
         const taxable = Math.max(0, income - deductible);
         const estimatedTax = taxable * 0.25; 
         return { estimatedTax, taxable, income };
-    }, [transactions, currentYear]);
+    }, [transactions, currentYear, userIds]);
 
     return (
         <div className="p-6 space-y-6 flex flex-col h-full justify-center">

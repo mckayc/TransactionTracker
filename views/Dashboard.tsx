@@ -1,8 +1,10 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User, JoinedMetric } from '../types';
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon } from '../components/Icons';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon, UserGroupIcon, UsersIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
+import MultiSelect from '../components/MultiSelect';
 
 // New Modular Widget Imports
 import { CashFlowWidget } from '../components/dashboard/CashFlowWidget';
@@ -197,6 +199,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [configShowExpenses, setConfigShowExpenses] = useState(true);
     const [configShowInvestments, setConfigShowInvestments] = useState(true);
     const [configShowDonations, setConfigShowDonations] = useState(true);
+    const [configUserIds, setConfigUserIds] = useState<Set<string>>(new Set());
     
     const [configVideoCount, setConfigVideoCount] = useState(10);
     const [configPublishYear, setConfigPublishYear] = useState('all');
@@ -261,6 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
             setConfigShowExpenses(activeWidget.config?.showExpenses !== false);
             setConfigShowInvestments(activeWidget.config?.showInvestments !== false);
             setConfigShowDonations(activeWidget.config?.showDonations !== false);
+            setConfigUserIds(activeWidget.config?.userIds ? new Set(activeWidget.config.userIds) : new Set());
             setConfigVideoCount(activeWidget.config?.videoCount || 10);
             setConfigPublishYear(activeWidget.config?.publishYear || 'all');
             setConfigReportYear(activeWidget.config?.reportYear || 'all');
@@ -331,6 +335,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                 showExpenses: configBlueprint === 'cashflow' ? configShowExpenses : undefined,
                 showInvestments: configBlueprint === 'cashflow' ? configShowInvestments : undefined,
                 showDonations: configBlueprint === 'cashflow' ? configShowDonations : undefined,
+                userIds: (configBlueprint === 'cashflow' || configBlueprint === 'top_expenses' || configBlueprint === 'tax_projection') ? (configUserIds.size > 0 ? Array.from(configUserIds) : undefined) : undefined,
                 videoCount: configBlueprint === 'video_earnings' ? configVideoCount : undefined,
                 publishYear: configBlueprint === 'video_earnings' ? configPublishYear : undefined,
                 reportYear: configBlueprint === 'video_earnings' ? configReportYear : undefined,
@@ -754,6 +759,18 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
 
                                             <div className="space-y-6">
                                                 <div className="space-y-3">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">User Context Filter</label>
+                                                    <MultiSelect 
+                                                        label="Visible Identities" 
+                                                        options={users} 
+                                                        selectedIds={configUserIds} 
+                                                        onChange={setConfigUserIds} 
+                                                        className="w-full"
+                                                    />
+                                                    <p className="text-[9px] text-slate-400 italic px-1">Defaults to all users if none selected.</p>
+                                                </div>
+
+                                                <div className="space-y-3">
                                                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Data Visibility Filters</label>
                                                     <div className="grid grid-cols-2 gap-3 p-4 bg-slate-50 rounded-[2rem] border border-slate-100">
                                                         <label className="flex items-center gap-2 cursor-pointer group">
@@ -811,6 +828,20 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
+                                )}
+
+                                {(configBlueprint === 'top_expenses' || configBlueprint === 'tax_projection') && (
+                                    <div className="space-y-3 animate-fade-in max-w-xl">
+                                        <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Identity Context</label>
+                                        <MultiSelect 
+                                            label="Select Users" 
+                                            options={users} 
+                                            selectedIds={configUserIds} 
+                                            onChange={setConfigUserIds} 
+                                            className="w-full"
+                                        />
+                                        <p className="text-[10px] text-slate-400 italic">Filters data to only include records owned by selected users.</p>
                                     </div>
                                 )}
 

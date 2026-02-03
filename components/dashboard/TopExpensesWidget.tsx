@@ -1,5 +1,6 @@
+
 import React, { useMemo } from 'react';
-import type { Transaction, Category } from '../../types';
+import type { Transaction, Category, DashboardWidget } from '../../types';
 import { parseISOLocal } from '../../dateUtils';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
@@ -7,9 +8,12 @@ const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { styl
 interface Props {
     transactions: Transaction[];
     categories: Category[];
+    config?: DashboardWidget['config'];
 }
 
-export const TopExpensesWidget: React.FC<Props> = ({ transactions, categories }) => {
+export const TopExpensesWidget: React.FC<Props> = ({ transactions, categories, config }) => {
+    const userIds = config?.userIds || [];
+
     const topCats = useMemo(() => {
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -18,6 +22,7 @@ export const TopExpensesWidget: React.FC<Props> = ({ transactions, categories })
         transactions.forEach(tx => {
             const d = parseISOLocal(tx.date);
             if (d >= start && (tx.typeId.includes('purchase') || tx.typeId.includes('tax')) && !tx.isParent) {
+                if (userIds && userIds.length > 0 && !userIds.includes(tx.userId || '')) return;
                 map.set(tx.categoryId, (map.get(tx.categoryId) || 0) + tx.amount);
             }
         });
@@ -26,7 +31,7 @@ export const TopExpensesWidget: React.FC<Props> = ({ transactions, categories })
             .map(([id, amt]) => ({ name: categories.find(c => c.id === id)?.name || 'Other', amt }))
             .sort((a, b) => b.amt - a.amt)
             .slice(0, 5);
-    }, [transactions, categories]);
+    }, [transactions, categories, userIds]);
 
     const totalExpense = topCats.reduce((s, c) => s + c.amt, 0);
 
