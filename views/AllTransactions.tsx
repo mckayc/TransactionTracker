@@ -79,6 +79,7 @@ const MetricBreakdownModal: React.FC<{
 };
 
 interface AllTransactionsProps {
+  allGlobalTransactions: Transaction[];
   accounts: Account[];
   categories: Category[];
   tags: Tag[];
@@ -103,7 +104,7 @@ interface AllTransactionsProps {
 }
 
 const AllTransactions: React.FC<AllTransactionsProps> = ({ 
-    accounts, categories, tags, transactionTypes, counterparties, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onAddTransactionType, onSaveReport,
+    allGlobalTransactions, accounts, categories, tags, transactionTypes, counterparties, users, onUpdateTransaction, onAddTransaction, onDeleteTransaction, onDeleteTransactions, onSaveRule, onSaveCategory, onSaveCounterparty, onSaveTag, onAddTransactionType, onSaveReport,
     rules, ruleCategories, onSaveRuleCategory, locations, onDeleteRule
 }) => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -164,8 +165,19 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
   const handleBulkDelete = () => { if (window.confirm(`Permanently delete ${selectedIds.size} selected transactions?`)) { onDeleteTransactions(Array.from(selectedIds)); setSelectedIds(new Set()); } };
 
   const handleBulkUpdate = async (field: string, value: any) => {
-      const updates = transactions.filter(tx => selectedIds.has(tx.id)).map(tx => ({ ...tx, [field]: value }));
-      await api.saveTransactions(updates); setSelectedIds(new Set()); fetchTransactions(); setBulkEditType(null);
+      // Logic fix: Resolve objects from allGlobalTransactions to ensure we have the full record data
+      // for items that might not be on the current page of the view.
+      const updates = allGlobalTransactions
+          .filter(tx => selectedIds.has(tx.id))
+          .map(tx => ({ ...tx, [field]: value }));
+      
+      if (updates.length > 0) {
+          await api.saveTransactions(updates);
+          setToastMessage(`Updated ${updates.length} records.`);
+          setSelectedIds(new Set()); 
+          fetchTransactions(); 
+          setBulkEditType(null);
+      }
   };
 
   const handleDateShift = (direction: 'prev' | 'next') => {
@@ -247,13 +259,13 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
   };
 
   const selectedTransactions = useMemo(() => 
-    transactions.filter(tx => selectedIds.has(tx.id)), 
-  [transactions, selectedIds]);
+    allGlobalTransactions.filter(tx => selectedIds.has(tx.id)), 
+  [allGlobalTransactions, selectedIds]);
 
   const managingGroupTxs = useMemo(() => {
     if (!managingLinkGroupId) return [];
-    return transactions.filter(t => t.linkGroupId === managingLinkGroupId);
-  }, [transactions, managingLinkGroupId]);
+    return allGlobalTransactions.filter(t => t.linkGroupId === managingLinkGroupId);
+  }, [allGlobalTransactions, managingLinkGroupId]);
 
   return (
     <div className="flex flex-col h-full gap-4">

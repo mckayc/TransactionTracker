@@ -280,6 +280,25 @@ app.delete('/api/transactions/:id', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/transactions/delete-batch', (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: "IDs array required" });
+        
+        const deleteTx = db.prepare('DELETE FROM transactions WHERE id = ?');
+        const deleteTags = db.prepare('DELETE FROM transaction_tags WHERE transaction_id = ?');
+        
+        db.transaction((targetIds) => {
+            for (const id of targetIds) {
+                deleteTx.run(id);
+                deleteTags.run(id);
+            }
+        })(ids);
+        
+        res.json({ success: true, count: ids.length });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/transactions', (req, res) => {
     try {
         const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC', search, startDate, endDate, userId } = req.query;

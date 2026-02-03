@@ -80,6 +80,14 @@ export const api = {
         await fetchWithRetry(`/api/transactions/${id}`, { method: 'DELETE' });
     },
 
+    deleteTransactions: async (ids: string[]): Promise<void> => {
+        await fetchWithRetry('/api/transactions/delete-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids }),
+        });
+    },
+
     saveRule: async (rule: any): Promise<void> => {
         await fetchWithRetry('/api/reconciliation-rules', {
             method: 'POST',
