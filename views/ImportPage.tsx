@@ -9,12 +9,14 @@ import FileUpload from '../components/FileUpload';
 import { ResultsDisplay } from '../components/ResultsDisplay';
 import TransactionTable from '../components/TransactionTable';
 import ImportVerification from '../components/ImportVerification';
-import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, CloudArrowUpIcon, ExclamationTriangleIcon, AddIcon, ChecklistIcon, DatabaseIcon, WrenchIcon, InfoIcon, ArrowRightIcon } from '../components/Icons';
+import { CalendarIcon, SparklesIcon, RobotIcon, TableIcon, CloudArrowUpIcon, ExclamationTriangleIcon, AddIcon, ChecklistIcon, DatabaseIcon, WrenchIcon, InfoIcon, ArrowRightIcon, ListIcon, SlashIcon, FilterIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import { api } from '../services/apiService';
+import { parseISOLocal, formatDate } from '../dateUtils';
 
 type AppState = 'idle' | 'processing' | 'verifying_import' | 'post_import_edit' | 'success' | 'error';
 type ImportMethod = 'upload' | 'paste';
+type DateFilterMode = 'all' | 'last_month' | 'custom';
 
 interface ImportPageProps {
   onTransactionsAdded: (newTransactions: Transaction[], newCategories: Category[]) => void;
@@ -69,7 +71,12 @@ const ImportPage: React.FC<ImportPageProps> = ({
   const [useAi, setUseAi] = useState(true);
   const [isInitializing, setIsInitializing] = useState(false);
 
-  const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; })[]>([]);
+  // Date Filter State
+  const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('all');
+  const [customFilterStart, setCustomFilterStart] = useState('');
+  const [customFilterEnd, setCustomFilterEnd] = useState('');
+
+  const [rawTransactionsToVerify, setRawTransactionsToVerify] = useState<(RawTransaction & { categoryId: string; tempId: string; isIgnored?: boolean; dateIgnored?: boolean })[]>([]);
   const [stagedImportedTxs, setStagedImportedTxs] = useState<Transaction[]>([]);
   const [duplicatesStats, setDuplicatesStats] = useState({ ignored: 0, imported: 0 });
 
@@ -91,6 +98,20 @@ const ImportPage: React.FC<ImportPageProps> = ({
     };
     fetchSummary();
   }, [dashboardRange, recentGlobalTransactions]);
+
+  const activeFilterRange = useMemo(() => {
+      if (dateFilterMode === 'all') return null;
+      if (dateFilterMode === 'last_month') {
+          const now = new Date();
+          const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const end = new Date(now.getFullYear(), now.getMonth(), 0);
+          return { start, end };
+      }
+      if (dateFilterMode === 'custom' && customFilterStart && customFilterEnd) {
+          return { start: parseISOLocal(customFilterStart), end: parseISOLocal(customFilterEnd) };
+      }
+      return null;
+  }, [dateFilterMode, customFilterStart, customFilterEnd]);
 
   const handleQuickStart = async () => {
       setIsInitializing(true);
@@ -136,7 +157,23 @@ const ImportPage: React.FC<ImportPageProps> = ({
                 const aiCategoryName = (tx.category || '').toLowerCase();
                 finalCategoryId = categoryNameToIdMap.get(aiCategoryName) || otherCategoryId;
             }
-            return { ...tx, categoryId: finalCategoryId, tempId: generateUUID() };
+
+            // Apply Date Filter Constraints
+            let dateIgnored = false;
+            if (activeFilterRange) {
+                const txDate = parseISOLocal(tx.date);
+                if (txDate < activeFilterRange.start || txDate > activeFilterRange.end) {
+                    dateIgnored = true;
+                }
+            }
+
+            return { 
+                ...tx, 
+                categoryId: finalCategoryId, 
+                tempId: generateUUID(), 
+                isIgnored: tx.isIgnored || dateIgnored,
+                dateIgnored 
+            };
         });
         
         setRawTransactionsToVerify(processedTransactions);
@@ -144,7 +181,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
         setError(`Transformation error: ${e.message || 'Internal logic error'}`);
         setAppState('error');
     }
-  }, [categories, accounts]);
+  }, [categories, accounts, activeFilterRange]);
 
   const handleFileUpload = useCallback(async (files: File[], accountId: string, aiMode: boolean) => {
     setError(null);
@@ -256,8 +293,8 @@ const ImportPage: React.FC<ImportPageProps> = ({
         ) : (
             <>
             {isImportFormVisible && (
-                <div className="w-full flex flex-col shrink-0 animate-fade-in">
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
+                <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-6 shrink-0 animate-fade-in">
+                    <div className="lg:col-span-2 bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col overflow-hidden">
                         {appState === 'idle' ? (
                             <div className="flex flex-col h-full overflow-hidden">
                                 <div className="flex justify-between items-center mb-4">
@@ -386,6 +423,60 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                 </div>
                             </div>
                         )}
+                    </div>
+
+                    {/* Date Constraints Card */}
+                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 flex flex-col gap-4">
+                        <div className="flex items-center gap-2 mb-2">
+                            <CalendarIcon className="w-5 h-5 text-indigo-600" />
+                            <h2 className="text-lg font-black text-slate-800">Import Window</h2>
+                        </div>
+                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest leading-relaxed">Automatically ignore entries outside of this range.</p>
+                        
+                        <div className="space-y-4 mt-2">
+                            <div className="flex p-1 bg-slate-100 rounded-xl">
+                                <button 
+                                    onClick={() => setDateFilterMode('all')}
+                                    className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${dateFilterMode === 'all' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Import All
+                                </button>
+                                <button 
+                                    onClick={() => setDateFilterMode('last_month')}
+                                    className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${dateFilterMode === 'last_month' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Last Month
+                                </button>
+                                <button 
+                                    onClick={() => setDateFilterMode('custom')}
+                                    className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all uppercase ${dateFilterMode === 'custom' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}
+                                >
+                                    Custom
+                                </button>
+                            </div>
+
+                            {dateFilterMode === 'custom' && (
+                                <div className="grid grid-cols-2 gap-3 animate-fade-in">
+                                    <div className="space-y-1">
+                                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
+                                        <input type="date" value={customFilterStart} onChange={e => setCustomFilterStart(e.target.value)} className="w-full p-2 text-xs font-bold bg-slate-50 border-2 border-slate-100 rounded-xl" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest ml-1">End Date</label>
+                                        <input type="date" value={customFilterEnd} onChange={e => setCustomFilterEnd(e.target.value)} className="w-full p-2 text-xs font-bold bg-slate-50 border-2 border-slate-100 rounded-xl" />
+                                    </div>
+                                </div>
+                            )}
+
+                            {dateFilterMode === 'last_month' && (
+                                <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center gap-3 animate-fade-in">
+                                    <FilterIcon className="w-4 h-4 text-indigo-600" />
+                                    <p className="text-[11px] font-bold text-indigo-900">
+                                        Ingesting: <span className="font-mono">{formatDate(activeFilterRange!.start)}</span> &rarr; <span className="font-mono">{formatDate(activeFilterRange!.end)}</span>
+                                    </p>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}

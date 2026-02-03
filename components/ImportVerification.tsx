@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { RawTransaction, Account, Category, TransactionType, Counterparty, User, Transaction, ReconciliationRule, Tag, Location, BalanceEffect, RuleCategory } from '../types';
-import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, FolderIcon, ChevronRightIcon, DatabaseIcon, TrashIcon } from './Icons';
+import { DeleteIcon, CloseIcon, CheckCircleIcon, SlashIcon, AddIcon, SparklesIcon, SortIcon, InfoIcon, TableIcon, CopyIcon, ExclamationTriangleIcon, CreditCardIcon, RobotIcon, WrenchIcon, ChevronDownIcon, TagIcon, BoxIcon, MapPinIcon, UserGroupIcon, FolderIcon, ChevronRightIcon, DatabaseIcon, TrashIcon, CalendarIcon } from './Icons';
 import { getTransactionSignature } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
 import RuleModal from './RuleModal';
@@ -14,6 +14,7 @@ type VerifiableTransaction = RawTransaction & {
     categoryId: string; 
     tempId: string;
     isIgnored?: boolean;
+    dateIgnored?: boolean;
     conflictType?: 'batch' | 'database' | 'reversal' | null;
 };
 
@@ -232,7 +233,9 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     <div className="p-2 bg-indigo-50 rounded-lg"><TableIcon className="w-4 h-4 text-indigo-600" /></div>
                     <div>
                         <h2 className="text-md font-black text-slate-800 tracking-tight">Verify Import</h2>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">{transactions.length} items • {transactions.filter(t => t.conflictType === 'database').length} duplicates</p>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">
+                            {transactions.length} items • {transactions.filter(t => t.conflictType === 'database').length} dups • {transactions.filter(t => t.dateIgnored).length} out of range
+                        </p>
                     </div>
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
@@ -272,13 +275,19 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                     <tr key={tx.tempId} className={`transition-all ${rowClass}`}>
                                         <td className="p-1.5 text-center border-b border-slate-300"><input type="checkbox" checked={!tx.isIgnored} onChange={() => handleUpdate(tx.tempId, 'isIgnored', !tx.isIgnored)} className="rounded text-indigo-600 h-3 w-3" /></td>
                                         <td className="px-1.5 py-1 border-b border-slate-300">
-                                            {tx.conflictType === 'database' ? (
-                                                <span className="px-1 py-0.5 bg-amber-100 text-amber-700 text-[6px] font-black rounded uppercase flex items-center gap-0.5 w-max"><ExclamationTriangleIcon className="w-1.5 h-1.5" /> DUP</span>
-                                            ) : (
-                                                <span className="px-1 py-0.5 bg-indigo-50 text-indigo-600 text-[6px] font-black rounded uppercase w-max">NEW</span>
-                                            )}
+                                            <div className="flex flex-col gap-0.5">
+                                                {tx.conflictType === 'database' && (
+                                                    <span className="px-1 py-0.5 bg-amber-100 text-amber-700 text-[6px] font-black rounded uppercase flex items-center gap-0.5 w-max"><ExclamationTriangleIcon className="w-1.5 h-1.5" /> DUP</span>
+                                                )}
+                                                {tx.dateIgnored && (
+                                                    <span className="px-1 py-0.5 bg-rose-100 text-rose-700 text-[6px] font-black rounded uppercase flex items-center gap-0.5 w-max"><CalendarIcon className="w-1.5 h-1.5" /> RANGE</span>
+                                                )}
+                                                {!tx.conflictType && !tx.dateIgnored && (
+                                                    <span className="px-1 py-0.5 bg-indigo-50 text-indigo-600 text-[6px] font-black rounded uppercase w-max">NEW</span>
+                                                )}
+                                            </div>
                                         </td>
-                                        <td className="px-1.5 py-1 text-[9px] text-slate-500 font-mono border-b border-slate-300">{tx.date}</td>
+                                        <td className={`px-1.5 py-1 text-[9px] font-mono border-b border-slate-300 ${tx.dateIgnored ? 'text-rose-500 font-bold' : 'text-slate-500'}`}>{tx.date}</td>
                                         <td className="px-1.5 py-1 border-b border-slate-300 max-w-[130px]">
                                             <div className="flex flex-col min-w-0">
                                                 <span className="text-[10px] font-bold text-slate-800 truncate" title={tx.description}>{tx.description}</span>
@@ -399,7 +408,7 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                                             <p className="font-bold text-slate-800 group-hover:text-indigo-900">{r?.name || 'Deleted Rule'}</p>
                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{ruleCategories.find(rc => rc.id === r?.ruleCategoryId)?.name || 'Other'}</p>
                                         </div>
-                                        <ChevronRightIcon className="w-5 h-5 text-slate-300 group-hover:text-indigo-500" />
+                                        <ChevronRightIcon className="w-5 h-5 text-slate-300 group-hover:text-indigo-50" />
                                     </button>
                                 );
                             })}
@@ -430,7 +439,6 @@ const ImportVerification: React.FC<ImportVerificationProps> = ({
                     onSaveCategory={onSaveCategory} onSaveCounterparty={onSaveCounterparty} onSaveTag={onSaveTag} onSaveLocation={onSaveLocation} onSaveUser={onSaveUser} onAddTransactionType={onAddTransactionType}
                     onSaveAndRun={(r) => { 
                         onSaveRule(r); 
-                        // When re-applying, we need to ensure the updated rule replaces its old version if present.
                         const nextRules = [...rules.filter(rule => rule.id !== r.id), r];
                         const updated = applyRulesToTransactions(transactions, nextRules, accounts); 
                         setTransactions(updated as VerifiableTransaction[]); 
