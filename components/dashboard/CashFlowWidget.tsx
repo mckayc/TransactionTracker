@@ -1,8 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Category, Counterparty, DashboardWidget, Account, TransactionType, User, Tag } from '../../types';
-import { ChevronRightIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TrendingUpIcon, CloseIcon, LinkIcon, ListIcon } from '../Icons';
-import { parseISOLocal } from '../../dateUtils';
+import { ChevronRightIcon, ChevronDownIcon, EyeIcon, EyeSlashIcon, TrendingUpIcon, CloseIcon, LinkIcon, ListIcon, CalendarIcon } from '../Icons';
+import { parseISOLocal, formatDate } from '../../dateUtils';
 import TransactionTable from '../TransactionTable';
 
 interface Props {
@@ -156,14 +156,20 @@ const BreakdownRow: React.FC<BreakdownRowProps> = ({
     return (
         <div className="select-none">
             <div 
-                className={`flex items-center gap-3 p-2 rounded-xl transition-all cursor-pointer hover:bg-slate-50 border-2 border-transparent ${isHidden ? 'opacity-40 grayscale' : ''}`}
+                className={`flex items-center gap-3 p-2 rounded-xl transition-all cursor-pointer hover:bg-indigo-50/50 border-2 border-transparent ${isHidden ? 'opacity-40 grayscale' : ''}`}
                 style={{ marginLeft: `${depth * 16}px` }}
-                onClick={() => (hasVisibleChildren || hasDirectTransactions) ? onToggleExpand(node.id) : onInspect(node)}
+                onClick={() => onInspect(node)}
             >
                 <div className="w-5 flex justify-center shrink-0">
                     {(hasVisibleChildren || hasDirectTransactions) && (
-                        <button onClick={(e) => { e.stopPropagation(); onToggleExpand(node.id); }} className="p-0.5 rounded hover:bg-slate-200">
-                            {isExpanded ? <ChevronDownIcon className="w-3 h-3" /> : <ChevronRightIcon className="w-3 h-3" />}
+                        <button 
+                            onClick={(e) => { 
+                                e.stopPropagation(); 
+                                onToggleExpand(node.id); 
+                            }} 
+                            className={`p-0.5 rounded hover:bg-slate-200 transition-colors ${isExpanded ? 'bg-slate-100' : ''}`}
+                        >
+                            {isExpanded ? <ChevronDownIcon className="w-3.5 h-3.5" /> : <ChevronRightIcon className="w-3.5 h-3.5" />}
                         </button>
                     )}
                 </div>
@@ -287,6 +293,10 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
 
         return { start, end };
     }, [period, lookback]);
+
+    const dateRangeString = useMemo(() => {
+        return `${formatDate(activeRange.start)} - ${formatDate(activeRange.end)}`;
+    }, [activeRange]);
 
     const chartData = useMemo(() => {
         const typeRegistry = new Map(transactionTypes.map(t => [t.id, t]));
@@ -491,11 +501,17 @@ export const CashFlowWidget: React.FC<Props> = ({ widget, transactions, categori
     return (
         <div className="flex flex-col h-full overflow-hidden">
             <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
-                <DynamicArcChart 
-                    data={chartData.filter(r => !hiddenSet.has(r.id))} 
-                    total={totalValue} 
-                    onSegmentClick={setInspectingNode}
-                />
+                <div className="flex flex-col items-center">
+                    <p className="flex items-center gap-1.5 text-[10px] font-mono text-indigo-600 bg-indigo-50/50 px-3 py-1 rounded-full border border-indigo-100 shadow-sm animate-fade-in">
+                        <CalendarIcon className="w-3 h-3" />
+                        {dateRangeString}
+                    </p>
+                    <DynamicArcChart 
+                        data={chartData.filter(r => !hiddenSet.has(r.id))} 
+                        total={totalValue} 
+                        onSegmentClick={setInspectingNode}
+                    />
+                </div>
                 
                 <div className="space-y-1">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-2 mb-2">Breakdown</p>
