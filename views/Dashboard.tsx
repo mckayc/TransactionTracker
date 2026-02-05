@@ -5,8 +5,10 @@ import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBul
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
 import MultiSelect from '../components/MultiSelect';
+import { api } from '../services/apiService';
+import { formatDate } from '../dateUtils';
 
-// New Modular Widget Imports
+// Modular Widget Imports
 import { CashFlowWidget } from '../components/dashboard/CashFlowWidget';
 import { ComparisonWidget } from '../components/dashboard/ComparisonWidget';
 import { GoalGaugeWidget } from '../components/dashboard/GoalGaugeWidget';
@@ -16,8 +18,6 @@ import { TopExpensesWidget } from '../components/dashboard/TopExpensesWidget';
 import { AmazonSummaryWidget } from '../components/dashboard/AmazonSummaryWidget';
 import { YouTubeSummaryWidget } from '../components/dashboard/YouTubeSummaryWidget';
 import { VideoEarningsWidget } from '../components/dashboard/VideoEarningsWidget';
-
-const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
 interface WidgetSlotProps {
     widget: DashboardWidget;
@@ -171,14 +171,19 @@ interface DashboardProps {
     joinedMetrics: JoinedMetric[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users, joinedMetrics }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users, joinedMetrics }) => {
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
     const [isCreatingDashboard, setIsCreatingDashboard] = useState(false);
     const [newDashboardName, setNewDashboardName] = useState('');
     const [newDashboardCols, setNewDashboardCols] = useState<1 | 2 | 3 | 4>(3);
     
+    // ANALYTICAL CONTEXT STATE
+    const [scopedTransactions, setScopedTransactions] = useState<Transaction[]>([]);
+    const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+
     const [pendingDeletion, setPendingDeletion] = useState<{ id: string, type: 'widget' | 'dashboard' } | null>(null);
 
+    // Config state
     const [configTitle, setConfigTitle] = useState('');
     const [configGoalId, setConfigGoalId] = useState('');
     const [configReportId, setConfigReportId] = useState('');
@@ -205,19 +210,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     const [configPublishYear, setConfigPublishYear] = useState('all');
     const [configReportYear, setConfigReportYear] = useState('all');
 
-    const availableYears = useMemo(() => {
-        const publishYears = new Set<string>();
-        const reportYears = new Set<string>();
-        joinedMetrics.forEach(m => {
-            if (m.publishDate) publishYears.add(m.publishDate.substring(0, 4));
-            if (m.reportYear) reportYears.add(m.reportYear);
-        });
-        return {
-            publish: Array.from(publishYears).sort().reverse(),
-            report: Array.from(reportYears).sort().reverse()
-        };
-    }, [joinedMetrics]);
-
     const dashboards = useMemo(() => {
         if (!systemSettings.dashboards || systemSettings.dashboards.length === 0) {
             const defaultDash: DashboardLayout = {
@@ -231,11 +223,78 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
         return systemSettings.dashboards;
     }, [systemSettings]);
 
-    const widgetLibrary = useMemo(() => systemSettings.widgetLibrary || [], [systemSettings]);
-
     const activeDashboardId = systemSettings.activeDashboardId || dashboards[0]?.id;
     const activeDashboard = useMemo(() => dashboards.find(d => d.id === activeDashboardId) || dashboards[0], [dashboards, activeDashboardId]);
     const widgets = activeDashboard?.widgets || [];
+
+    /**
+     * DASHBOARD JIT ANALYTICAL FETCH
+     * Scans active widgets to determine the required historical reach.
+     */
+    useEffect(() => {
+        const loadDashboardHistory = async () => {
+            if (widgets.length === 0) return;
+            
+            // Calculate earliest date required across all widgets
+            const now = new Date();
+            let earliestDate = new Date(now);
+            earliestDate.setMonth(now.getMonth() - 2); // Default padding
+
+            widgets.forEach(w => {
+                if (w.config?.period && w.config.lookback !== undefined) {
+                    const d = new Date(now);
+                    const lookback = w.config.lookback + (w.type === 'comparison' ? 12 : 0); // Comparisons usually need last year
+                    if (w.config.period === 'month') d.setMonth(d.getMonth() - lookback);
+                    else if (w.config.period === 'year') d.setFullYear(d.getFullYear() - lookback);
+                    else if (w.config.period === 'week') d.setDate(d.getDate() - (lookback * 7));
+                    
+                    if (d < earliestDate) earliestDate = d;
+                }
+            });
+
+            // Ensure we at least have current year + previous year for comparison stability
+            const safetyBuffer = new Date(now.getFullYear() - 1, 0, 1);
+            if (safetyBuffer < earliestDate) earliestDate = safetyBuffer;
+
+            setIsHistoryLoading(true);
+            try {
+                const response = await api.getTransactions({
+                    startDate: formatDate(earliestDate),
+                    limit: 10000 // Upper bound for analytical performance
+                });
+                setScopedTransactions(response.data);
+            } catch (e) {
+                console.error("[DASH] History fetch failed:", e);
+            } finally {
+                setIsHistoryLoading(false);
+            }
+        };
+
+        loadDashboardHistory();
+    }, [activeDashboardId, widgets.length, globalRecentTransactions.length]);
+
+    // Use merged transactions for widgets so they see both global cache and JIT history
+    const combinedTransactions = useMemo(() => {
+        const map = new Map<string, Transaction>();
+        scopedTransactions.forEach(t => map.set(t.id, t));
+        globalRecentTransactions.forEach(t => map.set(t.id, t));
+        return Array.from(map.values());
+    }, [scopedTransactions, globalRecentTransactions]);
+
+    const availableYears = useMemo(() => {
+        const publishYears = new Set<string>();
+        const reportYears = new Set<string>();
+        joinedMetrics.forEach(m => {
+            if (m.publishDate) publishYears.add(m.publishDate.substring(0, 4));
+            if (m.reportYear) reportYears.add(m.reportYear);
+        });
+        return {
+            publish: Array.from(publishYears).sort().reverse(),
+            report: Array.from(reportYears).sort().reverse()
+        };
+    }, [joinedMetrics]);
+
+    const widgetLibrary = useMemo(() => systemSettings.widgetLibrary || [], [systemSettings]);
 
     const activeWidget = useMemo(() => {
         if (!isConfiguring) return null;
@@ -417,6 +476,13 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
     return (
         <div className="space-y-6 pb-20 max-w-7xl mx-auto">
             
+            {/* Analytical Context Loading Indicator */}
+            {isHistoryLoading && (
+                <div className="fixed top-0 left-0 right-0 h-1 bg-indigo-50 z-[100] overflow-hidden">
+                    <div className="h-full bg-indigo-600 animate-progress-indeterminate shadow-[0_0_8px_rgba(79,70,229,0.5)]" />
+                </div>
+            )}
+
             <div className="flex flex-wrap items-center gap-2 p-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto no-scrollbar flex-shrink-0">
                 {dashboards.map(d => (
                     <div key={d.id} className="flex items-center group relative">
@@ -456,7 +522,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
                         onDelete={() => deleteWidgetPermanently(w.id)}
                         onUpdateConfig={(newConf) => handleUpdateWidgetConfig(w.id, newConf)}
                         savedReports={savedReports}
-                        transactions={transactions}
+                        transactions={combinedTransactions}
                         tasks={tasks}
                         goals={goals}
                         categories={categories}
@@ -915,5 +981,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, savedReports, tasks
         </div>
     );
 };
+
+const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
 export default Dashboard;
