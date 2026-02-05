@@ -125,10 +125,13 @@ const App: React.FC = () => {
             }
 
             try {
-                const txResponse = await api.getTransactions({ limit: 100000 });
+                // LOAD OPTIMIZATION:
+                // Only load a "working set" of the most recent 1,000 transactions globally.
+                // Deep history views (like AllTransactions) perform their own paginated fetches.
+                const txResponse = await api.getTransactions({ limit: 1000 });
                 if (txResponse && txResponse.data) setTransactions(txResponse.data.filter(Boolean));
             } catch (txErr) {
-                console.error("[APP] Tx fetch failed:", txErr);
+                console.error("[APP] Tx warm-up failed:", txErr);
             }
         } catch (err) {
             console.error("[APP] State load error:", err);
@@ -278,7 +281,7 @@ const App: React.FC = () => {
                 setCategories(updatedCats);
                 await api.save('categories', updatedCats);
             }
-            setTransactions(prev => [...newTxs.filter(Boolean), ...prev]);
+            setTransactions(prev => [...newTxs.filter(Boolean), ...prev].slice(0, 5000)); // Limit global cache
             await api.saveTransactions(newTxs.filter(Boolean));
             if (syncChannel) syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
         } catch (e) {

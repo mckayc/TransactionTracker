@@ -24,7 +24,9 @@ app.use((req, res, next) => {
     const start = Date.now();
     res.on('finish', () => {
         const duration = Date.now() - start;
-        console.log(`[REQ] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+        if (duration > 500) {
+            console.log(`[SLOW REQ] ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+        }
     });
     next();
 });
@@ -59,6 +61,7 @@ const initDb = () => {
     try {
         db = new Database(DB_PATH);
         db.pragma('journal_mode = WAL');
+        db.pragma('synchronous = NORMAL');
         db.pragma('busy_timeout = 5000');
         createTables();
         runMigrations();
@@ -160,7 +163,7 @@ const ensureSeedData = () => {
 initDb();
 
 /**
- * AUTOMATED BACKUP ENGINE
+ * AUTOMATED BACKUP ENGINE - Now Asynchronous
  */
 const runAutomatedBackup = async () => {
     const row = db.prepare("SELECT value FROM app_storage WHERE key = ?").get('systemSettings');
@@ -185,52 +188,56 @@ const runAutomatedBackup = async () => {
     }
 
     if (shouldRun) {
-        console.log(`[BACKUP] Initializing scheduled ${config.frequency} preservation...`);
-        const logs = config.logs || [];
-        const addLog = (action, details, status = 'success') => {
-            logs.unshift({ id: Math.random().toString(36).substring(7), timestamp: new Date().toISOString(), action, details, status });
-            if (logs.length > 10) logs.pop();
-        };
+        // Run in next tick to not block the current request
+        setImmediate(async () => {
+            console.log(`[BACKUP] Initializing background ${config.frequency} preservation...`);
+            const logs = config.logs || [];
+            const addLog = (action, details, status = 'success') => {
+                logs.unshift({ id: Math.random().toString(36).substring(7), timestamp: new Date().toISOString(), action, details, status });
+                if (logs.length > 10) logs.pop();
+            };
 
-        try {
-            const data = { exportDate: new Date().toISOString(), version: '0.6.0', type: 'automated_snapshot' };
-            const tables = ['transactions', 'accounts', 'categories', 'tags', 'counterparties', 'reconciliation_rules', 'rule_categories', 'users', 'locations', 'transaction_types'];
-            tables.forEach(t => { try { data[t] = db.prepare(`SELECT * FROM ${t}`).all(); } catch(e) {} });
-            
-            const storageRows = db.prepare("SELECT key, value FROM app_storage").all();
-            storageRows.forEach(r => { try { data[r.key] = JSON.parse(r.value); } catch(e) {} });
+            try {
+                const data = { exportDate: new Date().toISOString(), version: '0.6.0', type: 'automated_snapshot' };
+                const tables = ['transactions', 'accounts', 'categories', 'tags', 'counterparties', 'reconciliation_rules', 'rule_categories', 'users', 'locations', 'transaction_types'];
+                tables.forEach(t => { try { data[t] = db.prepare(`SELECT * FROM ${t}`).all(); } catch(e) {} });
+                
+                const storageRows = db.prepare("SELECT key, value FROM app_storage").all();
+                storageRows.forEach(r => { try { data[r.key] = JSON.parse(r.value); } catch(e) {} });
 
-            const backupId = `bkp_${Date.now()}`;
-            const originalName = `autobackup_${now.toISOString().split('T')[0]}.json`;
-            const diskFilename = `${Date.now()}_${originalName}`;
-            const content = JSON.stringify(data, null, 2);
-            
-            fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), content);
+                const backupId = `bkp_${Date.now()}`;
+                const originalName = `autobackup_${now.toISOString().split('T')[0]}.json`;
+                const diskFilename = `${Date.now()}_${originalName}`;
+                const content = JSON.stringify(data, null, 2);
+                
+                fs.writeFileSync(path.join(DOCUMENTS_DIR, diskFilename), content);
 
-            db.prepare('INSERT INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
-              .run(backupId, originalName, diskFilename, 'application/json', content.length, new Date().toISOString(), 'folder_system_backups');
+                db.prepare('INSERT INTO files_meta (id, original_name, disk_filename, mime_type, size, created_at, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                .run(backupId, originalName, diskFilename, 'application/json', content.length, new Date().toISOString(), 'folder_system_backups');
 
-            addLog('Backup Created', `Institutional logic preserved in ${originalName}. Registered in Vault.`, 'success');
+                addLog('Backup Created', `Institutional logic preserved in ${originalName}. Registered in Vault.`, 'success');
 
-            const backups = db.prepare("SELECT * FROM files_meta WHERE parent_id = 'folder_system_backups' ORDER BY created_at DESC").all();
-            if (backups.length > config.retentionCount) {
-                const toDelete = backups.slice(config.retentionCount);
-                toDelete.forEach(b => {
-                    const fullPath = path.join(DOCUMENTS_DIR, b.disk_filename);
-                    if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
-                    db.prepare('DELETE FROM files_meta WHERE id = ?').run(b.id);
-                    addLog('Policy Cleanup', `Removed expired snapshot: ${b.original_name}`, 'success');
-                });
+                const backups = db.prepare("SELECT * FROM files_meta WHERE parent_id = 'folder_system_backups' ORDER BY created_at DESC").all();
+                if (backups.length > config.retentionCount) {
+                    const toDelete = backups.slice(config.retentionCount);
+                    toDelete.forEach(b => {
+                        const fullPath = path.join(DOCUMENTS_DIR, b.disk_filename);
+                        if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath);
+                        db.prepare('DELETE FROM files_meta WHERE id = ?').run(b.id);
+                        addLog('Policy Cleanup', `Removed expired snapshot: ${b.original_name}`, 'success');
+                    });
+                }
+
+                settings.backupConfig = { ...config, lastRun: now.toISOString(), lastBackupDate: now.toISOString(), logs };
+                db.prepare('INSERT OR REPLACE INTO app_storage (key, value) VALUES (?, ?)').run('systemSettings', JSON.stringify(settings));
+                console.log("[BACKUP] Background preservation complete.");
+            } catch (err) {
+                console.error("[BACKUP] Routine failed:", err.message);
+                addLog('Failure', `Snapshot routine aborted: ${err.message}`, 'failure');
+                settings.backupConfig = { ...config, lastRun: now.toISOString(), logs };
+                db.prepare('INSERT OR REPLACE INTO app_storage (key, value) VALUES (?, ?)').run('systemSettings', JSON.stringify(settings));
             }
-
-            settings.backupConfig = { ...config, lastRun: now.toISOString(), lastBackupDate: now.toISOString(), logs };
-            db.prepare('INSERT OR REPLACE INTO app_storage (key, value) VALUES (?, ?)').run('systemSettings', JSON.stringify(settings));
-        } catch (err) {
-            console.error("[BACKUP] Routine failed:", err.message);
-            addLog('Failure', `Snapshot routine aborted: ${err.message}`, 'failure');
-            settings.backupConfig = { ...config, lastRun: now.toISOString(), logs };
-            db.prepare('INSERT OR REPLACE INTO app_storage (key, value) VALUES (?, ?)').run('systemSettings', JSON.stringify(settings));
-        }
+        });
     }
 };
 
@@ -374,9 +381,6 @@ app.post('/api/transactions/batch', (req, res) => {
 app.get('/api/analytics/summary', (req, res) => {
     try {
         const { startDate, endDate, search } = req.query;
-        // IMPROVED ANALYTICS LOGIC:
-        // Exclude records that are parents ONLY if they have children.
-        // If a record is a parent but has no children citing it, it's a 'Ghost Parent' and SHOULD be counted.
         let where = ` 
             WHERE 1=1 
             AND (
@@ -414,7 +418,6 @@ app.get('/api/analytics/summary', (req, res) => {
 app.get('/api/analytics/breakdown', (req, res) => {
     try {
         const { type, startDate, endDate, search } = req.query;
-        // Same improved logic for breakdown to ensure consistency between totals and segments
         let where = ` 
             WHERE 1=1 
             AND (
@@ -454,7 +457,7 @@ app.get('/api/analytics/breakdown', (req, res) => {
 
 app.get('/api/data', async (req, res) => {
   try {
-    await runAutomatedBackup();
+    runAutomatedBackup(); // Fire and forget
     const rows = db.prepare('SELECT key, value FROM app_storage').all();
     const data = {};
     for (const row of rows) {
@@ -542,28 +545,24 @@ app.get('/api/admin/diagnose', (req, res) => {
 
 app.get('/api/admin/audit-integrity', (req, res) => {
     try {
-        // 1. Find Orphaned Children
         const orphans = db.prepare(`
             SELECT * FROM transactions 
             WHERE parent_transaction_id IS NOT NULL 
             AND parent_transaction_id NOT IN (SELECT id FROM transactions)
         `).all();
 
-        // 2. Find Empty Parents (Ghost Parents)
         const emptyParents = db.prepare(`
             SELECT * FROM transactions 
             WHERE is_parent = 1 
             AND id NOT IN (SELECT DISTINCT parent_transaction_id FROM transactions WHERE parent_transaction_id IS NOT NULL)
         `).all();
 
-        // 3. Find Broken Link Groups
         const brokenLinks = db.prepare(`
             SELECT * FROM transactions 
             WHERE link_group_id IS NOT NULL 
             AND link_group_id NOT IN (SELECT DISTINCT link_group_id FROM transactions WHERE is_parent = 1)
         `).all();
 
-        // 4. Find Logical Future Dates (Import Overflows)
         const today = new Date().toISOString().split('T')[0];
         const futureDates = db.prepare(`
             SELECT * FROM transactions
@@ -585,11 +584,7 @@ app.post('/api/admin/repair', (req, res) => {
         runMigrations();
         ensureSeedData();
         
-        // --- DATA INTEGRITY: LOGICAL REBALANCING ---
         db.transaction(() => {
-            // 1. FIX: Convert "Orphaned Parents" back to normal transactions.
-            // These are records marked as parents but have ZERO children associated with them.
-            // This is the primary cause of 'doubled income' or 'missing income' discrepancies.
             db.exec(`
                 UPDATE transactions 
                 SET is_parent = 0 
@@ -597,7 +592,6 @@ app.post('/api/admin/repair', (req, res) => {
                 AND id NOT IN (SELECT DISTINCT parent_transaction_id FROM transactions WHERE parent_transaction_id IS NOT NULL)
             `);
             
-            // 2. Identify and Deduplicate potential double-splits.
             const dupSignatures = db.prepare(`
                 SELECT date, amount, original_description, account_id, COUNT(*) as cnt 
                 FROM transactions 
