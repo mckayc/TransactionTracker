@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useRef } from 'react';
 import type { JoinedMetric, YouTubeMetric, AmazonMetric } from '../../types';
-// Added missing WorkflowIcon and CheckBadgeIcon to the imports
 import { 
     BoxIcon, YoutubeIcon, CloudArrowUpIcon, CheckCircleIcon, SparklesIcon, 
     TrashIcon, SearchCircleIcon, CloseIcon, InfoIcon, TrendingUpIcon, 
@@ -53,7 +52,6 @@ const ProductAsinJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
     const [ccFile, setCcFile] = useState<AmazonMetric[] | null>(null);
     const [youtubeFile, setYoutubeFile] = useState<YouTubeMetric[] | null>(null);
 
-    // Added missing handleClearAll function to resolve reference error on line 431
     const handleClearAll = () => {
         onSaveMetrics([]);
         setShowClearConfirm(false);
@@ -198,7 +196,6 @@ const ProductAsinJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
             <div className="max-w-4xl mx-auto space-y-10 py-10 animate-fade-in">
                 <div className="text-center space-y-4">
                     <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-3xl flex items-center justify-center mx-auto shadow-sm">
-                        {/* Fixed missing name error for WorkflowIcon */}
                         <WorkflowIcon className="w-10 h-10" />
                     </div>
                     <h2 className="text-3xl font-black text-slate-800 tracking-tight uppercase">Product & ASIN Joiner</h2>
@@ -354,7 +351,6 @@ const ProductAsinJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
                                                 onClick={() => { setSelectedAsset(m); setIsLinking(true); setLinkSearch(''); }}
                                                 className={`p-2 rounded-xl transition-all shadow-sm ${isLinked ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white'}`}
                                             >
-                                                {/* Fixed missing name error for CheckBadgeIcon */}
                                                 {isLinked ? <CheckBadgeIcon className="w-5 h-5" /> : <LinkIcon className="w-5 h-5" />}
                                             </button>
                                         </td>
@@ -436,7 +432,6 @@ const ProductAsinJoiner: React.FC<Props> = ({ metrics, onSaveMetrics }) => {
             <ConfirmationModal 
                 isOpen={showClearConfirm}
                 onClose={() => setShowClearConfirm(false)}
-                {/* Fixed missing function error for handleClearAll */}
                 onConfirm={handleClearAll}
                 title="Wipe Yield Registry?"
                 message="This will permanently delete all joined content ROI data. Your individual source reports (Amazon/YouTube) will remain safe in their respective modules."
