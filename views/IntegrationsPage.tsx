@@ -1,6 +1,7 @@
+
 import React from 'react';
 import type { View } from '../types';
-import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, VideoIcon } from '../components/Icons';
+import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, WorkflowIcon } from '../components/Icons';
 
 interface IntegrationsPageProps {
     onNavigate: (view: View) => void;
@@ -30,7 +31,7 @@ const IntegrationCard: React.FC<{
             <h3 className={`text-lg font-bold mb-2 ${variant === 'primary' ? 'text-white' : 'text-slate-800'}`}>{title}</h3>
             <p className={`text-sm flex-grow ${variant === 'primary' ? 'text-indigo-100' : 'text-slate-600'}`}>{description}</p>
             <div className={`mt-4 pt-4 border-t flex items-center font-medium text-sm gap-1 group-hover:gap-2 transition-all ${variant === 'primary' ? 'border-white/20 text-white' : 'border-slate-100 text-indigo-600'}`}>
-                <span>Open Dashboard</span>
+                <span>Open Project Hub</span>
                 <ArrowRightIcon className="w-4 h-4" />
             </div>
         </div>
@@ -47,12 +48,12 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <IntegrationCard 
-                    title="Video & Product Joiner" 
-                    description="The ultimate Content ROI tool. Merge YouTube signals with Amazon Earnings and Creator Connections to see exactly which video drives your wealth."
-                    icon={<VideoIcon className="w-8 h-8" />}
+                    title="Product & ASIN Joiner" 
+                    description="The ultimate Content ROI tool. Merge YouTube performance data with Amazon Earnings and Creator Connections in isolated project batches."
+                    icon={<WorkflowIcon className="w-8 h-8" />}
                     status="active"
                     variant="primary"
-                    onClick={() => onNavigate('integration-joiner')}
+                    onClick={() => onNavigate('integration-product-joiner')}
                 />
 
                 <IntegrationCard 
