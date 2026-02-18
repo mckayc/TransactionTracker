@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User, JoinedMetric } from '../types';
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon, UserGroupIcon, UsersIcon, SearchCircleIcon, HeartIcon, DashboardIcon, ListIcon, DatabaseIcon } from '../components/Icons';
+import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User, JoinedMetric, ProductJoinerProject } from '../types';
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon, UserGroupIcon, UsersIcon, SearchCircleIcon, HeartIcon, DashboardIcon, ListIcon, DatabaseIcon, WorkflowIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
 import MultiSelect from '../components/MultiSelect';
@@ -17,6 +18,7 @@ import { TopExpensesWidget } from '../components/dashboard/TopExpensesWidget';
 import { AmazonSummaryWidget } from '../components/dashboard/AmazonSummaryWidget';
 import { YouTubeSummaryWidget } from '../components/dashboard/YouTubeSummaryWidget';
 import { VideoEarningsWidget } from '../components/dashboard/VideoEarningsWidget';
+import { ProductJoinerWidget } from '../components/dashboard/ProductJoinerWidget';
 
 interface WidgetSlotProps {
     widget: DashboardWidget;
@@ -39,10 +41,11 @@ interface WidgetSlotProps {
     transactionTypes: TransactionType[];
     users: User[];
     joinedMetrics: JoinedMetric[];
+    productJoinerProjects: ProductJoinerProject[];
     maxCols: number;
 }
 
-const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users, joinedMetrics, maxCols }) => {
+const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users, joinedMetrics, productJoinerProjects, maxCols }) => {
     
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
@@ -55,7 +58,8 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
         'youtube_summary': { icon: <YoutubeIcon className="w-4 h-4" />, label: 'YouTube ROI' },
         'report': { icon: <BarChartIcon className="w-4 h-4" />, label: 'Report Pivot' },
         'comparison': { icon: <RepeatIcon className="w-4 h-4" />, label: 'Variance Audit' },
-        'video_earnings': { icon: <VideoIcon className="w-4 h-4" />, label: 'Video Yield Matrix' }
+        'video_earnings': { icon: <VideoIcon className="w-4 h-4" />, label: 'Video Yield Matrix' },
+        'product_joiner': { icon: <WorkflowIcon className="w-4 h-4" />, label: 'Synthesis Audit' }
     };
 
     const identity = COMPONENT_IDENTITY_MAP[widget.type] || { icon: <InfoIcon className="w-4 h-4" />, label: 'Module' };
@@ -111,11 +115,11 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
                 accounts={accounts} 
                 transactionTypes={transactionTypes} 
                 tags={tags}
-                // Added users prop to ComparisonWidget call to fix scope errors
                 users={users}
             />
         );
         if (widget.type === 'video_earnings') return <VideoEarningsWidget metrics={joinedMetrics} config={widget.config} />;
+        if (widget.type === 'product_joiner') return <ProductJoinerWidget projects={productJoinerProjects} config={widget.config} />;
         if (widget.type === 'top_expenses') return <TopExpensesWidget transactions={transactions} categories={categories} />;
         if (widget.type === 'amazon_summary') return <AmazonSummaryWidget metrics={amazonMetrics} />;
         if (widget.type === 'youtube_summary') return <YouTubeSummaryWidget metrics={youtubeMetrics} />;
@@ -125,7 +129,6 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
         return null;
     };
 
-    // Calculate effective span based on dashboard columns
     const effectiveSpan = Math.min(widget.colSpan, maxCols);
     const spanClass = effectiveSpan === 4 ? 'md:col-span-4' : effectiveSpan === 3 ? 'md:col-span-3' : effectiveSpan === 2 ? 'md:col-span-2' : 'md:col-span-1';
 
@@ -173,9 +176,10 @@ interface DashboardProps {
     transactionTypes: TransactionType[];
     users: User[];
     joinedMetrics: JoinedMetric[];
+    productJoinerProjects: ProductJoinerProject[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users, joinedMetrics }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users, joinedMetrics, productJoinerProjects }) => {
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
     const [isCreatingDashboard, setIsCreatingDashboard] = useState(false);
     const [isHubOpen, setIsHubOpen] = useState(false);
@@ -193,6 +197,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
     const [configTitle, setConfigTitle] = useState('');
     const [configGoalId, setConfigGoalId] = useState('');
     const [configReportId, setConfigReportId] = useState('');
+    const [configProjectId, setConfigProjectId] = useState('');
     const [configComparisonBaseId, setConfigComparisonBaseId] = useState('');
     const [configComparisonTargetId, setConfigComparisonTargetId] = useState('');
     const [configPeriod, setConfigPeriod] = useState<NonNullable<DashboardWidget['config']>['period']>('month');
@@ -241,9 +246,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
 
     const favoriteDashboards = useMemo(() => dashboards.filter(d => d.isFavorite), [dashboards]);
 
-    /**
-     * DASHBOARD JIT ANALYTICAL FETCH
-     */
     useEffect(() => {
         const loadDashboardHistory = async () => {
             if (widgets.length === 0) return;
@@ -316,6 +318,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
             setConfigTitle(activeWidget.config?.title || '');
             setConfigGoalId(activeWidget.config?.goalId || goals[0]?.id || '');
             setConfigReportId(activeWidget.config?.reportId || savedReports[0]?.id || '');
+            setConfigProjectId(activeWidget.config?.projectId || productJoinerProjects[0]?.id || '');
             setConfigComparisonBaseId(activeWidget.config?.comparisonBaseId || '');
             setConfigComparisonTargetId(activeWidget.config?.comparisonTargetId || '');
             setConfigPeriod(activeWidget.config?.period || 'month');
@@ -336,7 +339,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
             setConfigPublishYear(activeWidget.config?.publishYear || 'all');
             setConfigReportYear(activeWidget.config?.reportYear || 'all');
         }
-    }, [isConfiguring, activeWidget, goals, savedReports]);
+    }, [isConfiguring, activeWidget, goals, savedReports, productJoinerProjects]);
 
     const removeWidgetFromDashboard = (id: string) => {
         const updatedDashboards = dashboards.map(d => 
@@ -389,6 +392,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                 title: configTitle,
                 goalId: configBlueprint === 'goal_gauge' ? configGoalId : undefined,
                 reportId: configBlueprint === 'report' ? configReportId : undefined,
+                projectId: configBlueprint === 'product_joiner' ? configProjectId : undefined,
                 comparisonBaseId: configBlueprint === 'comparison' ? configComparisonBaseId : undefined,
                 comparisonTargetId: configBlueprint === 'comparison' ? configComparisonTargetId : undefined,
                 period: configBlueprint === 'cashflow' ? configPeriod : undefined,
@@ -403,7 +407,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                 showInvestments: configBlueprint === 'cashflow' ? configShowInvestments : undefined,
                 showDonations: configBlueprint === 'cashflow' ? configShowDonations : undefined,
                 userIds: (configBlueprint === 'cashflow' || configBlueprint === 'top_expenses' || configBlueprint === 'tax_projection') ? (configUserIds.size > 0 ? Array.from(configUserIds) : undefined) : undefined,
-                videoCount: configBlueprint === 'video_earnings' ? configVideoCount : undefined,
+                videoCount: (configBlueprint === 'video_earnings' || configBlueprint === 'product_joiner') ? configVideoCount : undefined,
                 publishYear: configBlueprint === 'video_earnings' ? configPublishYear : undefined,
                 reportYear: configBlueprint === 'video_earnings' ? configReportYear : undefined,
             }
@@ -470,6 +474,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
 
     const BLUEPRINT_OPTIONS = [
         { id: 'cashflow', label: 'Cash Flow', icon: <DollarSign className="w-4 h-4" /> },
+        { id: 'product_joiner', label: 'Synthesis Audit', icon: <WorkflowIcon className="w-4 h-4" /> },
         { id: 'video_earnings', label: 'Video Yield Matrix', icon: <VideoIcon className="w-4 h-4" /> },
         { id: 'comparison', label: 'Variance Audit', icon: <RepeatIcon className="w-4 h-4" /> },
         { id: 'goal_gauge', label: 'Goal Progress', icon: <ShieldCheckIcon className="w-4 h-4" /> },
@@ -482,7 +487,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
         { id: 'report', label: 'Report Pivot', icon: <BarChartIcon className="w-4 h-4" /> }
     ];
 
-    // Refined Grid Class Logic for better multi-column support
     const gridColsClass = useMemo(() => {
         const cols = activeDashboard?.columns || 3;
         switch(cols) {
@@ -506,7 +510,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                 </div>
             )}
 
-            {/* NEW BREADCRUMB COMMAND HEADER */}
             <div className="flex justify-between items-center bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex-shrink-0">
                 <div className="flex items-center gap-3">
                     <button 
@@ -555,6 +558,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                         transactionTypes={transactionTypes}
                         users={users}
                         joinedMetrics={joinedMetrics}
+                        productJoinerProjects={productJoinerProjects}
                         maxCols={activeDashboard?.columns || 3}
                     />
                 ))}
@@ -570,7 +574,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                 </button>
             </div>
 
-            {/* DASHBOARD COMMAND HUB (GRID VIEW) */}
             {isHubOpen && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[150] flex items-center justify-center p-4 md:p-10">
                     <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-6xl h-full flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
@@ -799,6 +802,35 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                                         </div>
                                     )}
                                 </div>
+
+                                {configBlueprint === 'product_joiner' && (
+                                    <div className="space-y-10 animate-fade-in max-w-xl">
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-indigo-500 uppercase tracking-widest ml-1">Synthesis Source Project</label>
+                                            <select 
+                                                value={configProjectId} 
+                                                onChange={e => setConfigProjectId(e.target.value)}
+                                                className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none bg-white"
+                                            >
+                                                <option value="">Select Logic Batch...</option>
+                                                {productJoinerProjects.map(p => (
+                                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-3">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Display Quantity</label>
+                                            <input 
+                                                type="number" 
+                                                min="1" 
+                                                max="50"
+                                                value={configVideoCount} 
+                                                onChange={e => setConfigVideoCount(parseInt(e.target.value) || 10)}
+                                                className="w-full p-4 border-2 border-slate-100 rounded-2xl font-black focus:border-indigo-500 outline-none"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
 
                                 {configBlueprint === 'comparison' && (
                                     <div className="space-y-10 animate-fade-in">

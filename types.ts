@@ -245,7 +245,7 @@ export interface BackupConfig {
 
 export interface DashboardWidget {
     id: string;
-    type: 'report' | 'tasks' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights' | 'comparison' | 'video_earnings';
+    type: 'report' | 'tasks' | 'cashflow' | 'top_expenses' | 'amazon_summary' | 'youtube_summary' | 'goal_gauge' | 'tax_projection' | 'ai_insights' | 'comparison' | 'video_earnings' | 'product_joiner';
     colSpan: 1 | 2 | 3;
     config?: {
         title?: string;
@@ -271,6 +271,7 @@ export interface DashboardWidget {
         publishYear?: string;
         reportYear?: string;
         userIds?: string[];
+        projectId?: string;
     };
 }
 
@@ -366,6 +367,10 @@ export interface ChatMessage {
     role: 'user' | 'ai';
     content: string;
     timestamp: string;
+}
+
+export interface ChatMessagePart {
+    text?: string;
 }
 
 export interface ChatSession {

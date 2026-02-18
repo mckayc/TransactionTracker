@@ -1,11 +1,12 @@
 
+
 import React, { useState, useMemo } from 'react';
 import type { JoinedMetric, YouTubeMetric, AmazonMetric, ProductJoinerProject } from '../../types';
 import { 
     BoxIcon, YoutubeIcon, CloudArrowUpIcon, CheckCircleIcon, SparklesIcon, 
     TrashIcon, SearchCircleIcon, CloseIcon, InfoIcon, TrendingUpIcon, 
     ListIcon, ArrowRightIcon, DatabaseIcon, LinkIcon, WorkflowIcon, CheckBadgeIcon,
-    CalendarIcon, AddIcon, ChevronLeftIcon
+    CalendarIcon, AddIcon, ChevronLeftIcon, DollarSign, BarChartIcon
 } from '../../components/Icons';
 import { parseYouTubeDetailedReport, parseAmazonEarningsReport, parseCreatorConnectionsReport } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
@@ -44,6 +45,7 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
     const [isLinking, setIsLinking] = useState(false);
     const [linkSearch, setLinkSearch] = useState('');
     const [selectedAsset, setSelectedAsset] = useState<JoinedMetric | null>(null);
+    const [inspectingAsset, setInspectingAsset] = useState<JoinedMetric | null>(null);
     
     // Staging state for creating a new project
     const [isCreatingProject, setIsCreatingProject] = useState(false);
@@ -90,14 +92,18 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
         try {
             if (type === 'youtube') {
                 const parsed = await parseYouTubeDetailedReport(file, () => {});
-                setYoutubeFile(parsed);
+                // Filter out "Total" rows
+                const clean = parsed.filter(m => m.videoId && m.videoId.toLowerCase() !== 'total');
+                setYoutubeFile(clean);
             } else if (type === 'cc') {
                 const parsed = await parseCreatorConnectionsReport(file, () => {});
-                setCcFile(parsed);
+                const clean = parsed.filter(m => m.asin && m.asin.toLowerCase() !== 'total');
+                setCcFile(clean);
             } else {
                 const parsed = await parseAmazonEarningsReport(file, () => {});
-                if (type === 'onsite') setOnsiteFile(parsed);
-                else setOffsiteFile(parsed);
+                const clean = parsed.filter(m => m.asin && m.asin.toLowerCase() !== 'total');
+                if (type === 'onsite') setOnsiteFile(clean);
+                else setOffsiteFile(clean);
             }
         } catch (err) {
             alert(`Failed to parse ${type} report. Check format.`);
@@ -109,6 +115,8 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
     const handleJoinAndCommit = async () => {
         if (!selectedProjectId) return;
         setIsProcessing(true);
+        
+        // Start from a fresh map every time we synthesize to avoid accidental doubling
         const assetMap = new Map<string, JoinedMetric>();
 
         const getAsset = (asin: string, title: string, videoId?: string): JoinedMetric => {
@@ -458,13 +466,18 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                             {displayMetrics.map(m => {
                                 const isLinked = m.videoId && m.asin;
                                 return (
-                                    <tr key={m.id} className="hover:bg-indigo-50/20 transition-all group">
+                                    <tr key={m.id} className="hover:bg-indigo-50/20 transition-all group cursor-pointer" onClick={() => setInspectingAsset(m)}>
                                         <td className="px-8 py-3 max-w-[400px]">
                                             <div className="flex flex-col">
-                                                <span className="text-xs font-black text-slate-800 truncate">{m.mainTitle}</span>
+                                                <span className="text-xs font-black text-slate-800 truncate group-hover:text-indigo-600 transition-colors">{m.mainTitle}</span>
                                                 <div className="flex items-center gap-2 mt-1">
                                                     <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase ${m.videoId ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-slate-400'}`}>{m.videoId || 'NO_VID'}</span>
                                                     <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase ${m.asin ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-slate-50 text-slate-400'}`}>{m.asin || 'NO_ASIN'}</span>
+                                                    {m.views > 0 && (
+                                                        <span className="text-[7px] font-black px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-600 border-indigo-100 uppercase">
+                                                            {formatCurrency(m.totalRevenue / m.views)}/V
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </div>
                                         </td>
@@ -475,15 +488,15 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                                         <td className="px-8 py-3 text-right">
                                             <p className="text-sm font-black text-indigo-600 font-mono">{formatCurrency(m.totalRevenue)}</p>
                                             <div className="flex justify-end gap-1 mt-1 opacity-40 group-hover:opacity-100">
-                                                {m.videoEstimatedRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-red-500" title="YT" />}
-                                                {m.amazonOnsiteRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" title="Onsite" />}
-                                                {m.creatorConnectionsOnsiteRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" title="CC" />}
-                                                {m.amazonOffsiteRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-green-500" title="Offsite" />}
+                                                {m.videoEstimatedRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-red-500" title="YouTube AdSense" />}
+                                                {m.amazonOnsiteRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" title="Amazon Onsite" />}
+                                                {m.creatorConnectionsOnsiteRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-indigo-500" title="CC Onsite" />}
+                                                {m.amazonOffsiteRevenue > 0 && <div className="w-1.5 h-1.5 rounded-full bg-green-500" title="Amazon Offsite" />}
                                             </div>
                                         </td>
                                         <td className="px-8 py-3 text-center">
                                             <button 
-                                                onClick={() => { setSelectedAsset(m); setIsLinking(true); setLinkSearch(''); }}
+                                                onClick={(e) => { e.stopPropagation(); setSelectedAsset(m); setIsLinking(true); setLinkSearch(''); }}
                                                 className={`p-2 rounded-xl transition-all shadow-sm ${isLinked ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white'}`}
                                             >
                                                 {isLinked ? <CheckBadgeIcon className="w-5 h-5" /> : <LinkIcon className="w-5 h-5" />}
@@ -496,6 +509,60 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                     </table>
                 </div>
             </div>
+
+            {inspectingAsset && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                            <div className="flex items-center gap-4">
+                                {/* Fix: BarChartIcon is now imported and used correctly */}
+                                <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg"><BarChartIcon className="w-6 h-6" /></div>
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Yield Attribution</h3>
+                                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Institutional Audit</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setInspectingAsset(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                        </div>
+                        
+                        <div className="p-8 space-y-8">
+                            <div className="bg-slate-900 rounded-[2rem] p-6 text-white relative overflow-hidden">
+                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 relative z-10">Total Asset Value</p>
+                                <p className="text-4xl font-black relative z-10">{formatCurrency(inspectingAsset.totalRevenue)}</p>
+                                <DollarSign className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-5" />
+                            </div>
+
+                            <div className="space-y-4">
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Stream Distribution</h4>
+                                <div className="space-y-3">
+                                    {[
+                                        { label: 'YouTube AdSense', val: inspectingAsset.videoEstimatedRevenue, color: 'bg-red-500', icon: <YoutubeIcon className="w-4 h-4 text-red-500" /> },
+                                        { label: 'Amazon Onsite', val: inspectingAsset.amazonOnsiteRevenue, color: 'bg-blue-500', icon: <BoxIcon className="w-4 h-4 text-blue-500" /> },
+                                        { label: 'Amazon Offsite', val: inspectingAsset.amazonOffsiteRevenue, color: 'bg-green-500', icon: <BoxIcon className="w-4 h-4 text-green-500" /> },
+                                        { label: 'Creator Connections (On)', val: inspectingAsset.creatorConnectionsOnsiteRevenue, color: 'bg-indigo-500', icon: <SparklesIcon className="w-4 h-4 text-indigo-500" /> },
+                                        { label: 'Creator Connections (Off)', val: inspectingAsset.creatorConnectionsOffsiteRevenue, color: 'bg-violet-500', icon: <SparklesIcon className="w-4 h-4 text-violet-500" /> }
+                                    ].map(stream => (
+                                        <div key={stream.label} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex items-center justify-between shadow-sm">
+                                            <div className="flex items-center gap-3">
+                                                {stream.icon}
+                                                <span className="text-xs font-bold text-slate-700">{stream.label}</span>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-black text-slate-900 font-mono">{formatCurrency(stream.val)}</p>
+                                                {inspectingAsset.totalRevenue > 0 && <p className="text-[9px] font-black text-slate-400 uppercase">{((stream.val / inspectingAsset.totalRevenue) * 100).toFixed(0)}% SHARE</p>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-6 bg-slate-50 border-t flex gap-4">
+                            <button onClick={() => setInspectingAsset(null)} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Close Audit</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {isLinking && selectedAsset && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
@@ -554,7 +621,7 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
 
             {isProcessing && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[250] flex items-center justify-center">
-                    <div className="bg-white p-12 rounded-[3rem] shadow-2xl flex flex-col items-center gap-6 animate-slide-up text-center max-w-sm w-full">
+                    <div className="bg-white p-12 rounded-[3rem] shadow-2xl flex flex-col items-center gap-6 animate-slide-up text-center max-sm w-full">
                         <div className="w-16 h-16 border-8 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
                         <div>
                             <h3 className="text-xl font-black text-slate-800 uppercase tracking-tight">Processing Logical Clusters</h3>
