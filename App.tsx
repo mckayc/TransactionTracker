@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
-import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, View, BusinessNote, Location, RuleCategory, JoinedMetric } from './types';
+import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, View, BusinessNote, Location, RuleCategory, JoinedMetric, ProductJoinerProject } from './types';
 import Sidebar from './components/Sidebar';
 import Chatbot from './components/Chatbot';
 import { MenuIcon, RepeatIcon, SparklesIcon, ExclamationTriangleIcon } from './components/Icons';
@@ -84,8 +84,9 @@ const App: React.FC = () => {
     const [financialPlan, setFinancialPlan] = useState<FinancialPlan | null>(null);
     const [systemSettings, setSystemSettings] = useState<SystemSettings>({});
     
-    // New Data State for Joiner
-    const [joinedMetrics, setJoinedMetrics] = useState<JoinedMetric[]>([]);
+    // New Data State for Multi-Project Joiner
+    const [productJoinerProjects, setProductJoinerProjects] = useState<ProductJoinerProject[]>([]);
+    const [joinedMetrics, setJoinedMetrics] = useState<JoinedMetric[]>([]); // Legacy compatibility
 
     const isDirty = useRef<boolean>(false);
     const updateQueues = useRef<Record<string, Promise<void>>>({});
@@ -128,6 +129,7 @@ const App: React.FC = () => {
             setFinancialPlan(data.financialPlan || null);
             setSystemSettings(data.systemSettings || {});
             setJoinedMetrics((data.joinedMetrics || []).filter(Boolean));
+            setProductJoinerProjects((data.productJoinerProjects || []).filter(Boolean));
             
             if (data.systemSettings?.aiConfig) {
                 updateGeminiConfig(data.systemSettings.aiConfig);
@@ -135,8 +137,6 @@ const App: React.FC = () => {
 
             try {
                 // LOAD OPTIMIZATION:
-                // Only load a "working set" of the most recent 1,000 transactions globally.
-                // Deep history views (like AllTransactions) perform their own paginated fetches.
                 const txResponse = await api.getTransactions({ limit: 1000 });
                 if (txResponse && txResponse.data) setTransactions(txResponse.data.filter(Boolean));
             } catch (txErr) {
@@ -175,10 +175,7 @@ const App: React.FC = () => {
     };
 
     const updateData = async (key: string, value: any, setter: Function) => {
-        // Strict Functional Setter for the local state
         setter(value);
-
-        // Queue background persistence
         return executeQueuedUpdate(key, async () => {
             isDirty.current = true;
             try {
@@ -192,7 +189,6 @@ const App: React.FC = () => {
                 }
             } catch (e) {
                 console.error(`[APP] Background save failed for '${key}':`, e);
-                // On failure, reload data to revert UI to last known good state
                 loadCoreData(false);
             } finally {
                 isDirty.current = false;
@@ -201,7 +197,6 @@ const App: React.FC = () => {
     };
 
     const handleSaveRule = async (rule: ReconciliationRule) => {
-        // Optimistic UI Update for rules
         setRules(prev => {
             const idx = prev.findIndex(r => r.id === rule.id);
             if (idx > -1) return [...prev.slice(0, idx), rule, ...prev.slice(idx + 1)];
@@ -251,8 +246,6 @@ const App: React.FC = () => {
     };
 
     const bulkUpdateData = async (key: string, newItems: any[], setter: Function) => {
-        // This pattern ensures we always use the LATEST state during bulk updates,
-        // preventing lost property syndrome during background refreshes.
         setter((prev: any[]) => {
             const next = [...prev];
             newItems.filter(Boolean).forEach((item) => {
@@ -262,7 +255,6 @@ const App: React.FC = () => {
                 else next.push(item);
             });
             
-            // Trigger background save with the definitively calculated NEXT list
             executeQueuedUpdate(key, async () => {
                 isDirty.current = true;
                 try {
@@ -290,7 +282,7 @@ const App: React.FC = () => {
                 setCategories(updatedCats);
                 await api.save('categories', updatedCats);
             }
-            setTransactions(prev => [...newTxs.filter(Boolean), ...prev].slice(0, 5000)); // Limit global cache
+            setTransactions(prev => [...newTxs.filter(Boolean), ...prev].slice(0, 5000)); 
             await api.saveTransactions(newTxs.filter(Boolean));
             if (syncChannel) syncChannel.postMessage({ type: 'REFRESH_REQUIRED', origin: APP_INSTANCE_ID });
         } catch (e) {
@@ -352,7 +344,7 @@ const App: React.FC = () => {
         </div>
     );
 
-    const currentContext = { transactions, accounts, categories, tags, counterparties, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile, joinedMetrics };
+    const currentContext = { transactions, accounts, categories, tags, counterparties, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile, joinedMetrics, productJoinerProjects };
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
@@ -388,7 +380,7 @@ const App: React.FC = () => {
                         {currentView === 'integration-amazon' && <AmazonIntegration metrics={amazonMetrics} onAddMetrics={(m) => bulkUpdateData('amazonMetrics', m, setAmazonMetrics)} onDeleteMetrics={(ids) => { setAmazonMetrics(prev => { const next = prev.filter(m => !ids.includes(m.id)); updateData('amazonMetrics', next, setAmazonMetrics); return next; }); }} videos={amazonVideos} onAddVideos={(v) => bulkUpdateData('amazonVideos', v, setAmazonVideos)} onDeleteVideos={(ids) => { setAmazonVideos(prev => { const next = prev.filter(v => !ids.includes(v.id)); updateData('amazonVideos', next, setAmazonVideos); return next; }); }} />}
                         {currentView === 'integration-youtube' && <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={(m) => bulkUpdateData('youtubeMetrics', m, setYouTubeMetric)} onDeleteMetrics={(ids) => { setYouTubeMetric(prev => { const next = prev.filter(m => !ids.includes(m.id)); updateData('youtubeMetrics', next, setYouTubeMetric); return next; }); }} channels={youtubeChannels} onSaveChannel={(c) => bulkUpdateData('youtubeChannels', [c], setYouTubeChannels)} onDeleteChannel={(id) => { setYouTubeChannels(prev => { const next = prev.filter(c => c.id !== id); updateData('youtubeChannels', next, setYouTubeChannels); return next; }); }} />}
                         {currentView === 'integration-joiner' && <VideoProductJoiner metrics={joinedMetrics} onSaveMetrics={(m) => updateData('joinedMetrics', m, setJoinedMetrics)} youtubeMetrics={youtubeMetrics} amazonMetrics={amazonMetrics} />}
-                        {currentView === 'integration-product-joiner' && <ProductAsinJoiner metrics={joinedMetrics} onSaveMetrics={(m) => updateData('joinedMetrics', m, setJoinedMetrics)} youtubeMetrics={youtubeMetrics} amazonMetrics={amazonMetrics} />}
+                        {currentView === 'integration-product-joiner' && <ProductAsinJoiner projects={productJoinerProjects} onUpdateProjects={(p) => updateData('productJoinerProjects', p, setProductJoinerProjects)} />}
                     </Suspense>
                 </div>
             </main>

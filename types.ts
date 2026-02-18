@@ -400,6 +400,7 @@ export interface AmazonMetric {
     videoDuration?: string;
     videoUrl?: string;
     videoAsins?: string[];
+    videoAsin?: string; // Singular ASIN for project-based joiner results
     uploadDate?: string;
 }
 
@@ -459,6 +460,15 @@ export interface JoinedMetric {
     reportYear?: string;
     duration?: string;
     asins?: string[];
+}
+
+export interface ProductJoinerProject {
+    id: string;
+    name: string;
+    startDate?: string;
+    endDate?: string;
+    metrics: JoinedMetric[];
+    createdAt: string;
 }
 
 export interface FinancialGoal {

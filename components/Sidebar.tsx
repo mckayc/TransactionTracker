@@ -27,6 +27,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
     { id: 'reports', label: 'Reports', icon: ChartPieIcon },
     { id: 'hub', label: 'Business Hub', icon: WizardIcon },
     { id: 'integrations', label: 'Integrations', icon: PuzzleIcon },
+    { id: 'integration-product-joiner', label: 'Product Joiner', icon: WorkflowIcon },
   ];
 
   const sidebarWidthClass = isCollapsed ? 'w-20' : 'w-64';
@@ -82,7 +83,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
                 {[
                   { id: 'management', label: 'Organize Data', icon: ChecklistIcon },
                   { id: 'rules', label: 'Rule Engine', icon: LinkIcon },
-                  { id: 'integration-product-joiner', label: 'Product Joiner', icon: WorkflowIcon },
                 ].map(item => (
                     <button
                         key={item.id}
