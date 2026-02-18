@@ -366,6 +366,7 @@ export interface ChatMessage {
     id: string;
     role: 'user' | 'ai';
     content: string;
+    border?: string;
     timestamp: string;
 }
 
@@ -392,8 +393,9 @@ export interface AmazonMetric {
     clicks: number;
     orderedItems: number;
     shippedItems: number;
-    revenue: number;
-    commissionIncome?: number;
+    productSales: number; // Gross Revenue generated for the product
+    revenue: number; // User Earnings (Ad Fees / Commissions)
+    commissionIncome?: number; // Alias for revenue in some contexts
     conversionRate: number;
     trackingId: string;
     reportType: AmazonReportType;
@@ -405,7 +407,7 @@ export interface AmazonMetric {
     videoDuration?: string;
     videoUrl?: string;
     videoAsins?: string[];
-    videoAsin?: string; // Singular ASIN for project-based joiner results
+    videoAsin?: string;
     uploadDate?: string;
 }
 

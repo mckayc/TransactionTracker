@@ -1,5 +1,4 @@
 
-
 import React, { useState, useMemo } from 'react';
 import type { JoinedMetric, YouTubeMetric, AmazonMetric, ProductJoinerProject } from '../../types';
 import { 
@@ -92,7 +91,6 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
         try {
             if (type === 'youtube') {
                 const parsed = await parseYouTubeDetailedReport(file, () => {});
-                // Filter out "Total" rows
                 const clean = parsed.filter(m => m.videoId && m.videoId.toLowerCase() !== 'total');
                 setYoutubeFile(clean);
             } else if (type === 'cc') {
@@ -116,7 +114,6 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
         if (!selectedProjectId) return;
         setIsProcessing(true);
         
-        // Start from a fresh map every time we synthesize to avoid accidental doubling
         const assetMap = new Map<string, JoinedMetric>();
 
         const getAsset = (asin: string, title: string, videoId?: string): JoinedMetric => {
@@ -147,21 +144,21 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
 
         onsiteFile?.forEach(amz => {
             const asset = getAsset(amz.asin, amz.productTitle);
-            asset.amazonOnsiteRevenue += amz.revenue;
+            asset.amazonOnsiteRevenue += amz.revenue; // amz.revenue is Ad Fees (commission)
             asset.orderedItems += amz.orderedItems;
             asset.shippedItems += amz.shippedItems;
         });
 
         offsiteFile?.forEach(amz => {
             const asset = getAsset(amz.asin, amz.productTitle);
-            asset.amazonOffsiteRevenue += amz.revenue;
+            asset.amazonOffsiteRevenue += amz.revenue; // amz.revenue is Ad Fees (commission)
             asset.orderedItems += amz.orderedItems;
             asset.shippedItems += amz.shippedItems;
         });
 
         ccFile?.forEach(cc => {
             const asset = getAsset(cc.asin, cc.productTitle);
-            if (cc.reportType === 'onsite') asset.creatorConnectionsOnsiteRevenue += cc.revenue;
+            if (cc.reportType === 'onsite') asset.creatorConnectionsOnsiteRevenue += cc.revenue; // amz.revenue is Commission
             else asset.creatorConnectionsOffsiteRevenue += cc.revenue;
             asset.clicks += cc.clicks;
             asset.orderedItems += cc.orderedItems;
@@ -415,7 +412,7 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                     <button 
                         onClick={handleJoinAndCommit}
                         disabled={isProcessing || (!onsiteFile && !offsiteFile && !ccFile && !youtubeFile)}
-                        className="px-16 py-5 bg-indigo-600 text-white font-black text-xl rounded-3xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-30 disabled:shadow-none flex items-center gap-3"
+                        className="px-16 py-5 bg-indigo-600 text-white font-black text-xl rounded-3xl shadow-2xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-30 disabled:shadow-none flex items-center justify-center gap-3"
                     >
                         {isProcessing ? <div className="w-6 h-6 border-4 border-t-white rounded-full animate-spin" /> : <DatabaseIcon className="w-6 h-6" />}
                         Commit Institutional Synthesis
@@ -513,21 +510,20 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
             {inspectingAsset && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
-                        <div className="p-8 border-b bg-slate-50 flex justify-between items-center">
+                        <div className="p-8 border-b bg-slate-50 flex justify-between items-center shrink-0">
                             <div className="flex items-center gap-4">
-                                {/* Fix: BarChartIcon is now imported and used correctly */}
                                 <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg"><BarChartIcon className="w-6 h-6" /></div>
                                 <div>
                                     <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Yield Attribution</h3>
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Institutional Audit</p>
                                 </div>
                             </div>
-                            <button onClick={() => setInspectingAsset(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                            <button onClick={() => setInspectingAsset(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors shrink-0 ml-4"><CloseIcon className="w-6 h-6 text-slate-400"/></button>
                         </div>
                         
-                        <div className="p-8 space-y-8">
+                        <div className="p-8 space-y-8 flex-1 overflow-y-auto custom-scrollbar">
                             <div className="bg-slate-900 rounded-[2rem] p-6 text-white relative overflow-hidden">
-                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 relative z-10">Total Asset Value</p>
+                                <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 relative z-10">Total Asset Earnings</p>
                                 <p className="text-4xl font-black relative z-10">{formatCurrency(inspectingAsset.totalRevenue)}</p>
                                 <DollarSign className="absolute -right-4 -bottom-4 w-24 h-24 text-white opacity-5" />
                             </div>

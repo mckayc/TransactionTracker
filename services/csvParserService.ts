@@ -513,6 +513,9 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
         if (values.length <= colMap.asin) continue;
 
         const trackingId = values[colMap.tracking] || '';
+        const adFees = parseFloat(values[colMap.fees]?.replace(/[$,]/g, '')) || 0;
+        const productSalesVolume = parseFloat(values[colMap.revenue]?.replace(/[$,]/g, '')) || 0;
+
         metrics.push({
             id: generateUUID(),
             saleDate: formatDateString(parseDate(values[colMap.date]) || new Date()),
@@ -523,7 +526,9 @@ export const parseAmazonEarningsReport = async (file: File, onProgress: (msg: st
             clicks: 0,
             orderedItems: parseInt(values[colMap.items]) || 0,
             shippedItems: parseInt(values[colMap.items]) || 0,
-            revenue: parseFloat(values[colMap.revenue]?.replace(/[$,]/g, '')) || 0,
+            productSales: productSalesVolume,
+            revenue: adFees, // Map 'Ad Fees' to 'revenue' field for internal Yield logic
+            commissionIncome: adFees,
             conversionRate: 0,
             reportType: trackingId.includes('onamz') ? 'onsite' : 'offsite'
         });
@@ -562,6 +567,9 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
         const values = splitCsvLine(line, delimiter);
         if (values.length < colMap.asin) continue;
 
+        const commission = parseFloat(values[colMap.commission]?.replace(/[$,]/g, '')) || 0;
+        const campaignSales = parseFloat(values[colMap.revenue]?.replace(/[$,]/g, '')) || 0;
+
         metrics.push({
             id: generateUUID(),
             saleDate: formatDateString(parseDate(values[colMap.date]) || new Date()),
@@ -571,8 +579,9 @@ export const parseCreatorConnectionsReport = async (file: File, onProgress: (msg
             clicks: parseInt(values[colMap.clicks]) || 0,
             orderedItems: parseInt(values[colMap.items]) || 0,
             shippedItems: parseInt(values[colMap.items]) || 0,
-            revenue: parseFloat(values[colMap.revenue]?.replace(/[$,]/g, '')) || 0,
-            commissionIncome: parseFloat(values[colMap.commission]?.replace(/[$,]/g, '')) || 0,
+            productSales: campaignSales,
+            revenue: commission, // Map 'Commission Income' to 'revenue' for internal Yield logic
+            commissionIncome: commission,
             conversionRate: 0,
             trackingId: 'creator_connections',
             reportType: 'creator_connections'
