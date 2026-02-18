@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState } from 'react';
 // Added User type to imports to support TransactionTable requirements
 import type { Transaction, DashboardWidget, Category, Counterparty, Account, TransactionType, Tag, User } from '../../types';
@@ -18,6 +17,8 @@ interface Props {
     // Added users prop to Props interface
     users: User[];
 }
+
+const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
 // Added users to component destructuring to fix line 276 and 313 "Cannot find name 'users'"
 export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transactions, categories, counterparties, accounts, transactionTypes, tags, users }) => {

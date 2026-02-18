@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User, JoinedMetric } from '../types';
 import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon, UserGroupIcon, UsersIcon, SearchCircleIcon, HeartIcon, DashboardIcon, ListIcon, DatabaseIcon } from '../components/Icons';
@@ -583,7 +582,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                                     <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Dashboard Management & Selection</p>
                                 </div>
                             </div>
-                            <div className="flex-1 max-w-md w-full relative">
+                            <div className="flex-1 max-md w-full relative">
                                 <input 
                                     type="text" 
                                     placeholder="Search dashboards..." 
@@ -595,7 +594,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                             </div>
                             <div className="flex gap-3">
                                 <button onClick={() => setIsCreatingDashboard(true)} className="px-8 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2 active:scale-95"><AddIcon className="w-5 h-5"/> Create View</button>
-                                <button onClick={onClose} className="p-4 text-slate-400 hover:bg-slate-200 rounded-2xl transition-colors"><CloseIcon className="w-6 h-6"/></button>
+                                <button onClick={() => setIsHubOpen(false)} className="p-4 text-slate-400 hover:bg-slate-200 rounded-2xl transition-colors"><CloseIcon className="w-6 h-6"/></button>
                             </div>
                         </div>
 
@@ -607,7 +606,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                                         {favoriteDashboards.map(d => (
                                             <div 
                                                 key={d.id} 
-                                                onClick={() => { onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id }); onClose(); }}
+                                                onClick={() => { onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id }); setIsHubOpen(false); }}
                                                 className={`group p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between min-h-[160px] ${activeDashboardId === d.id ? 'bg-indigo-50 border-indigo-500 ring-4 ring-indigo-50 shadow-xl' : 'bg-white border-slate-100 hover:border-indigo-300 hover:shadow-md'}`}
                                             >
                                                 <div className="flex justify-between items-start z-10">
@@ -642,7 +641,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                                     {filteredDashboards.filter(d => hubSearch || !d.isFavorite).map(d => (
                                         <div 
                                             key={d.id} 
-                                            onClick={() => { onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id }); onClose(); }}
+                                            onClick={() => { onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id }); setIsHubOpen(false); }}
                                             className={`group p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between min-h-[160px] ${activeDashboardId === d.id ? 'bg-indigo-50 border-indigo-500 shadow-xl' : 'bg-white border-slate-100 hover:border-indigo-300 hover:shadow-md'}`}
                                         >
                                             <div className="flex justify-between items-start z-10">
