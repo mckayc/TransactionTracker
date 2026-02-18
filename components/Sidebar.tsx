@@ -27,14 +27,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
     { id: 'reports', label: 'Reports', icon: ChartPieIcon },
     { id: 'hub', label: 'Business Hub', icon: WizardIcon },
     { id: 'integrations', label: 'Integrations', icon: PuzzleIcon },
-    { id: 'integration-product-joiner', label: 'Product Joiner', icon: WorkflowIcon },
   ];
 
   const sidebarWidthClass = isCollapsed ? 'w-20' : 'w-64';
 
   const isActive = (id: string) => {
       if (currentView === id) return true;
-      if (id === 'integrations' && (currentView.startsWith('integration-') || currentView === 'integration-product-joiner')) return true;
+      if (id === 'integrations' && (currentView.startsWith('integration-'))) return true;
       return false;
   };
 
