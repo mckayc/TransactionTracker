@@ -1,13 +1,12 @@
-
 import React, { useState, useMemo } from 'react';
 import type { JoinedMetric, YouTubeMetric, AmazonMetric, ProductJoinerProject } from '../../types';
 import { 
     BoxIcon, YoutubeIcon, CloudArrowUpIcon, CheckCircleIcon, SparklesIcon, 
     TrashIcon, SearchCircleIcon, CloseIcon, InfoIcon, TrendingUpIcon, 
     ListIcon, ArrowRightIcon, DatabaseIcon, LinkIcon, WorkflowIcon, CheckBadgeIcon,
-    CalendarIcon, AddIcon, ChevronLeftIcon, DollarSign, BarChartIcon
+    CalendarIcon, AddIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon, DollarSign, BarChartIcon, EditIcon, SlashIcon, ExclamationTriangleIcon
 } from '../../components/Icons';
-import { parseYouTubeDetailedReport, parseAmazonEarningsReport, parseCreatorConnectionsReport } from '../../services/csvParserService';
+import { parseYouTubeDetailedReport, parseAmazonEarningsReport, parseCreatorConnectionsReport, parseVideoAsinMapping } from '../../services/csvParserService';
 import { generateUUID } from '../../utils';
 import ConfirmationModal from '../../components/ConfirmationModal';
 
@@ -18,6 +17,8 @@ interface Props {
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
 const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation: "compact", maximumFractionDigits: 1 }).format(val);
+
+const normalizeStr = (str: string) => (str || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
 
 const InstructionBox: React.FC<{ title: string; url: string; path: string; icon: React.ReactNode }> = ({ title, url, path, icon }) => (
     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
@@ -46,8 +47,30 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
     const [selectedAsset, setSelectedAsset] = useState<JoinedMetric | null>(null);
     const [inspectingAsset, setInspectingAsset] = useState<JoinedMetric | null>(null);
     
+    // Added missing state variables for pagination, feedback and UI state
+    const [currentPage, setCurrentPage] = useState(1);
+    const [rowsPerPage, setRowsPerPage] = useState(100);
+    const [showClearConfirm, setShowClearConfirm] = useState(false);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+    // Added notify utility for user feedback
+    const notify = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 5000);
+    };
+
+    // Added clear project handler
+    const handleClearAll = () => {
+        if (!selectedProjectId) return;
+        const updatedProjects = projects.map(p => p.id === selectedProjectId ? { ...p, metrics: [] } : p);
+        onUpdateProjects(updatedProjects);
+        setShowClearConfirm(false);
+        notify("Project metrics cleared", "info");
+    };
+
     // Staging state for creating a new project
     const [isCreatingProject, setIsCreatingProject] = useState(false);
+    const [isEditingProject, setIsEditingProject] = useState(false);
     const [newProjectName, setNewProjectName] = useState('');
     const [newProjectStart, setNewProjectStart] = useState('');
     const [newProjectEnd, setNewProjectEnd] = useState('');
@@ -77,6 +100,25 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
         setNewProjectEnd('');
         setIsCreatingProject(false);
         setView('upload');
+    };
+
+    const handleUpdateProjectMeta = () => {
+        if (!activeProject || !newProjectName.trim()) return;
+        const updated = projects.map(p => p.id === activeProject.id ? {
+            ...p,
+            name: newProjectName.trim(),
+            startDate: newProjectStart || undefined,
+            endDate: newProjectEnd || undefined
+        } : p);
+        onUpdateProjects(updated);
+        setIsEditingProject(false);
+    };
+
+    const startEditing = (p: ProductJoinerProject) => {
+        setNewProjectName(p.name);
+        setNewProjectStart(p.startDate || '');
+        setNewProjectEnd(p.endDate || '');
+        setIsEditingProject(true);
     };
 
     const handleDeleteProject = (id: string) => {
@@ -134,6 +176,14 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
             return assetMap.get(key)!;
         };
 
+        // 1. Build lookup tables for more accurate CC matching
+        const onsiteLookup = new Map<string, AmazonMetric>();
+        onsiteFile?.forEach(m => onsiteLookup.set(`${m.saleDate}_${m.asin}`, m));
+        
+        const offsiteLookup = new Map<string, AmazonMetric>();
+        offsiteFile?.forEach(m => offsiteLookup.set(`${m.saleDate}_${m.asin}`, m));
+
+        // 2. Process primary sources
         youtubeFile?.forEach(yt => {
             const asset = getAsset('', yt.videoTitle, yt.videoId);
             asset.views += yt.views;
@@ -144,22 +194,38 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
 
         onsiteFile?.forEach(amz => {
             const asset = getAsset(amz.asin, amz.productTitle);
-            asset.amazonOnsiteRevenue += amz.revenue; // amz.revenue is Ad Fees (commission)
+            asset.amazonOnsiteRevenue += amz.revenue; 
             asset.orderedItems += amz.orderedItems;
             asset.shippedItems += amz.shippedItems;
         });
 
         offsiteFile?.forEach(amz => {
             const asset = getAsset(amz.asin, amz.productTitle);
-            asset.amazonOffsiteRevenue += amz.revenue; // amz.revenue is Ad Fees (commission)
+            asset.amazonOffsiteRevenue += amz.revenue; 
             asset.orderedItems += amz.orderedItems;
             asset.shippedItems += amz.shippedItems;
         });
 
+        // 3. Process CC File with accuracy enhancement
         ccFile?.forEach(cc => {
             const asset = getAsset(cc.asin, cc.productTitle);
-            if (cc.reportType === 'onsite') asset.creatorConnectionsOnsiteRevenue += cc.revenue; // amz.revenue is Commission
-            else asset.creatorConnectionsOffsiteRevenue += cc.revenue;
+            const lookupKey = `${cc.saleDate}_${cc.asin}`;
+            
+            // Heuristic: If we find a sales record on this specific date for this ASIN,
+            // we trust its onsite/offsite classification over the CC file's generic reportType.
+            const matchedOnsite = onsiteLookup.get(lookupKey);
+            const matchedOffsite = offsiteLookup.get(lookupKey);
+
+            if (matchedOnsite) {
+                asset.creatorConnectionsOnsiteRevenue += cc.revenue;
+            } else if (matchedOffsite) {
+                asset.creatorConnectionsOffsiteRevenue += cc.revenue;
+            } else {
+                // Fallback to CC file's reportType if no sale date match found
+                if (cc.reportType === 'onsite') asset.creatorConnectionsOnsiteRevenue += cc.revenue;
+                else asset.creatorConnectionsOffsiteRevenue += cc.revenue;
+            }
+            
             asset.clicks += cc.clicks;
             asset.orderedItems += cc.orderedItems;
         });
@@ -180,6 +246,21 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
         setOnsiteFile(null); setOffsiteFile(null); setCcFile(null); setYoutubeFile(null);
     };
 
+    const handleUnlinkYoutube = () => {
+        if (!inspectingAsset || !selectedProjectId) return;
+        const updatedAsset = { ...inspectingAsset, videoId: '' };
+        const updatedProjects = projects.map(p => {
+            if (p.id === selectedProjectId) {
+                return { ...p, metrics: p.metrics.map(m => m.id === inspectingAsset.id ? updatedAsset : m) };
+            }
+            return p;
+        });
+        onUpdateProjects(updatedProjects);
+        setInspectingAsset(updatedAsset);
+        // Added missing notification call
+        notify("YouTube video unlinked from asset.", "info");
+    };
+
     const displayMetrics = useMemo(() => {
         if (!activeProject) return [];
         let base = [...activeProject.metrics];
@@ -189,6 +270,14 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
         }
         return base.sort((a, b) => b.totalRevenue - a.totalRevenue);
     }, [activeProject, searchTerm]);
+
+    // Added missing paginatedMetrics computation
+    const paginatedMetrics = useMemo(() => {
+        const start = (currentPage - 1) * rowsPerPage;
+        return displayMetrics.slice(start, start + rowsPerPage);
+    }, [displayMetrics, currentPage, rowsPerPage]);
+
+    const totalPages = Math.ceil(displayMetrics.length / rowsPerPage);
 
     const potentialLinks = useMemo(() => {
         if (!linkSearch || !activeProject) return [];
@@ -259,9 +348,14 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                                         <div className="p-3 bg-indigo-50 rounded-2xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                                             <WorkflowIcon className="w-6 h-6" />
                                         </div>
-                                        <button onClick={() => handleDeleteProject(p.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
-                                            <TrashIcon className="w-5 h-5" />
-                                        </button>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => startEditing(p)} className="p-2 text-slate-300 hover:text-indigo-600 transition-colors">
+                                                <EditIcon className="w-5 h-5" />
+                                            </button>
+                                            <button onClick={() => handleDeleteProject(p.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors">
+                                                <TrashIcon className="w-5 h-5" />
+                                            </button>
+                                        </div>
                                     </div>
                                     <h3 className="text-xl font-black text-slate-800 mb-1">{p.name}</h3>
                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
@@ -294,12 +388,14 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                     )}
                 </div>
 
-                {isCreatingProject && (
+                {(isCreatingProject || isEditingProject) && (
                     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
                         <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-8 animate-slide-up" onClick={e => e.stopPropagation()}>
                             <div className="flex justify-between items-center mb-6">
-                                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">New Analysis Session</h3>
-                                <button onClick={() => setIsCreatingProject(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
+                                <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">
+                                    {isCreatingProject ? 'New Analysis Session' : 'Edit Analysis Session'}
+                                </h3>
+                                <button onClick={() => { setIsCreatingProject(false); setIsEditingProject(false); }} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><CloseIcon className="w-6 h-6 text-slate-400" /></button>
                             </div>
                             <div className="space-y-6">
                                 <div className="space-y-1">
@@ -317,8 +413,13 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                                     </div>
                                 </div>
                                 <div className="flex gap-4 pt-4">
-                                    <button onClick={() => setIsCreatingProject(false)} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
-                                    <button onClick={handleCreateProject} className="flex-2 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all active:scale-95 w-full">Create Project</button>
+                                    <button onClick={() => { setIsCreatingProject(false); setIsEditingProject(false); }} className="flex-1 py-4 bg-slate-100 rounded-2xl font-black text-slate-500">Cancel</button>
+                                    <button 
+                                        onClick={isCreatingProject ? handleCreateProject : handleUpdateProjectMeta} 
+                                        className="flex-2 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all active:scale-95 w-full"
+                                    >
+                                        {isCreatingProject ? 'Create Project' : 'Save Changes'}
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -430,7 +531,15 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                     <button onClick={() => setView('hub')} className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg hover:bg-indigo-700 transition-colors"><ChevronLeftIcon className="w-6 h-6" /></button>
                     <div>
                         <h2 className="text-xl font-black text-slate-800 tracking-tight">{activeProject?.name}</h2>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{displayMetrics.length} Active Content Assets</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{displayMetrics.length} Active Content Assets</p>
+                            {activeProject?.startDate && (
+                                <>
+                                    <div className="w-1 h-1 rounded-full bg-slate-200" />
+                                    <p className="text-[10px] text-indigo-400 font-black uppercase">{activeProject.startDate} &rarr; {activeProject.endDate || 'Now'}</p>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -439,7 +548,7 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                             type="text" 
                             placeholder="Search Assets..." 
                             value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
+                            onChange={e => { setSearchTerm(e.target.value); setCurrentPage(1); }}
                             className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:ring-0 focus:border-indigo-500 outline-none font-bold"
                         />
                         <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
@@ -460,7 +569,8 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-50 bg-white">
-                            {displayMetrics.map(m => {
+                            {/* Updated to use paginatedMetrics */}
+                            {paginatedMetrics.map(m => {
                                 const isLinked = m.videoId && m.asin;
                                 return (
                                     <tr key={m.id} className="hover:bg-indigo-50/20 transition-all group cursor-pointer" onClick={() => setInspectingAsset(m)}>
@@ -468,8 +578,8 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                                             <div className="flex flex-col">
                                                 <span className="text-xs font-black text-slate-800 truncate group-hover:text-indigo-600 transition-colors">{m.mainTitle}</span>
                                                 <div className="flex items-center gap-2 mt-1">
-                                                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase ${m.videoId ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-slate-400'}`}>{m.videoId || 'NO_VID'}</span>
-                                                    <span className={`text-[7px] font-black px-1.5 py-0.5 rounded border uppercase ${m.asin ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-slate-50 text-slate-400'}`}>{m.asin || 'NO_ASIN'}</span>
+                                                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded border uppercase ${m.videoId ? 'bg-red-50 text-red-600 border-red-100' : 'bg-slate-50 text-slate-400'}`}>{m.videoId || 'NO_VID'}</span>
+                                                    <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded border uppercase ${m.asin ? 'bg-orange-50 text-orange-600 border-orange-100' : 'bg-slate-50 text-slate-400'}`}>{m.asin || 'NO_ASIN'}</span>
                                                     {m.views > 0 && (
                                                         <span className="text-[7px] font-black px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-600 border-indigo-100 uppercase">
                                                             {formatCurrency(m.totalRevenue / m.views)}/V
@@ -505,14 +615,25 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                         </tbody>
                     </table>
                 </div>
+                {/* Fixed Pagination Section */}
+                <div className="p-3 bg-slate-50 border-t flex justify-between items-center px-8">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{displayMetrics.length} Active Records</p>
+                    <div className="flex items-center gap-4">
+                        <span className="text-[10px] text-slate-500 font-black">PAGE {currentPage} / {totalPages || 1}</span>
+                        <div className="flex gap-2">
+                            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-30"><ChevronLeftIcon className="w-4 h-4"/></button>
+                            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-100 disabled:opacity-30"><ChevronRightIcon className="w-4 h-4"/></button>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {inspectingAsset && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
-                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-8 border-b bg-slate-50 flex justify-between items-center shrink-0">
                             <div className="flex items-center gap-4">
-                                <div className="p-3 bg-indigo-600 rounded-2xl text-white shadow-lg"><BarChartIcon className="w-6 h-6" /></div>
+                                <div className="p-4 bg-indigo-600 rounded-2xl text-white shadow-lg"><BarChartIcon className="w-6 h-6" /></div>
                                 <div>
                                     <h3 className="text-xl font-black text-slate-800 uppercase tracking-tighter">Yield Attribution</h3>
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Institutional Audit</p>
@@ -529,7 +650,17 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                             </div>
 
                             <div className="space-y-4">
-                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Stream Distribution</h4>
+                                <div className="flex justify-between items-center px-1">
+                                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stream Distribution</h4>
+                                    {inspectingAsset.videoId && (
+                                        <button 
+                                            onClick={handleUnlinkYoutube}
+                                            className="text-[9px] font-black text-red-500 uppercase hover:underline flex items-center gap-1"
+                                        >
+                                            <SlashIcon className="w-2.5 h-2.5" /> Unlink Video Source
+                                        </button>
+                                    )}
+                                </div>
                                 <div className="space-y-3">
                                     {[
                                         { label: 'YouTube AdSense', val: inspectingAsset.videoEstimatedRevenue, color: 'bg-red-500', icon: <YoutubeIcon className="w-4 h-4 text-red-500" /> },
@@ -551,10 +682,29 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                                     ))}
                                 </div>
                             </div>
+
+                            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                                <div className="space-y-1">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Metadata</p>
+                                    <p className="text-xs font-bold text-slate-700 truncate">ID: {inspectingAsset.videoId || inspectingAsset.asin}</p>
+                                    <p className="text-xs font-bold text-slate-500">Published: {inspectingAsset.publishDate || '---'}</p>
+                                </div>
+                                <div className="space-y-1 text-right">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aggregate Velocity</p>
+                                    <p className="text-xs font-bold text-slate-700">{formatNumber(inspectingAsset.clicks)} Clicks</p>
+                                    <p className="text-xs font-bold text-slate-700">{formatNumber(inspectingAsset.orderedItems)} Sales</p>
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="p-6 bg-slate-50 border-t flex gap-4">
-                            <button onClick={() => setInspectingAsset(null)} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl">Close Audit</button>
+                        <div className="p-6 bg-slate-50 border-t flex flex-col gap-3">
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); setSelectedAsset(inspectingAsset); setInspectingAsset(null); setIsLinking(true); }}
+                                className="w-full py-3 bg-indigo-50 text-indigo-600 font-black rounded-xl hover:bg-indigo-100 transition-all flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest border border-indigo-100"
+                            >
+                                <LinkIcon className="w-4 h-4" /> Remap Connection Identity
+                            </button>
+                            <button onClick={() => setInspectingAsset(null)} className="w-full py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">Dismiss Inspector</button>
                         </div>
                     </div>
                 </div>
@@ -626,8 +776,43 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }) => {
                     </div>
                 </div>
             )}
+
+            {/* Added missing ConfirmationModal and Toast elements */}
+            <ConfirmationModal 
+                isOpen={showClearConfirm}
+                onClose={() => setShowClearConfirm(false)}
+                onConfirm={handleClearAll}
+                title="Wipe Joiner Registry?"
+                message="This will permanently delete all content ROI records. You will need to rerun the ingestion pipeline to restore data."
+                confirmLabel="Execute Purge"
+                variant="danger"
+            />
+
+            {/* TOAST SYSTEM */}
+            {toast && (
+                <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[300] animate-slide-up">
+                    <div className={`px-5 py-2.5 rounded-2xl shadow-2xl border flex items-center gap-3 ${toast.type === 'success' ? 'bg-slate-900 text-white border-white/10' : toast.type === 'error' ? 'bg-rose-600 text-white border-rose-500' : 'bg-white text-slate-800 border-slate-200 shadow-lg'}`}>
+                        <div className={`${toast.type === 'success' ? 'bg-indigo-500' : toast.type === 'error' ? 'bg-white/20' : 'bg-indigo-50'} rounded-full p-1`}>
+                            {toast.type === 'success' ? <CheckCircleIcon className="w-3.5 h-3.5 text-white" /> : toast.type === 'error' ? <ExclamationTriangleIcon className="w-3.5 h-3.5 text-white" /> : <InfoIcon className="w-3.5 h-3.5 text-indigo-600" />}
+                        </div>
+                        <p className="text-[10px] font-black uppercase tracking-widest">{toast.message}</p>
+                        <button onClick={() => setToast(null)} className="p-1 hover:bg-white/10 rounded-full ml-1"><CloseIcon className="w-3.5 h-3.5 opacity-50" /></button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
 
 export default ProductAsinJoiner;
+
+const InfoBubble: React.FC<{ title: string; content: string }> = ({ title, content }) => (
+    <div className="relative group/info inline-block align-middle ml-1">
+        <InfoIcon className="w-4 h-4 text-slate-300 cursor-help hover:text-indigo-500 transition-colors" />
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-800 text-white rounded-lg shadow-xl opacity-0 translate-y-1 pointer-events-none group-hover/info:opacity-100 group-hover/info:translate-y-0 transition-all z-[60] text-[10px] leading-relaxed">
+            <p className="font-bold border-b border-white/10 pb-1 mb-1 uppercase tracking-wider">{title}</p>
+            {content}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800"></div>
+        </div>
+    </div>
+);
