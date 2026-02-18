@@ -1,7 +1,6 @@
-
 import React from 'react';
 import type { View } from '../../types';
-import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, VideoIcon, WorkflowIcon } from '../../components/Icons';
+import { PuzzleIcon, ArrowRightIcon, BoxIcon, YoutubeIcon, WorkflowIcon } from '../../components/Icons';
 
 interface IntegrationsPageProps {
     onNavigate: (view: View) => void;

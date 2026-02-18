@@ -1,5 +1,3 @@
-
-
 import React, { useState, useCallback, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import type { Transaction, Account, AccountType, Template, ScheduledEvent, TaskCompletions, TransactionType, ReconciliationRule, Counterparty, Category, RawTransaction, User, BusinessProfile, BusinessDocument, TaskItem, SystemSettings, DocumentFolder, BackupConfig, Tag, SavedReport, ChatSession, CustomDateRange, AmazonMetric, AmazonVideo, YouTubeMetric, YouTubeChannel, FinancialGoal, FinancialPlan, View, BusinessNote, Location, RuleCategory, JoinedMetric, ProductJoinerProject } from './types';
 import Sidebar from './components/Sidebar';
@@ -26,7 +24,6 @@ const FinancialPlanPage = lazy(() => import('./views/FinancialPlanPage'));
 const IntegrationsPage = lazy(() => import('./views/IntegrationsPage'));
 const AmazonIntegration = lazy(() => import('./views/integrations/AmazonIntegration'));
 const YouTubeIntegration = lazy(() => import('./views/integrations/YouTubeIntegration'));
-const VideoProductJoiner = lazy(() => import('./views/integrations/VideoProductJoiner'));
 const ProductAsinJoiner = lazy(() => import('./views/integrations/ProductAsinJoiner'));
 
 const APP_INSTANCE_ID = generateUUID();
@@ -115,8 +112,6 @@ const App: React.FC = () => {
             setBusinessNotes((data.businessNotes || []).filter(Boolean));
             setDocumentFolders((data.documentFolders || []).filter(Boolean));
             setBusinessDocuments((data.businessDocuments || []).filter(Boolean));
-            setTemplates((data.templates || []).filter(Boolean));
-            setScheduledEvents((data.scheduledEvents || []).filter(Boolean));
             setTemplates((data.templates || []).filter(Boolean));
             setScheduledEvents((data.scheduledEvents || []).filter(Boolean));
             setTasks((data.tasks || []).filter(Boolean));
@@ -366,7 +361,6 @@ const App: React.FC = () => {
                 </header>
                 <div className="flex-1 overflow-y-auto p-4 md:p-8 relative custom-scrollbar bg-slate-50/50">
                     <Suspense fallback={<ViewLoader />}>
-                        {/* Fix: Passed missing required 'onNavigate' prop to Dashboard component to resolve TypeScript error */}
                         {currentView === 'dashboard' && <Dashboard transactions={transactions} savedReports={savedReports} tasks={tasks} goals={financialGoals} systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)} onNavigate={setCurrentView} categories={categories} counterparties={counterparties} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} financialPlan={financialPlan} accounts={accounts} tags={tags} transactionTypes={transactionTypes} users={users} joinedMetrics={joinedMetrics} productJoinerProjects={productJoinerProjects} />}
                         {currentView === 'import' && <ImportPage transactions={transactions} accounts={accounts} accountTypes={accountTypes} categories={categories} tags={tags} transactionTypes={transactionTypes} rules={rules} counterparties={counterparties} locations={locations} users={users} documentFolders={documentFolders} onTransactionsAdded={handleTransactionsAdded} onAddAccount={(a) => bulkUpdateData('accounts', [a], setAccounts)} onAddAccountType={(t) => bulkUpdateData('accountTypes', [t], setAccountTypes)} onSaveRule={handleSaveRule} onDeleteRule={handleDeleteRule} onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)} onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)} onSaveLocation={(l) => bulkUpdateData('locations', [l], setLocations)} onSaveUser={(u) => bulkUpdateData('users', [u], setUsers)} onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)} onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders)} ruleCategories={ruleCategories} onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories)} onSaveCounterparties={(ps) => bulkUpdateData('counterparties', ps, setCounterparties)} onSaveLocations={(ls) => bulkUpdateData('locations', ls, setLocations)} onSaveCategories={(cs) => bulkUpdateData('categories', cs, setCategories)} onNavigate={setCurrentView} />}
                         {currentView === 'transactions' && <AllTransactions allGlobalTransactions={transactions} accounts={accounts} categories={categories} tags={tags} transactionTypes={transactionTypes} counterparties={counterparties} users={users} onUpdateTransaction={handleUpdateTransaction} onDeleteTransaction={handleDeleteTransaction} onDeleteTransactions={async (ids) => { await api.deleteTransactions(ids); await loadCoreData(false); }} onAddTransaction={(tx) => handleTransactionsAdded([tx])} onSaveRule={handleSaveRule} onSaveCategory={(c) => bulkUpdateData('categories', [c], setCategories)} onSaveCounterparty={(p) => bulkUpdateData('counterparties', [p], setCounterparties)} onSaveTag={(t) => bulkUpdateData('tags', [t], setTags)} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)} onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports)} rules={rules} ruleCategories={ruleCategories} onSaveRuleCategory={(rc) => bulkUpdateData('ruleCategories', [rc], setRuleCategories)} locations={locations} onDeleteRule={handleDeleteRule} />}
@@ -383,7 +377,6 @@ const App: React.FC = () => {
                         {currentView === 'integrations' && <IntegrationsPage onNavigate={setCurrentView} />}
                         {currentView === 'integration-amazon' && <AmazonIntegration metrics={amazonMetrics} onAddMetrics={(m) => bulkUpdateData('amazonMetrics', m, setAmazonMetrics)} onDeleteMetrics={(ids) => { setAmazonMetrics(prev => { const next = prev.filter(m => !ids.includes(m.id)); updateData('amazonMetrics', next, setAmazonMetrics); return next; }); }} videos={amazonVideos} onAddVideos={(v) => bulkUpdateData('amazonVideos', v, setAmazonVideos)} onDeleteVideos={(ids) => { setAmazonVideos(prev => { const next = prev.filter(v => !ids.includes(v.id)); updateData('amazonVideos', next, setAmazonVideos); return next; }); }} />}
                         {currentView === 'integration-youtube' && <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={(m) => bulkUpdateData('youtubeMetrics', m, setYouTubeMetric)} onDeleteMetrics={(ids) => { setYouTubeMetric(prev => { const next = prev.filter(m => !ids.includes(m.id)); updateData('youtubeMetrics', next, setYouTubeMetric); return next; }); }} channels={youtubeChannels} onSaveChannel={(c) => bulkUpdateData('youtubeChannels', [c], setYouTubeChannels)} onDeleteChannel={(id) => { setYouTubeChannels(prev => { const next = prev.filter(c => c.id !== id); updateData('youtubeChannels', next, setYouTubeChannels); return next; }); }} />}
-                        {currentView === 'integration-joiner' && <VideoProductJoiner metrics={joinedMetrics} onSaveMetrics={(m) => updateData('joinedMetrics', m, setJoinedMetrics)} youtubeMetrics={youtubeMetrics} amazonMetrics={amazonMetrics} />}
                         {currentView === 'integration-product-joiner' && <ProductAsinJoiner projects={productJoinerProjects} onUpdateProjects={(p) => updateData('productJoinerProjects', p, setProductJoinerProjects)} />}
                     </Suspense>
                 </div>
