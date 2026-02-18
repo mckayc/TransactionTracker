@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User, JoinedMetric } from '../types';
-// Added ListIcon and DatabaseIcon to fix missing export errors on lines 517 and 625
 import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon, UserGroupIcon, UsersIcon, SearchCircleIcon, HeartIcon, DashboardIcon, ListIcon, DatabaseIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -41,9 +40,10 @@ interface WidgetSlotProps {
     transactionTypes: TransactionType[];
     users: User[];
     joinedMetrics: JoinedMetric[];
+    maxCols: number;
 }
 
-const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users, joinedMetrics }) => {
+const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users, joinedMetrics, maxCols }) => {
     
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
@@ -124,7 +124,9 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
         return null;
     };
 
-    const spanClass = widget.colSpan === 3 ? 'md:col-span-3' : widget.colSpan === 2 ? 'md:col-span-2' : 'md:col-span-1';
+    // Calculate effective span based on dashboard columns
+    const effectiveSpan = Math.min(widget.colSpan, maxCols);
+    const spanClass = effectiveSpan === 4 ? 'md:col-span-4' : effectiveSpan === 3 ? 'md:col-span-3' : effectiveSpan === 2 ? 'md:col-span-2' : 'md:col-span-1';
 
     return (
         <div className={`bg-white rounded-[1.5rem] border border-slate-200 shadow-sm overflow-hidden group flex flex-col h-full transition-all hover:shadow-md ${spanClass} ${isHidden ? 'min-h-[72px] h-auto' : 'min-h-[300px]'}`}>
@@ -479,7 +481,16 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
         { id: 'report', label: 'Report Pivot', icon: <BarChartIcon className="w-4 h-4" /> }
     ];
 
-    const gridColsClass = activeDashboard?.columns === 4 ? 'md:col-span-4' : activeDashboard?.columns === 3 ? 'md:col-span-3' : activeDashboard?.columns === 2 ? 'md:col-span-2' : 'md:col-span-1';
+    // Refined Grid Class Logic for better multi-column support
+    const gridColsClass = useMemo(() => {
+        const cols = activeDashboard?.columns || 3;
+        switch(cols) {
+            case 4: return 'md:grid-cols-2 lg:grid-cols-4';
+            case 3: return 'md:grid-cols-2 lg:grid-cols-3';
+            case 2: return 'md:grid-cols-2';
+            default: return 'grid-cols-1';
+        }
+    }, [activeDashboard?.columns]);
 
     const availableCashflowWidgets = useMemo(() => {
         return widgetLibrary.filter(w => w.type === 'cashflow');
@@ -543,6 +554,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                         transactionTypes={transactionTypes}
                         users={users}
                         joinedMetrics={joinedMetrics}
+                        maxCols={activeDashboard?.columns || 3}
                     />
                 ))}
                 
