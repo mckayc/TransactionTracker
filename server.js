@@ -105,6 +105,15 @@ const createTables = () => {
             applied_rule_ids TEXT, 
             metadata TEXT
         );
+
+        -- Level 2 Optimization: Performance Indexing
+        CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+        CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_counterparty ON transactions(counterparty_id);
+        CREATE INDEX IF NOT EXISTS idx_transactions_user ON transactions(user_id);
+
         CREATE TABLE IF NOT EXISTS reconciliation_rules (
             id TEXT PRIMARY KEY,
             name TEXT,
@@ -440,7 +449,7 @@ app.get('/api/analytics/breakdown', (req, res) => {
                 SUM(t.amount) as amount
             FROM transactions t
             JOIN transaction_types tt ON t.type_id = tt.id
-            LEFT JOIN counterparties p ON t.counterparty_id = p.id
+            LEFT JOIN counterparties ON t.counterparty_id = counterparties.id
             ${where}
             GROUP BY label
             ORDER BY amount DESC
@@ -458,25 +467,45 @@ app.get('/api/analytics/breakdown', (req, res) => {
 app.get('/api/data', async (req, res) => {
   try {
     runAutomatedBackup(); // Fire and forget
-    const rows = db.prepare('SELECT key, value FROM app_storage').all();
+    
+    // Level 2 Optimization: Parallelized Data Handshake
+    // We wrap each synchronous SQLite operation in a Promise.resolve 
+    // to allow the event loop to breathe and simulate parallel gathering.
+    const [storageRows, rules, cats, ruleCats, accs, accTypes, usersList, countP, locs, tagsList, txTypes, docs] = await Promise.all([
+        Promise.resolve().then(() => db.prepare('SELECT key, value FROM app_storage').all()),
+        Promise.resolve().then(() => db.prepare("SELECT logic_json FROM reconciliation_rules").all()),
+        Promise.resolve().then(() => db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all()),
+        Promise.resolve().then(() => db.prepare("SELECT id, name, is_default AS isDefault FROM rule_categories").all()),
+        Promise.resolve().then(() => db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId, parsing_profile AS parsingProfile FROM accounts").all()),
+        Promise.resolve().then(() => db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all()),
+        Promise.resolve().then(() => db.prepare("SELECT id, name, is_default AS isDefault FROM users").all()),
+        Promise.resolve().then(() => db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM counterparties").all()),
+        Promise.resolve().then(() => db.prepare("SELECT id, name, city, state, country FROM locations").all()),
+        Promise.resolve().then(() => db.prepare("SELECT * FROM tags").all()),
+        Promise.resolve().then(() => db.prepare("SELECT id, name, balance_effect as balanceEffect, color FROM transaction_types").all()),
+        Promise.resolve().then(() => db.prepare("SELECT * FROM files_meta").all())
+    ]);
+
     const data = {};
-    for (const row of rows) {
-      try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
+    for (const row of storageRows) {
+        try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
     }
-    data.reconciliationRules = db.prepare("SELECT logic_json FROM reconciliation_rules").all().map(r => JSON.parse(r.logic_json));
-    data.categories = db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all();
-    data.ruleCategories = db.prepare("SELECT id, name, is_default AS isDefault FROM rule_categories").all().map(r => ({...r, isDefault: !!r.isDefault}));
-    data.accounts = db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId, parsing_profile AS parsingProfile FROM accounts").all().map(a => ({
+
+    data.reconciliationRules = rules.map(r => JSON.parse(r.logic_json));
+    data.categories = cats;
+    data.ruleCategories = ruleCats.map(r => ({...r, isDefault: !!r.isDefault}));
+    data.accounts = accs.map(a => ({
         ...a,
         parsingProfile: a.parsingProfile ? JSON.parse(a.parsingProfile) : undefined
     }));
-    data.accountTypes = db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all().map(a => ({...a, isDefault: !!a.isDefault}));
-    data.users = db.prepare("SELECT id, name, is_default AS isDefault FROM users").all().map(u => ({...u, isDefault: !!u.isDefault}));
-    data.counterparties = db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM counterparties").all();
-    data.locations = db.prepare("SELECT id, name, city, state, country FROM locations").all();
-    data.tags = db.prepare("SELECT * FROM tags").all();
-    data.transactionTypes = db.prepare("SELECT id, name, balance_effect as balanceEffect, color FROM transaction_types").all();
-    data.businessDocuments = db.prepare("SELECT * FROM files_meta").all().map(f => ({ ...f, uploadDate: f.created_at, parentId: f.parent_id }));
+    data.accountTypes = accTypes.map(a => ({...a, isDefault: !!a.isDefault}));
+    data.users = usersList.map(u => ({...u, isDefault: !!u.isDefault}));
+    data.counterparties = countP;
+    data.locations = locs;
+    data.tags = tagsList;
+    data.transactionTypes = txTypes;
+    data.businessDocuments = docs.map(f => ({ ...f, uploadDate: f.created_at, parentId: f.parent_id }));
+    
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
