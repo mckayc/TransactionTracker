@@ -1,9 +1,10 @@
 
-import React, { useMemo } from 'react';
-import type { Transaction, DashboardWidget, Category, Counterparty, Account, TransactionType, Tag } from '../../types';
+import React, { useMemo, useState } from 'react';
+// Added User type to imports to support TransactionTable requirements
+import type { Transaction, DashboardWidget, Category, Counterparty, Account, TransactionType, Tag, User } from '../../types';
 import { parseISOLocal } from '../../dateUtils';
-// Added missing CheckCircleIcon to the import list from '../Icons'
-import { ArrowUpIcon, ArrowDownIcon, ExclamationTriangleIcon, RepeatIcon, CheckCircleIcon } from '../Icons';
+import { ArrowUpIcon, ArrowDownIcon, ExclamationTriangleIcon, RepeatIcon, CheckCircleIcon, CloseIcon, TableIcon, InfoIcon } from '../Icons';
+import TransactionTable from '../TransactionTable';
 
 interface Props {
     widget: DashboardWidget;
@@ -14,11 +15,14 @@ interface Props {
     accounts: Account[];
     transactionTypes: TransactionType[];
     tags: Tag[];
+    // Added users prop to Props interface
+    users: User[];
 }
 
-const formatCurrency = (val: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
-
-export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transactions, categories, counterparties, accounts, transactionTypes, tags }) => {
+// Added users to component destructuring to fix line 276 and 313 "Cannot find name 'users'"
+export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transactions, categories, counterparties, accounts, transactionTypes, tags, users }) => {
+    const [inspectingItem, setInspectingItem] = useState<any | null>(null);
+    
     const config = widget.config;
     const baseId = config?.comparisonBaseId;
     const targetId = config?.comparisonTargetId;
@@ -50,10 +54,11 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
         const e = new Date(now); e.setHours(23,59,59,999);
 
         if (period === 'month') { 
-            startOfMonth(s);
-            s.setMonth(s.getMonth() - lookback); 
-            e.setTime(s.getTime()); 
-            e.setMonth(e.getMonth() + 1, 0); 
+            const d = new Date(now);
+            d.setDate(1);
+            d.setMonth(d.getMonth() - lookback);
+            s.setTime(d.getTime());
+            e.setTime(new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999).getTime());
         }
         else if (period === 'year') { 
             const targetYear = now.getFullYear() - lookback;
@@ -108,25 +113,17 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
         });
     };
 
-    // Helper for date normalization
-    function startOfMonth(date: Date) {
-        date.setDate(1);
-        date.setHours(0, 0, 0, 0);
-        return date;
-    }
-
     const comparisonData = useMemo(() => {
         if (!baseWidget || !targetWidget) return null;
         const baseTxs = getFilteredTransactions(baseWidget);
         const targetTxs = getFilteredTransactions(targetWidget);
         const dimension = baseWidget.config?.displayDataType || 'type';
         
-        // Capture hidden state from both source modules
         const baseHidden = new Set(baseWidget.config?.hiddenDataIds || []);
         const targetHidden = new Set(targetWidget.config?.hiddenDataIds || []);
 
         const aggregate = (txs: Transaction[]) => {
-            const map = new Map<string, { label: string, total: number }>();
+            const map = new Map<string, { label: string, total: number, txs: Transaction[] }>();
             txs.forEach(tx => {
                 const keys: { id: string, label: string }[] = [];
                 
@@ -145,8 +142,9 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
                 }
                 
                 keys.forEach(k => {
-                    if (!map.has(k.id)) map.set(k.id, { label: k.label, total: 0 });
+                    if (!map.has(k.id)) map.set(k.id, { label: k.label, total: 0, txs: [] });
                     map.get(k.id)!.total += tx.amount;
+                    map.get(k.id)!.txs.push(tx);
                 });
             });
             return map;
@@ -157,20 +155,23 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
         const allKeys = new Set([...baseMap.keys(), ...targetMap.keys()]);
 
         return Array.from(allKeys).map(key => {
-            const bVal = baseMap.get(key)?.total || 0;
-            const tVal = targetMap.get(key)?.total || 0;
+            const b = baseMap.get(key);
+            const t = targetMap.get(key);
+            const bVal = b?.total || 0;
+            const tVal = t?.total || 0;
             const diff = tVal - bVal;
             return { 
                 id: key, 
-                label: targetMap.get(key)?.label || baseMap.get(key)?.label || 'Unknown', 
+                label: t?.label || b?.label || 'Unknown', 
                 baseVal: bVal, 
-                targetVal: tVal, 
+                targetVal: tVal,
+                baseTransactions: b?.txs || [],
+                targetTransactions: t?.txs || [],
                 diff, 
                 pct: bVal !== 0 ? (diff / Math.abs(bVal)) * 100 : (tVal !== 0 ? 100 : 0) 
             };
         })
         .filter(d => Math.abs(d.diff) > 0.01)
-        // CRITICAL FIX: Filter out IDs that are hidden in either source widget
         .filter(d => !baseHidden.has(d.id) && !targetHidden.has(d.id))
         .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
     }, [baseWidget, targetWidget, transactions, categories, counterparties, accounts, transactionTypes, tags]);
@@ -205,10 +206,14 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
                     const maxDiff = Math.max(...comparisonData.map(d => Math.abs(d.diff)), 1);
                     const barWidth = (Math.abs(item.diff) / maxDiff) * 100;
                     return (
-                        <div key={item.id} className="space-y-1.5 p-2 hover:bg-slate-50 rounded-xl transition-all group">
+                        <div 
+                            key={item.id} 
+                            onClick={() => setInspectingItem(item)}
+                            className="space-y-1.5 p-2 hover:bg-indigo-50/50 rounded-xl transition-all group cursor-pointer"
+                        >
                             <div className="flex justify-between items-start">
                                 <div className="min-w-0 flex-1">
-                                    <p className="text-xs font-bold text-slate-700 truncate">{item.label}</p>
+                                    <p className="text-xs font-bold text-slate-700 truncate group-hover:text-indigo-600 transition-colors">{item.label}</p>
                                     <p className="text-[9px] text-slate-400 font-medium">{formatCurrency(item.baseVal)} &rarr; {formatCurrency(item.targetVal)}</p>
                                 </div>
                                 <div className="text-right">
@@ -231,12 +236,114 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
                 })}
                 {comparisonData?.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-12 text-slate-300 italic opacity-50">
-                        {/* Fixed: CheckCircleIcon is now correctly imported from '../Icons' */}
                         <CheckCircleIcon className="w-10 h-10 mb-2" />
                         <p className="text-xs">No variance detected in visible data.</p>
                     </div>
                 )}
             </div>
+
+            {/* AUDIT DRILL-DOWN MODAL */}
+            {inspectingItem && (
+                <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 md:p-10 bg-slate-900/60 backdrop-blur-sm" onClick={() => setInspectingItem(null)}>
+                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-7xl h-full flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-8 border-b bg-slate-50 flex justify-between items-center shrink-0">
+                            <div className="flex items-center gap-4">
+                                <div className="p-4 bg-indigo-600 rounded-3xl text-white shadow-xl shadow-indigo-100"><TableIcon className="w-8 h-8" /></div>
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-800 tracking-tight">Audit Drill-down: {inspectingItem.label}</h3>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Comparing contributing transactions across logical windows</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setInspectingItem(null)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><CloseIcon className="w-8 h-8 text-slate-400" /></button>
+                        </div>
+
+                        <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden divide-x divide-slate-100">
+                            {/* BASE PERIOD SIDE */}
+                            <div className="flex-1 flex flex-col min-h-0 bg-white">
+                                <header className="p-6 bg-slate-50/50 border-b border-slate-100 flex justify-between items-end">
+                                    <div>
+                                        <h4 className="text-sm font-black text-slate-500 uppercase tracking-widest mb-1">Period A (Base)</h4>
+                                        <p className="text-3xl font-black text-slate-800">{formatCurrency(inspectingItem.baseVal)}</p>
+                                    </div>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">{inspectingItem.baseTransactions.length} Records</p>
+                                </header>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                    <TransactionTable 
+                                        transactions={inspectingItem.baseTransactions}
+                                        accounts={accounts}
+                                        categories={categories}
+                                        tags={tags}
+                                        transactionTypes={transactionTypes}
+                                        counterparties={counterparties}
+                                        users={users}
+                                        onUpdateTransaction={() => {}}
+                                        onDeleteTransaction={() => {}}
+                                        visibleColumns={new Set(['date', 'description', 'account', 'amount'])}
+                                    />
+                                    {inspectingItem.baseTransactions.length === 0 && (
+                                        <div className="p-20 text-center text-slate-300 italic flex flex-col items-center">
+                                            <CloseIcon className="w-12 h-12 mb-2 opacity-10" />
+                                            <p className="text-xs uppercase font-black">No transactions found</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* TARGET PERIOD SIDE */}
+                            <div className="flex-1 flex flex-col min-h-0 bg-white">
+                                <header className="p-6 bg-indigo-50/30 border-b border-slate-100 flex justify-between items-end">
+                                    <div>
+                                        <h4 className="text-sm font-black text-indigo-600 uppercase tracking-widest mb-1">Period B (Compare)</h4>
+                                        <p className="text-3xl font-black text-slate-800">{formatCurrency(inspectingItem.targetVal)}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className={`text-sm font-black flex items-center justify-end gap-1 ${inspectingItem.diff > 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                            {inspectingItem.diff > 0 ? <ArrowUpIcon className="w-4 h-4" /> : <ArrowDownIcon className="w-4 h-4" />}
+                                            {formatCurrency(Math.abs(inspectingItem.diff))} Var
+                                        </p>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase">{inspectingItem.targetTransactions.length} Records</p>
+                                    </div>
+                                </header>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                                    <TransactionTable 
+                                        transactions={inspectingItem.targetTransactions}
+                                        accounts={accounts}
+                                        categories={categories}
+                                        tags={tags}
+                                        transactionTypes={transactionTypes}
+                                        counterparties={counterparties}
+                                        users={users}
+                                        onUpdateTransaction={() => {}}
+                                        onDeleteTransaction={() => {}}
+                                        visibleColumns={new Set(['date', 'description', 'account', 'amount'])}
+                                    />
+                                    {inspectingItem.targetTransactions.length === 0 && (
+                                        <div className="p-20 text-center text-slate-300 italic flex flex-col items-center">
+                                            <CloseIcon className="w-12 h-12 mb-2 opacity-10" />
+                                            <p className="text-xs uppercase font-black">No transactions found</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-8 border-t bg-slate-50 flex flex-col md:flex-row justify-between items-center gap-6 shrink-0">
+                            <div className="flex items-start gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm max-w-xl">
+                                <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600"><InfoIcon className="w-5 h-5" /></div>
+                                <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                                    If you see transactions here that aren't in your main dashboard modules, check if the <strong>Lookback Period</strong> or <strong>Date Filter</strong> on the source modules is configured differently. Audit drill-downs use the specific filters of the modules they link to.
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setInspectingItem(null)} 
+                                className="px-12 py-4 bg-slate-900 text-white font-black rounded-2xl uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all"
+                            >
+                                Dismiss Audit
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
