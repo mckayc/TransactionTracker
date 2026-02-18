@@ -48,7 +48,7 @@ const IntegrationsPage: React.FC<IntegrationsPageProps> = ({ onNavigate }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <IntegrationCard 
                     title="Product & ASIN Joiner" 
-                    description="The ultimate content ROI workspace. Link YouTube performance data with Amazon onsite, offsite, and Creator Connection revenue in isolated project batches."
+                    description="The ultimate content ROI workspace. Create isolated project batches to link YouTube performance with Amazon onsite, offsite, and Creator Connection revenue."
                     icon={<WorkflowIcon className="w-8 h-8" />}
                     status="active"
                     variant="primary"
