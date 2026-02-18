@@ -279,6 +279,7 @@ export interface DashboardLayout {
     name: string;
     columns: 1 | 2 | 3 | 4;
     widgets: DashboardWidget[];
+    isFavorite?: boolean;
 }
 
 export interface AiConfig {

@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User, JoinedMetric } from '../types';
-import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon, UserGroupIcon, UsersIcon } from '../components/Icons';
+// Added ListIcon and DatabaseIcon to fix missing export errors on lines 517 and 625
+import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon, UserGroupIcon, UsersIcon, SearchCircleIcon, HeartIcon, DashboardIcon, ListIcon, DatabaseIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
 import MultiSelect from '../components/MultiSelect';
@@ -174,6 +175,8 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users, joinedMetrics }) => {
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
     const [isCreatingDashboard, setIsCreatingDashboard] = useState(false);
+    const [isHubOpen, setIsHubOpen] = useState(false);
+    const [hubSearch, setHubSearch] = useState('');
     const [newDashboardName, setNewDashboardName] = useState('');
     const [newDashboardCols, setNewDashboardCols] = useState<1 | 2 | 3 | 4>(3);
     
@@ -216,7 +219,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                 id: 'dash_default',
                 name: 'Overview',
                 columns: 3,
-                widgets: systemSettings.dashboardWidgets || []
+                widgets: systemSettings.dashboardWidgets || [],
+                isFavorite: true
             };
             return [defaultDash];
         }
@@ -227,32 +231,34 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
     const activeDashboard = useMemo(() => dashboards.find(d => d.id === activeDashboardId) || dashboards[0], [dashboards, activeDashboardId]);
     const widgets = activeDashboard?.widgets || [];
 
+    const filteredDashboards = useMemo(() => {
+        const q = hubSearch.toLowerCase();
+        return dashboards.filter(d => d.name.toLowerCase().includes(q));
+    }, [dashboards, hubSearch]);
+
+    const favoriteDashboards = useMemo(() => dashboards.filter(d => d.isFavorite), [dashboards]);
+
     /**
      * DASHBOARD JIT ANALYTICAL FETCH
-     * Scans active widgets to determine the required historical reach.
      */
     useEffect(() => {
         const loadDashboardHistory = async () => {
             if (widgets.length === 0) return;
-            
-            // Calculate earliest date required across all widgets
             const now = new Date();
             let earliestDate = new Date(now);
-            earliestDate.setMonth(now.getMonth() - 2); // Default padding
+            earliestDate.setMonth(now.getMonth() - 2);
 
             widgets.forEach(w => {
                 if (w.config?.period && w.config.lookback !== undefined) {
                     const d = new Date(now);
-                    const lookback = w.config.lookback + (w.type === 'comparison' ? 12 : 0); // Comparisons usually need last year
+                    const lookback = w.config.lookback + (w.type === 'comparison' ? 12 : 0);
                     if (w.config.period === 'month') d.setMonth(d.getMonth() - lookback);
                     else if (w.config.period === 'year') d.setFullYear(d.getFullYear() - lookback);
                     else if (w.config.period === 'week') d.setDate(d.getDate() - (lookback * 7));
-                    
                     if (d < earliestDate) earliestDate = d;
                 }
             });
 
-            // Ensure we at least have current year + previous year for comparison stability
             const safetyBuffer = new Date(now.getFullYear() - 1, 0, 1);
             if (safetyBuffer < earliestDate) earliestDate = safetyBuffer;
 
@@ -260,7 +266,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
             try {
                 const response = await api.getTransactions({
                     startDate: formatDate(earliestDate),
-                    limit: 10000 // Upper bound for analytical performance
+                    limit: 10000
                 });
                 setScopedTransactions(response.data);
             } catch (e) {
@@ -273,7 +279,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
         loadDashboardHistory();
     }, [activeDashboardId, widgets.length, globalRecentTransactions.length]);
 
-    // Use merged transactions for widgets so they see both global cache and JIT history
     const combinedTransactions = useMemo(() => {
         const map = new Map<string, Transaction>();
         scopedTransactions.forEach(t => map.set(t.id, t));
@@ -442,7 +447,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
             id: generateUUID(),
             name: newDashboardName.trim(),
             columns: newDashboardCols,
-            widgets: []
+            widgets: [],
+            isFavorite: false
         };
         onUpdateSystemSettings({
             ...systemSettings,
@@ -451,6 +457,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
         });
         setNewDashboardName('');
         setIsCreatingDashboard(false);
+    };
+
+    const toggleFavorite = (e: React.MouseEvent, dashId: string) => {
+        e.stopPropagation();
+        const next = dashboards.map(d => d.id === dashId ? { ...d, isFavorite: !d.isFavorite } : d);
+        onUpdateSystemSettings({ ...systemSettings, dashboards: next });
     };
 
     const BLUEPRINT_OPTIONS = [
@@ -467,7 +479,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
         { id: 'report', label: 'Report Pivot', icon: <BarChartIcon className="w-4 h-4" /> }
     ];
 
-    const gridColsClass = activeDashboard?.columns === 4 ? 'md:grid-cols-4' : activeDashboard?.columns === 3 ? 'md:grid-cols-3' : activeDashboard?.columns === 2 ? 'md:grid-cols-2' : 'md:grid-cols-1';
+    const gridColsClass = activeDashboard?.columns === 4 ? 'md:col-span-4' : activeDashboard?.columns === 3 ? 'md:col-span-3' : activeDashboard?.columns === 2 ? 'md:col-span-2' : 'md:col-span-1';
 
     const availableCashflowWidgets = useMemo(() => {
         return widgetLibrary.filter(w => w.type === 'cashflow');
@@ -476,39 +488,35 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
     return (
         <div className="space-y-6 pb-20 max-w-7xl mx-auto">
             
-            {/* Analytical Context Loading Indicator */}
             {isHistoryLoading && (
                 <div className="fixed top-0 left-0 right-0 h-1 bg-indigo-50 z-[100] overflow-hidden">
                     <div className="h-full bg-indigo-600 animate-progress-indeterminate shadow-[0_0_8px_rgba(79,70,229,0.5)]" />
                 </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-2 p-1 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-x-auto no-scrollbar flex-shrink-0">
-                {dashboards.map(d => (
-                    <div key={d.id} className="flex items-center group relative">
-                        <button 
-                            onClick={() => onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id })}
-                            className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeDashboardId === d.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}
-                        >
-                            {d.name}
-                        </button>
-                        {dashboards.length > 1 && (
-                            <button 
-                                onClick={() => handleDeleteDashboard(d.id)}
-                                className="absolute -top-1 -right-1 p-1 bg-white border border-slate-200 text-red-500 rounded-full shadow-md opacity-0 group-hover:opacity-100 transition-all hover:bg-red-50"
-                            >
-                                <CloseIcon className="w-3 h-3" />
-                            </button>
-                        )}
+            {/* NEW BREADCRUMB COMMAND HEADER */}
+            <div className="flex justify-between items-center bg-white p-4 rounded-3xl border border-slate-200 shadow-sm flex-shrink-0">
+                <div className="flex items-center gap-3">
+                    <button 
+                        onClick={() => setIsHubOpen(true)}
+                        className="flex items-center gap-3 px-6 py-2.5 bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-95 group"
+                    >
+                        <DashboardIcon className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                        <div className="flex flex-col items-start leading-none">
+                            <span className="text-[10px] text-indigo-200 uppercase tracking-widest font-black">Viewing Dashboard</span>
+                            <span className="text-sm tracking-tight">{activeDashboard?.name}</span>
+                        </div>
+                        <ChevronDownIcon className="w-4 h-4 ml-2 opacity-50" />
+                    </button>
+                    <div className="hidden sm:flex items-center gap-2 text-slate-300 ml-2">
+                        <div className="w-1 h-1 rounded-full bg-slate-200" />
+                        <span className="text-[10px] font-black uppercase tracking-widest">{widgets.length} Modules Active</span>
                     </div>
-                ))}
-                <button 
-                    onClick={() => setIsCreatingDashboard(true)}
-                    className="p-2.5 rounded-xl text-indigo-600 hover:bg-indigo-50 transition-all border-2 border-dashed border-indigo-100"
-                    title="Construct View"
-                >
-                    <AddIcon className="w-5 h-5" />
-                </button>
+                </div>
+                <div className="flex gap-2">
+                    <button onClick={() => setIsCreatingDashboard(true)} className="p-2.5 rounded-2xl text-slate-500 hover:bg-slate-100 transition-all" title="New View"><AddIcon className="w-5 h-5" /></button>
+                    <button onClick={() => setIsHubOpen(true)} className="p-2.5 rounded-2xl text-slate-500 hover:bg-slate-100 transition-all" title="Dashboards Hub"><ListIcon className="w-5 h-5" /></button>
+                </div>
             </div>
 
             <div className={`grid grid-cols-1 ${gridColsClass} gap-6 auto-rows-min`}>
@@ -549,8 +557,112 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                 </button>
             </div>
 
+            {/* DASHBOARD COMMAND HUB (GRID VIEW) */}
+            {isHubOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[150] flex items-center justify-center p-4 md:p-10">
+                    <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-6xl h-full flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+                        <div className="p-8 border-b bg-slate-50 flex flex-col md:flex-row justify-between items-center gap-6">
+                            <div className="flex items-center gap-4">
+                                <div className="p-4 bg-indigo-600 rounded-3xl text-white shadow-xl shadow-indigo-100"><DashboardIcon className="w-8 h-8" /></div>
+                                <div>
+                                    <h3 className="text-3xl font-black text-slate-800 tracking-tight">Institutional Registry</h3>
+                                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">Dashboard Management & Selection</p>
+                                </div>
+                            </div>
+                            <div className="flex-1 max-w-md w-full relative">
+                                <input 
+                                    type="text" 
+                                    placeholder="Search dashboards..." 
+                                    value={hubSearch}
+                                    onChange={e => setHubSearch(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-4 bg-white border-2 border-slate-200 rounded-[2rem] focus:border-indigo-500 outline-none font-bold shadow-inner"
+                                />
+                                <SearchCircleIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-6 h-6 text-slate-300" />
+                            </div>
+                            <div className="flex gap-3">
+                                <button onClick={() => setIsCreatingDashboard(true)} className="px-8 py-4 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2 active:scale-95"><AddIcon className="w-5 h-5"/> Create View</button>
+                                <button onClick={() => setIsHubOpen(false)} className="p-4 text-slate-400 hover:bg-slate-200 rounded-2xl transition-colors"><CloseIcon className="w-6 h-6"/></button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto p-10 custom-scrollbar bg-white">
+                            {favoriteDashboards.length > 0 && !hubSearch && (
+                                <div className="mb-12">
+                                    <h4 className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-6 ml-1 flex items-center gap-2"><HeartIcon className="w-3.5 h-3.5" /> High Priority Views</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {favoriteDashboards.map(d => (
+                                            <div 
+                                                key={d.id} 
+                                                onClick={() => { onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id }); setIsHubOpen(false); }}
+                                                className={`group p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between min-h-[160px] ${activeDashboardId === d.id ? 'bg-indigo-50 border-indigo-500 ring-4 ring-indigo-50 shadow-xl' : 'bg-white border-slate-100 hover:border-indigo-300 hover:shadow-md'}`}
+                                            >
+                                                <div className="flex justify-between items-start z-10">
+                                                    <div className="min-w-0 flex-1">
+                                                        <h5 className={`text-lg font-black truncate pr-4 ${activeDashboardId === d.id ? 'text-indigo-900' : 'text-slate-800'}`}>{d.name}</h5>
+                                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{d.widgets.length} Modules Registered</p>
+                                                    </div>
+                                                    <button onClick={(e) => toggleFavorite(e, d.id)} className={`p-2 rounded-xl transition-all ${d.isFavorite ? 'text-indigo-600 bg-white shadow-sm' : 'text-slate-300 hover:text-indigo-600'}`}><HeartIcon className="w-5 h-5" /></button>
+                                                </div>
+                                                <div className="flex justify-between items-center z-10 pt-4">
+                                                    <div className="flex gap-1">
+                                                        {d.widgets.slice(0, 3).map((w, idx) => (
+                                                            <div key={idx} className="w-6 h-6 rounded-lg bg-slate-200/50 flex items-center justify-center text-[8px] font-black text-slate-400 border border-white" title={w.type}>{w.type.charAt(0).toUpperCase()}</div>
+                                                        ))}
+                                                        {d.widgets.length > 3 && <div className="text-[8px] font-black text-slate-300 self-center">+{d.widgets.length - 3}</div>}
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteDashboard(d.id); }} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"><TrashIcon className="w-4 h-4" /></button>
+                                                        <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${activeDashboardId === d.id ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600'}`}>Select View</span>
+                                                    </div>
+                                                </div>
+                                                <DashboardIcon className="absolute -right-6 -bottom-6 w-32 h-32 opacity-[0.02] pointer-events-none" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <div>
+                                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6 ml-1 flex items-center gap-2"><DatabaseIcon className="w-3.5 h-3.5" /> Global Asset Library</h4>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {filteredDashboards.filter(d => hubSearch || !d.isFavorite).map(d => (
+                                        <div 
+                                            key={d.id} 
+                                            onClick={() => { onUpdateSystemSettings({ ...systemSettings, activeDashboardId: d.id }); setIsHubOpen(false); }}
+                                            className={`group p-6 rounded-[2.5rem] border-2 transition-all cursor-pointer relative overflow-hidden flex flex-col justify-between min-h-[160px] ${activeDashboardId === d.id ? 'bg-indigo-50 border-indigo-500 shadow-xl' : 'bg-white border-slate-100 hover:border-indigo-300 hover:shadow-md'}`}
+                                        >
+                                            <div className="flex justify-between items-start z-10">
+                                                <div className="min-w-0 flex-1">
+                                                    <h5 className={`text-lg font-black truncate pr-4 ${activeDashboardId === d.id ? 'text-indigo-900' : 'text-slate-800'}`}>{d.name}</h5>
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">{d.widgets.length} Modules</p>
+                                                </div>
+                                                <button onClick={(e) => toggleFavorite(e, d.id)} className={`p-2 rounded-xl transition-all ${d.isFavorite ? 'text-indigo-600 bg-white shadow-sm' : 'text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100'}`}><HeartIcon className="w-5 h-5" /></button>
+                                            </div>
+                                            <div className="flex justify-between items-center z-10 pt-4">
+                                                <div className="text-[10px] font-mono text-slate-400">{d.columns} Column Grid</div>
+                                                <div className="flex gap-2">
+                                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteDashboard(d.id); }} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all opacity-0 group-hover:opacity-100"><TrashIcon className="w-4 h-4" /></button>
+                                                    <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all ${activeDashboardId === d.id ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-100 text-slate-500 group-hover:bg-indigo-100 group-hover:text-indigo-600'}`}>Select</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <button 
+                                        onClick={() => setIsCreatingDashboard(true)}
+                                        className="p-6 rounded-[2.5rem] border-4 border-dashed border-slate-100 bg-slate-50/30 flex flex-col items-center justify-center gap-3 group hover:border-indigo-200 hover:bg-white transition-all min-h-[160px]"
+                                    >
+                                        <div className="p-3 bg-white rounded-2xl shadow-sm text-slate-300 group-hover:bg-indigo-600 group-hover:text-white transition-all"><AddIcon className="w-6 h-6"/></div>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-indigo-600">Register New View</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {isCreatingDashboard && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-8 animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-xl font-black text-slate-800">Construct View</h3>
@@ -563,7 +675,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                                     type="text" 
                                     value={newDashboardName} 
                                     onChange={e => setNewDashboardName(e.target.value)} 
-                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none mt-1" 
+                                    className="w-full p-4 border-2 border-slate-100 rounded-2xl font-bold focus:border-indigo-500 outline-none mt-1 shadow-inner" 
                                     placeholder="e.g. ROI Breakdown"
                                     autoFocus
                                 />
@@ -592,7 +704,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
             )}
 
             {isConfiguring && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setIsConfiguring(null)}>
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[160] flex items-center justify-center p-4" onClick={() => setIsConfiguring(null)}>
                     <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-5xl h-[90vh] overflow-hidden flex flex-col animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-8 border-b flex justify-between items-center bg-slate-50 flex-shrink-0">
                             <div>
