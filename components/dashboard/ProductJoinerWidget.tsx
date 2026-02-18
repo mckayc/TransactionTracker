@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import type { ProductJoinerProject, DashboardWidget } from '../../types';
+import type { ProductJoinerProject, DashboardWidget, View } from '../../types';
 import { WorkflowIcon, TrendingUpIcon, ArrowRightIcon, ExclamationTriangleIcon } from '../Icons';
 
 const formatCurrency = (amount: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
@@ -9,9 +9,10 @@ const formatNumber = (val: number) => new Intl.NumberFormat('en-US', { notation:
 interface Props {
     projects: ProductJoinerProject[];
     config: DashboardWidget['config'];
+    onNavigate: (view: View) => void;
 }
 
-export const ProductJoinerWidget: React.FC<Props> = ({ projects, config }) => {
+export const ProductJoinerWidget: React.FC<Props> = ({ projects, config, onNavigate }) => {
     const project = projects.find(p => p.id === config?.projectId);
     const limit = config?.videoCount || 5;
 
@@ -50,18 +51,12 @@ export const ProductJoinerWidget: React.FC<Props> = ({ projects, config }) => {
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Logic Batch</span>
                     <span className="text-[10px] font-bold text-indigo-600 truncate max-w-[150px]">{project.name}</span>
                 </div>
-                <a 
-                    href="/integration-product-joiner" 
-                    onClick={(e) => {
-                        // This relies on the App routing being handled via state, 
-                        // so we just let the parent know we want to navigate if using a router.
-                        // Since we're in a single-file-like state app, we'll assume standard navigation 
-                        // might need a prop, but for now we provide a nice UI link.
-                    }}
+                <button 
+                    onClick={() => onNavigate('integration-product-joiner')}
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[9px] font-black uppercase text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm"
                 >
                     Workspace <ArrowRightIcon className="w-3 h-3" />
-                </a>
+                </button>
             </div>
             
             <div className="flex-1 p-4 space-y-3 overflow-y-auto custom-scrollbar">

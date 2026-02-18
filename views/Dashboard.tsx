@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User, JoinedMetric, ProductJoinerProject } from '../types';
+import type { Transaction, SavedReport, TaskItem, FinancialGoal, SystemSettings, DashboardWidget, Category, AmazonMetric, YouTubeMetric, FinancialPlan, DashboardLayout, Counterparty, Account, Tag, TransactionType, User, JoinedMetric, ProductJoinerProject, View } from '../types';
 import { AddIcon, SettingsIcon, CloseIcon, ChartPieIcon, ChecklistIcon, LightBulbIcon, TrendingUpIcon, ChevronLeftIcon, ChevronRightIcon, BoxIcon, YoutubeIcon, DollarSign, SparklesIcon, ShieldCheckIcon, CalendarIcon, RobotIcon, BarChartIcon, InfoIcon, TrashIcon, CheckCircleIcon, ChevronDownIcon, RepeatIcon, EyeIcon, EyeSlashIcon, VideoIcon, UserGroupIcon, UsersIcon, SearchCircleIcon, HeartIcon, DashboardIcon, ListIcon, DatabaseIcon, WorkflowIcon } from '../components/Icons';
 import { generateUUID } from '../utils';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -27,6 +27,7 @@ interface WidgetSlotProps {
     onConfigure: () => void;
     onDelete: () => void;
     onUpdateConfig: (newConfig: DashboardWidget['config']) => void;
+    onNavigate: (view: View) => void;
     savedReports: SavedReport[];
     transactions: Transaction[];
     tasks: TaskItem[];
@@ -45,7 +46,7 @@ interface WidgetSlotProps {
     maxCols: number;
 }
 
-const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users, joinedMetrics, productJoinerProjects, maxCols }) => {
+const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, onConfigure, onDelete, onUpdateConfig, onNavigate, savedReports, transactions, tasks, goals, categories, amazonMetrics, youtubeMetrics, financialPlan, counterparties, accounts, tags, transactionTypes, users, joinedMetrics, productJoinerProjects, maxCols }) => {
     
     const COMPONENT_IDENTITY_MAP: Record<string, { icon: React.ReactNode, label: string }> = {
         'cashflow': { icon: <DollarSign className="w-4 h-4" />, label: 'Cash Flow' },
@@ -119,7 +120,7 @@ const WidgetSlot: React.FC<WidgetSlotProps> = ({ widget, allWidgets, onRemove, o
             />
         );
         if (widget.type === 'video_earnings') return <VideoEarningsWidget metrics={joinedMetrics} config={widget.config} />;
-        if (widget.type === 'product_joiner') return <ProductJoinerWidget projects={productJoinerProjects} config={widget.config} />;
+        if (widget.type === 'product_joiner') return <ProductJoinerWidget projects={productJoinerProjects} config={widget.config} onNavigate={onNavigate} />;
         if (widget.type === 'top_expenses') return <TopExpensesWidget transactions={transactions} categories={categories} />;
         if (widget.type === 'amazon_summary') return <AmazonSummaryWidget metrics={amazonMetrics} />;
         if (widget.type === 'youtube_summary') return <YouTubeSummaryWidget metrics={youtubeMetrics} />;
@@ -166,6 +167,7 @@ interface DashboardProps {
     goals: FinancialGoal[];
     systemSettings: SystemSettings;
     onUpdateSystemSettings: (settings: SystemSettings) => void;
+    onNavigate: (view: View) => void;
     categories: Category[];
     counterparties: Counterparty[];
     amazonMetrics: AmazonMetric[];
@@ -179,7 +181,7 @@ interface DashboardProps {
     productJoinerProjects: ProductJoinerProject[];
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users, joinedMetrics, productJoinerProjects }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransactions, savedReports, tasks, goals, systemSettings, onUpdateSystemSettings, onNavigate, categories, counterparties, amazonMetrics, youtubeMetrics, financialPlan, accounts, tags, transactionTypes, users, joinedMetrics, productJoinerProjects }) => {
     const [isConfiguring, setIsConfiguring] = useState<string | null>(null);
     const [isCreatingDashboard, setIsCreatingDashboard] = useState(false);
     const [isHubOpen, setIsHubOpen] = useState(false);
@@ -544,6 +546,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions: globalRecentTransac
                         onConfigure={() => setIsConfiguring(w.id)}
                         onDelete={() => deleteWidgetPermanently(w.id)}
                         onUpdateConfig={(newConf) => handleUpdateWidgetConfig(w.id, newConf)}
+                        onNavigate={onNavigate}
                         savedReports={savedReports}
                         transactions={combinedTransactions}
                         tasks={tasks}
