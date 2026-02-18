@@ -2,7 +2,8 @@
 import React, { useMemo } from 'react';
 import type { Transaction, DashboardWidget, Category, Counterparty, Account, TransactionType, Tag } from '../../types';
 import { parseISOLocal } from '../../dateUtils';
-import { ArrowUpIcon, ArrowDownIcon, ExclamationTriangleIcon, RepeatIcon } from '../Icons';
+// Added missing CheckCircleIcon to the import list from '../Icons'
+import { ArrowUpIcon, ArrowDownIcon, ExclamationTriangleIcon, RepeatIcon, CheckCircleIcon } from '../Icons';
 
 interface Props {
     widget: DashboardWidget;
@@ -30,7 +31,6 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
         const { 
             period = 'month', 
             lookback = 0, 
-            displayDataType = 'type', 
             excludeUnknown = true, 
             excludeKeywords = '', 
             showIncome = true, 
@@ -50,7 +50,7 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
         const e = new Date(now); e.setHours(23,59,59,999);
 
         if (period === 'month') { 
-            s.setDate(1); 
+            startOfMonth(s);
             s.setMonth(s.getMonth() - lookback); 
             e.setTime(s.getTime()); 
             e.setMonth(e.getMonth() + 1, 0); 
@@ -108,11 +108,22 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
         });
     };
 
+    // Helper for date normalization
+    function startOfMonth(date: Date) {
+        date.setDate(1);
+        date.setHours(0, 0, 0, 0);
+        return date;
+    }
+
     const comparisonData = useMemo(() => {
         if (!baseWidget || !targetWidget) return null;
         const baseTxs = getFilteredTransactions(baseWidget);
         const targetTxs = getFilteredTransactions(targetWidget);
         const dimension = baseWidget.config?.displayDataType || 'type';
+        
+        // Capture hidden state from both source modules
+        const baseHidden = new Set(baseWidget.config?.hiddenDataIds || []);
+        const targetHidden = new Set(targetWidget.config?.hiddenDataIds || []);
 
         const aggregate = (txs: Transaction[]) => {
             const map = new Map<string, { label: string, total: number }>();
@@ -157,7 +168,11 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
                 diff, 
                 pct: bVal !== 0 ? (diff / Math.abs(bVal)) * 100 : (tVal !== 0 ? 100 : 0) 
             };
-        }).filter(d => Math.abs(d.diff) > 0.01).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+        })
+        .filter(d => Math.abs(d.diff) > 0.01)
+        // CRITICAL FIX: Filter out IDs that are hidden in either source widget
+        .filter(d => !baseHidden.has(d.id) && !targetHidden.has(d.id))
+        .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
     }, [baseWidget, targetWidget, transactions, categories, counterparties, accounts, transactionTypes, tags]);
 
     if (!baseId || !targetId) return <div className="flex flex-col items-center justify-center h-full p-8 text-center bg-slate-50/50"><RepeatIcon className="w-12 h-12 text-slate-200 mb-3" /><p className="text-xs font-black text-slate-400 uppercase tracking-widest">Configuration Required</p></div>;
@@ -214,6 +229,13 @@ export const ComparisonWidget: React.FC<Props> = ({ widget, allWidgets, transact
                         </div>
                     );
                 })}
+                {comparisonData?.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-12 text-slate-300 italic opacity-50">
+                        {/* Fixed: CheckCircleIcon is now correctly imported from '../Icons' */}
+                        <CheckCircleIcon className="w-10 h-10 mb-2" />
+                        <p className="text-xs">No variance detected in visible data.</p>
+                    </div>
+                )}
             </div>
         </div>
     );
