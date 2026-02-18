@@ -399,6 +399,7 @@ export interface AmazonMetric {
     videoTitle?: string;
     videoDuration?: string;
     videoUrl?: string;
+    videoAsins?: string[];
     uploadDate?: string;
 }
 
@@ -541,4 +542,4 @@ export interface DocumentFolder {
     createdAt: string;
 }
 
-export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-joiner';
+export type View = 'dashboard' | 'import' | 'transactions' | 'calendar' | 'reports' | 'settings' | 'tasks' | 'rules' | 'management' | 'hub' | 'journal' | 'documents' | 'plan' | 'integrations' | 'integration-amazon' | 'integration-youtube' | 'integration-joiner' | 'integration-product-joiner';

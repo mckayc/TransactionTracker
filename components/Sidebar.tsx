@@ -33,7 +33,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
 
   const isActive = (id: string) => {
       if (currentView === id) return true;
-      if (id === 'integrations' && currentView.startsWith('integration-')) return true;
+      if (id === 'integrations' && (currentView.startsWith('integration-') || currentView === 'integration-product-joiner')) return true;
       return false;
   };
 
@@ -82,6 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, transactions
                 {[
                   { id: 'management', label: 'Organize Data', icon: ChecklistIcon },
                   { id: 'rules', label: 'Rule Engine', icon: LinkIcon },
+                  { id: 'integration-product-joiner', label: 'Product Joiner', icon: WorkflowIcon },
                 ].map(item => (
                     <button
                         key={item.id}

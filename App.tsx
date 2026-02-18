@@ -26,6 +26,7 @@ const IntegrationsPage = lazy(() => import('./views/IntegrationsPage'));
 const AmazonIntegration = lazy(() => import('./views/integrations/AmazonIntegration'));
 const YouTubeIntegration = lazy(() => import('./views/integrations/YouTubeIntegration'));
 const VideoProductJoiner = lazy(() => import('./views/integrations/VideoProductJoiner'));
+const ProductAsinJoiner = lazy(() => import('./views/integrations/ProductAsinJoiner'));
 
 const APP_INSTANCE_ID = generateUUID();
 
@@ -336,7 +337,7 @@ const App: React.FC = () => {
         <div className="h-screen flex items-center justify-center bg-slate-50 p-6">
             <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border-2 border-red-100 text-center space-y-6">
                 <div className="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto shadow-inner"><ExclamationTriangleIcon className="w-10 h-10" /></div>
-                <div><h1 className="text-2xl font-black text-slate-800">Connection Error</h1><p className="text-slate-500 mt-2 font-medium">{loadError}</p></div>
+                <div><h1 className="text-2xl font-black text-slate-800">Connection Error</h1><h1 className="text-slate-500 mt-2 font-medium">{loadError}</h1></div>
                 <button onClick={() => window.location.reload()} className="w-full py-3 bg-indigo-600 text-white font-black rounded-2xl hover:bg-indigo-700 transition-all shadow-lg">Retry Connection</button>
             </div>
         </div>
@@ -387,6 +388,7 @@ const App: React.FC = () => {
                         {currentView === 'integration-amazon' && <AmazonIntegration metrics={amazonMetrics} onAddMetrics={(m) => bulkUpdateData('amazonMetrics', m, setAmazonMetrics)} onDeleteMetrics={(ids) => { setAmazonMetrics(prev => { const next = prev.filter(m => !ids.includes(m.id)); updateData('amazonMetrics', next, setAmazonMetrics); return next; }); }} videos={amazonVideos} onAddVideos={(v) => bulkUpdateData('amazonVideos', v, setAmazonVideos)} onDeleteVideos={(ids) => { setAmazonVideos(prev => { const next = prev.filter(v => !ids.includes(v.id)); updateData('amazonVideos', next, setAmazonVideos); return next; }); }} />}
                         {currentView === 'integration-youtube' && <YouTubeIntegration metrics={youtubeMetrics} onAddMetrics={(m) => bulkUpdateData('youtubeMetrics', m, setYouTubeMetric)} onDeleteMetrics={(ids) => { setYouTubeMetric(prev => { const next = prev.filter(m => !ids.includes(m.id)); updateData('youtubeMetrics', next, setYouTubeMetric); return next; }); }} channels={youtubeChannels} onSaveChannel={(c) => bulkUpdateData('youtubeChannels', [c], setYouTubeChannels)} onDeleteChannel={(id) => { setYouTubeChannels(prev => { const next = prev.filter(c => c.id !== id); updateData('youtubeChannels', next, setYouTubeChannels); return next; }); }} />}
                         {currentView === 'integration-joiner' && <VideoProductJoiner metrics={joinedMetrics} onSaveMetrics={(m) => updateData('joinedMetrics', m, setJoinedMetrics)} youtubeMetrics={youtubeMetrics} amazonMetrics={amazonMetrics} />}
+                        {currentView === 'integration-product-joiner' && <ProductAsinJoiner metrics={joinedMetrics} onSaveMetrics={(m) => updateData('joinedMetrics', m, setJoinedMetrics)} youtubeMetrics={youtubeMetrics} amazonMetrics={amazonMetrics} />}
                     </Suspense>
                 </div>
             </main>
