@@ -116,6 +116,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
   const [breakdownData, setBreakdownData] = useState<{items: any[], total: number}>({ items: [], total: 0 });
   const [isBreakdownLoading, setIsBreakdownLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
   const [datePreset, setDatePreset] = useState<DateRangePreset | string>('thisMonth');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -124,6 +125,9 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
   const [sortKey, setSortKey] = useState('date');
   const [sortDir, setSortDir] = useState('DESC');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['date', 'description', 'counterparty', 'category', 'account', 'type', 'amount', 'actions']));
+  const [isColumnMenuOpen, setIsColumnMenuOpen] = useState(false);
+  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
   const [bulkEditType, setBulkEditType] = useState<'categoryId' | 'date' | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
@@ -142,10 +146,19 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
       try {
           const params: any = { limit, offset: page * limit, search: searchTerm, sortKey, sortDir };
           if (datePreset !== 'allTime') { params.startDate = formatDate(start); params.endDate = formatDate(end); }
+          
+          if (typeFilter !== 'all') {
+              if (typeFilter.startsWith('effect_')) {
+                  params.balanceEffect = typeFilter.replace('effect_', '');
+              } else {
+                  params.typeId = typeFilter;
+              }
+          }
+
           const [txResponse, summaryResponse] = await Promise.all([api.getTransactions(params), api.getSummary(params)]);
           setTransactions(txResponse.data); setTotalCount(txResponse.total); setRangeSummary(summaryResponse as any);
       } finally { setIsLoading(false); setIsSummaryLoading(false); }
-  }, [page, limit, searchTerm, sortKey, sortDir, datePreset, start, end]);
+  }, [page, limit, searchTerm, sortKey, sortDir, datePreset, start, end, typeFilter]);
 
   useEffect(() => { const handler = setTimeout(fetchTransactions, 300); return () => clearTimeout(handler); }, [fetchTransactions]);
 
@@ -267,19 +280,79 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
     return allGlobalTransactions.filter(t => t.linkGroupId === managingLinkGroupId);
   }, [allGlobalTransactions, managingLinkGroupId]);
 
+  const handleCopyVisible = () => {
+      if (transactions.length === 0) return;
+      
+      const headers = Array.from(visibleColumns).filter(c => c !== 'actions');
+      const csvContent = [
+          headers.join('\t'),
+          ...transactions.map(tx => {
+              return headers.map(h => {
+                  switch(h) {
+                      case 'date': return tx.date;
+                      case 'description': return tx.description;
+                      case 'counterparty': return counterparties.find(c => c.id === tx.counterpartyId)?.name || '';
+                      case 'category': return categories.find(c => c.id === tx.categoryId)?.name || '';
+                      case 'account': return accounts.find(a => a.id === tx.accountId)?.name || '';
+                      case 'amount': return tx.amount;
+                      case 'type': return transactionTypes.find(t => t.id === tx.typeId)?.name || '';
+                      default: return '';
+                  }
+              }).join('\t');
+          })
+      ].join('\n');
+
+      navigator.clipboard.writeText(csvContent);
+      setToastMessage(`Copied ${transactions.length} transactions to clipboard.`);
+  };
+
+  const toggleColumn = (col: string) => {
+      const next = new Set(visibleColumns);
+      if (next.has(col)) next.delete(col);
+      else next.add(col);
+      setVisibleColumns(next);
+  };
+
   return (
     <div className="flex flex-col h-full gap-4">
       <div className="flex flex-wrap gap-3 flex-shrink-0 animate-fade-in">
-          <MetricPill label="Net Cash Flow" value={rangeSummary.incoming - rangeSummary.outgoing} color={(rangeSummary.incoming - rangeSummary.outgoing) >= 0 ? 'text-indigo-600' : 'text-rose-600'} icon={<TrendingUpIcon className="w-4 h-4" />} isLoading={isSummaryLoading} />
-          <MetricPill label="Total Inflow" value={rangeSummary.incoming} color="text-emerald-600" icon={<AddIcon className="w-4 h-4" />} isLoading={isSummaryLoading} onClick={() => setActiveMetricBreakdown('inflow')} />
-          <MetricPill label="Total Outflow" value={rangeSummary.outgoing} color="text-rose-600" icon={<DeleteIcon className="w-4 h-4" />} isLoading={isSummaryLoading} onClick={() => setActiveMetricBreakdown('outflow')} />
-          <MetricPill label="Investments" value={rangeSummary.investments} color="text-purple-600" icon={<SparklesIcon className="w-4 h-4" />} isLoading={isSummaryLoading} onClick={() => setActiveMetricBreakdown('investments')} />
+          <MetricPill label="Net Cash Flow" value={rangeSummary.incoming - rangeSummary.outgoing} color={(rangeSummary.incoming - rangeSummary.outgoing) >= 0 ? 'text-indigo-600' : 'text-rose-600'} icon={<TrendingUpIcon className="w-4 h-4" />} isLoading={isSummaryLoading} onClick={() => setTypeFilter('all')} />
+          <MetricPill label="Total Inflow" value={rangeSummary.incoming} color="text-emerald-600" icon={<AddIcon className="w-4 h-4" />} isLoading={isSummaryLoading} onClick={() => setTypeFilter('effect_incoming')} />
+          <MetricPill label="Total Outflow" value={rangeSummary.outgoing} color="text-rose-600" icon={<DeleteIcon className="w-4 h-4" />} isLoading={isSummaryLoading} onClick={() => setTypeFilter('effect_outgoing')} />
+          <MetricPill label="Investments" value={rangeSummary.investments} color="text-purple-600" icon={<SparklesIcon className="w-4 h-4" />} isLoading={isSummaryLoading} onClick={() => setTypeFilter('type_investment')} />
       </div>
 
       <div className="bg-white p-3 rounded-3xl shadow-sm border border-slate-200 flex flex-col lg:flex-row justify-between items-center gap-4">
         <div className="flex flex-1 items-center gap-4 w-full">
             <div className="relative group flex-1 max-w-sm">
                 <input type="text" placeholder="Filter ledger..." value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(0); }} className="w-full px-4 py-1.5 border rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 border-slate-200 bg-slate-50/50" />
+            </div>
+
+            <div className="relative">
+                <button 
+                    onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                    className={`flex items-center gap-2 px-4 py-1.5 border rounded-2xl text-xs font-bold transition-all ${typeFilter !== 'all' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
+                >
+                    <TrendingUpIcon className="w-3.5 h-3.5" />
+                    {typeFilter === 'all' ? 'All Types' : 
+                     typeFilter === 'effect_incoming' ? 'Inflow' : 
+                     typeFilter === 'effect_outgoing' ? 'Outflow' : 
+                     transactionTypes.find(t => t.id === typeFilter)?.name || 'Filtered'}
+                </button>
+                {isFilterMenuOpen && (
+                    <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-200 z-[100] p-2 animate-slide-up">
+                        <div className="space-y-1">
+                            <button onClick={() => { setTypeFilter('all'); setIsFilterMenuOpen(false); setPage(0); }} className={`w-full text-left px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 ${typeFilter === 'all' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500'}`}>All History</button>
+                            <div className="h-px bg-slate-100 my-1" />
+                            <button onClick={() => { setTypeFilter('effect_incoming'); setIsFilterMenuOpen(false); setPage(0); }} className={`w-full text-left px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 ${typeFilter === 'effect_incoming' ? 'text-emerald-600 bg-emerald-50' : 'text-slate-500'}`}>Total Inflow</button>
+                            <button onClick={() => { setTypeFilter('effect_outgoing'); setIsFilterMenuOpen(false); setPage(0); }} className={`w-full text-left px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 ${typeFilter === 'effect_outgoing' ? 'text-rose-600 bg-rose-50' : 'text-slate-500'}`}>Total Outflow</button>
+                            <div className="h-px bg-slate-100 my-1" />
+                            {transactionTypes.map(t => (
+                                <button key={t.id} onClick={() => { setTypeFilter(t.id); setIsFilterMenuOpen(false); setPage(0); }} className={`w-full text-left px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 ${typeFilter === t.id ? 'text-indigo-600 bg-indigo-50' : 'text-slate-500'}`}>{t.name}</button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
             
             <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-2xl border border-slate-800 shadow-lg group">
@@ -308,6 +381,41 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
         </div>
 
         <div className="flex items-center gap-3 w-full lg:w-auto">
+            <div className="relative">
+                <button 
+                    onClick={() => setIsColumnMenuOpen(!isColumnMenuOpen)}
+                    className="p-2 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+                    title="Toggle Columns"
+                >
+                    <TagIcon className="w-4 h-4" />
+                </button>
+                {isColumnMenuOpen && (
+                    <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-200 z-[100] p-2 animate-slide-up">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-3 py-1 mb-1">Visible Columns</p>
+                        <div className="space-y-0.5">
+                            {['date', 'description', 'counterparty', 'category', 'account', 'type', 'tags', 'amount'].map(col => (
+                                <button 
+                                    key={col} 
+                                    onClick={() => toggleColumn(col)}
+                                    className={`w-full text-left px-3 py-1.5 rounded-xl text-[10px] font-bold capitalize flex items-center justify-between hover:bg-slate-50 ${visibleColumns.has(col) ? 'text-indigo-600' : 'text-slate-400'}`}
+                                >
+                                    {col}
+                                    {visibleColumns.has(col) && <CheckCircleIcon className="w-3 h-3" />}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            <button 
+                onClick={handleCopyVisible}
+                className="p-2 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+                title="Copy Visible to Clipboard"
+            >
+                <CopyIcon className="w-4 h-4" />
+            </button>
+
             {selectedIds.size > 0 && (
                 <div className="flex items-center gap-1.5 bg-slate-900 text-white p-1 rounded-2xl shadow-xl animate-slide-up">
                     <span className="px-3 text-[10px] font-black uppercase">{selectedIds.size} Selected</span>
@@ -337,6 +445,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
                 onEditRule={handleEditRule}
                 onSplit={handleSplitRequested}
                 onManageLink={setManagingLinkGroupId}
+                visibleColumns={visibleColumns}
             />
           </div>
 

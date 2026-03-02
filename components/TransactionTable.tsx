@@ -272,6 +272,16 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                     <div className="flex items-center gap-1">Account <SortIndicator activeKey="accountId" /></div>
                                 </th>
                             )}
+                            {visibleColumns.has('type') && (
+                                <th className="px-3 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors whitespace-nowrap" onClick={() => handleHeaderClick('typeId')}>
+                                    <div className="flex items-center gap-1">Type <SortIndicator activeKey="typeId" /></div>
+                                </th>
+                            )}
+                            {visibleColumns.has('tags') && (
+                                <th className="px-3 py-3 text-left text-[9px] font-black text-slate-400 uppercase tracking-widest border-b whitespace-nowrap">
+                                    <div className="flex items-center gap-1">Tags</div>
+                                </th>
+                            )}
                             {visibleColumns.has('amount') && (
                                 <th className="px-3 py-3 text-right text-[9px] font-black text-slate-400 uppercase tracking-widest border-b cursor-pointer hover:bg-slate-100 group transition-colors whitespace-nowrap" onClick={() => handleHeaderClick('amount')}>
                                     <div className="flex items-center justify-end gap-1">Amount <SortIndicator activeKey="amount" /></div>
@@ -312,6 +322,18 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                                         {visibleColumns.has('counterparty') && <td className="px-3 py-2 border-b border-slate-50 whitespace-nowrap"><span className="text-[11px] font-medium text-slate-600">{counterpartyMap.get(tx.counterpartyId || '') || <em className="text-slate-300">--</em>}</span></td>}
                                         {visibleColumns.has('category') && <td className="px-3 py-2 border-b border-slate-50 whitespace-nowrap"><span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[9px] font-black uppercase rounded border border-slate-200">{categoryMap.get(tx.categoryId) || 'Uncategorized'}</span></td>}
                                         {visibleColumns.has('account') && <td className="px-3 py-2 text-[10px] font-bold text-slate-400 whitespace-nowrap border-b border-slate-50">{accountMap.get(tx.accountId || '') || 'Unknown'}</td>}
+                                        {visibleColumns.has('type') && <td className="px-3 py-2 border-b border-slate-50 whitespace-nowrap"><span className="text-[10px] font-bold text-slate-500">{typeMap.get(tx.typeId)?.name || 'Unknown'}</span></td>}
+                                        {visibleColumns.has('tags') && (
+                                            <td className="px-3 py-2 border-b border-slate-50">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {(tx.tagIds || []).map(tid => {
+                                                        const tag = tagMap.get(tid);
+                                                        if (!tag) return null;
+                                                        return <span key={tid} className="px-1 py-0.5 rounded text-[8px] font-black uppercase border" style={{ backgroundColor: `${tag.color}10`, color: tag.color, borderColor: `${tag.color}30` }}>{tag.name}</span>;
+                                                    })}
+                                                </div>
+                                            </td>
+                                        )}
                                         {visibleColumns.has('amount') && <td className={`px-3 py-2 text-right text-[11px] font-black font-mono border-b border-slate-50 whitespace-nowrap ${getAmountColor(tx.typeId)}`}>{formatCurrency(tx.amount, tx.typeId)}</td>}
                                         {visibleColumns.has('actions') && (
                                             <td className="px-3 py-2 text-center border-b border-slate-50 whitespace-nowrap">

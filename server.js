@@ -317,7 +317,7 @@ app.post('/api/transactions/delete-batch', (req, res) => {
 
 app.get('/api/transactions', (req, res) => {
     try {
-        const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC', search, startDate, endDate, userId } = req.query;
+        const { limit = 50, offset = 0, sortKey = 'date', sortDir = 'DESC', search, startDate, endDate, userId, typeId, categoryId, balanceEffect } = req.query;
         let filterQuery = ` WHERE 1=1`; 
         const values = [];
         if (search) {
@@ -328,6 +328,12 @@ app.get('/api/transactions', (req, res) => {
         if (startDate) { filterQuery += ` AND t.date >= ?`; values.push(startDate); }
         if (endDate) { filterQuery += ` AND t.date <= ?`; values.push(endDate); }
         if (userId) { filterQuery += ` AND t.user_id = ?`; values.push(userId); }
+        if (typeId) { filterQuery += ` AND t.type_id = ?`; values.push(typeId); }
+        if (categoryId) { filterQuery += ` AND t.category_id = ?`; values.push(categoryId); }
+        if (balanceEffect) {
+            filterQuery += ` AND t.type_id IN (SELECT id FROM transaction_types WHERE balance_effect = ?)`;
+            values.push(balanceEffect);
+        }
         
         const dataQuery = `
             SELECT t.*, GROUP_CONCAT(tg.tag_id) as tagIds 
