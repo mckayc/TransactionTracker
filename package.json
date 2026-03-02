@@ -7,6 +7,7 @@
     "dev": "vite --host",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "lint": "tsc --noEmit",
     "start": "node server.js"
   },
   "dependencies": {

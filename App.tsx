@@ -89,6 +89,16 @@ const App: React.FC = () => {
     const isDirty = useRef<boolean>(false);
     const updateQueues = useRef<Record<string, Promise<void>>>({});
 
+    // Heartbeat to keep server alive and connection warm
+    useEffect(() => {
+        const heartbeat = setInterval(() => {
+            if (document.visibilityState === 'visible') {
+                fetch('/api/health').catch(() => {});
+            }
+        }, 1000 * 60 * 5); // Every 5 minutes
+        return () => clearInterval(heartbeat);
+    }, []);
+
     const loadCoreData = async (showLoader = true) => {
         if (isDirty.current) return;
         if (showLoader) setIsLoading(true);

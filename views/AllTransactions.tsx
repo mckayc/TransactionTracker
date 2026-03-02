@@ -8,9 +8,9 @@ import RuleModal from '../components/RuleModal';
 import CopyTransactionsModal from '../components/CopyTransactionsModal';
 import SplitTransactionModal from '../components/SplitTransactionModal';
 import LinkedGroupModal from '../components/LinkedGroupModal';
-import { AddIcon, DeleteIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, SparklesIcon, CalendarIcon, TrendingUpIcon, TagIcon, TrashIcon, InfoIcon, CopyIcon, CheckCircleIcon, SplitIcon } from '../components/Icons';
+import { AddIcon, DeleteIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, SparklesIcon, CalendarIcon, TrendingUpIcon, TagIcon, TrashIcon, InfoIcon, CopyIcon, CheckCircleIcon, SplitIcon, ChevronDownIcon } from '../components/Icons';
 import { api } from '../services/apiService';
-import { generateUUID } from '../utils';
+import { generateUUID, copyToClipboard } from '../utils';
 import { calculateDateRange, formatDate, shiftDateRange } from '../dateUtils';
 import { MetricPill } from '../components/FinancialStats';
 
@@ -280,7 +280,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
     return allGlobalTransactions.filter(t => t.linkGroupId === managingLinkGroupId);
   }, [allGlobalTransactions, managingLinkGroupId]);
 
-  const handleCopyVisible = () => {
+  const handleCopyVisible = async () => {
       if (transactions.length === 0) return;
       
       const headers = Array.from(visibleColumns).filter(c => c !== 'actions');
@@ -302,8 +302,12 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
           })
       ].join('\n');
 
-      navigator.clipboard.writeText(csvContent);
-      setToastMessage(`Copied ${transactions.length} transactions to clipboard.`);
+      const success = await copyToClipboard(csvContent);
+      if (success) {
+          setToastMessage(`Copied ${transactions.length} transactions to clipboard.`);
+      } else {
+          alert("Failed to copy to clipboard. Please check browser permissions.");
+      }
   };
 
   const toggleColumn = (col: string) => {
@@ -334,10 +338,13 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
                     className={`flex items-center gap-2 px-4 py-1.5 border rounded-2xl text-xs font-bold transition-all ${typeFilter !== 'all' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
                 >
                     <TrendingUpIcon className="w-3.5 h-3.5" />
-                    {typeFilter === 'all' ? 'All Types' : 
-                     typeFilter === 'effect_incoming' ? 'Inflow' : 
-                     typeFilter === 'effect_outgoing' ? 'Outflow' : 
-                     transactionTypes.find(t => t.id === typeFilter)?.name || 'Filtered'}
+                    <span className="truncate max-w-[80px]">
+                        {typeFilter === 'all' ? 'All Types' : 
+                         typeFilter === 'effect_incoming' ? 'Inflow' : 
+                         typeFilter === 'effect_outgoing' ? 'Outflow' : 
+                         transactionTypes.find(t => t.id === typeFilter)?.name || 'Filtered'}
+                    </span>
+                    <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${isFilterMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isFilterMenuOpen && (
                     <div className="absolute top-full left-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-200 z-[100] p-2 animate-slide-up">
@@ -384,10 +391,12 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
             <div className="relative">
                 <button 
                     onClick={() => setIsColumnMenuOpen(!isColumnMenuOpen)}
-                    className="p-2 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+                    className={`flex items-center gap-2 px-4 py-1.5 border rounded-2xl text-xs font-bold transition-all ${isColumnMenuOpen ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}
                     title="Toggle Columns"
                 >
-                    <TagIcon className="w-4 h-4" />
+                    <TagIcon className="w-3.5 h-3.5" />
+                    <span>Columns</span>
+                    <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${isColumnMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {isColumnMenuOpen && (
                     <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-2xl shadow-2xl border border-slate-200 z-[100] p-2 animate-slide-up">

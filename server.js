@@ -470,9 +470,15 @@ app.get('/api/analytics/breakdown', (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+let lastBackupCheck = 0;
 app.get('/api/data', async (req, res) => {
   try {
-    runAutomatedBackup(); // Fire and forget
+    // Optimization: Only check for backup once every 10 minutes to reduce overhead on data load
+    const now = Date.now();
+    if (now - lastBackupCheck > 10 * 60 * 1000) {
+        lastBackupCheck = now;
+        runAutomatedBackup(); 
+    }
     
     // Level 2 Optimization: Parallelized Data Handshake
     // We wrap each synchronous SQLite operation in a Promise.resolve 
