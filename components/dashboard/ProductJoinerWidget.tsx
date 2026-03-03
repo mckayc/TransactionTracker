@@ -123,7 +123,7 @@ export const ProductJoinerWidget: React.FC<Props> = ({ projects, config, onNavig
                     <div key={card.label} className={`p-1.5 rounded-xl border border-slate-100 bg-white shadow-sm flex flex-col items-center justify-center text-center`}>
                         <div className={`p-1 rounded-lg ${card.bg} ${card.color} mb-1`}>{card.icon}</div>
                         <p className="text-[7px] font-black text-slate-400 uppercase tracking-tighter leading-none mb-0.5">{card.label}</p>
-                        <p className={`text-[9px] font-black ${card.color} font-mono`}>{formatNumber(card.val)}</p>
+                        <p className={`text-[9px] font-black ${card.color} font-mono`}>${formatNumber(card.val)}</p>
                     </div>
                 ))}
             </div>
@@ -217,6 +217,27 @@ export const ProductJoinerWidget: React.FC<Props> = ({ projects, config, onNavig
                             </div>
                         </div>
 
+                        {/* Interactive Breakdown Cards in Modal */}
+                        <div className="px-8 py-4 bg-white border-b flex gap-4 overflow-x-auto custom-scrollbar shrink-0">
+                            {[
+                                { id: 'onsite', label: 'Onsite', val: aggregates.onsite, icon: <BoxIcon className="w-4 h-4" />, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100', filter: 'onsite' },
+                                { id: 'offsite', label: 'Offsite', val: aggregates.offsite, icon: <BoxIcon className="w-4 h-4" />, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-100', filter: 'offsite' },
+                                { id: 'onsite_cc', label: 'Onsite CC', val: aggregates.onsiteCC, icon: <SparklesIcon className="w-4 h-4" />, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100', filter: 'onsite_cc' },
+                                { id: 'offsite_cc', label: 'Offsite CC', val: aggregates.offsiteCC, icon: <SparklesIcon className="w-4 h-4" />, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100', filter: 'offsite_cc' },
+                                { id: 'youtube', label: 'YouTube', val: aggregates.youtube, icon: <YoutubeIcon className="w-4 h-4" />, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100', filter: 'youtube' }
+                            ].map(card => (
+                                <button 
+                                    key={card.id} 
+                                    onClick={() => setAuditSourceFilter(auditSourceFilter === card.filter ? 'all' : card.filter as any)}
+                                    className={`flex-1 min-w-[120px] p-2.5 rounded-2xl border-2 transition-all flex flex-col items-center text-center ${auditSourceFilter === card.filter ? `${card.border} ${card.bg} shadow-inner` : 'border-slate-100 bg-slate-50/50 hover:border-slate-200'}`}
+                                >
+                                    <div className={`p-1 rounded-xl ${card.bg} ${card.color} mb-1`}>{card.icon}</div>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{card.label}</p>
+                                    <p className={`text-[10px] font-black ${card.color} font-mono`}>${formatNumber(card.val)}</p>
+                                </button>
+                            ))}
+                        </div>
+
                         <div className="flex-1 overflow-auto custom-scrollbar bg-white">
                             <table className="min-w-full divide-y divide-slate-100 border-separate border-spacing-0">
                                 <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
@@ -229,7 +250,7 @@ export const ProductJoinerWidget: React.FC<Props> = ({ projects, config, onNavig
                                 </thead>
                                 <tbody className="divide-y divide-slate-50">
                                     {filteredAuditMetrics.map(m => (
-                                        <tr key={m.id} className="hover:bg-indigo-50/20 transition-all group cursor-pointer" onClick={() => { setInspectingAsset(m); setIsAuditOpen(false); }}>
+                                        <tr key={m.id} className="hover:bg-indigo-50/20 transition-all group cursor-pointer" onClick={() => { setInspectingAsset(m); }}>
                                             <td className="px-8 py-4 max-w-[400px]">
                                                 <div className="flex flex-col">
                                                     <span className="text-xs font-black text-slate-800 truncate group-hover:text-indigo-600 transition-colors">{m.mainTitle}</span>
@@ -270,7 +291,7 @@ export const ProductJoinerWidget: React.FC<Props> = ({ projects, config, onNavig
             )}
 
             {inspectingAsset && (
-                <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" onClick={() => setInspectingAsset(null)}>
+                <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md" onClick={() => setInspectingAsset(null)}>
                     <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                         <div className="p-8 border-b bg-slate-50 flex justify-between items-center shrink-0">
                             <div className="flex items-center gap-4">

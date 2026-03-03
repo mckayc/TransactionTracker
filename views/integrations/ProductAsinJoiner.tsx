@@ -618,7 +618,7 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }: Prop
                     <div key={card.label} className={`p-4 rounded-3xl border-2 ${card.border} bg-white shadow-sm flex flex-col items-center justify-center text-center hover:shadow-md transition-all`}>
                         <div className={`p-2 rounded-2xl ${card.bg} ${card.color} mb-2`}>{card.icon}</div>
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{card.label}</p>
-                        <p className={`text-lg font-black ${card.color} font-mono`}>{formatCurrency(card.val)}</p>
+                        <p className={`text-lg font-black ${card.color} font-mono`}>${formatNumber(card.val)}</p>
                     </div>
                 ))}
             </div>
@@ -745,7 +745,7 @@ const ProductAsinJoiner: React.FC<Props> = ({ projects, onUpdateProjects }: Prop
                                 >
                                     <div className={`p-1.5 rounded-xl ${card.bg} ${card.color} mb-1.5`}>{card.icon}</div>
                                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{card.label}</p>
-                                    <p className={`text-xs font-black ${card.color} font-mono`}>{formatCurrency(card.val)}</p>
+                                    <p className={`text-xs font-black ${card.color} font-mono`}>${formatNumber(card.val)}</p>
                                 </button>
                             ))}
                         </div>
