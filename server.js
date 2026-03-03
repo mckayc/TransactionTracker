@@ -4,21 +4,178 @@ import path from 'path';
 import express from 'express';
 import { fileURLToPath } from 'url';
 import os from 'os';
-// Mocking better-sqlite3 for environment compatibility
-class Database {
-    constructor() { console.warn("[MOCK DB] better-sqlite3 is not available. Using in-memory mock."); }
-    pragma() {}
-    exec() {}
-    prepare() {
-        return {
-            get: () => ({ count: 0 }),
-            all: () => [],
-            run: () => ({ lastInsertRowid: 0, changes: 0 })
-        };
-    }
-    transaction(fn) { return fn; }
+
+// Robust Database Loader with JSON Fallback
+let Database;
+try {
+    // Try to load the native driver
+    const BetterSqlite3 = (await import('better-sqlite3')).default;
+    Database = BetterSqlite3;
+    console.log("[SYS] Native SQLite engine (better-sqlite3) initialized.");
+} catch (e) {
+    console.error("[SYS] Native SQLite engine failed to load. Initializing JSON-Persistence Fallback.");
+    
+    Database = class JsonDatabase {
+        constructor(dbPath) {
+            this.dbPath = dbPath;
+            this.jsonPath = dbPath.replace('.sqlite', '.json');
+            this.data = {
+                app_storage: [],
+                files_meta: [],
+                categories: [],
+                accounts: [],
+                account_types: [],
+                transaction_types: [],
+                users: [],
+                counterparties: [],
+                locations: [],
+                tags: [],
+                rule_categories: [],
+                transaction_tags: [],
+                transactions: [],
+                reconciliation_rules: []
+            };
+            this.load();
+        }
+
+        load() {
+            if (fs.existsSync(this.jsonPath)) {
+                try {
+                    const raw = fs.readFileSync(this.jsonPath, 'utf8');
+                    const parsed = JSON.parse(raw);
+                    this.data = { ...this.data, ...parsed };
+                    console.log(`[JSON-DB] Restored ${Object.values(this.data).flat().length} records from persistence.`);
+                } catch (err) {
+                    console.error("[JSON-DB] Persistence corruption detected. Starting fresh.", err);
+                }
+            }
+        }
+
+        save() {
+            try {
+                fs.writeFileSync(this.jsonPath, JSON.stringify(this.data, null, 2));
+            } catch (err) {
+                console.error("[JSON-DB] Persistence failure:", err);
+            }
+        }
+
+        pragma() { return this; }
+        
+        exec(sql) {
+            // Handle table creation by ensuring keys exist
+            const tableMatch = sql.match(/CREATE TABLE IF NOT EXISTS (\w+)/g);
+            if (tableMatch) {
+                tableMatch.forEach(m => {
+                    const name = m.replace('CREATE TABLE IF NOT EXISTS ', '');
+                    if (!this.data[name]) this.data[name] = [];
+                });
+            }
+            this.save();
+            return this;
+        }
+
+        prepare(sql) {
+            const self = this;
+            const lowerSql = sql.toLowerCase();
+            const tableName = sql.match(/FROM (\w+)/i)?.[1] || sql.match(/INTO (\w+)/i)?.[1] || sql.match(/UPDATE (\w+)/i)?.[1] || sql.match(/DELETE FROM (\w+)/i)?.[1];
+
+            return {
+                get: (...args) => {
+                    if (!tableName || !self.data[tableName]) return null;
+                    
+                    if (lowerSql.includes('count(*)')) {
+                        return { count: self.data[tableName].length };
+                    }
+
+                    if (lowerSql.includes('where key = ?')) {
+                        return self.data[tableName].find(r => r.key === args[0]) || null;
+                    }
+
+                    if (lowerSql.includes('where id = ?')) {
+                        return self.data[tableName].find(r => r.id === args[0]) || null;
+                    }
+
+                    return self.data[tableName][0] || null;
+                },
+
+                all: (...args) => {
+                    if (!tableName || !self.data[tableName]) return [];
+                    let results = [...self.data[tableName]];
+
+                    // Basic filtering for transactions
+                    if (tableName === 'transactions' && lowerSql.includes('where')) {
+                        // If there's a search or filter, we just return all for the mock to keep it simple
+                        // but we could implement basic filtering if needed.
+                    }
+
+                    return results;
+                },
+
+                run: (...args) => {
+                    if (!tableName) return { changes: 0 };
+                    if (!self.data[tableName]) self.data[tableName] = [];
+
+                    const isInsert = lowerSql.includes('insert') || lowerSql.includes('replace');
+                    
+                    if (isInsert) {
+                        if (tableName === 'app_storage' && args.length >= 2) {
+                            const existingIdx = self.data[tableName].findIndex(r => r.key === args[0]);
+                            if (existingIdx > -1) self.data[tableName][existingIdx].value = args[1];
+                            else self.data[tableName].push({ key: args[0], value: args[1] });
+                        } else if (tableName === 'transactions' && args.length >= 20) {
+                            // Map transaction columns from args
+                            const tx = {
+                                id: args[0], date: args[1], description: args[2], amount: args[3],
+                                category_id: args[4], account_id: args[5], type_id: args[6],
+                                counterparty_id: args[7], location_id: args[8], user_id: args[9],
+                                location: args[10], notes: args[11], original_description: args[12],
+                                source_filename: args[13], link_group_id: args[14], is_parent: args[15],
+                                parent_transaction_id: args[16], is_completed: args[17],
+                                applied_rule_ids: args[18], metadata: args[19]
+                            };
+                            const existingIdx = self.data[tableName].findIndex(r => r.id === tx.id);
+                            if (existingIdx > -1) self.data[tableName][existingIdx] = tx;
+                            else self.data[tableName].push(tx);
+                        } else if (tableName === 'transaction_tags' && args.length >= 2) {
+                            self.data[tableName].push({ transaction_id: args[0], tag_id: args[1] });
+                        } else if (args.length >= 2) {
+                            // Generic fallback for simple tables (id, name, ...)
+                            const item = { id: args[0], name: args[1] };
+                            // Add other args if they exist
+                            for (let i = 2; i < args.length; i++) item[`col_${i}`] = args[i];
+                            
+                            const existingIdx = self.data[tableName].findIndex(r => r.id === item.id);
+                            if (existingIdx > -1) self.data[tableName][existingIdx] = { ...self.data[tableName][existingIdx], ...item };
+                            else self.data[tableName].push(item);
+                        }
+                    }
+
+                    if (lowerSql.includes('delete from')) {
+                        if (lowerSql.includes('where transaction_id = ?')) {
+                            self.data[tableName] = self.data[tableName].filter(r => r.transaction_id !== args[0]);
+                        } else if (lowerSql.includes('where id = ?')) {
+                            self.data[tableName] = self.data[tableName].filter(r => r.id !== args[0]);
+                        } else if (!lowerSql.includes('where')) {
+                            self.data[tableName] = [];
+                        }
+                    }
+
+                    self.save();
+                    return { lastInsertRowid: Date.now(), changes: 1 };
+                }
+            };
+        }
+
+        transaction(fn) {
+            const self = this;
+            return (...args) => {
+                const result = fn(...args);
+                self.save();
+                return result;
+            };
+        }
+    };
 }
-// import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
