@@ -35,6 +35,16 @@ export const api = {
         return await response.json();
     },
 
+    handshake: async (): Promise<Record<string, any>> => {
+        const response = await fetchWithRetry('/api/data/handshake');
+        return await response.json();
+    },
+
+    loadBackgroundData: async (): Promise<Record<string, any>> => {
+        const response = await fetchWithRetry('/api/data/background');
+        return await response.json();
+    },
+
     getDiagnostics: async (): Promise<any> => {
         const response = await fetchWithRetry('/api/admin/diagnose');
         return await response.json();

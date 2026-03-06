@@ -36,10 +36,30 @@ const getSyncChannel = () => {
 };
 const syncChannel = getSyncChannel();
 
-const ViewLoader = () => (
-    <div className="h-full w-full flex flex-col items-center justify-center space-y-4 animate-fade-in">
-        <div className="w-10 h-10 border-2 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Initializing Logic...</p>
+const ViewLoader = ({ progress }: { progress?: number }) => (
+    <div className="h-full w-full flex flex-col items-center justify-center space-y-6 animate-fade-in bg-slate-50">
+        <div className="relative">
+            <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
+            {progress !== undefined && (
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-[10px] font-bold text-indigo-600">{Math.round(progress)}%</span>
+                </div>
+            )}
+        </div>
+        <div className="flex flex-col items-center space-y-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">FinParser Engine</p>
+            <p className="text-xs text-slate-500 font-medium italic">
+                {progress === undefined ? 'Establishing Handshake...' : progress < 100 ? 'Hydrating Financial Logic...' : 'Ready.'}
+            </p>
+        </div>
+        {progress !== undefined && (
+            <div className="w-48 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                <div 
+                    className="h-full bg-indigo-600 transition-all duration-500 ease-out"
+                    style={{ width: `${progress}%` }}
+                />
+            </div>
+        )}
     </div>
 );
 
@@ -48,6 +68,7 @@ const App: React.FC = () => {
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [isChatOpen, setIsChatOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [loadingProgress, setLoadingProgress] = useState(0);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
 
@@ -99,63 +120,88 @@ const App: React.FC = () => {
         return () => clearInterval(heartbeat);
     }, []);
 
-    const loadCoreData = async (showLoader = true) => {
-        if (isDirty.current) return;
-        if (showLoader) setIsLoading(true);
-        else setIsSyncing(true);
-
-        try {
-            const data = await api.loadAll();
-            
-            // Atomic Batch Update to prevent multiple renders
-            setAccounts((data.accounts || []).filter(Boolean));
-            setAccountTypes((data.accountTypes || []).filter(Boolean));
-            setCategories((data.categories || []).filter(Boolean));
-            setRuleCategories((data.ruleCategories || []).filter(Boolean));
-            setTags((data.tags || []).filter(Boolean));
-            setTransactionTypes((data.transactionTypes || []).filter(Boolean));
-            setRules((data.reconciliationRules || []).filter(Boolean));
-            setCounterparties((data.counterparties || []).filter(Boolean));
-            setLocations((data.locations || []).filter(Boolean));
-            setUsers(data.users && data.users.length > 0 ? data.users.filter(Boolean) : [{ id: 'user_primary', name: 'Primary User', isDefault: true }]);
-            setBusinessProfile(data.businessProfile || { info: {}, tax: {}, completedSteps: [] });
-            setBusinessNotes((data.businessNotes || []).filter(Boolean));
-            setDocumentFolders((data.documentFolders || []).filter(Boolean));
-            setBusinessDocuments((data.businessDocuments || []).filter(Boolean));
-            setTemplates((data.templates || []).filter(Boolean));
-            setScheduledEvents((data.scheduledEvents || []).filter(Boolean));
-            setTasks((data.tasks || []).filter(Boolean));
-            setTaskCompletions(data.taskCompletions || {});
-            setSavedReports((data.savedReports || []).filter(Boolean));
-            setSavedDateRanges((data.savedDateRanges || []).filter(Boolean));
-            setChatSessions((data.chatSessions || []).filter(Boolean));
-            setAmazonMetrics((data.amazonMetrics || []).filter(Boolean));
-            setAmazonVideos((data.amazonVideos || []).filter(Boolean));
-            setYouTubeMetric((data.youtubeMetrics || []).filter(Boolean));
-            setYouTubeChannels((data.youtubeChannels || []).filter(Boolean));
-            setFinancialGoals((data.financialGoals || []).filter(Boolean));
-            setFinancialPlan(data.financialPlan || null);
-            setSystemSettings(data.systemSettings || {});
-            setJoinedMetrics((data.joinedMetrics || []).filter(Boolean));
-            setProductJoinerProjects((data.productJoinerProjects || []).filter(Boolean));
-            
-            if (data.systemSettings?.aiConfig) {
+    const applyDataToState = (data: any) => {
+        if (data.accounts) setAccounts(data.accounts.filter(Boolean));
+        if (data.accountTypes) setAccountTypes(data.accountTypes.filter(Boolean));
+        if (data.categories) setCategories(data.categories.filter(Boolean));
+        if (data.ruleCategories) setRuleCategories(data.ruleCategories.filter(Boolean));
+        if (data.tags) setTags(data.tags.filter(Boolean));
+        if (data.transactionTypes) setTransactionTypes(data.transactionTypes.filter(Boolean));
+        if (data.reconciliationRules) setRules(data.reconciliationRules.filter(Boolean));
+        if (data.counterparties) setCounterparties(data.counterparties.filter(Boolean));
+        if (data.locations) setLocations(data.locations.filter(Boolean));
+        if (data.users) setUsers(data.users.length > 0 ? data.users.filter(Boolean) : [{ id: 'user_primary', name: 'Primary User', isDefault: true }]);
+        if (data.businessProfile) setBusinessProfile(data.businessProfile);
+        if (data.businessNotes) setBusinessNotes(data.businessNotes.filter(Boolean));
+        if (data.documentFolders) setDocumentFolders(data.documentFolders.filter(Boolean));
+        if (data.businessDocuments) setBusinessDocuments(data.businessDocuments.filter(Boolean));
+        if (data.templates) setTemplates(data.templates.filter(Boolean));
+        if (data.scheduledEvents) setScheduledEvents(data.scheduledEvents.filter(Boolean));
+        if (data.tasks) setTasks(data.tasks.filter(Boolean));
+        if (data.taskCompletions) setTaskCompletions(data.taskCompletions);
+        if (data.savedReports) setSavedReports(data.savedReports.filter(Boolean));
+        if (data.savedDateRanges) setSavedDateRanges(data.savedDateRanges.filter(Boolean));
+        if (data.chatSessions) setChatSessions(data.chatSessions.filter(Boolean));
+        if (data.amazonMetrics) setAmazonMetrics(data.amazonMetrics.filter(Boolean));
+        if (data.amazonVideos) setAmazonVideos(data.amazonVideos.filter(Boolean));
+        if (data.youtubeMetrics) setYouTubeMetric(data.youtubeMetrics.filter(Boolean));
+        if (data.youtubeChannels) setYouTubeChannels(data.youtubeChannels.filter(Boolean));
+        if (data.financialGoals) setFinancialGoals(data.financialGoals.filter(Boolean));
+        if (data.financialPlan) setFinancialPlan(data.financialPlan);
+        if (data.systemSettings) {
+            setSystemSettings(data.systemSettings);
+            if (data.systemSettings.aiConfig) {
                 updateGeminiConfig(data.systemSettings.aiConfig);
             }
+        }
+        if (data.joinedMetrics) setJoinedMetrics(data.joinedMetrics.filter(Boolean));
+        if (data.productJoinerProjects) setProductJoinerProjects(data.productJoinerProjects.filter(Boolean));
+    };
 
+    const loadCoreData = async (showLoader = true) => {
+        if (isDirty.current) return;
+        if (showLoader) {
+            setIsLoading(true);
+            setLoadingProgress(10);
+        } else {
+            setIsSyncing(true);
+        }
+
+        try {
+            // PHASE 1: UI Handshake (Critical Data Only)
+            const handshakeData = await api.handshake();
+            applyDataToState(handshakeData);
+            setLoadingProgress(40);
+
+            // If we are in initial load, we can already signal "loaded" to hide the splash
+            // but we keep isLoading=true for a split second to ensure React renders the shell
+            if (showLoader) {
+                setTimeout(() => {
+                    setIsLoading(false);
+                    document.body.classList.add('loaded');
+                }, 100);
+            }
+
+            // PHASE 2: Background Hydration (Heavier Data)
+            const backgroundData = await api.loadBackgroundData();
+            applyDataToState(backgroundData);
+            setLoadingProgress(80);
+
+            // PHASE 3: Transaction Warm-up
             try {
-                // LOAD OPTIMIZATION:
                 const txResponse = await api.getTransactions({ limit: 1000 });
                 if (txResponse && txResponse.data) setTransactions(txResponse.data.filter(Boolean));
             } catch (txErr) {
                 console.error("[APP] Tx warm-up failed:", txErr);
             }
+            
+            setLoadingProgress(100);
         } catch (err) {
             console.error("[APP] State load error:", err);
             setLoadError(`Database Connection Error: ${err instanceof Error ? err.message : 'Unknown'}`);
         } finally {
-            if (showLoader) setIsLoading(false);
             setIsSyncing(false);
+            // Ensure splash is gone even on error
             document.body.classList.add('loaded');
         }
     };
@@ -343,19 +389,20 @@ const App: React.FC = () => {
         </div>
     );
 
-    if (isLoading) return (
-        <div className="h-screen flex items-center justify-center bg-slate-50">
-            <div className="flex flex-col items-center">
-                <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4" />
-                <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">FinParser Handshake...</p>
-            </div>
-        </div>
-    );
+    if (isLoading) return <ViewLoader progress={loadingProgress} />;
 
     const currentContext = { transactions, accounts, categories, tags, counterparties, locations, users, amazonMetrics, youtubeMetrics, financialGoals, businessProfile, joinedMetrics, productJoinerProjects };
 
     return (
         <div className="flex h-screen bg-slate-50 overflow-hidden font-sans relative">
+            {!isLoading && loadingProgress < 100 && (
+                <div className="fixed top-0 left-0 right-0 h-1 bg-indigo-50 z-[100] overflow-hidden">
+                    <div 
+                        className="h-full bg-indigo-600 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(79,70,229,0.5)]" 
+                        style={{ width: `${loadingProgress}%` }}
+                    />
+                </div>
+            )}
             <Sidebar currentView={currentView} onNavigate={setCurrentView} transactions={transactions} isCollapsed={isSidebarCollapsed} onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)} onChatToggle={() => setIsChatOpen(!isChatOpen)} />
             <main className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}>
                 <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 flex-shrink-0 z-30">
