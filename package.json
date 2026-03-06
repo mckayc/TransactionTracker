@@ -4,7 +4,7 @@
   "version": "0.0.30",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
+    "dev": "node server.js",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google/genai": "latest",
+    "better-sqlite3": "^12.6.2",
     "express": "^4.19.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",
@@ -30,6 +31,6 @@
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.2.2",
-    "vite": "^5.2.0"
+    "vite": "^5.4.21"
   }
 }

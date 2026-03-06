@@ -4,6 +4,7 @@ import path from 'path';
 import express from 'express';
 import { fileURLToPath } from 'url';
 import os from 'os';
+import { createServer as createViteServer } from 'vite';
 
 // Robust Database Loader with JSON Fallback
 let Database;
@@ -949,13 +950,24 @@ app.delete('/api/files/:id', (req, res) => {
   } catch (e) { res.status(500).json({ error: 'Failed to delete file' }); }
 });
 
-if (fs.existsSync(PUBLIC_DIR)) {
-    app.use(express.static(PUBLIC_DIR));
-    app.get('*', (req, res) => {
-        const indexPath = path.join(PUBLIC_DIR, 'index.html');
-        if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-        else res.status(404).send('Not found');
-    });
+async function startServer() {
+    // Vite middleware for development
+    if (process.env.NODE_ENV !== 'production') {
+        const vite = await createViteServer({
+            server: { middlewareMode: true },
+            appType: 'spa',
+        });
+        app.use(vite.middlewares);
+    } else if (fs.existsSync(PUBLIC_DIR)) {
+        app.use(express.static(PUBLIC_DIR));
+        app.get('*', (req, res) => {
+            const indexPath = path.join(PUBLIC_DIR, 'index.html');
+            if (fs.existsSync(indexPath)) res.sendFile(indexPath);
+            else res.status(404).send('Not found');
+        });
+    }
+
+    app.listen(PORT, '0.0.0.0', () => console.log(`[SYS] Server running on port ${PORT}`));
 }
 
-app.listen(PORT, '0.0.0.0', () => console.log(`[SYS] Server running on port ${PORT}`));
+startServer();
