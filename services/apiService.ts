@@ -130,5 +130,26 @@ export const api = {
             body: JSON.stringify({ entities })
         });
         return response.ok;
+    },
+
+    getFile: async (id: string): Promise<Blob> => {
+        const response = await fetchWithRetry(`/api/files/${id}`);
+        return await response.blob();
+    },
+
+    uploadFile: async (id: string, file: File): Promise<void> => {
+        const buffer = await file.arrayBuffer();
+        await fetchWithRetry(`/api/files/${id}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': file.type,
+                'x-filename': file.name
+            },
+            body: buffer
+        });
+    },
+
+    deleteFile: async (id: string): Promise<void> => {
+        await fetchWithRetry(`/api/files/${id}`, { method: 'DELETE' });
     }
 };

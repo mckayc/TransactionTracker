@@ -86,9 +86,9 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
             const newDoc: BusinessDocument = {
                 id: docId,
                 name: file.name,
-                uploadDate: new Date().toISOString().split('T')[0],
+                upload_date: new Date().toISOString().split('T')[0],
                 size: file.size,
-                mimeType: file.type,
+                mime_type: file.type,
                 parentId: currentFolderId,
                 aiAnalysis: analysis
             };
@@ -251,7 +251,7 @@ const DocumentsPage: React.FC<DocumentsPageProps> = ({ documents, folders, onAdd
                                         </div>
                                         <div className="min-w-0">
                                             <h3 className="font-bold text-slate-800 text-sm truncate" title={doc.name}>{doc.name}</h3>
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{doc.uploadDate} • {(doc.size / 1024).toFixed(0)} KB</p>
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{doc.upload_date} • {(doc.size / 1024).toFixed(0)} KB</p>
                                         </div>
                                     </div>
                                 </div>

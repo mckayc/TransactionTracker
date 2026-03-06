@@ -12,7 +12,6 @@
   },
   "dependencies": {
     "@google/genai": "latest",
-    "better-sqlite3": "^9.4.3",
     "express": "^4.19.2",
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.1",

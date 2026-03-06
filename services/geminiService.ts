@@ -521,10 +521,20 @@ export const askAiAdvisor = async (prompt: string): Promise<string> => {
     const key = getApiKey();
     if (!key) return "Configuration required.";
     const ai = new GoogleGenAI({ apiKey: key });
+    
+    const systemInstruction = `You are a Senior Tax Strategist and Business Consultant. 
+    Your goal is to help business owners stay organized for tax season and optimize their tax strategy.
+    Provide actionable advice, identify potential deductions, and explain complex tax concepts in simple terms.
+    Always recommend consulting with a certified CPA for final filing decisions.
+    Use Markdown for formatting.`;
+
     const response = await ai.models.generateContent({
         model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
         contents: prompt,
-        config: { thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 0 } }
+        config: { 
+            systemInstruction,
+            thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 0 } 
+        }
     });
     return response.text || "No response.";
 };
@@ -601,16 +611,24 @@ export const analyzeBusinessDocument = async (file: File, onProgress: (msg: stri
     const schema = {
         type: Type.OBJECT,
         properties: {
-            documentType: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            keyDates: { type: Type.ARRAY, items: { type: Type.STRING } }
+            documentType: { type: Type.STRING, description: "e.g. W2, 1099-NEC, Receipt, Invoice, Bank Statement" },
+            summary: { type: Type.STRING, description: "Brief overview of the document contents" },
+            keyDates: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Relevant dates found (e.g. issue date, due date)" },
+            totalAmount: { type: Type.NUMBER, description: "Total monetary value if applicable" },
+            taxRelevance: { type: Type.STRING, description: "How this document impacts tax filing" },
+            suggestedCategory: { type: Type.STRING, description: "Suggested accounting category" }
         },
-        required: ["documentType", "summary"]
+        required: ["documentType", "summary", "taxRelevance"]
     };
     const response = await ai.models.generateContent({
         model: currentAiConfig.textModel || 'gemini-3-flash-preview',
-        contents: { parts: [part, { text: "Summarize this financial document." }] },
-        config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
+        contents: { parts: [part, { text: "Analyze this financial document for tax purposes. Identify its type, key details, and relevance to a business tax return." }] },
+        config: { 
+            systemInstruction: "You are a specialized document auditor for tax compliance.",
+            responseMimeType: "application/json", 
+            responseSchema: schema, 
+            thinkingConfig: { thinkingBudget: 0 } 
+        }
     });
     return JSON.parse(response.text || '{}');
 };

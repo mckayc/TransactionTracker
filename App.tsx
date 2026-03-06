@@ -17,7 +17,7 @@ const SettingsPage = lazy(() => import('./views/SettingsPage'));
 const TasksPage = lazy(() => import('./views/TasksPage'));
 const RulesPage = lazy(() => import('./views/RulesPage'));
 const ManagementHub = lazy(() => import('./views/ManagementHub'));
-const BusinessHub = lazy(() => import('./views/BusinessHub'));
+const BusinessAndTaxes = lazy(() => import('./views/BusinessAndTaxes'));
 const JournalPage = lazy(() => import('./views/JournalPage'));
 const DocumentsPage = lazy(() => import('./views/DocumentsPage'));
 const FinancialPlanPage = lazy(() => import('./views/FinancialPlanPage'));
@@ -427,7 +427,24 @@ const App: React.FC = () => {
                         {currentView === 'reports' && <Reports transactions={transactions} transactionTypes={transactionTypes} categories={categories} counterparties={counterparties} users={users} tags={tags} accounts={accounts} savedReports={savedReports} setSavedReports={(val) => { setterProxy(val, savedReports, 'savedReports', setSavedReports); }} savedDateRanges={savedDateRanges} setSavedDateRanges={(val) => { setterProxy(val, savedDateRanges, 'savedDateRanges', setSavedDateRanges); }} amazonMetrics={amazonMetrics} youtubeMetrics={youtubeMetrics} onSaveReport={(r) => bulkUpdateData('savedReports', [r], setSavedReports)} />}
                         {currentView === 'settings' && <SettingsPage transactions={transactions} transactionTypes={transactionTypes} onAddTransactionType={(t) => bulkUpdateData('transactionTypes', [t], setTransactionTypes)} onRemoveTransactionType={(id) => { setTransactionTypes(prev => { const next = prev.filter(x => x.id !== id); updateData('transactionTypes', next, setTransactionTypes); return next; }); }} systemSettings={systemSettings} onUpdateSystemSettings={(s) => updateData('systemSettings', s, setSystemSettings)} accounts={accounts} categories={categories} tags={tags} counterparties={counterparties} rules={rules} templates={templates} scheduledEvents={scheduledEvents} tasks={tasks} taskCompletions={taskCompletions} users={users} businessProfile={businessProfile} businessNotes={businessNotes} documentFolders={documentFolders} businessDocuments={businessDocuments} onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)} onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders)} savedReports={savedReports} savedDateRanges={savedDateRanges} amazonMetrics={amazonMetrics} amazonVideos={amazonVideos} youtubeMetrics={youtubeMetrics} youtubeChannels={youtubeChannels} financialGoals={financialGoals} financialPlan={financialPlan} locations={locations} accountTypes={accountTypes} />}
                         {currentView === 'tasks' && <TasksPage tasks={tasks} onSaveTask={(t) => bulkUpdateData('tasks', [t], setTasks)} onDeleteTask={(id) => { setTasks(prev => { const next = prev.filter(t => t.id !== id); updateData('tasks', next, setTasks); return next; }); }} onToggleTask={(id) => { setTasks(prev => { const next = prev.map(t => t.id === id ? {...t, isCompleted: !t.isCompleted} : t); updateData('tasks', next, setTasks); return next; }); }} templates={templates} scheduledEvents={scheduledEvents} onSaveTemplate={(t) => bulkUpdateData('templates', [t], setTemplates)} onRemoveTemplate={(id) => { setTemplates(prev => { const next = prev.filter(t => t.id !== id); updateData('templates', next, setTemplates); return next; }); }} categories={categories} />}
-                        {currentView === 'hub' && <BusinessHub profile={businessProfile} onUpdateProfile={(p) => updateData('businessProfile', p, setBusinessProfile)} notes={businessNotes} onUpdateNotes={(n) => updateData('businessNotes', n, setBusinessNotes)} chatSessions={chatSessions} onUpdateChatSessions={(s) => updateData('chatSessions', s, setChatSessions)} transactions={transactions} accounts={accounts} categories={categories} />}
+                        {currentView === 'hub' && (
+                            <BusinessAndTaxes 
+                                profile={businessProfile} 
+                                onUpdateProfile={(p) => updateData('businessProfile', p, setBusinessProfile)} 
+                                notes={businessNotes} 
+                                onUpdateNotes={(n) => updateData('businessNotes', n, setBusinessNotes)} 
+                                chatSessions={chatSessions} 
+                                onUpdateChatSessions={(s) => updateData('chatSessions', s, setChatSessions)} 
+                                transactions={transactions} 
+                                accounts={accounts} 
+                                categories={categories}
+                                documents={businessDocuments}
+                                folders={documentFolders}
+                                onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)}
+                                onRemoveDocument={(id) => { setBusinessDocuments(prev => { const next = prev.filter(d => d.id !== id); updateData('businessDocuments', next, setBusinessDocuments); return next; }); }}
+                                onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders)}
+                            />
+                        )}
                         {currentView === 'journal' && <JournalPage notes={businessNotes} onUpdateNotes={(n) => updateData('businessNotes', n, setBusinessNotes)} profile={businessProfile} />}
                         {currentView === 'documents' && <DocumentsPage documents={businessDocuments} folders={documentFolders} onAddDocument={(d) => bulkUpdateData('businessDocuments', [d], setBusinessDocuments)} onRemoveDocument={(id) => { setBusinessDocuments(prev => { const next = prev.filter(d => d.id !== id); updateData('businessDocuments', next, setBusinessDocuments); return next; }); }} onCreateFolder={(f) => bulkUpdateData('documentFolders', [f], setDocumentFolders)} onDeleteFolder={(id) => { setDocumentFolders(prev => { const next = prev.filter(f => f.id !== id); updateData('documentFolders', next, setDocumentFolders); return next; }); }} />}
                         {currentView === 'plan' && <FinancialPlanPage transactions={transactions} goals={financialGoals} onSaveGoals={(g) => updateData('financialGoals', g, setFinancialGoals)} plan={financialPlan} onSavePlan={(p) => updateData('financialPlan', p, setFinancialPlan)} categories={categories} businessProfile={businessProfile} />}

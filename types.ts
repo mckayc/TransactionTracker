@@ -520,10 +520,26 @@ export interface TaxInfo {
     accountantName?: string;
 }
 
+export interface TaxQuestion {
+    id: string;
+    question: string;
+    answer: string;
+    category: string;
+}
+
+export interface TaxYearConfig {
+    year: number;
+    isClosed: boolean;
+    checklist: Record<string, boolean>;
+    questionnaire?: TaxQuestion[];
+    notes?: string;
+}
+
 export interface BusinessProfile {
     info: BusinessInfo;
     tax: TaxInfo;
     completedSteps: string[];
+    taxYearConfigs?: TaxYearConfig[];
 }
 
 export interface BusinessNote {
@@ -541,14 +557,17 @@ export interface BusinessNote {
 export interface BusinessDocument {
     id: string;
     name: string;
-    uploadDate: string;
+    upload_date: string;
     size: number;
-    mimeType: string;
+    mime_type: string;
     parentId?: string;
     aiAnalysis?: {
         documentType: string;
         summary: string;
         keyDates?: string[];
+        totalAmount?: number;
+        taxRelevance?: string;
+        suggestedCategory?: string;
     };
 }
 
