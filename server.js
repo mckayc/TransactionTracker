@@ -702,13 +702,15 @@ app.get('/api/data/handshake', async (req, res) => {
             runAutomatedBackup(); 
         }
 
-        const [storageRows, accs, accTypes, cats, usersList, txTypes] = await Promise.all([
-            Promise.resolve().then(() => db.prepare("SELECT key, value FROM app_storage WHERE key IN ('systemSettings', 'businessProfile', 'savedDateRanges')").all()),
+        const [storageRows, accs, accTypes, cats, usersList, txTypes, tagsList, ruleCats] = await Promise.all([
+            Promise.resolve().then(() => db.prepare("SELECT key, value FROM app_storage").all()),
             Promise.resolve().then(() => db.prepare("SELECT id, name, identifier, account_type_id AS accountTypeId, parsing_profile AS parsingProfile FROM accounts").all()),
             Promise.resolve().then(() => db.prepare("SELECT id, name, is_default AS isDefault FROM account_types").all()),
             Promise.resolve().then(() => db.prepare("SELECT id, name, parent_id AS parentId FROM categories").all()),
             Promise.resolve().then(() => db.prepare("SELECT id, name, is_default AS isDefault FROM users").all()),
-            Promise.resolve().then(() => db.prepare("SELECT id, name, balance_effect as balanceEffect, color FROM transaction_types").all())
+            Promise.resolve().then(() => db.prepare("SELECT id, name, balance_effect as balanceEffect, color FROM transaction_types").all()),
+            Promise.resolve().then(() => db.prepare("SELECT * FROM tags").all()),
+            Promise.resolve().then(() => db.prepare("SELECT id, name, is_default AS isDefault FROM rule_categories").all())
         ]);
 
         const data = {};
@@ -721,6 +723,8 @@ app.get('/api/data/handshake', async (req, res) => {
         data.categories = cats;
         data.users = usersList.map(u => ({ ...u, isDefault: !!u.isDefault }));
         data.transactionTypes = txTypes;
+        data.tags = tagsList;
+        data.ruleCategories = ruleCats.map(r => ({ ...r, isDefault: !!r.isDefault }));
 
         res.json(data);
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -728,26 +732,17 @@ app.get('/api/data/handshake', async (req, res) => {
 
 app.get('/api/data/background', async (req, res) => {
     try {
-        const [storageRows, rules, ruleCats, countP, locs, tagsList, docs] = await Promise.all([
-            Promise.resolve().then(() => db.prepare("SELECT key, value FROM app_storage WHERE key NOT IN ('systemSettings', 'businessProfile', 'savedDateRanges')").all()),
+        const [rules, countP, locs, docs] = await Promise.all([
             Promise.resolve().then(() => db.prepare("SELECT logic_json FROM reconciliation_rules").all()),
-            Promise.resolve().then(() => db.prepare("SELECT id, name, is_default AS isDefault FROM rule_categories").all()),
             Promise.resolve().then(() => db.prepare("SELECT id, name, parent_id AS parentId, notes, user_id AS userId FROM counterparties").all()),
             Promise.resolve().then(() => db.prepare("SELECT id, name, city, state, country FROM locations").all()),
-            Promise.resolve().then(() => db.prepare("SELECT * FROM tags").all()),
             Promise.resolve().then(() => db.prepare("SELECT * FROM files_meta").all())
         ]);
 
         const data = {};
-        for (const row of storageRows) {
-            try { data[row.key] = JSON.parse(row.value); } catch (e) { data[row.key] = null; }
-        }
-
         data.reconciliationRules = rules.map(r => JSON.parse(r.logic_json));
-        data.ruleCategories = ruleCats.map(r => ({ ...r, isDefault: !!r.isDefault }));
         data.counterparties = countP;
         data.locations = locs;
-        data.tags = tagsList;
         data.businessDocuments = docs.map(f => ({ ...f, uploadDate: f.created_at, parentId: f.parent_id }));
 
         res.json(data);
