@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { Reorder } from 'motion/react';
 import type { TaskItem, SubTask, RecurrenceRule, TaskPriority } from '../types';
-import { CloseIcon, ChecklistIcon, CalendarIcon, RepeatIcon, DeleteIcon, AddIcon, LinkIcon, EditIcon, CheckBadgeIcon, CheckCircleIcon, TrashIcon, SparklesIcon, PlayIcon, ListIcon, InfoIcon, SaveIcon, NotesIcon } from '../components/Icons';
+import { CloseIcon, ChecklistIcon, CalendarIcon, RepeatIcon, DeleteIcon, AddIcon, LinkIcon, EditIcon, CheckBadgeIcon, CheckCircleIcon, TrashIcon, SparklesIcon, PlayIcon, ListIcon, InfoIcon, SaveIcon, NotesIcon, DragHandleIcon } from '../components/Icons';
 import { formatDate, getTodayDate } from '../dateUtils';
 import { generateUUID } from '../utils';
 
@@ -243,6 +244,14 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
         setEditSubtaskData(null);
     };
 
+    const handleReorderSubtasks = (newSubtasks: SubTask[]) => {
+        const sorted = newSubtasks.map((s, idx) => ({ ...s, order: idx }));
+        setSubtasks(sorted);
+        if (mode === 'view' && task) {
+            onSave({ ...task, subtasks: sorted });
+        }
+    };
+
     const toggleWeekDay = (dayIndex: number) => {
         const currentDays = new Set(recurrence.byWeekDays || []);
         if (currentDays.has(dayIndex)) {
@@ -352,12 +361,20 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                 </div>
                             </div>
                             
-                            <ul className="grid grid-cols-1 gap-3">
+                            <Reorder.Group axis="y" values={subtasks} onReorder={handleReorderSubtasks} className="grid grid-cols-1 gap-3">
                                 {subtasks.map(st => (
-                                    <li key={st.id} className={`flex items-start gap-4 p-5 rounded-[2rem] border-2 transition-all group ${st.isCompleted ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-50 shadow-sm hover:border-indigo-100'}`}>
+                                    <Reorder.Item 
+                                        key={st.id} 
+                                        value={st}
+                                        className={`flex items-start gap-4 p-5 rounded-[2rem] border-2 transition-all group active:scale-[0.98] active:shadow-md ${st.isCompleted ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-50 shadow-sm hover:border-indigo-100'}`}
+                                    >
+                                        <div className="flex flex-col gap-2 pt-1.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+                                            <DragHandleIcon className="w-4 h-4 text-slate-300" />
+                                        </div>
+
                                         <button 
                                             onClick={() => toggleSubtask(st.id)}
-                                            className={`mt-1 w-7 h-7 rounded-xl border-2 flex items-center justify-center transition-all ${st.isCompleted ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-200 group-hover:border-indigo-300'}`}
+                                            className={`mt-1 w-7 h-7 rounded-xl border-2 flex items-center justify-center transition-all shrink-0 ${st.isCompleted ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg' : 'bg-white border-slate-200 group-hover:border-indigo-300'}`}
                                         >
                                             {st.isCompleted && <CheckCircleIcon className="w-4 h-4" />}
                                         </button>
@@ -376,7 +393,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                                 </p>
                                             )}
                                         </div>
-                                    </li>
+                                    </Reorder.Item>
                                 ))}
                                 {subtasks.length === 0 && (
                                     <div className="py-16 flex flex-col items-center justify-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100">
@@ -384,7 +401,7 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                         <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No sequential checkpoints defined</p>
                                     </div>
                                 )}
-                            </ul>
+                            </Reorder.Group>
                         </div>
                     </div>
                 )}
@@ -455,37 +472,46 @@ const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, onSave, task, in
                                         <p className="text-[10px] font-bold text-slate-400">{subtasks.length} defined items</p>
                                     </div>
                                     
-                                    <div className="space-y-2">
-                                        {subtasks.map(st => (
-                                            <div key={st.id} className="p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 group transition-all hover:border-indigo-200">
-                                                {editingSubtaskId === st.id && editSubtaskData ? (
-                                                    <div className="space-y-4">
-                                                        <input type="text" value={editSubtaskData.text} onChange={(e) => setEditSubtaskData({...editSubtaskData, text: e.target.value})} className="w-full p-3 border-none bg-white rounded-xl shadow-inner text-sm font-bold" placeholder="Task description..." autoFocus />
-                                                        <div className="grid grid-cols-2 gap-3">
-                                                            <input type="text" value={editSubtaskData.linkUrl || ''} onChange={(e) => setEditSubtaskData({...editSubtaskData, linkUrl: e.target.value})} className="w-full p-2 border-2 border-slate-100 bg-white rounded-xl text-[10px] font-bold" placeholder="Resource URL (https://...)" />
-                                                            <input type="text" value={editSubtaskData.linkText || ''} onChange={(e) => setEditSubtaskData({...editSubtaskData, linkText: e.target.value})} className="w-full p-2 border-2 border-slate-100 bg-white rounded-xl text-[10px] font-bold" placeholder="Link Label" />
-                                                        </div>
-                                                        <textarea value={editSubtaskData.notes || ''} onChange={(e) => setEditSubtaskData({...editSubtaskData, notes: e.target.value})} className="w-full p-2 border-2 border-slate-100 bg-white rounded-xl text-[10px] font-medium min-h-[60px]" placeholder="Specific procedure notes..." />
-                                                        <div className="flex gap-2 justify-end">
-                                                            <button type="button" onClick={cancelEditingSubtask} className="px-5 py-2 bg-white text-slate-500 rounded-lg text-[10px] font-black uppercase border border-slate-200">Discard</button>
-                                                            <button type="button" onClick={saveEditingSubtask} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase shadow-lg shadow-indigo-100">Commit</button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="flex-1 min-w-0" onClick={() => startEditingSubtask(st)}>
-                                                            <span className="text-sm font-bold text-slate-700 block truncate cursor-pointer hover:text-indigo-600 transition-colors">{st.text}</span>
-                                                            <div className="flex items-center gap-3 mt-1">
-                                                                {st.linkUrl && <span className="text-[10px] text-indigo-400 font-bold flex items-center gap-1"><LinkIcon className="w-3 h-3"/> {st.linkText || 'Linked'}</span>}
-                                                                {st.notes && <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1"><NotesIcon className="w-3 h-3"/> Procedure defined</span>}
-                                                            </div>
-                                                        </div>
-                                                        <button type="button" onClick={() => removeSubtask(st.id)} className="p-2 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><TrashIcon className="w-5 h-5"/></button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
+                                    <Reorder.Group axis="y" values={subtasks} onReorder={handleReorderSubtasks} className="space-y-2">
+                                         {subtasks.map(st => (
+                                             <Reorder.Item 
+                                                 key={st.id} 
+                                                 value={st}
+                                                 className="p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 group transition-all hover:border-indigo-200 active:scale-[0.98] active:shadow-md"
+                                             >
+                                                 {editingSubtaskId === st.id && editSubtaskData ? (
+                                                     <div className="space-y-4">
+                                                         <input type="text" value={editSubtaskData.text} onChange={(e) => setEditSubtaskData({...editSubtaskData, text: e.target.value})} className="w-full p-3 border-none bg-white rounded-xl shadow-inner text-sm font-bold" placeholder="Task description..." autoFocus />
+                                                         <div className="grid grid-cols-2 gap-3">
+                                                             <input type="text" value={editSubtaskData.linkUrl || ''} onChange={(e) => setEditSubtaskData({...editSubtaskData, linkUrl: e.target.value})} className="w-full p-2 border-2 border-slate-100 bg-white rounded-xl text-[10px] font-bold" placeholder="Resource URL (https://...)" />
+                                                             <input type="text" value={editSubtaskData.linkText || ''} onChange={(e) => setEditSubtaskData({...editSubtaskData, linkText: e.target.value})} className="w-full p-2 border-2 border-slate-100 bg-white rounded-xl text-[10px] font-bold" placeholder="Link Label" />
+                                                         </div>
+                                                         <textarea value={editSubtaskData.notes || ''} onChange={(e) => setEditSubtaskData({...editSubtaskData, notes: e.target.value})} className="w-full p-2 border-2 border-slate-100 bg-white rounded-xl text-[10px] font-medium min-h-[60px]" placeholder="Specific procedure notes..." />
+                                                         <div className="flex gap-2 justify-end">
+                                                             <button type="button" onClick={cancelEditingSubtask} className="px-5 py-2 bg-white text-slate-500 rounded-lg text-[10px] font-black uppercase border border-slate-200">Discard</button>
+                                                             <button type="button" onClick={saveEditingSubtask} className="px-5 py-2 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase shadow-lg shadow-indigo-100">Commit</button>
+                                                         </div>
+                                                     </div>
+                                                 ) : (
+                                                     <div className="flex items-center justify-between">
+                                                         <div className="flex items-center gap-4 flex-1 min-w-0">
+                                                             <div className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing">
+                                                                 <DragHandleIcon className="w-4 h-4 text-slate-300" />
+                                                             </div>
+                                                             <div className="flex-1 min-w-0" onClick={() => startEditingSubtask(st)}>
+                                                                 <span className="text-sm font-bold text-slate-700 block truncate cursor-pointer hover:text-indigo-600 transition-colors">{st.text}</span>
+                                                                 <div className="flex items-center gap-3 mt-1">
+                                                                     {st.linkUrl && <span className="text-[10px] text-indigo-400 font-bold flex items-center gap-1"><LinkIcon className="w-3 h-3"/> {st.linkText || 'Linked'}</span>}
+                                                                     {st.notes && <span className="text-[10px] text-slate-400 font-bold flex items-center gap-1"><NotesIcon className="w-3 h-3"/> Procedure defined</span>}
+                                                                 </div>
+                                                             </div>
+                                                         </div>
+                                                         <button type="button" onClick={() => removeSubtask(st.id)} className="p-2 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><TrashIcon className="w-5 h-5"/></button>
+                                                     </div>
+                                                 )}
+                                             </Reorder.Item>
+                                         ))}
+                                     </Reorder.Group>
 
                                     <div className="p-8 bg-indigo-50/30 rounded-[2.5rem] border-2 border-dashed border-indigo-100 space-y-6">
                                         <div className="space-y-4">

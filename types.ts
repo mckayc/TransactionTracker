@@ -183,6 +183,7 @@ export interface TaskItem {
     title: string;
     description?: string;
     notes?: string;
+    order?: number;
     priority: TaskPriority;
     dueDate?: string;
     isCompleted: boolean;
@@ -196,6 +197,7 @@ export interface SubTask {
     id: string;
     text: string;
     isCompleted: boolean;
+    order?: number;
     notes?: string;
     linkUrl?: string;
     linkText?: string;

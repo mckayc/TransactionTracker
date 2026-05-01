@@ -1,13 +1,15 @@
 
 import React, { useState, useMemo } from 'react';
+import { Reorder } from 'motion/react';
 import type { Template, Task, ScheduledEvent, TaskItem, TaskPriority, Category } from '../types';
-import { AddIcon, DeleteIcon, EditIcon, CheckCircleIcon, CalendarIcon, RepeatIcon, ChecklistIcon, BoxIcon, SearchCircleIcon, TagIcon, ChevronRightIcon, ChevronDownIcon, TrashIcon, CloseIcon, PlayIcon, InfoIcon, ShieldCheckIcon, ListIcon, CheckBadgeIcon } from '../components/Icons';
+import { AddIcon, DeleteIcon, EditIcon, CheckCircleIcon, CalendarIcon, RepeatIcon, ChecklistIcon, BoxIcon, SearchCircleIcon, TagIcon, ChevronRightIcon, ChevronDownIcon, TrashIcon, CloseIcon, PlayIcon, InfoIcon, ShieldCheckIcon, ListIcon, CheckBadgeIcon, DragHandleIcon } from '../components/Icons';
 import TaskModal from './TaskModal';
 import { formatDate } from '../dateUtils';
 
 interface TasksPageProps {
     tasks: TaskItem[];
     onSaveTask: (task: TaskItem) => void;
+    onSaveTasks: (tasks: TaskItem[]) => void;
     onDeleteTask: (taskId: string) => void;
     onToggleTask: (taskId: string) => void;
     templates: Template[];
@@ -17,7 +19,7 @@ interface TasksPageProps {
     categories: Category[];
 }
 
-const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, onToggleTask, templates, scheduledEvents, onSaveTemplate, onRemoveTemplate, categories }) => {
+const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onSaveTasks, onDeleteTask, onToggleTask, templates, scheduledEvents, onSaveTemplate, onRemoveTemplate, categories }) => {
     const [selectedCategoryId, setSelectedCategoryId] = useState<string | 'all' | 'none'>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -32,6 +34,15 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
             return matchesSearch && matchesCategory && matchesStatus;
         }).sort((a, b) => {
             if (a.isCompleted !== b.isCompleted) return a.isCompleted ? 1 : -1;
+            
+            // Primary manual sort
+            if (a.order !== undefined && b.order !== undefined) {
+                return a.order - b.order;
+            }
+            if (a.order !== undefined) return -1;
+            if (b.order !== undefined) return 1;
+
+            // Secondary fallback sort
             if (a.priority !== b.priority) {
                 const p = { high: 3, medium: 2, low: 1 };
                 return p[b.priority] - p[a.priority];
@@ -39,6 +50,11 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
             return new Date(a.dueDate || '9999').getTime() - new Date(b.dueDate || '9999').getTime();
         });
     }, [tasks, searchTerm, selectedCategoryId, filterStatus]);
+
+    const handleReorderTasks = (newOrderedFilteredTasks: TaskItem[]) => {
+        const sortedWithOrders = newOrderedFilteredTasks.map((t, index) => ({ ...t, order: index }));
+        onSaveTasks(sortedWithOrders);
+    };
 
     const activeTask = useMemo(() => tasks.find(t => t.id === selectedTaskId), [tasks, selectedTaskId]);
 
@@ -90,7 +106,7 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
                             <SearchCircleIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                         </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar bg-white/50">
+                    <Reorder.Group axis="y" values={filteredTasks} onReorder={handleReorderTasks} className="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar bg-white/50">
                         {filteredTasks.length === 0 ? (
                             <div className="p-16 text-center text-slate-300 flex flex-col items-center">
                                 <BoxIcon className="w-12 h-12 mb-4 opacity-5" />
@@ -98,27 +114,33 @@ const TasksPage: React.FC<TasksPageProps> = ({ tasks, onSaveTask, onDeleteTask, 
                             </div>
                         ) : (
                             filteredTasks.map(t => (
-                                <div 
+                                <Reorder.Item 
                                     key={t.id} 
+                                    value={t}
                                     onClick={() => { setSelectedTaskId(t.id); setIsCreating(false); }} 
-                                    className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-2 relative group overflow-hidden ${selectedTaskId === t.id ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}
+                                    className={`p-4 rounded-xl cursor-pointer border-2 transition-all flex flex-col gap-2 relative group overflow-hidden active:scale-[0.98] active:shadow-md ${selectedTaskId === t.id ? 'bg-indigo-50 border-indigo-500 shadow-sm' : 'bg-white border-transparent hover:bg-slate-50'}`}
                                 >
                                     <div className="flex justify-between items-start z-10">
-                                        <div className="min-w-0 flex-1">
-                                            <h4 className={`text-sm font-black tracking-tight truncate pr-2 ${t.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{t.title}</h4>
-                                            <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                                                {t.dueDate && <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3" /> {formatDate(t.dueDate)}</span>}
-                                                <span className={`px-1.5 py-0.5 rounded text-[8px] font-black ${t.priority === 'high' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-slate-100 text-slate-500'}`}>{t.priority}</span>
+                                        <div className="flex items-start gap-3 min-w-0 flex-1">
+                                            <div className="pt-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing shrink-0">
+                                                <DragHandleIcon className="w-3 h-3 text-slate-300" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <h4 className={`text-sm font-black tracking-tight truncate pr-2 ${t.isCompleted ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{t.title}</h4>
+                                                <div className="flex items-center gap-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">
+                                                    {t.dueDate && <span className="flex items-center gap-1"><CalendarIcon className="w-3 h-3" /> {formatDate(t.dueDate)}</span>}
+                                                    <span className={`px-1.5 py-0.5 rounded text-[8px] font-black ${t.priority === 'high' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-slate-100 text-slate-500'}`}>{t.priority}</span>
+                                                </div>
                                             </div>
                                         </div>
                                         <div className="flex-shrink-0 pt-1">
                                             {t.isCompleted ? <CheckBadgeIcon className="w-5 h-5 text-emerald-500" /> : <ChevronRightIcon className="w-4 h-4 text-slate-300" />}
                                         </div>
                                     </div>
-                                </div>
+                                </Reorder.Item>
                             ))
                         )}
-                    </div>
+                    </Reorder.Group>
                 </div>
 
                 {/* COLUMN 3: VIEWER */}
