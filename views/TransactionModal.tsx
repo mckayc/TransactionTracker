@@ -59,9 +59,13 @@ const TransactionModal: React.FC<TransactionModalProps> = ({
     const [quickAddType, setQuickAddType] = useState<EntityType | null>(null);
     const isEditMode = transaction !== null;
 
-    const getSortedOptions = (items: any[], parentId?: string, depth = 0): { id: string, name: string }[] => {
+    const getSortedOptions = (items: any[], parentId: string | null | undefined = undefined, depth = 0): { id: string, name: string }[] => {
         return items
-            .filter(i => i.parentId === parentId)
+            .filter(i => {
+                const itemParent = i.parentId || undefined;
+                const targetParent = parentId || undefined;
+                return itemParent === targetParent;
+            })
             .sort((a, b) => a.name.localeCompare(b.name))
             .flatMap(item => [
                 { id: item.id, name: `${'\u00A0'.repeat(depth * 3)}${depth > 0 ? '⌞ ' : ''}${item.name}` },
@@ -161,7 +165,8 @@ const TransactionModal: React.FC<TransactionModalProps> = ({
                                     <span>Category</span>
                                     <button type="button" onClick={() => setQuickAddType('categories')} className="text-indigo-600 hover:underline">NEW</button>
                                 </label>
-                                <select name="categoryId" value={formData.categoryId} onChange={handleChange} className="w-full p-2 border rounded-xl font-medium">
+                                <select name="categoryId" value={formData.categoryId || ''} onChange={handleChange} required className="w-full p-2 border rounded-xl font-medium">
+                                    <option value="" disabled>Select category...</option>
                                     {sortedCategoryOptions.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
                                 </select>
                             </div>
