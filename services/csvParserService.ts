@@ -1,12 +1,12 @@
 
-import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition, Account } from '../types';
+import type { RawTransaction, TransactionType, AmazonMetric, YouTubeMetric, AmazonReportType, AmazonVideo, AmazonCCType, ReconciliationRule, RuleCondition, Account, ParsingProfile } from '../types';
 import { generateUUID } from '../utils';
 import * as XLSX from 'xlsx';
 
 /**
  * Robustly splits a CSV line, respecting quoted fields and escaped quotes.
  */
-const splitCsvLine = (line: string, delimiter: string): string[] => {
+export const splitCsvLine = (line: string, delimiter: string): string[] => {
     const result: string[] = [];
     let curVal = '';
     let inQuotes = false;
@@ -150,60 +150,124 @@ const formatDateString = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
+export interface AutoDetectedLayout {
+  dateIdx: number;
+  descIdx: number;
+  amountIdx: number;
+  debitIdx: number;
+  creditIdx: number;
+  payeeIdx: number;
+  hasHeader: boolean;
+  delimiter: string;
+}
+
+export const autoDetectCsvLayout = (lines: string[]): AutoDetectedLayout => {
+  if (lines.length === 0) return { dateIdx: 0, descIdx: 1, amountIdx: 2, debitIdx: -1, creditIdx: -1, payeeIdx: -1, hasHeader: false, delimiter: ',' };
+
+  const firstLine = lines[0];
+  let delimiter = ',';
+  if (firstLine.includes('\t')) delimiter = '\t';
+  else if (firstLine.includes(';')) delimiter = ';';
+  else if (firstLine.includes('|')) delimiter = '|';
+
+  const parts0 = splitCsvLine(lines[0], delimiter).map(s => s.trim().replace(/^"|"$/g, ''));
+  
+  const isDateVal = (s: string) => parseDate(s) !== null;
+  const isNumVal = (s: string) => !isNaN(parseFloat(s.replace(/[^0-9.+-]/g, ''))) && /[0-9]/.test(s);
+
+  const line0HasDate = parts0.some(isDateVal);
+  const line0HasNum = parts0.some(isNumVal);
+
+  const hasHeader = (!line0HasDate && !line0HasNum) || (parts0.some(p => /date|desc|memo|amount|payee|debit|credit/i.test(p)));
+
+  const sampleLineIdx = (hasHeader && lines.length > 1) ? 1 : 0;
+  const sampleParts = splitCsvLine(lines[sampleLineIdx], delimiter).map(s => s.trim().replace(/^"|"$/g, ''));
+
+  let dateIdx = -1;
+  let amountIdx = -1;
+  let descIdx = -1;
+  let debitIdx = -1;
+  let creditIdx = -1;
+  let payeeIdx = -1;
+
+  if (hasHeader) {
+    const headers = parts0.map(s => s.toLowerCase());
+    dateIdx = headers.findIndex(h => h.includes('date') || h.includes('time') || h.includes('day'));
+    descIdx = headers.findIndex(h => h.includes('desc') || h.includes('memo') || h.includes('details') || h.includes('narrative') || h.includes('name') || h.includes('title'));
+    amountIdx = headers.findIndex(h => h.includes('amount') || h.includes('total') || h.includes('sum') || h.includes('value') || h.includes('price'));
+    debitIdx = headers.findIndex(h => h.includes('debit') || h.includes('withdrawal') || h.includes('spend') || h.includes('out'));
+    creditIdx = headers.findIndex(h => h.includes('credit') || h.includes('deposit') || h.includes('receive') || h.includes('in'));
+    payeeIdx = headers.findIndex(h => h.includes('payee') || h.includes('merchant') || h.includes('vendor') || h.includes('entity'));
+  }
+
+  if (dateIdx === -1) {
+    dateIdx = sampleParts.findIndex(p => isDateVal(p));
+  }
+  if (amountIdx === -1 && debitIdx === -1 && creditIdx === -1) {
+    amountIdx = sampleParts.findIndex((p, idx) => idx !== dateIdx && isNumVal(p));
+  }
+  if (descIdx === -1) {
+    descIdx = sampleParts.findIndex((p, idx) => idx !== dateIdx && idx !== amountIdx && idx !== debitIdx && idx !== creditIdx && p.length > 0);
+  }
+
+  if (dateIdx === -1) dateIdx = 0;
+  if (descIdx === -1) descIdx = dateIdx === 0 ? 1 : 0;
+  if (amountIdx === -1 && debitIdx === -1) amountIdx = (dateIdx !== 2 && descIdx !== 2) ? 2 : (dateIdx !== 1 && descIdx !== 1 ? 1 : 0);
+
+  return { dateIdx, descIdx, amountIdx, debitIdx, creditIdx, payeeIdx, hasHeader, delimiter };
+};
+
 export const parseTransactionsFromText = async (
     text: string, 
     accountId: string, 
     transactionTypes: TransactionType[], 
     onProgress: (msg: string) => void,
-    accountContext?: Account
+    accountContext?: Account,
+    customProfile?: Partial<ParsingProfile>
 ): Promise<RawTransaction[]> => {
     onProgress("Deconstructing bank CSV stream...");
     const lines = text.split(/\r?\n/).filter(l => l.trim());
     if (lines.length < 1) return [];
     
-    const profile = accountContext?.parsingProfile;
-    if (!profile) {
-        throw new Error(`The account '${accountContext?.name || accountId}' does not have a Header Map. Please configure it in Identity Hub.`);
-    }
-
-    // Determine delimiter (Saved vs Detected)
-    let delimiter = profile.delimiter || (lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ','));
+    let profile = customProfile || accountContext?.parsingProfile;
     
-    // Sanitize headers to handle BOM and hidden chars
+    // Auto-detect layout if no profile provided or profile is incomplete
+    const autoLayout = autoDetectCsvLayout(lines);
+
+    let delimiter = profile?.delimiter || autoLayout.delimiter || (lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ','));
+    
     const headerLine = lines[0];
     const rawHeaders = splitCsvLine(headerLine, delimiter);
     const firstLineParts = rawHeaders.map(sanitizeHeader);
-    
-    const findIndexStrict = (profileField: string | number | undefined, label: string) => {
-        if (profileField === undefined || profileField === null || profileField === '') return -1;
-        if (typeof profileField === 'number') return profileField;
-        
-        const cleanTarget = profileField.toString().toLowerCase().trim();
-        const idx = firstLineParts.findIndex(p => p === cleanTarget);
-        
-        if (idx === -1) {
-            throw new Error(`Header '${profileField}' (mapped to ${label}) was not found in the file. Detected headers: ${firstLineParts.join(', ')}`);
+
+    const resolveIndex = (profileField: string | number | undefined, autoIdx: number): number => {
+        if (profileField !== undefined && profileField !== null && profileField !== '') {
+            if (typeof profileField === 'number') return profileField;
+            if (!isNaN(Number(profileField))) return Number(profileField);
+            const cleanTarget = profileField.toString().toLowerCase().trim();
+            const foundIdx = firstLineParts.findIndex(p => p === cleanTarget);
+            if (foundIdx !== -1) return foundIdx;
         }
-        return idx;
+        return autoIdx;
     };
-    
-    const dateIdx = findIndexStrict(profile.dateColumn, 'Transaction Date');
-    const amountIdx = findIndexStrict(profile.amountColumn, 'Amount');
-    const debitIdx = findIndexStrict(profile.debitColumn, 'Debit/Withdrawal');
-    const creditIdx = findIndexStrict(profile.creditColumn, 'Credit/Deposit');
-    const descIdx = findIndexStrict(profile.descriptionColumn, 'Statement Memo');
-    
-    const payeeIdx = findIndexStrict(profile.payeeColumn, 'Entity/Payee');
-    const typeIdx = findIndexStrict(profile.typeColumn, 'Transaction Type');
-    const catIdx = findIndexStrict(profile.categoryColumn, 'Category');
-    const locIdx = findIndexStrict(profile.locationColumn, 'Location');
-    const tagsIdx = findIndexStrict(profile.tagsColumn, 'Tags');
-    const notesIdx = findIndexStrict(profile.notesColumn, 'Notes');
 
-    // Indices used for primary fields - everything else goes to metadata
-    const usedIndices = new Set([dateIdx, amountIdx, debitIdx, creditIdx, descIdx, payeeIdx, typeIdx, catIdx, locIdx, tagsIdx, notesIdx]);
+    let dateIdx = resolveIndex(profile?.dateColumn, autoLayout.dateIdx);
+    let amountIdx = resolveIndex(profile?.amountColumn, autoLayout.amountIdx);
+    let debitIdx = resolveIndex(profile?.debitColumn, autoLayout.debitIdx);
+    let creditIdx = resolveIndex(profile?.creditColumn, autoLayout.creditIdx);
+    let descIdx = resolveIndex(profile?.descriptionColumn, autoLayout.descIdx);
+    let payeeIdx = resolveIndex(profile?.payeeColumn, autoLayout.payeeIdx);
+    
+    let typeIdx = resolveIndex(profile?.typeColumn, -1);
+    let catIdx = resolveIndex(profile?.categoryColumn, -1);
+    let locIdx = resolveIndex(profile?.locationColumn, -1);
+    let tagsIdx = resolveIndex(profile?.tagsColumn, -1);
+    let notesIdx = resolveIndex(profile?.notesColumn, -1);
 
-    const startIndex = profile.hasHeader ? 1 : 0;
+    const usedIndices = new Set([dateIdx, amountIdx, debitIdx, creditIdx, descIdx, payeeIdx, typeIdx, catIdx, locIdx, tagsIdx, notesIdx].filter(x => x !== -1));
+
+    const hasHeader = profile?.hasHeader !== undefined ? profile.hasHeader : autoLayout.hasHeader;
+    const startIndex = hasHeader ? 1 : 0;
     const txs: RawTransaction[] = [];
     const incomingType = transactionTypes.find(t => t.balanceEffect === 'incoming') || transactionTypes[0];
     const outgoingType = transactionTypes.find(t => t.balanceEffect === 'outgoing') || transactionTypes[0];
@@ -244,7 +308,7 @@ export const parseTransactionsFromText = async (
             }
         }
         
-        if (!dateStr || (amount === 0 && !rawDesc && (!payeeIdx || !parts[payeeIdx]))) continue;
+        if (!dateStr || (amount === 0 && !rawDesc && (payeeIdx === -1 || !parts[payeeIdx]))) continue;
 
         let finalDesc = rawDesc || '';
         const payee = (payeeIdx !== -1 && parts[payeeIdx]) ? parts[payeeIdx] : '';
@@ -258,13 +322,12 @@ export const parseTransactionsFromText = async (
             finalDesc = (notesIdx !== -1 ? parts[notesIdx] : '') || 'Untitled Transaction';
         }
 
-        const date = parseDate(dateStr, profile.dateFormat);
+        const date = parseDate(dateStr, profile?.dateFormat);
         if (!date) {
             dateFailures++;
             continue;
         }
 
-        // Automatic Metadata Collection: Capture every column that wasn't unmapped
         const metadata: Record<string, any> = {
             raw_row: lines[i],
             file_line: i + 1
@@ -295,12 +358,12 @@ export const parseTransactionsFromText = async (
 
     if (txs.length === 0) {
         if (dateFailures > 0) {
-            throw new Error(`Extracted ${lines.length - startIndex} potential rows, but they ALL failed date parsing in column '${profile.dateColumn}'. Check your Date format in the CSV.`);
+            throw new Error(`Extracted ${lines.length - startIndex} potential rows, but date parsing failed in column ${dateIdx + 1}. Please verify column mapping or date format.`);
         }
         if (amountFailures > 0) {
-            throw new Error(`Found data rows, but failed to parse amounts in column '${profile.amountColumn}'. Make sure it contains only numbers and symbols like $ or ,.`);
+            throw new Error(`Found data rows, but failed to parse amounts in column ${amountIdx + 1}. Please verify column mapping.`);
         }
-        throw new Error(`Successfully found columns, but failed to extract any valid transaction rows. Check if the CSV uses headers but the 'Has Header' setting is incorrect.`);
+        throw new Error(`Could not extract valid transaction rows. Please review column assignments.`);
     }
 
     return txs;

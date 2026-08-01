@@ -2,7 +2,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import type { Transaction, Account, RawTransaction, TransactionType, ReconciliationRule, Counterparty, Category, User, BusinessDocument, DocumentFolder, Tag, AccountType, Location, RuleCategory, View } from '../types';
 import { extractTransactionsFromFiles, extractTransactionsFromText } from '../services/geminiService';
-import { parseTransactionsFromFiles, parseTransactionsFromText } from '../services/csvParserService';
+import { parseTransactionsFromFiles, parseTransactionsFromText, autoDetectCsvLayout, splitCsvLine } from '../services/csvParserService';
 import { mergeTransactions } from '../services/transactionService';
 import { applyRulesToTransactions } from '../services/ruleService';
 import FileUpload from '../components/FileUpload';
@@ -68,8 +68,77 @@ const ImportPage: React.FC<ImportPageProps> = ({
   const [importMethod, setImportMethod] = useState<ImportMethod>('upload');
   const [textInput, setTextInput] = useState('');
   const [pasteAccountId, setPasteAccountId] = useState<string>('');
-  const [useAi, setUseAi] = useState(true);
+  const [useAi, setUseAi] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
+
+  // Manual Column Mapping State
+  const [showManualMapping, setShowManualMapping] = useState(false);
+  const [manualDateCol, setManualDateCol] = useState('0');
+  const [manualDescCol, setManualDescCol] = useState('1');
+  const [manualAmountCol, setManualAmountCol] = useState('2');
+  const [manualHasHeader, setManualHasHeader] = useState(false);
+  const [manualDelimiter, setManualDelimiter] = useState('\t');
+
+  // Auto detect columns whenever textInput or pasteAccountId changes
+  useEffect(() => {
+    if (!textInput.trim()) return;
+    const lines = textInput.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length === 0) return;
+
+    const targetAccount = accounts.find(a => a.id === pasteAccountId);
+    const existingProfile = targetAccount?.parsingProfile;
+
+    const detected = autoDetectCsvLayout(lines);
+    setManualDelimiter(existingProfile?.delimiter || detected.delimiter);
+    setManualHasHeader(existingProfile?.hasHeader !== undefined ? existingProfile.hasHeader : detected.hasHeader);
+    
+    // Set column mapping defaults
+    setManualDateCol(existingProfile?.dateColumn !== undefined ? String(existingProfile.dateColumn) : String(detected.dateIdx));
+    setManualDescCol(existingProfile?.descriptionColumn !== undefined ? String(existingProfile.descriptionColumn) : String(detected.descIdx));
+    setManualAmountCol(existingProfile?.amountColumn !== undefined ? String(existingProfile.amountColumn) : String(detected.amountIdx));
+  }, [textInput, pasteAccountId, accounts]);
+
+  const sampleParsed = useMemo(() => {
+    if (!textInput.trim()) return { headers: [], rows: [] };
+    const lines = textInput.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length === 0) return { headers: [], rows: [] };
+
+    const delim = manualDelimiter || (lines[0].includes('\t') ? '\t' : (lines[0].includes(';') ? ';' : ','));
+    const rows = lines.map(l => splitCsvLine(l, delim).map(s => s.trim().replace(/^"|"$/g, '')));
+
+    const headerRow = manualHasHeader ? rows[0] : null;
+    const dataRows = manualHasHeader ? rows.slice(1, 4) : rows.slice(0, 3);
+    const maxCols = Math.max(...rows.map(r => r.length), 3);
+
+    const headers = Array.from({ length: maxCols }, (_, idx) => {
+      if (headerRow && headerRow[idx]) return headerRow[idx];
+      return `Column ${idx + 1}`;
+    });
+
+    return { headers, rows: dataRows };
+  }, [textInput, manualDelimiter, manualHasHeader]);
+
+  const sampleHeaders = sampleParsed.headers;
+  const sampleRows = sampleParsed.rows;
+
+  const handleSaveAccountMapping = () => {
+    if (!pasteAccountId) return;
+    const targetAccount = accounts.find(a => a.id === pasteAccountId);
+    if (!targetAccount) return;
+
+    const updatedAccount: Account = {
+      ...targetAccount,
+      parsingProfile: {
+        dateColumn: manualDateCol,
+        descriptionColumn: manualDescCol,
+        amountColumn: manualAmountCol,
+        hasHeader: manualHasHeader,
+        delimiter: manualDelimiter
+      }
+    };
+    onAddAccount(updatedAccount);
+    alert(`Successfully saved header mapping as default for '${targetAccount.name}'!`);
+  };
 
   // Date Filter State
   const [dateFilterMode, setDateFilterMode] = useState<DateFilterMode>('all');
@@ -311,7 +380,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                     ) : (
                                         <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full font-bold text-slate-700">
+                                                <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full font-bold text-slate-700 p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl">
                                                     <option value="">Select Account...</option>
                                                     {accounts.filter(Boolean).map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.identifier})</option>)}
                                                 </select>
@@ -330,21 +399,144 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                 </label>
                                             </div>
 
-                                            <textarea 
-                                                value={textInput} 
-                                                onChange={e => setTextInput(e.target.value)} 
-                                                placeholder="Paste CSV rows..." 
-                                                className="w-full h-32 p-3 font-mono text-[10px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white resize-none" 
-                                            />
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pasted Data Input</label>
+                                                    {textInput.trim() && (
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => setShowManualMapping(!showManualMapping)} 
+                                                            className="text-[10px] font-black uppercase text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                                                        >
+                                                            <TableIcon className="w-3.5 h-3.5" />
+                                                            {showManualMapping ? 'Hide Column Mapping' : 'Customize Column Mapping'}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <textarea 
+                                                    value={textInput} 
+                                                    onChange={e => setTextInput(e.target.value)} 
+                                                    placeholder="Paste raw bank CSV/tabbed rows here..." 
+                                                    className="w-full h-28 p-3 font-mono text-[11px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white resize-none" 
+                                                />
+                                            </div>
+
+                                            {/* Inline Column Mapper & Preview */}
+                                            {textInput.trim() && (
+                                                <div className="bg-slate-900 rounded-2xl p-4 text-white space-y-3 shadow-lg animate-fade-in border border-slate-800">
+                                                    <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <TableIcon className="w-4 h-4 text-indigo-400" />
+                                                            <span className="text-xs font-black uppercase tracking-wider text-indigo-300">Detected Columns & Mapping</span>
+                                                        </div>
+                                                        <label className="flex items-center gap-2 text-[10px] font-bold text-slate-400 cursor-pointer">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={manualHasHeader} 
+                                                                onChange={e => setManualHasHeader(e.target.checked)} 
+                                                                className="rounded border-slate-700 bg-slate-800 text-indigo-500"
+                                                            />
+                                                            First row is Header
+                                                        </label>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                        <div>
+                                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Transaction Date</label>
+                                                            <select 
+                                                                value={manualDateCol} 
+                                                                onChange={e => setManualDateCol(e.target.value)}
+                                                                className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold mt-1"
+                                                            >
+                                                                {sampleHeaders.map((h, idx) => (
+                                                                    <option key={idx} value={String(idx)}>Col {idx + 1}: {h}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Statement Memo / Description</label>
+                                                            <select 
+                                                                value={manualDescCol} 
+                                                                onChange={e => setManualDescCol(e.target.value)}
+                                                                className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold mt-1"
+                                                            >
+                                                                {sampleHeaders.map((h, idx) => (
+                                                                    <option key={idx} value={String(idx)}>Col {idx + 1}: {h}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Amount</label>
+                                                            <select 
+                                                                value={manualAmountCol} 
+                                                                onChange={e => setManualAmountCol(e.target.value)}
+                                                                className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold mt-1"
+                                                            >
+                                                                {sampleHeaders.map((h, idx) => (
+                                                                    <option key={idx} value={String(idx)}>Col {idx + 1}: {h}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Sample Data Rows Preview */}
+                                                    {sampleRows.length > 0 && (
+                                                        <div className="bg-slate-950/60 rounded-xl p-2 overflow-x-auto border border-slate-800/80">
+                                                            <table className="w-full text-[10px] font-mono text-left text-slate-300">
+                                                                <thead>
+                                                                    <tr className="border-b border-slate-800 text-slate-500">
+                                                                        {sampleHeaders.map((_, idx) => (
+                                                                            <th key={idx} className="p-1 px-2">
+                                                                                {Number(manualDateCol) === idx ? <span className="text-indigo-400 font-bold">[Date]</span> : Number(manualDescCol) === idx ? <span className="text-emerald-400 font-bold">[Memo]</span> : Number(manualAmountCol) === idx ? <span className="text-amber-400 font-bold">[Amount]</span> : `Col ${idx + 1}`}
+                                                                            </th>
+                                                                        ))}
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {sampleRows.map((row, rIdx) => (
+                                                                        <tr key={rIdx} className="border-b border-slate-900/50 hover:bg-white/5">
+                                                                            {row.map((cell, cIdx) => (
+                                                                                <td key={cIdx} className={`p-1 px-2 whitespace-nowrap ${Number(manualDateCol) === cIdx ? 'text-indigo-300 font-semibold' : Number(manualDescCol) === cIdx ? 'text-emerald-300 font-semibold' : Number(manualAmountCol) === cIdx ? 'text-amber-300 font-semibold' : 'text-slate-400'}`}>
+                                                                                    {cell || '---'}
+                                                                                </td>
+                                                                            ))}
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    )}
+
+                                                    {pasteAccountId && (
+                                                        <div className="flex justify-end pt-1">
+                                                            <button 
+                                                                type="button" 
+                                                                onClick={handleSaveAccountMapping}
+                                                                className="text-[9px] font-black uppercase text-indigo-400 hover:text-indigo-300 tracking-wider flex items-center gap-1"
+                                                            >
+                                                                Save this layout as default for {accounts.find(a => a.id === pasteAccountId)?.name || 'selected account'}
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+
                                             <button 
                                                 onClick={async () => {
                                                     setAppState('processing');
                                                     setError(null);
                                                     try {
                                                         const targetAccount = accounts.find(a => a.id === pasteAccountId);
+                                                        const customProfile = {
+                                                            dateColumn: manualDateCol,
+                                                            descriptionColumn: manualDescCol,
+                                                            amountColumn: manualAmountCol,
+                                                            hasHeader: manualHasHeader,
+                                                            delimiter: manualDelimiter
+                                                        };
                                                         const raw = useAi 
                                                             ? await extractTransactionsFromText(textInput, pasteAccountId, transactionTypes, categories, setProgressMessage) 
-                                                            : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage, targetAccount);
+                                                            : await parseTransactionsFromText(textInput, pasteAccountId, transactionTypes, setProgressMessage, targetAccount, customProfile);
                                                         
                                                         const safeRaw = (raw || []).filter(tx => tx && typeof tx === 'object');
                                                         const validUsers = Array.isArray(users) ? users.filter(Boolean) : [];
@@ -357,9 +549,9 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                     }
                                                 }} 
                                                 disabled={!textInput.trim() || !pasteAccountId} 
-                                                className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 disabled:opacity-50"
+                                                className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 disabled:opacity-50 text-sm uppercase tracking-wider"
                                             >
-                                                Process Text
+                                                Process Text & Extract Transactions
                                             </button>
                                         </div>
                                     )}
@@ -389,24 +581,35 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                         <p className="text-red-700 mt-2 font-medium leading-relaxed">{error}</p>
                                     </div>
                                     
-                                    {(error?.toLowerCase().includes('header') || error?.toLowerCase().includes('column') || error?.toLowerCase().includes('map')) ? (
+                                    {(error?.toLowerCase().includes('header') || error?.toLowerCase().includes('column') || error?.toLowerCase().includes('map') || true) ? (
                                         <div className="bg-white/50 p-6 rounded-2xl border border-red-200 mt-4 space-y-4">
                                             <div className="flex items-start gap-4 text-left">
                                                 <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600"><InfoIcon className="w-5 h-5"/></div>
                                                 <p className="text-sm text-slate-600 leading-relaxed">
-                                                    This system uses <strong>Header Maps</strong> to read local files. You must teach the engine which columns in your bank's CSV represent the date, memo, and amount.
+                                                    You can map columns directly on this page without using AI reasoning. Click below to review or adjust the date, memo, and amount column positions for your pasted data.
                                                 </p>
                                             </div>
                                             <div className="flex flex-col sm:flex-row gap-3">
                                                 <button 
-                                                    onClick={() => onNavigate?.('management')}
+                                                    onClick={() => {
+                                                        setAppState('idle');
+                                                        setImportMethod('paste');
+                                                        setUseAi(false);
+                                                        setShowManualMapping(true);
+                                                    }}
                                                     className="flex-1 py-3 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 shadow-md"
                                                 >
-                                                    Setup Mapping in Identity Hub <ArrowRightIcon className="w-4 h-4" />
+                                                    <TableIcon className="w-4 h-4" /> Map Columns for Pasted Data
+                                                </button>
+                                                <button 
+                                                    onClick={() => onNavigate?.('management')}
+                                                    className="px-4 py-3 bg-white text-indigo-700 font-bold rounded-xl border border-indigo-200 hover:bg-indigo-50 text-xs"
+                                                >
+                                                    Identity Hub
                                                 </button>
                                                 <button 
                                                     onClick={() => setAppState('idle')}
-                                                    className="px-6 py-3 bg-white text-slate-600 font-bold rounded-xl border border-slate-200 hover:bg-slate-100"
+                                                    className="px-4 py-3 bg-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-300 text-xs"
                                                 >
                                                     Dismiss
                                                 </button>

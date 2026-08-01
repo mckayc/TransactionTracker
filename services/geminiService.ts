@@ -2,28 +2,29 @@ import { GoogleGenAI, Type } from '@google/genai';
 import type { RawTransaction, Transaction, TransactionType, AuditFinding, Category, BusinessProfile, ChatMessage, FinancialGoal, Location, User, Counterparty, ReconciliationRule, AiConfig, RuleForgePrompt, Account, ParsingProfile } from '../types';
 import { generateUUID } from '../utils';
 
-// Default to Gemini 3 series as per instructions for standard text-based tasks
+// Default to Gemini 2.5 series as per instructions for standard text-based tasks
 let currentAiConfig: AiConfig = {
-    textModel: 'gemini-3-flash-preview',
-    complexModel: 'gemini-3-pro-preview',
+    textModel: 'gemini-2.5-flash',
+    complexModel: 'gemini-2.5-pro',
     thinkingBudget: 0
 };
 
 /**
  * Validates and updates the current AI configuration.
- * Uses strict model naming from the developer guidelines to prevent 404 errors.
+ * Uses strict model naming from the developer guidelines to prevent 404/400 errors.
  */
 export const updateGeminiConfig = (config: AiConfig) => {
     const sanitizeModel = (modelId: string | undefined, fallback: string) => {
         if (!modelId || modelId === 'undefined' || modelId === 'null') return fallback;
+        if (modelId.includes('gemini-3')) return fallback; // Map legacy/invalid gemini-3 references to gemini-2.5
         return modelId;
     };
 
     if (config.textModel) {
-        currentAiConfig.textModel = sanitizeModel(config.textModel, 'gemini-3-flash-preview');
+        currentAiConfig.textModel = sanitizeModel(config.textModel, 'gemini-2.5-flash');
     }
     if (config.complexModel) {
-        currentAiConfig.complexModel = sanitizeModel(config.complexModel, 'gemini-3-pro-preview');
+        currentAiConfig.complexModel = sanitizeModel(config.complexModel, 'gemini-2.5-pro');
     }
     if (config.thinkingBudget !== undefined) {
         currentAiConfig.thinkingBudget = config.thinkingBudget;
@@ -59,15 +60,14 @@ export const validateApiKeyConnectivity = async (): Promise<{ success: boolean, 
     if (!key) return { success: false, message: "No API Key detected. Ensure the API_KEY environment variable is set in your container." };
     
     const ai = new GoogleGenAI({ apiKey: key });
-    const model = currentAiConfig.textModel || 'gemini-3-flash-preview';
+    const model = currentAiConfig.textModel || 'gemini-2.5-flash';
     
     try {
         const response = await ai.models.generateContent({
             model: model,
             contents: "Respond with 'OK'.",
             config: { 
-                maxOutputTokens: 5,
-                thinkingConfig: { thinkingBudget: 0 }
+                maxOutputTokens: 5
             }
         });
         if (response && response.text) {
@@ -159,13 +159,13 @@ export const generateRulesFromData = async (
 
     try {
         const response = await ai.models.generateContent({
-            model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
+            model: currentAiConfig.complexModel || 'gemini-2.5-pro',
             contents: { parts: sampleParts },
             config: { 
                 systemInstruction,
                 responseMimeType: 'application/json',
                 responseSchema: schema,
-                thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget || 0, 2000) }
+                ...(currentAiConfig.thinkingBudget ? { thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget } } : {})
             }
         });
 
@@ -234,13 +234,12 @@ export const analyzeCsvLayout = async (
 
     try {
         const response = await ai.models.generateContent({
-            model: currentAiConfig.textModel || 'gemini-3-flash-preview',
+            model: currentAiConfig.textModel || 'gemini-2.5-flash',
             contents: `CSV SAMPLE:\n${csvSample}`,
             config: {
                 systemInstruction,
                 responseMimeType: "application/json",
-                responseSchema: schema,
-                thinkingConfig: { thinkingBudget: 0 }
+                responseSchema: schema
             }
         });
 
@@ -433,12 +432,11 @@ export const extractTransactionsFromFiles = async (
         required: ["transactions"]
     };
     const response = await ai.models.generateContent({
-        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-2.5-flash',
         contents: { parts: [...fileParts, { text: "Extract all transaction rows. Correct identify columns regardless of their order. Map headers for Date, Description (or Payee), and Amount. Extract the exact numeric amount, preserving negative/positive indicators if present." }] },
         config: {
             responseMimeType: "application/json",
-            responseSchema: schema,
-            thinkingConfig: { thinkingBudget: 0 }
+            responseSchema: schema
         }
     });
     const result = JSON.parse(response.text || '{"transactions": []}');
@@ -488,18 +486,17 @@ export const extractTransactionsFromText = async (
     };
 
     const prompt = `Identify every transaction in the provided text.
-    Carefully map columns by identifying common financial headers. 
+    Carefully map columns by identifying common financial headers or positional columns. 
     Note that Payee/Description might be separate columns; consolidate them if necessary.
     Text: ${text}`;
 
     const response = await ai.models.generateContent({
-        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-2.5-flash',
         contents: prompt,
         config: {
             systemInstruction: "You are a specialized financial parser. Return ONLY JSON matching the schema. Handle OCR noise or partial table data gracefully. Correct for misaligned columns by looking at data types (dates in date col, numbers in amount col).",
             responseMimeType: "application/json",
-            responseSchema: schema,
-            thinkingConfig: { thinkingBudget: 0 }
+            responseSchema: schema
         }
     });
 
