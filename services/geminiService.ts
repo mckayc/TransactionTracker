@@ -16,7 +16,9 @@ let currentAiConfig: AiConfig = {
 export const updateGeminiConfig = (config: AiConfig) => {
     const sanitizeModel = (modelId: string | undefined, fallback: string) => {
         if (!modelId || modelId === 'undefined' || modelId === 'null') return fallback;
-        if (modelId.includes('gemini-3')) return fallback; // Map legacy/invalid gemini-3 references to gemini-2.5
+        if (modelId === 'gemini-flash-latest' || modelId === 'gemini-flash-lite-latest' || modelId.includes('gemini-1.5') || modelId.includes('gemini-2.0')) {
+            return fallback;
+        }
         return modelId;
     };
 
@@ -343,13 +345,13 @@ export const forgeRulesWithCustomPrompt = async (
 
     try {
         const response = await ai.models.generateContent({
-            model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
+            model: currentAiConfig.complexModel || 'gemini-2.5-pro',
             contents: `RAW TRANSACTION DATA:\n${data}`,
             config: { 
                 systemInstruction,
                 responseMimeType: 'application/json',
                 responseSchema: schema,
-                thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget || 0, 4000) }
+                ...(currentAiConfig.thinkingBudget ? { thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget, 1024) } } : {})
             }
         });
 
@@ -389,11 +391,10 @@ export const getAiFinancialAnalysis = async (query: string, contextData: any) =>
     };
 
     const stream = await ai.models.generateContentStream({
-        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-2.5-flash',
         contents: `CONTEXT:\n${JSON.stringify(optimizedContext)}\n\nUSER QUERY: ${query}`,
         config: {
-            systemInstruction: "You are FinParser AI, a world-class financial analyst. Use Markdown for reports.",
-            thinkingConfig: { thinkingBudget: 0 }
+            systemInstruction: "You are FinParser AI, a world-class financial analyst. Use Markdown for reports."
         }
     });
     return stream;
@@ -490,15 +491,21 @@ export const extractTransactionsFromText = async (
     Note that Payee/Description might be separate columns; consolidate them if necessary.
     Text: ${text}`;
 
-    const response = await ai.models.generateContent({
-        model: currentAiConfig.textModel || 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-            systemInstruction: "You are a specialized financial parser. Return ONLY JSON matching the schema. Handle OCR noise or partial table data gracefully. Correct for misaligned columns by looking at data types (dates in date col, numbers in amount col).",
-            responseMimeType: "application/json",
-            responseSchema: schema
-        }
-    });
+    let response;
+    try {
+        response = await ai.models.generateContent({
+            model: currentAiConfig.textModel || 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                systemInstruction: "You are a specialized financial parser. Return ONLY JSON matching the schema. Handle OCR noise or partial table data gracefully. Correct for misaligned columns by looking at data types (dates in date col, numbers in amount col).",
+                responseMimeType: "application/json",
+                responseSchema: schema
+            }
+        });
+    } catch (err: any) {
+        console.error("AI Text Extraction Failed:", err);
+        throw new Error(`AI Extraction Error: ${err.message || 'Request failed'}. You can switch to manual column mapping below.`);
+    }
 
     const result = JSON.parse(response.text || '{"transactions": []}');
     const txs = result.transactions || [];
@@ -526,11 +533,11 @@ export const askAiAdvisor = async (prompt: string): Promise<string> => {
     Use Markdown for formatting.`;
 
     const response = await ai.models.generateContent({
-        model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
+        model: currentAiConfig.complexModel || 'gemini-2.5-pro',
         contents: prompt,
         config: { 
             systemInstruction,
-            thinkingConfig: { thinkingBudget: currentAiConfig.thinkingBudget || 0 } 
+            ...(currentAiConfig.thinkingBudget ? { thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget, 1024) } } : {})
         }
     });
     return response.text || "No response.";
@@ -545,11 +552,10 @@ export const streamTaxAdvice = async (messages: ChatMessage[], profile: Business
         parts: [{ text: m.content }]
     }));
     const stream = await ai.models.generateContentStream({
-        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-2.5-flash',
         contents,
         config: {
-            systemInstruction: `You are a world-class financial strategy bot for a ${profile.info.businessType || 'business'}.`,
-            thinkingConfig: { thinkingBudget: 0 }
+            systemInstruction: `You are a world-class financial strategy bot for a ${profile.info.businessType || 'business'}.`
         }
     });
     return stream;
@@ -591,9 +597,9 @@ export const auditTransactions = async (
         required: ["findings"]
     };
     const response = await ai.models.generateContent({
-        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-2.5-flash',
         contents: `Audit request: ${auditType} on data: ${JSON.stringify(transactions.slice(0, 50))}`,
-        config: { responseMimeType: "application/json", responseSchema: schema, thinkingConfig: { thinkingBudget: 0 } }
+        config: { responseMimeType: "application/json", responseSchema: schema }
     });
     const result = JSON.parse(response.text || '{"findings": []}');
     return (result.findings || []);
@@ -618,13 +624,12 @@ export const analyzeBusinessDocument = async (file: File, onProgress: (msg: stri
         required: ["documentType", "summary", "taxRelevance"]
     };
     const response = await ai.models.generateContent({
-        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-2.5-flash',
         contents: { parts: [part, { text: "Analyze this financial document for tax purposes. Identify its type, key details, and relevance to a business tax return." }] },
         config: { 
             systemInstruction: "You are a specialized document auditor for tax compliance.",
             responseMimeType: "application/json", 
-            responseSchema: schema, 
-            thinkingConfig: { thinkingBudget: 0 } 
+            responseSchema: schema
         }
     });
     return JSON.parse(response.text || '{}');
@@ -657,12 +662,12 @@ export const generateFinancialStrategy = async (
         required: ["strategy"]
     };
     const response = await ai.models.generateContent({
-        model: currentAiConfig.complexModel || 'gemini-3-pro-preview',
+        model: currentAiConfig.complexModel || 'gemini-2.5-pro',
         contents: `Analyze data for wealth plan: ${JSON.stringify(profile)}. Goals: ${JSON.stringify(goals)}.`,
         config: { 
             responseMimeType: "application/json", 
             responseSchema: schema,
-            thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget || 0, 4000) }
+            ...(currentAiConfig.thinkingBudget ? { thinkingConfig: { thinkingBudget: Math.max(currentAiConfig.thinkingBudget, 1024) } } : {})
         }
     });
     return JSON.parse(response.text || '{"strategy": "No response."}');
@@ -695,7 +700,7 @@ export const simplifyProductNames = async (titles: string[]): Promise<Record<str
     };
 
     const response = await ai.models.generateContent({
-        model: currentAiConfig.textModel || 'gemini-3-flash-preview',
+        model: currentAiConfig.textModel || 'gemini-2.5-flash',
         contents: `Simplify these long product/video titles into clean, concise names (2-4 words) for a dashboard.
         
         TITLES:
@@ -703,8 +708,7 @@ export const simplifyProductNames = async (titles: string[]): Promise<Record<str
         config: {
             systemInstruction: "You are a branding specialist. Convert long SKU descriptions or video titles into human-friendly product names.",
             responseMimeType: "application/json",
-            responseSchema: schema,
-            thinkingConfig: { thinkingBudget: 0 }
+            responseSchema: schema
         }
     });
 

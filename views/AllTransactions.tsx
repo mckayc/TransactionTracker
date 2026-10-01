@@ -186,6 +186,7 @@ const AllTransactions: React.FC<AllTransactionsProps> = ({
       
       if (updates.length > 0) {
           await api.saveTransactions(updates);
+          updates.forEach(u => onUpdateTransaction(u));
           setToastMessage(`Updated ${updates.length} records.`);
           setSelectedIds(new Set()); 
           fetchTransactions(); 

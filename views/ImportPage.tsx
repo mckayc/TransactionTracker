@@ -72,12 +72,23 @@ const ImportPage: React.FC<ImportPageProps> = ({
   const [isInitializing, setIsInitializing] = useState(false);
 
   // Manual Column Mapping State
-  const [showManualMapping, setShowManualMapping] = useState(false);
+  const [showManualMapping, setShowManualMapping] = useState(true);
   const [manualDateCol, setManualDateCol] = useState('0');
   const [manualDescCol, setManualDescCol] = useState('1');
+  const [manualPayeeCol, setManualPayeeCol] = useState('-1');
+  const [manualAmountMode, setManualAmountMode] = useState<'single' | 'split'>('single');
   const [manualAmountCol, setManualAmountCol] = useState('2');
+  const [manualDebitCol, setManualDebitCol] = useState('2');
+  const [manualCreditCol, setManualCreditCol] = useState('3');
   const [manualHasHeader, setManualHasHeader] = useState(false);
   const [manualDelimiter, setManualDelimiter] = useState('\t');
+
+  // Auto-select first account if not selected
+  useEffect(() => {
+    if (!pasteAccountId && accounts.length > 0) {
+      setPasteAccountId(accounts[0].id);
+    }
+  }, [accounts, pasteAccountId]);
 
   // Auto detect columns whenever textInput or pasteAccountId changes
   useEffect(() => {
@@ -95,7 +106,16 @@ const ImportPage: React.FC<ImportPageProps> = ({
     // Set column mapping defaults
     setManualDateCol(existingProfile?.dateColumn !== undefined ? String(existingProfile.dateColumn) : String(detected.dateIdx));
     setManualDescCol(existingProfile?.descriptionColumn !== undefined ? String(existingProfile.descriptionColumn) : String(detected.descIdx));
-    setManualAmountCol(existingProfile?.amountColumn !== undefined ? String(existingProfile.amountColumn) : String(detected.amountIdx));
+    setManualPayeeCol(existingProfile?.payeeColumn !== undefined ? String(existingProfile.payeeColumn) : (detected.payeeIdx !== -1 ? String(detected.payeeIdx) : '-1'));
+    
+    if (existingProfile?.debitColumn !== undefined || existingProfile?.creditColumn !== undefined || (detected.debitIdx !== -1 && detected.creditIdx !== -1)) {
+        setManualAmountMode('split');
+        setManualDebitCol(existingProfile?.debitColumn !== undefined ? String(existingProfile.debitColumn) : String(detected.debitIdx !== -1 ? detected.debitIdx : 2));
+        setManualCreditCol(existingProfile?.creditColumn !== undefined ? String(existingProfile.creditColumn) : String(detected.creditIdx !== -1 ? detected.creditIdx : 3));
+    } else {
+        setManualAmountMode('single');
+        setManualAmountCol(existingProfile?.amountColumn !== undefined ? String(existingProfile.amountColumn) : String(detected.amountIdx));
+    }
   }, [textInput, pasteAccountId, accounts]);
 
   const sampleParsed = useMemo(() => {
@@ -107,7 +127,7 @@ const ImportPage: React.FC<ImportPageProps> = ({
     const rows = lines.map(l => splitCsvLine(l, delim).map(s => s.trim().replace(/^"|"$/g, '')));
 
     const headerRow = manualHasHeader ? rows[0] : null;
-    const dataRows = manualHasHeader ? rows.slice(1, 4) : rows.slice(0, 3);
+    const dataRows = manualHasHeader ? rows.slice(1, 5) : rows.slice(0, 4);
     const maxCols = Math.max(...rows.map(r => r.length), 3);
 
     const headers = Array.from({ length: maxCols }, (_, idx) => {
@@ -131,13 +151,16 @@ const ImportPage: React.FC<ImportPageProps> = ({
       parsingProfile: {
         dateColumn: manualDateCol,
         descriptionColumn: manualDescCol,
-        amountColumn: manualAmountCol,
+        payeeColumn: manualPayeeCol !== '-1' ? manualPayeeCol : undefined,
+        amountColumn: manualAmountMode === 'single' ? manualAmountCol : undefined,
+        debitColumn: manualAmountMode === 'split' ? manualDebitCol : undefined,
+        creditColumn: manualAmountMode === 'split' ? manualCreditCol : undefined,
         hasHeader: manualHasHeader,
         delimiter: manualDelimiter
       }
     };
     onAddAccount(updatedAccount);
-    alert(`Successfully saved header mapping as default for '${targetAccount.name}'!`);
+    alert(`Successfully saved layout as default for '${targetAccount.name}'!`);
   };
 
   // Date Filter State
@@ -380,126 +403,340 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                     ) : (
                                         <div className="space-y-4 animate-fade-in max-w-4xl mx-auto">
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <select value={pasteAccountId} onChange={(e) => setPasteAccountId(e.target.value)} className="w-full font-bold text-slate-700 p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl">
-                                                    <option value="">Select Account...</option>
-                                                    {accounts.filter(Boolean).map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.identifier})</option>)}
-                                                </select>
+                                                <div>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Target Ledger Account</label>
+                                                    <select 
+                                                        value={pasteAccountId} 
+                                                        onChange={(e) => setPasteAccountId(e.target.value)} 
+                                                        className="w-full font-bold text-slate-700 p-3 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 focus:bg-white transition-all text-sm"
+                                                    >
+                                                        <option value="">Select Account...</option>
+                                                        {accounts.filter(Boolean).map(acc => <option key={acc.id} value={acc.id}>{acc.name} ({acc.identifier})</option>)}
+                                                    </select>
+                                                </div>
                                                 
-                                                <label className="flex items-center justify-between gap-2 cursor-pointer bg-slate-100 px-4 py-3 rounded-2xl group border border-transparent hover:border-indigo-200 transition-all">
-                                                    <div className="flex items-center gap-3">
-                                                        <RobotIcon className={`w-5 h-5 ${useAi ? 'text-indigo-600' : 'text-slate-400'}`} />
-                                                        <span className="text-xs font-black text-slate-500 uppercase tracking-tight">AI Reasoning</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <input type="checkbox" className="sr-only" checked={useAi} onChange={() => setUseAi(!useAi)} />
-                                                        <div className={`w-10 h-5 rounded-full relative transition-colors ${useAi ? 'bg-indigo-600' : 'bg-slate-300'}`}>
-                                                            <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${useAi ? 'left-6' : 'left-1'}`} />
+                                                <div>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Processing Method</label>
+                                                    <label className="flex items-center justify-between gap-2 cursor-pointer bg-slate-50 px-4 py-2.5 rounded-2xl group border-2 border-slate-100 hover:border-indigo-200 transition-all">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`p-1.5 rounded-lg ${useAi ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                                                <RobotIcon className="w-4 h-4" />
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-xs font-black text-slate-700 uppercase tracking-tight block">AI Reasoning</span>
+                                                                <span className="text-[9px] text-slate-400 font-medium">Manual mapping is faster & 100% predictable</span>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                </label>
+                                                        <div className="flex items-center gap-2">
+                                                            <input type="checkbox" className="sr-only" checked={useAi} onChange={() => setUseAi(!useAi)} />
+                                                            <div className={`w-9 h-5 rounded-full relative transition-colors ${useAi ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                                                                <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${useAi ? 'left-4.5' : 'left-0.5'}`} />
+                                                            </div>
+                                                        </div>
+                                                    </label>
+                                                </div>
                                             </div>
 
                                             <div className="space-y-2">
                                                 <div className="flex justify-between items-center">
-                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pasted Data Input</label>
+                                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                                        Pasted Raw Statement / CSV Data
+                                                    </label>
                                                     {textInput.trim() && (
                                                         <button 
                                                             type="button"
                                                             onClick={() => setShowManualMapping(!showManualMapping)} 
-                                                            className="text-[10px] font-black uppercase text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+                                                            className="text-[10px] font-black uppercase text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-all"
                                                         >
                                                             <TableIcon className="w-3.5 h-3.5" />
-                                                            {showManualMapping ? 'Hide Column Mapping' : 'Customize Column Mapping'}
+                                                            {showManualMapping ? 'Collapse Column Mapper' : 'Customize Column Mapping'}
                                                         </button>
                                                     )}
                                                 </div>
                                                 <textarea 
                                                     value={textInput} 
                                                     onChange={e => setTextInput(e.target.value)} 
-                                                    placeholder="Paste raw bank CSV/tabbed rows here..." 
-                                                    className="w-full h-28 p-3 font-mono text-[11px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white resize-none" 
+                                                    placeholder="Paste raw bank CSV, tab-delimited text, or table rows here..." 
+                                                    className="w-full h-28 p-3 font-mono text-[11px] bg-slate-50 border-2 border-slate-100 rounded-2xl focus:bg-white focus:border-indigo-500 resize-none transition-all" 
                                                 />
                                             </div>
 
                                             {/* Inline Column Mapper & Preview */}
-                                            {textInput.trim() && (
-                                                <div className="bg-slate-900 rounded-2xl p-4 text-white space-y-3 shadow-lg animate-fade-in border border-slate-800">
-                                                    <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                                            {textInput.trim() && showManualMapping && (
+                                                <div className="bg-slate-900 rounded-2xl p-4 text-white space-y-4 shadow-xl animate-fade-in border border-slate-800">
+                                                    <div className="flex flex-wrap justify-between items-center gap-3 border-b border-slate-800 pb-3">
                                                         <div className="flex items-center gap-2">
-                                                            <TableIcon className="w-4 h-4 text-indigo-400" />
-                                                            <span className="text-xs font-black uppercase tracking-wider text-indigo-300">Detected Columns & Mapping</span>
+                                                            <div className="p-1.5 bg-indigo-500/20 text-indigo-400 rounded-lg">
+                                                                <TableIcon className="w-4 h-4" />
+                                                            </div>
+                                                            <div>
+                                                                <span className="text-xs font-black uppercase tracking-wider text-indigo-300 block">Manual Column Mapper</span>
+                                                                <span className="text-[9px] text-slate-400">Map columns directly without AI reasoning</span>
+                                                            </div>
                                                         </div>
-                                                        <label className="flex items-center gap-2 text-[10px] font-bold text-slate-400 cursor-pointer">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={manualHasHeader} 
-                                                                onChange={e => setManualHasHeader(e.target.checked)} 
-                                                                className="rounded border-slate-700 bg-slate-800 text-indigo-500"
-                                                            />
-                                                            First row is Header
-                                                        </label>
+
+                                                        <div className="flex flex-wrap items-center gap-3">
+                                                            {/* Delimiter */}
+                                                            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700/60">
+                                                                <span className="text-[9px] font-bold text-slate-400 uppercase">Separator:</span>
+                                                                <select 
+                                                                    value={manualDelimiter} 
+                                                                    onChange={e => setManualDelimiter(e.target.value)}
+                                                                    className="bg-slate-900 text-xs text-indigo-300 font-bold rounded px-1.5 py-0.5 border border-slate-700 focus:outline-none"
+                                                                >
+                                                                    <option value="\t">Tab (\t)</option>
+                                                                    <option value=",">Comma (,)</option>
+                                                                    <option value=";">Semicolon (;)</option>
+                                                                    <option value="|">Pipe (|)</option>
+                                                                </select>
+                                                            </div>
+
+                                                            {/* Header Checkbox */}
+                                                            <label className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 cursor-pointer bg-slate-800/80 px-2 py-1 rounded-lg border border-slate-700/60">
+                                                                <input 
+                                                                    type="checkbox" 
+                                                                    checked={manualHasHeader} 
+                                                                    onChange={e => setManualHasHeader(e.target.checked)} 
+                                                                    className="rounded border-slate-700 bg-slate-800 text-indigo-500"
+                                                                />
+                                                                Row 1 is Header
+                                                            </label>
+
+                                                            {/* Amount Mode Toggle */}
+                                                            <div className="flex bg-slate-800 p-0.5 rounded-lg border border-slate-700 text-[9px] font-bold">
+                                                                <button 
+                                                                    type="button" 
+                                                                    onClick={() => setManualAmountMode('single')}
+                                                                    className={`px-2 py-1 rounded ${manualAmountMode === 'single' ? 'bg-indigo-600 text-white font-black' : 'text-slate-400 hover:text-white'}`}
+                                                                >
+                                                                    1 Amount Col
+                                                                </button>
+                                                                <button 
+                                                                    type="button" 
+                                                                    onClick={() => setManualAmountMode('split')}
+                                                                    className={`px-2 py-1 rounded ${manualAmountMode === 'split' ? 'bg-indigo-600 text-white font-black' : 'text-slate-400 hover:text-white'}`}
+                                                                >
+                                                                    Debit / Credit
+                                                                </button>
+                                                            </div>
+                                                        </div>
                                                     </div>
 
-                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                        <div>
-                                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Transaction Date</label>
+                                                    {/* Quick Presets */}
+                                                    <div className="flex items-center gap-2 overflow-x-auto text-[10px] pb-1">
+                                                        <span className="text-slate-400 font-bold uppercase text-[8px] tracking-wider shrink-0">Quick Layouts:</span>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setManualDateCol('0');
+                                                                setManualDescCol('1');
+                                                                setManualAmountCol('2');
+                                                                setManualPayeeCol('-1');
+                                                                setManualAmountMode('single');
+                                                            }}
+                                                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md font-medium shrink-0 border border-slate-700/50"
+                                                        >
+                                                            Date | Memo | Amount
+                                                        </button>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setManualDateCol('0');
+                                                                setManualPayeeCol('1');
+                                                                setManualDescCol('2');
+                                                                setManualAmountCol('3');
+                                                                setManualAmountMode('single');
+                                                            }}
+                                                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md font-medium shrink-0 border border-slate-700/50"
+                                                        >
+                                                            Date | Payee | Memo | Amount
+                                                        </button>
+                                                        <button 
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setManualDateCol('0');
+                                                                setManualDescCol('1');
+                                                                setManualDebitCol('2');
+                                                                setManualCreditCol('3');
+                                                                setManualAmountMode('split');
+                                                            }}
+                                                            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md font-medium shrink-0 border border-slate-700/50"
+                                                        >
+                                                            Date | Memo | Debit | Credit
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Mapping Dropdowns */}
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                                        <div className="bg-slate-800/40 p-2.5 rounded-xl border border-slate-700/60">
+                                                            <div className="flex items-center gap-1.5 mb-1">
+                                                                <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                                                                <label className="text-[9px] font-black text-indigo-300 uppercase tracking-widest">Transaction Date</label>
+                                                            </div>
                                                             <select 
                                                                 value={manualDateCol} 
                                                                 onChange={e => setManualDateCol(e.target.value)}
-                                                                className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold mt-1"
+                                                                className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold"
                                                             >
                                                                 {sampleHeaders.map((h, idx) => (
                                                                     <option key={idx} value={String(idx)}>Col {idx + 1}: {h}</option>
                                                                 ))}
                                                             </select>
                                                         </div>
-                                                        <div>
-                                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Statement Memo / Description</label>
+
+                                                        <div className="bg-slate-800/40 p-2.5 rounded-xl border border-slate-700/60">
+                                                            <div className="flex items-center gap-1.5 mb-1">
+                                                                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                                                                <label className="text-[9px] font-black text-emerald-300 uppercase tracking-widest">Memo / Description</label>
+                                                            </div>
                                                             <select 
                                                                 value={manualDescCol} 
                                                                 onChange={e => setManualDescCol(e.target.value)}
-                                                                className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold mt-1"
+                                                                className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold"
                                                             >
                                                                 {sampleHeaders.map((h, idx) => (
                                                                     <option key={idx} value={String(idx)}>Col {idx + 1}: {h}</option>
                                                                 ))}
                                                             </select>
                                                         </div>
-                                                        <div>
-                                                            <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Amount</label>
+
+                                                        <div className="bg-slate-800/40 p-2.5 rounded-xl border border-slate-700/60">
+                                                            <div className="flex items-center gap-1.5 mb-1">
+                                                                <span className="w-2 h-2 rounded-full bg-purple-400" />
+                                                                <label className="text-[9px] font-black text-purple-300 uppercase tracking-widest">Payee / Merchant (Opt)</label>
+                                                            </div>
                                                             <select 
-                                                                value={manualAmountCol} 
-                                                                onChange={e => setManualAmountCol(e.target.value)}
-                                                                className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold mt-1"
+                                                                value={manualPayeeCol} 
+                                                                onChange={e => setManualPayeeCol(e.target.value)}
+                                                                className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold"
                                                             >
+                                                                <option value="-1">-- None (in Memo) --</option>
                                                                 {sampleHeaders.map((h, idx) => (
                                                                     <option key={idx} value={String(idx)}>Col {idx + 1}: {h}</option>
                                                                 ))}
                                                             </select>
                                                         </div>
+
+                                                        {manualAmountMode === 'single' ? (
+                                                            <div className="bg-slate-800/40 p-2.5 rounded-xl border border-slate-700/60">
+                                                                <div className="flex items-center gap-1.5 mb-1">
+                                                                    <span className="w-2 h-2 rounded-full bg-amber-400" />
+                                                                    <label className="text-[9px] font-black text-amber-300 uppercase tracking-widest">Amount Column</label>
+                                                                </div>
+                                                                <select 
+                                                                    value={manualAmountCol} 
+                                                                    onChange={e => setManualAmountCol(e.target.value)}
+                                                                    className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1.5 text-xs font-bold"
+                                                                >
+                                                                    {sampleHeaders.map((h, idx) => (
+                                                                        <option key={idx} value={String(idx)}>Col {idx + 1}: {h}</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="bg-slate-800/40 p-2.5 rounded-xl border border-slate-700/60 grid grid-cols-2 gap-2">
+                                                                <div>
+                                                                    <div className="flex items-center gap-1 mb-1">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                                                                        <label className="text-[8px] font-black text-rose-300 uppercase">Debit (Out)</label>
+                                                                    </div>
+                                                                    <select 
+                                                                        value={manualDebitCol} 
+                                                                        onChange={e => setManualDebitCol(e.target.value)}
+                                                                        className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1 text-[11px] font-bold"
+                                                                    >
+                                                                        {sampleHeaders.map((h, idx) => (
+                                                                            <option key={idx} value={String(idx)}>Col {idx + 1}: {h}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="flex items-center gap-1 mb-1">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                                                        <label className="text-[8px] font-black text-emerald-300 uppercase">Credit (In)</label>
+                                                                    </div>
+                                                                    <select 
+                                                                        value={manualCreditCol} 
+                                                                        onChange={e => setManualCreditCol(e.target.value)}
+                                                                        className="w-full bg-slate-800 text-slate-200 border border-slate-700 rounded-lg p-1 text-[11px] font-bold"
+                                                                    >
+                                                                        {sampleHeaders.map((h, idx) => (
+                                                                            <option key={idx} value={String(idx)}>Col {idx + 1}: {h}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
 
                                                     {/* Sample Data Rows Preview */}
                                                     {sampleRows.length > 0 && (
-                                                        <div className="bg-slate-950/60 rounded-xl p-2 overflow-x-auto border border-slate-800/80">
+                                                        <div className="bg-slate-950/70 rounded-xl p-2.5 overflow-x-auto border border-slate-800">
+                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 flex items-center justify-between">
+                                                                <span>Live Preview (First {sampleRows.length} Rows)</span>
+                                                                <span className="text-[8px] text-slate-500 lowercase">assigned roles highlighted</span>
+                                                            </div>
                                                             <table className="w-full text-[10px] font-mono text-left text-slate-300">
                                                                 <thead>
-                                                                    <tr className="border-b border-slate-800 text-slate-500">
-                                                                        {sampleHeaders.map((_, idx) => (
-                                                                            <th key={idx} className="p-1 px-2">
-                                                                                {Number(manualDateCol) === idx ? <span className="text-indigo-400 font-bold">[Date]</span> : Number(manualDescCol) === idx ? <span className="text-emerald-400 font-bold">[Memo]</span> : Number(manualAmountCol) === idx ? <span className="text-amber-400 font-bold">[Amount]</span> : `Col ${idx + 1}`}
-                                                                            </th>
-                                                                        ))}
+                                                                    <tr className="border-b border-slate-800 text-slate-400">
+                                                                        {sampleHeaders.map((_, idx) => {
+                                                                            const isDate = Number(manualDateCol) === idx;
+                                                                            const isDesc = Number(manualDescCol) === idx;
+                                                                            const isPayee = Number(manualPayeeCol) === idx;
+                                                                            const isAmount = manualAmountMode === 'single' && Number(manualAmountCol) === idx;
+                                                                            const isDebit = manualAmountMode === 'split' && Number(manualDebitCol) === idx;
+                                                                            const isCredit = manualAmountMode === 'split' && Number(manualCreditCol) === idx;
+
+                                                                            return (
+                                                                                <th key={idx} className="p-1.5 px-2">
+                                                                                    {isDate ? (
+                                                                                        <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-bold border border-indigo-500/30">[Date]</span>
+                                                                                    ) : isDesc ? (
+                                                                                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">[Memo]</span>
+                                                                                    ) : isPayee ? (
+                                                                                        <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 font-bold border border-purple-500/30">[Payee]</span>
+                                                                                    ) : isAmount ? (
+                                                                                        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30">[Amount]</span>
+                                                                                    ) : isDebit ? (
+                                                                                        <span className="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-400 font-bold border border-rose-500/30">[Debit]</span>
+                                                                                    ) : isCredit ? (
+                                                                                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold border border-emerald-500/30">[Credit]</span>
+                                                                                    ) : (
+                                                                                        <span className="text-slate-500">Col {idx + 1}</span>
+                                                                                    )}
+                                                                                </th>
+                                                                            );
+                                                                        })}
                                                                     </tr>
                                                                 </thead>
                                                                 <tbody>
                                                                     {sampleRows.map((row, rIdx) => (
-                                                                        <tr key={rIdx} className="border-b border-slate-900/50 hover:bg-white/5">
-                                                                            {row.map((cell, cIdx) => (
-                                                                                <td key={cIdx} className={`p-1 px-2 whitespace-nowrap ${Number(manualDateCol) === cIdx ? 'text-indigo-300 font-semibold' : Number(manualDescCol) === cIdx ? 'text-emerald-300 font-semibold' : Number(manualAmountCol) === cIdx ? 'text-amber-300 font-semibold' : 'text-slate-400'}`}>
-                                                                                    {cell || '---'}
-                                                                                </td>
-                                                                            ))}
+                                                                        <tr key={rIdx} className="border-b border-slate-900/60 hover:bg-white/5 transition-colors">
+                                                                            {row.map((cell, cIdx) => {
+                                                                                const isDate = Number(manualDateCol) === cIdx;
+                                                                                const isDesc = Number(manualDescCol) === cIdx;
+                                                                                const isPayee = Number(manualPayeeCol) === cIdx;
+                                                                                const isAmount = manualAmountMode === 'single' && Number(manualAmountCol) === cIdx;
+                                                                                const isDebit = manualAmountMode === 'split' && Number(manualDebitCol) === cIdx;
+                                                                                const isCredit = manualAmountMode === 'split' && Number(manualCreditCol) === cIdx;
+
+                                                                                return (
+                                                                                    <td 
+                                                                                        key={cIdx} 
+                                                                                        className={`p-1.5 px-2 whitespace-nowrap ${
+                                                                                            isDate ? 'text-indigo-300 font-semibold' : 
+                                                                                            isDesc ? 'text-emerald-300 font-semibold' : 
+                                                                                            isPayee ? 'text-purple-300 font-semibold' : 
+                                                                                            isAmount ? 'text-amber-300 font-semibold' : 
+                                                                                            isDebit ? 'text-rose-300 font-semibold' : 
+                                                                                            isCredit ? 'text-emerald-300 font-semibold' : 
+                                                                                            'text-slate-500'
+                                                                                        }`}
+                                                                                    >
+                                                                                        {cell || '---'}
+                                                                                    </td>
+                                                                                );
+                                                                            })}
                                                                         </tr>
                                                                     ))}
                                                                 </tbody>
@@ -508,13 +745,16 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                     )}
 
                                                     {pasteAccountId && (
-                                                        <div className="flex justify-end pt-1">
+                                                        <div className="flex justify-between items-center pt-1 border-t border-slate-800">
+                                                            <span className="text-[10px] text-slate-400">
+                                                                Target: <strong className="text-slate-300">{accounts.find(a => a.id === pasteAccountId)?.name || 'Selected Account'}</strong>
+                                                            </span>
                                                             <button 
                                                                 type="button" 
                                                                 onClick={handleSaveAccountMapping}
-                                                                className="text-[9px] font-black uppercase text-indigo-400 hover:text-indigo-300 tracking-wider flex items-center gap-1"
+                                                                className="text-[9px] font-black uppercase text-indigo-400 hover:text-indigo-300 tracking-wider flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg border border-indigo-500/30 transition-all"
                                                             >
-                                                                Save this layout as default for {accounts.find(a => a.id === pasteAccountId)?.name || 'selected account'}
+                                                                Save this layout as default for {accounts.find(a => a.id === pasteAccountId)?.name}
                                                             </button>
                                                         </div>
                                                     )}
@@ -530,7 +770,10 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                         const customProfile = {
                                                             dateColumn: manualDateCol,
                                                             descriptionColumn: manualDescCol,
-                                                            amountColumn: manualAmountCol,
+                                                            payeeColumn: manualPayeeCol !== '-1' ? manualPayeeCol : undefined,
+                                                            amountColumn: manualAmountMode === 'single' ? manualAmountCol : undefined,
+                                                            debitColumn: manualAmountMode === 'split' ? manualDebitCol : undefined,
+                                                            creditColumn: manualAmountMode === 'split' ? manualCreditCol : undefined,
                                                             hasHeader: manualHasHeader,
                                                             delimiter: manualDelimiter
                                                         };
@@ -549,9 +792,11 @@ const ImportPage: React.FC<ImportPageProps> = ({
                                                     }
                                                 }} 
                                                 disabled={!textInput.trim() || !pasteAccountId} 
-                                                className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 disabled:opacity-50 text-sm uppercase tracking-wider"
+                                                className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 disabled:opacity-50 text-sm uppercase tracking-wider transition-all active:scale-[0.99]"
                                             >
-                                                Process Text & Extract Transactions
+                                                {!pasteAccountId 
+                                                    ? 'Select an Account to Process' 
+                                                    : `Process ${useAi ? 'with AI Reasoning' : 'Directly via Column Map'} & Extract Transactions`}
                                             </button>
                                         </div>
                                     )}

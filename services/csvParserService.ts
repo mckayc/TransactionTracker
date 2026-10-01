@@ -56,13 +56,13 @@ const sanitizeHeader = (h: string): string => {
 };
 
 const parseDate = (dateStr: string, preferredFormat?: string): Date | null => {
-  if (!dateStr || dateStr.length < 5) return null;
+  if (!dateStr || dateStr.length < 4) return null;
   const cleanedDateStr = dateStr.replace(/^"|"$/g, '').trim();
 
   // If user provided a specific format hint (e.g. "MM/DD/YYYY" or "DD/MM/YYYY")
   if (preferredFormat) {
       const sep = preferredFormat.includes('/') ? '/' : (preferredFormat.includes('.') ? '.' : '-');
-      const parts = cleanedDateStr.split(/[\/\.\-]/);
+      const parts = cleanedDateStr.split(/[ T]/)[0].split(/[\/\.\-]/);
       const fmtParts = preferredFormat.split(/[\/\.\-]/);
       
       if (parts.length === 3 && fmtParts.length === 3) {
@@ -80,53 +80,54 @@ const parseDate = (dateStr: string, preferredFormat?: string): Date | null => {
       }
   }
 
-  // YYYY-MM-DD
-  if (/^\d{4}-\d{1,2}-\d{1,2}/.test(cleanedDateStr)) {
-    const datePart = cleanedDateStr.split(' ')[0];
-    const date = new Date(datePart + 'T00:00:00');
+  // YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+  if (/^\d{4}[\/\.-]\d{1,2}[\/\.-]\d{1,2}/.test(cleanedDateStr)) {
+    const datePart = cleanedDateStr.split(/[ T]/)[0].replace(/[\/\.]/g, '-');
+    const parts = datePart.split('-');
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const date = new Date(year, month, day);
     if (!isNaN(date.getTime())) return date;
   }
 
-  // Improved Heuristic for XX/XX/YYYY or XX.XX.YYYY
-  // Handles US (MM/DD) vs European (DD/MM) by checking values > 12
-  if (/^\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4}/.test(cleanedDateStr)) {
+  // Improved Heuristic for XX/XX/YYYY or XX.XX.YYYY or 2-digit year XX/XX/YY
+  if (/^\d{1,2}[\/\.]\d{1,2}[\/\.]\d{2,4}/.test(cleanedDateStr)) {
       const sep = cleanedDateStr.includes('.') ? '.' : '/';
-      const parts = cleanedDateStr.split(sep);
-      const p0 = parseInt(parts[0]);
-      const p1 = parseInt(parts[1]);
-      const year = parseInt(parts[2]);
+      const parts = cleanedDateStr.split(/[ T]/)[0].split(sep);
+      const p0 = parseInt(parts[0], 10);
+      const p1 = parseInt(parts[1], 10);
+      let year = parseInt(parts[2], 10);
+      if (year < 100) year += year < 70 ? 2000 : 1900;
 
-      // p0/p1/year
       // If p0 > 12, it MUST be DD/MM/YYYY
       // If p1 > 12, it MUST be MM/DD/YYYY
-      // If both <= 12, it's ambiguous. We default to US (MM/DD) for '/' and Euro (DD/MM) for '.'
-      
       let month, day;
-      if (p0 > 12) { // Definitely Day first
+      if (p0 > 12) {
           day = p0; month = p1 - 1;
-      } else if (p1 > 12) { // Definitely Month first
+      } else if (p1 > 12) {
           month = p0 - 1; day = p1;
       } else {
-          // Ambiguous. Default by separator
-          if (sep === '.') { month = p1 - 1; day = p0; } // Euro default
-          else { month = p0 - 1; day = p1; } // US default
+          // Ambiguous: default to Euro (DD/MM) for '.' and US (MM/DD) for '/'
+          if (sep === '.') { month = p1 - 1; day = p0; }
+          else { month = p0 - 1; day = p1; }
       }
 
       const date = new Date(year, month, day);
       if (!isNaN(date.getTime())) return date;
   }
 
-  // Month Day, Year
-  if (/[A-Za-z]{3}\s\d{1,2},?\s\d{4}/.test(cleanedDateStr)) {
+  // Month Day, Year (e.g. Jul 1, 2026 or July 1 2026)
+  if (/[A-Za-z]{3}\s\d{1,2},?\s\d{2,4}/.test(cleanedDateStr)) {
       const date = new Date(cleanedDateStr);
       if (!isNaN(date.getTime())) return date;
   }
 
-  // MM-DD-YYYY or DD-MM-YYYY (Standardizing to MM-DD if ambiguous)
+  // MM-DD-YYYY or DD-MM-YYYY or 2-digit year MM-DD-YY
   if (/^\d{1,2}-\d{1,2}-\d{2,4}/.test(cleanedDateStr)) {
-    const parts = cleanedDateStr.split('-');
-    const p0 = parseInt(parts[0]);
-    const p1 = parseInt(parts[1]);
+    const parts = cleanedDateStr.split(/[ T]/)[0].split('-');
+    const p0 = parseInt(parts[0], 10);
+    const p1 = parseInt(parts[1], 10);
     let year = parseInt(parts[2], 10);
     if (year < 100) year += year < 70 ? 2000 : 1900;
     
@@ -136,6 +137,16 @@ const parseDate = (dateStr: string, preferredFormat?: string): Date | null => {
 
     const date = new Date(year, month, day);
     if (!isNaN(date.getTime())) return date;
+  }
+
+  // Excel serial date number (e.g., 45474 for 2024 dates)
+  if (/^\d{5}$/.test(cleanedDateStr)) {
+      const serial = parseInt(cleanedDateStr, 10);
+      if (serial > 20000 && serial < 70000) {
+          const excelEpoch = new Date(1899, 11, 30);
+          const date = new Date(excelEpoch.getTime() + serial * 86400000);
+          if (!isNaN(date.getTime())) return date;
+      }
   }
 
   const date = new Date(cleanedDateStr);
@@ -286,11 +297,11 @@ export const parseTransactionsFromText = async (
         let forceType: string | null = null;
 
         if (debitIdx !== -1 || creditIdx !== -1) {
-            const debitVal = debitIdx !== -1 ? parts[debitIdx]?.replace(/[^0-9.+-]/g, '') : '';
-            const creditVal = creditIdx !== -1 ? parts[creditIdx]?.replace(/[^0-9.+-]/g, '') : '';
+            const rawDebit = debitIdx !== -1 ? (parts[debitIdx] || '') : '';
+            const rawCredit = creditIdx !== -1 ? (parts[creditIdx] || '') : '';
             
-            const debitNum = parseFloat(debitVal) || 0;
-            const creditNum = parseFloat(creditVal) || 0;
+            const debitNum = parseFloat(rawDebit.replace(/[^0-9.+-]/g, '')) || 0;
+            const creditNum = parseFloat(rawCredit.replace(/[^0-9.+-]/g, '')) || 0;
 
             if (Math.abs(debitNum) > 0) {
                 amount = Math.abs(debitNum);
@@ -300,8 +311,13 @@ export const parseTransactionsFromText = async (
                 forceType = incomingType.id;
             }
         } else if (amountIdx !== -1) {
-            const rawAmount = parts[amountIdx]?.replace(/[^0-9.+-]/g, '') || '0';
-            amount = parseFloat(rawAmount);
+            const rawAmount = parts[amountIdx]?.trim() || '0';
+            const isParenNeg = /^\(.*\)$/.test(rawAmount);
+            const cleanNum = rawAmount.replace(/[^0-9.+-]/g, '');
+            amount = parseFloat(cleanNum);
+            if (isParenNeg && amount > 0) {
+                amount = -amount;
+            }
             if (isNaN(amount)) {
                 amountFailures++;
                 continue;
@@ -340,10 +356,12 @@ export const parseTransactionsFromText = async (
         });
 
         let selectedTypeId = forceType || (amount >= 0 ? incomingType.id : outgoingType.id);
+        const cleaned = cleanDescription(finalDesc);
+        const resolvedDesc = cleaned.length > 0 ? cleaned : finalDesc;
         
         txs.push({
             date: formatDateString(date),
-            description: cleanDescription(finalDesc),
+            description: resolvedDesc,
             originalDescription: finalDesc,
             amount: Math.abs(amount),
             accountId,

@@ -3,10 +3,9 @@ import { RobotIcon, SparklesIcon, InfoIcon, CheckCircleIcon, ExclamationTriangle
 import type { AiConfig, BackupConfig } from '../types';
 
 const MODEL_OPTIONS = [
-    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash (Fastest)', tier: 'Standard', desc: 'Cutting-edge speed and high reliability for ledger sorting and categorization.' },
-    { id: 'gemini-3-pro-preview', label: 'Gemini 3 Pro (Deep Analysis)', tier: 'Advanced', desc: 'Superior reasoning for complex financial roadmap synthesis and multi-step strategy.' },
-    { id: 'gemini-flash-latest', label: 'Gemini Flash 2.5 (Stable)', tier: 'Standard', desc: 'The most reliable recent Flash model for consistent data extraction.' },
-    { id: 'gemini-flash-lite-latest', label: 'Gemini Flash Lite (Efficient)', tier: 'Standard', desc: 'Optimized for low-latency basic text extraction and simple classification.' }
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (Fast & Reliable)', tier: 'Standard', desc: 'Fast, highly accurate extraction and categorization for statement data.' },
+    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro (Deep Analysis)', tier: 'Advanced', desc: 'Superior reasoning for complex financial roadmap synthesis and multi-step strategy.' },
+    { id: 'gemini-2.5-flash-lite', label: 'Gemini 2.5 Flash Lite (Low Latency)', tier: 'Standard', desc: 'Ultra-low latency for basic text extraction and simple classification.' }
 ];
 
 export const Section: React.FC<{title: string, variant?: 'default' | 'danger' | 'info', children: React.ReactNode}> = ({title, variant = 'default', children}) => (

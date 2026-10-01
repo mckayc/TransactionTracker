@@ -61,7 +61,7 @@ export interface AccountType {
 export interface ParsingProfile {
     dateColumn: string | number;
     descriptionColumn: string | number;
-    amountColumn: string | number;
+    amountColumn?: string | number;
     debitColumn?: string | number;
     creditColumn?: string | number;
     payeeColumn?: string | number;
